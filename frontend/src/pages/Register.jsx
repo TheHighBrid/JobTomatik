@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { register } from '../api/client'
+import ApiBaseUrlField from '../components/ApiBaseUrlField'
 import { useAuthStore } from '../store'
 
 export default function Register() {
@@ -73,6 +74,13 @@ export default function Register() {
             {mut.isPending ? 'Creating account…' : 'Create account'}
           </button>
         </div>
+
+        <details className="mt-4 card p-4 text-sm">
+          <summary className="cursor-pointer font-medium text-gray-700">API connection</summary>
+          <div className="mt-3">
+            <ApiBaseUrlField compact />
+          </div>
+        </details>
 
         <p className="text-center text-sm text-gray-500 mt-4">
           Already have an account?{' '}
