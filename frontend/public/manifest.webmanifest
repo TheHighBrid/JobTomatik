@@ -1,0 +1,18 @@
+{
+  "name": "JobTomatik",
+  "short_name": "JobTomatik",
+  "description": "Automated job search, application tracking, and cover letter assistant.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#dc2626",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/tomato.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
