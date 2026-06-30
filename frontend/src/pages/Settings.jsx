@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { Shield, Bell, Cpu, Mail, Key } from 'lucide-react'
+import { Shield, Bell, Cpu, Key, Wifi } from 'lucide-react'
+import ApiBaseUrlField from '../components/ApiBaseUrlField'
 
 function Section({ title, icon: Icon, children }) {
   return (
@@ -56,8 +57,12 @@ export default function Settings() {
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500 mt-1">Configure automation behavior and notifications.</p>
+        <p className="text-gray-500 mt-1">Configure automation behavior, notifications, and mobile API connection.</p>
       </div>
+
+      <Section title="API Connection" icon={Wifi}>
+        <ApiBaseUrlField />
+      </Section>
 
       <Section title="Automation" icon={Cpu}>
         <Toggle
@@ -123,8 +128,8 @@ export default function Settings() {
       <Section title="Privacy & Security" icon={Shield}>
         <div className="text-sm text-gray-600 space-y-2">
           <p>Your data is stored securely in your own database instance.</p>
-          <p>Credentials (LinkedIn, Indeed, etc.) are stored encrypted at rest.</p>
-          <p>Cover letters and resumes are only accessible to you.</p>
+          <p>Never run live auto-submit before reviewing the dry-run log for each application.</p>
+          <p>Cover letters and resumes are only accessible to your authenticated account.</p>
         </div>
         <button
           className="mt-4 text-sm text-red-600 hover:underline"
