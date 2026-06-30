@@ -1,0 +1,13 @@
+{
+  "appId": "ca.jobtomatik.app",
+  "appName": "JobTomatik",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true
+  }
+}
