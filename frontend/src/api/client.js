@@ -1,14 +1,63 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const DEFAULT_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL_STORAGE_KEY = 'jobtomatik_api_url'
+
+const safeLocalStorage = {
+  getItem(key) {
+    try {
+      return window.localStorage.getItem(key)
+    } catch {
+      return null
+    }
+  },
+  setItem(key, value) {
+    try {
+      window.localStorage.setItem(key, value)
+    } catch {
+      // Ignore storage errors in restricted WebViews/private mode.
+    }
+  },
+  removeItem(key) {
+    try {
+      window.localStorage.removeItem(key)
+    } catch {
+      // Ignore storage errors in restricted WebViews/private mode.
+    }
+  },
+}
+
+export function normalizeApiBaseUrl(value) {
+  const trimmed = String(value || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return DEFAULT_API_URL
+  if (!/^https?:\/\//i.test(trimmed)) return `https://${trimmed}`
+  return trimmed
+}
+
+export function getApiBaseUrl() {
+  return normalizeApiBaseUrl(safeLocalStorage.getItem(API_URL_STORAGE_KEY) || DEFAULT_API_URL)
+}
+
+export function setApiBaseUrl(value) {
+  const normalized = normalizeApiBaseUrl(value)
+  safeLocalStorage.setItem(API_URL_STORAGE_KEY, normalized)
+  api.defaults.baseURL = `${normalized}/api`
+  return normalized
+}
+
+export function resetApiBaseUrl() {
+  safeLocalStorage.removeItem(API_URL_STORAGE_KEY)
+  api.defaults.baseURL = `${normalizeApiBaseUrl(DEFAULT_API_URL)}/api`
+  return normalizeApiBaseUrl(DEFAULT_API_URL)
+}
 
 const api = axios.create({
-  baseURL: `${BASE_URL}/api`,
+  baseURL: `${getApiBaseUrl()}/api`,
   headers: { 'Content-Type': 'application/json' },
 })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = safeLocalStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
@@ -17,9 +66,9 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
+      safeLocalStorage.removeItem('token')
+      safeLocalStorage.removeItem('user')
+      if (window.location.pathname !== '/login') window.location.href = '/login'
     }
     return Promise.reject(err)
   }
