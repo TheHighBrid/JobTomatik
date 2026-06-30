@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from typing import Any, Coroutine
+
 from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.job import Job, JobStatus
@@ -9,6 +11,15 @@ from app.services.job_scraper import search_jobs
 from app.services.keyword_tagger import tag_job
 
 logger = logging.getLogger(__name__)
+
+
+def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
+    """Run async code reliably inside Celery worker processes."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    return loop.run_until_complete(coro)
 
 
 @celery_app.task(bind=True, name="app.tasks.scraping.run_job_search", queue="scraping")
@@ -21,9 +32,7 @@ def run_job_search(self, user_id: int, search_params: dict):
             return {"error": "User not found"}
 
         prefs = user.job_preferences or {}
-        raw_jobs = asyncio.get_event_loop().run_until_complete(
-            search_jobs(**search_params)
-        )
+        raw_jobs = _run_async(search_jobs(**search_params))
 
         saved = 0
         for raw in raw_jobs:
