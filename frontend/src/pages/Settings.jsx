@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { Shield, Bell, Cpu, Mail, Key } from 'lucide-react'
+import { Shield, Bell, Cpu, Server, Key } from 'lucide-react'
+import { getBaseUrl } from '../api/client'
 
 function Section({ title, icon: Icon, children }) {
   return (
@@ -36,6 +37,19 @@ function Toggle({ label, description, checked, onChange }) {
 }
 
 export default function Settings() {
+  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('api_url') || '')
+
+  const saveApiUrl = () => {
+    const trimmed = apiUrl.trim().replace(/\/$/, '')
+    if (trimmed) {
+      localStorage.setItem('api_url', trimmed)
+      toast.success('Backend URL saved — restart the app to reconnect.')
+    } else {
+      localStorage.removeItem('api_url')
+      toast.success('Backend URL cleared — using default.')
+    }
+  }
+
   const [settings, setSettings] = useState({
     emailOnStatusChange: true,
     emailOnNewMatches: false,
@@ -132,6 +146,23 @@ export default function Settings() {
         >
           Delete my account and all data
         </button>
+      </Section>
+
+      <Section title="Backend Connection" icon={Server}>
+        <p className="text-sm text-gray-500 mb-3">
+          Set your backend server URL. Required when running as a mobile app (APK).
+          Leave blank to use the default (<code className="bg-gray-100 px-1 rounded text-xs">{getBaseUrl()}</code>).
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            className="input flex-1"
+            placeholder="http://192.168.1.100:8000"
+            value={apiUrl}
+            onChange={(e) => setApiUrl(e.target.value)}
+          />
+          <button onClick={saveApiUrl} className="btn-primary px-4">Save</button>
+        </div>
       </Section>
 
       <Section title="API Keys" icon={Key}>

@@ -1,11 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
 import { getProfile, updateProfile, uploadResume, deleteResume } from '../api/client'
 import { useAuthStore } from '../store'
 import {
-  User, Phone, MapPin, Linkedin, Github, Globe, Upload,
+  User, Phone, MapPin, Link2, Globe, Upload,
   Trash2, FileText, CheckCircle2, Loader2
 } from 'lucide-react'
 
@@ -30,9 +30,32 @@ function Field({ label, icon: Icon, children }) {
   )
 }
 
+const DEFAULT_FORM = {
+  full_name: '',
+  phone: '',
+  address: '',
+  linkedin_url: '',
+  github_url: '',
+  portfolio_url: '',
+  email_signature: '',
+}
+
+const DEFAULT_PREFS = {
+  skills: '',
+  preferred_titles: '',
+  preferred_locations: '',
+  min_salary: '',
+  current_role: '',
+  years_experience: '',
+  key_achievements: '',
+}
+
 export default function Profile() {
   const { updateUser } = useAuthStore()
   const qc = useQueryClient()
+
+  const [form, setForm] = useState(DEFAULT_FORM)
+  const [prefs, setPrefs] = useState(DEFAULT_PREFS)
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['profile'],
@@ -40,10 +63,9 @@ export default function Profile() {
     select: (r) => r.data,
   })
 
-  const [form, setForm] = useState(null)
-  const [prefs, setPrefs] = useState(null)
-
-  if (profile && !form) {
+  // Populate form from server data (runs once after load, and again if profile changes)
+  useEffect(() => {
+    if (!profile) return
     setForm({
       full_name: profile.full_name || '',
       phone: profile.phone || '',
@@ -62,7 +84,7 @@ export default function Profile() {
       years_experience: profile.profile_data?.years_experience || '',
       key_achievements: profile.profile_data?.key_achievements || '',
     })
-  }
+  }, [profile])
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const setP = (k) => (e) => setPrefs((p) => ({ ...p, [k]: e.target.value }))
@@ -112,7 +134,7 @@ export default function Profile() {
   const onDrop = useCallback((acceptedFiles) => {
     const file = acceptedFiles[0]
     if (file) resumeMut.mutate(file)
-  }, [])
+  }, [resumeMut])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -120,7 +142,7 @@ export default function Profile() {
     maxFiles: 1,
   })
 
-  if (isLoading || !form) {
+  if (isLoading) {
     return (
       <div className="flex justify-center py-20">
         <Loader2 className="w-8 h-8 animate-spin text-tomato-500" />
@@ -128,22 +150,43 @@ export default function Profile() {
     )
   }
 
+  const completionScore = [
+    form.full_name, form.phone, form.address, form.linkedin_url,
+    form.github_url, profile?.resume_filename,
+    prefs.skills, prefs.current_role, prefs.years_experience,
+  ].filter(Boolean).length
+
+  const totalFields = 9
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
-        <p className="text-gray-500 mt-1">This information is used to auto-fill applications.</p>
+    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pb-24 md:pb-6">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
+          <p className="text-gray-500 mt-1">Used to auto-fill applications and generate cover letters.</p>
+        </div>
+        <div className="text-right">
+          <div className="text-sm font-medium text-gray-700">
+            {Math.round((completionScore / totalFields) * 100)}% complete
+          </div>
+          <div className="w-24 h-2 bg-gray-100 rounded-full mt-1 overflow-hidden">
+            <div
+              className="h-full bg-tomato-500 rounded-full transition-all"
+              style={{ width: `${(completionScore / totalFields) * 100}%` }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Resume */}
-      <Section title="Resume">
+      <Section title="Resume (PDF)">
         {profile?.resume_filename ? (
           <div className="flex items-center gap-4 p-4 bg-green-50 border border-green-200 rounded-xl">
             <FileText className="w-8 h-8 text-green-600 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="font-medium text-green-900 truncate">{profile.resume_filename}</div>
               <div className="text-xs text-green-600 mt-0.5 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> Resume on file
+                <CheckCircle2 className="w-3 h-3" /> Resume on file — will be attached to applications
               </div>
             </div>
             <button
@@ -187,14 +230,14 @@ export default function Profile() {
             <input type="tel" className="input" placeholder="+1 (555) 000-0000" value={form.phone} onChange={set('phone')} />
           </Field>
           <div className="md:col-span-2">
-            <Field label="Address" icon={MapPin}>
+            <Field label="Address / City" icon={MapPin}>
               <input type="text" className="input" placeholder="San Francisco, CA 94105" value={form.address} onChange={set('address')} />
             </Field>
           </div>
-          <Field label="LinkedIn URL" icon={Linkedin}>
+          <Field label="LinkedIn URL" icon={Link2}>
             <input type="url" className="input" placeholder="https://linkedin.com/in/..." value={form.linkedin_url} onChange={set('linkedin_url')} />
           </Field>
-          <Field label="GitHub URL" icon={Github}>
+          <Field label="GitHub URL" icon={Link2}>
             <input type="url" className="input" placeholder="https://github.com/..." value={form.github_url} onChange={set('github_url')} />
           </Field>
           <div className="md:col-span-2">
@@ -233,13 +276,13 @@ export default function Profile() {
           <Field label="Skills (comma-separated)">
             <input type="text" className="input" placeholder="Python, React, PostgreSQL, AWS" value={prefs.skills} onChange={setP('skills')} />
           </Field>
-          <Field label="Preferred Job Titles (comma-separated)">
+          <Field label="Target Job Titles (comma-separated)">
             <input type="text" className="input" placeholder="Senior Engineer, Staff Engineer, Tech Lead" value={prefs.preferred_titles} onChange={setP('preferred_titles')} />
           </Field>
           <Field label="Preferred Locations (comma-separated)">
             <input type="text" className="input" placeholder="San Francisco, Remote, New York" value={prefs.preferred_locations} onChange={setP('preferred_locations')} />
           </Field>
-          <Field label="Minimum Salary (USD)">
+          <Field label="Minimum Salary (USD / year)">
             <input type="number" className="input" placeholder="150000" value={prefs.min_salary} onChange={setP('min_salary')} />
           </Field>
         </div>
@@ -259,9 +302,11 @@ export default function Profile() {
       <button
         onClick={() => updateMut.mutate()}
         disabled={updateMut.isPending}
-        className="btn-primary w-full"
+        className="btn-primary w-full py-3 text-base"
       >
-        {updateMut.isPending ? 'Saving…' : 'Save Profile'}
+        {updateMut.isPending ? (
+          <span className="flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Saving…</span>
+        ) : 'Save Profile'}
       </button>
     </div>
   )

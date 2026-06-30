@@ -1,13 +1,17 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+export function getBaseUrl() {
+  return localStorage.getItem('api_url') || import.meta.env.VITE_API_URL || 'http://localhost:8000'
+}
 
 const api = axios.create({
-  baseURL: `${BASE_URL}/api`,
+  baseURL: `${getBaseUrl()}/api`,
   headers: { 'Content-Type': 'application/json' },
 })
 
 api.interceptors.request.use((config) => {
+  // Re-read baseURL on every request so runtime URL changes take effect
+  config.baseURL = `${getBaseUrl()}/api`
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config

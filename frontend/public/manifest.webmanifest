@@ -1,0 +1,20 @@
+{
+  "name": "JobTomatik",
+  "short_name": "JobTomatik",
+  "description": "Automated job application platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#e53e3e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/tomato.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "prefer_related_applications": false
+}

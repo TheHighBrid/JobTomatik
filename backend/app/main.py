@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from app.database import engine, Base
-from app.api import auth, jobs, applications, profile, notifications
+from app.api import auth, jobs, applications, profile, notifications, export
 from app.config import get_settings
 
 settings = get_settings()
@@ -43,6 +43,7 @@ app.include_router(jobs.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
+app.include_router(export.router, prefix="/api")
 
 
 @app.get("/health")

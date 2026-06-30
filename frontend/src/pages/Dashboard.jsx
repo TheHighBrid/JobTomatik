@@ -3,40 +3,36 @@ import { Link } from 'react-router-dom'
 import { getApplicationStats, getJobQueue, listApplications } from '../api/client'
 import { useAuthStore } from '../store'
 import StatusBadge from '../components/StatusBadge'
-import { TrendingUp, Briefcase, Clock, Award, ChevronRight, Search } from 'lucide-react'
+import { StatCardSkeleton, JobCardSkeleton } from '../components/Skeleton'
+import { TrendingUp, Briefcase, Clock, Award, ChevronRight, Search, Zap, ListTodo } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-
-const STAT_COLORS = {
-  total: 'from-blue-500 to-blue-600',
-  applied: 'from-indigo-500 to-indigo-600',
-  interviewing: 'from-purple-500 to-purple-600',
-  offer: 'from-green-500 to-green-600',
-}
 
 const CHART_COLORS = {
   pending: '#9ca3af',
+  applying: '#3b82f6',
   applied: '#6366f1',
   interviewing: '#a855f7',
   offer: '#22c55e',
   rejected: '#ef4444',
+  withdrawn: '#d1d5db',
 }
 
 export default function Dashboard() {
   const { user } = useAuthStore()
 
-  const { data: stats } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['appStats'],
     queryFn: () => getApplicationStats(),
     select: (r) => r.data,
   })
 
-  const { data: queueData } = useQuery({
+  const { data: queueData, isLoading: queueLoading } = useQuery({
     queryKey: ['jobQueue', { per_page: 5 }],
     queryFn: () => getJobQueue({ per_page: 5 }),
     select: (r) => r.data,
   })
 
-  const { data: recentApps } = useQuery({
+  const { data: recentApps, isLoading: appsLoading } = useQuery({
     queryKey: ['recentApps'],
     queryFn: () => listApplications({ per_page: 5 }),
     select: (r) => r.data,
@@ -44,54 +40,98 @@ export default function Dashboard() {
 
   const chartData = stats
     ? Object.entries(stats)
-        .filter(([k]) => !['total'].includes(k))
+        .filter(([k]) => k !== 'total' && stats[k] > 0)
         .map(([key, value]) => ({ name: key, value }))
-        .filter((d) => d.value > 0)
     : []
 
   const topStats = [
-    { label: 'Total Applications', value: stats?.total ?? 0, icon: Briefcase, gradient: STAT_COLORS.total },
-    { label: 'Applied', value: stats?.applied ?? 0, icon: TrendingUp, gradient: STAT_COLORS.applied },
-    { label: 'Interviewing', value: stats?.interviewing ?? 0, icon: Clock, gradient: STAT_COLORS.interviewing },
-    { label: 'Offers', value: stats?.offer ?? 0, icon: Award, gradient: STAT_COLORS.offer },
+    { label: 'Total', value: stats?.total ?? 0, icon: Briefcase, color: 'from-blue-500 to-blue-600' },
+    { label: 'Applied', value: stats?.applied ?? 0, icon: TrendingUp, color: 'from-indigo-500 to-indigo-600' },
+    { label: 'Interviewing', value: stats?.interviewing ?? 0, icon: Clock, color: 'from-purple-500 to-purple-600' },
+    { label: 'Offers', value: stats?.offer ?? 0, icon: Award, color: 'from-green-500 to-green-600' },
   ]
 
+  const queueCount = queueData?.total ?? 0
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Greeting */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Good morning{user?.full_name ? `, ${user.full_name.split(' ')[0]}` : ''}!
-        </h1>
-        <p className="text-gray-500 mt-1">Here's your job search overview.</p>
+    <div className="space-y-5 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+            Hey{user?.full_name ? ` ${user.full_name.split(' ')[0]}` : ''}! 👋
+          </h1>
+          <p className="text-gray-500 mt-1 text-sm">Here's your job search overview.</p>
+        </div>
+        {queueCount > 0 && (
+          <Link
+            to="/queue"
+            className="flex items-center gap-1.5 bg-tomato-600 text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-tomato-700 transition-colors"
+          >
+            <Zap className="w-3.5 h-3.5" />
+            {queueCount} in queue
+          </Link>
+        )}
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {topStats.map(({ label, value, icon: Icon, gradient }) => (
-          <div key={label} className={`card p-4 bg-gradient-to-br ${gradient} text-white`}>
-            <Icon className="w-5 h-5 opacity-80 mb-3" />
-            <div className="text-3xl font-bold">{value}</div>
-            <div className="text-sm opacity-80 mt-1">{label}</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {statsLoading
+          ? Array(4).fill(0).map((_, i) => <StatCardSkeleton key={i} />)
+          : topStats.map(({ label, value, icon: Icon, color }) => (
+            <div key={label} className={`card p-4 bg-gradient-to-br ${color} text-white`}>
+              <Icon className="w-5 h-5 opacity-80 mb-2" />
+              <div className="text-2xl md:text-3xl font-bold">{value}</div>
+              <div className="text-xs opacity-80 mt-0.5">{label}</div>
+            </div>
+          ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart */}
+      {/* Quick actions */}
+      <div className="grid grid-cols-3 gap-3">
+        <Link to="/search" className="card p-4 text-center hover:shadow-md transition-shadow group">
+          <Search className="w-6 h-6 text-blue-500 mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
+          <div className="text-xs font-medium text-gray-700">New Search</div>
+        </Link>
+        <Link to="/queue" className="card p-4 text-center hover:shadow-md transition-shadow group">
+          <ListTodo className="w-6 h-6 text-yellow-500 mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
+          <div className="text-xs font-medium text-gray-700">Review Queue</div>
+        </Link>
+        <Link to="/applications" className="card p-4 text-center hover:shadow-md transition-shadow group">
+          <TrendingUp className="w-6 h-6 text-green-500 mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
+          <div className="text-xs font-medium text-gray-700">Applications</div>
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Pipeline chart */}
         <div className="card p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Application Pipeline</h2>
-          {chartData.length === 0 ? (
-            <div className="h-40 flex items-center justify-center text-gray-400 text-sm">
-              No applications yet.{' '}
-              <Link to="/search" className="ml-1 text-tomato-600 hover:underline">Start searching</Link>
+          <h2 className="font-semibold text-gray-900 mb-4">Pipeline</h2>
+          {statsLoading ? (
+            <div className="h-40 flex items-center justify-center">
+              <div className="w-full h-full bg-gray-100 rounded-lg animate-pulse" />
+            </div>
+          ) : chartData.length === 0 ? (
+            <div className="h-40 flex flex-col items-center justify-center text-gray-400 text-sm gap-2">
+              <Search className="w-8 h-8 opacity-50" />
+              <p>No applications yet.</p>
+              <Link to="/search" className="text-tomato-600 hover:underline text-xs">
+                Start a job search →
+              </Link>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData} barSize={32}>
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={chartData} barSize={28}>
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={25} />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: 8,
+                    border: 'none',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                    fontSize: 12,
+                  }}
+                />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                   {chartData.map((entry) => (
                     <Cell key={entry.name} fill={CHART_COLORS[entry.name] || '#6b7280'} />
@@ -107,19 +147,31 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-900">Jobs to Review</h2>
             <Link to="/queue" className="text-sm text-tomato-600 hover:underline flex items-center gap-1">
-              View all <ChevronRight className="w-3 h-3" />
+              All {queueCount > 0 && `(${queueCount})`} <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
-          {!queueData?.jobs?.length ? (
+          {queueLoading ? (
+            <div className="space-y-2">
+              {Array(3).fill(0).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 p-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-gray-200 animate-pulse" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4" />
+                    <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : !queueData?.jobs?.length ? (
             <div className="py-8 text-center text-gray-400 text-sm">
               <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p>No jobs in queue.</p>
-              <Link to="/search" className="text-tomato-600 hover:underline text-sm mt-1 block">
+              <p className="mb-2">No jobs in queue.</p>
+              <Link to="/search" className="text-tomato-600 hover:underline text-sm">
                 Run a job search
               </Link>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1">
               {queueData.jobs.map((job) => (
                 <Link
                   key={job.id}
@@ -133,7 +185,7 @@ export default function Dashboard() {
                     <div className="text-sm font-medium text-gray-900 truncate">{job.title}</div>
                     <div className="text-xs text-gray-500 truncate">{job.company}</div>
                   </div>
-                  <div className="text-xs text-gray-400 flex-shrink-0">
+                  <div className="text-xs text-tomato-600 font-medium flex-shrink-0">
                     {Math.round((job.relevance_score || 0) * 100)}%
                   </div>
                 </Link>
@@ -151,9 +203,22 @@ export default function Dashboard() {
             View all <ChevronRight className="w-3 h-3" />
           </Link>
         </div>
-        {!recentApps?.length ? (
+        {appsLoading ? (
+          <div className="space-y-1">
+            {Array(3).fill(0).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 py-3">
+                <div className="w-8 h-8 rounded-lg bg-gray-200 animate-pulse" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2" />
+                  <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/3" />
+                </div>
+                <div className="h-5 w-16 bg-gray-100 rounded-full animate-pulse" />
+              </div>
+            ))}
+          </div>
+        ) : !recentApps?.length ? (
           <div className="py-6 text-center text-gray-400 text-sm">
-            No applications yet.
+            No applications yet. Approve jobs from the queue to start.
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
@@ -181,3 +246,4 @@ export default function Dashboard() {
     </div>
   )
 }
+
