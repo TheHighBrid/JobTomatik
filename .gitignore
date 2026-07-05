@@ -16,9 +16,12 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 
-# Android
+# Android (generated native project — build locally or via CI)
 frontend/android/
 frontend/ios/
+
+# Built APK deliverables are committed at repo root for download
+!jobtomatik-debug.apk
 
 # Misc
 .DS_Store
