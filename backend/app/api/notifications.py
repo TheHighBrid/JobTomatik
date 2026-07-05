@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -49,10 +49,11 @@ async def mark_read(
         .filter(Notification.id == notif_id, Notification.user_id == current_user.id)
         .first()
     )
-    if notif:
-        notif.read = True
-        db.commit()
-        db.refresh(notif)
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notif.read = True
+    db.commit()
+    db.refresh(notif)
     return notif
 
 

@@ -1,25 +1,13 @@
 {
-  "appId": "com.jobtomatik.app",
+  "appId": "ca.jobtomatik.app",
   "appName": "JobTomatik",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
-    "androidScheme": "https",
-    "cleartext": true,
-    "allowNavigation": ["*"]
+    "androidScheme": "https"
   },
   "android": {
     "allowMixedContent": true,
-    "captureInput": true,
-    "webContentsDebuggingEnabled": false
-  },
-  "plugins": {
-    "SplashScreen": {
-      "launchShowDuration": 2000,
-      "backgroundColor": "#ffffff",
-      "androidSpinnerStyle": "large",
-      "splashFullScreen": false,
-      "splashImmersive": false
-    }
+    "captureInput": true
   }
 }

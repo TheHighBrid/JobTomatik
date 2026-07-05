@@ -1,6 +1,8 @@
 import asyncio
 import logging
 from datetime import datetime
+from typing import Any, Coroutine
+
 from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.application import Application, ApplicationStatus
@@ -13,6 +15,15 @@ from app.services.form_filler import fill_and_submit_application
 logger = logging.getLogger(__name__)
 
 
+def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
+    """Run async code reliably inside Celery worker processes."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    return loop.run_until_complete(coro)
+
+
 @celery_app.task(bind=True, name="app.tasks.applications.generate_cover_letter_task", queue="applications")
 def generate_cover_letter_task(self, application_id: int):
     db = SessionLocal()
@@ -23,6 +34,8 @@ def generate_cover_letter_task(self, application_id: int):
 
         job = db.query(Job).filter(Job.id == app.job_id).first()
         user = db.query(User).filter(User.id == app.user_id).first()
+        if not job or not user:
+            return {"error": "Missing job or user"}
 
         job_dict = {
             "title": job.title,
@@ -39,9 +52,7 @@ def generate_cover_letter_task(self, application_id: int):
             "linkedin_url": user.linkedin_url,
         }
 
-        letter = asyncio.get_event_loop().run_until_complete(
-            generate_cover_letter(job_dict, user_dict)
-        )
+        letter = _run_async(generate_cover_letter(job_dict, user_dict))
         app.cover_letter = letter
         db.commit()
         return {"application_id": application_id, "generated": True}
@@ -63,6 +74,8 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
 
         job = db.query(Job).filter(Job.id == app.job_id).first()
         user = db.query(User).filter(User.id == app.user_id).first()
+        if not job or not user:
+            return {"error": "Missing job or user"}
 
         if not job.url:
             app.status = ApplicationStatus.rejected
@@ -84,7 +97,7 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
             "portfolio_url": user.portfolio_url,
         }
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = _run_async(
             fill_and_submit_application(
                 job_url=job.url,
                 user_profile=profile,
@@ -96,15 +109,16 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
 
         app.automation_log = result.get("log", [])
         if result.get("success"):
-            app.status = ApplicationStatus.applied
-            app.applied_at = datetime.utcnow()
-            db.add(Notification(
-                user_id=user.id,
-                type=NotificationType.application_submitted,
-                title=f"Applied to {job.title} at {job.company}",
-                message="Your application was submitted successfully.",
-                data={"job_id": job.id, "application_id": app.id},
-            ))
+            app.status = ApplicationStatus.pending if dry_run else ApplicationStatus.applied
+            if not dry_run:
+                app.applied_at = datetime.utcnow()
+                db.add(Notification(
+                    user_id=user.id,
+                    type=NotificationType.application_submitted,
+                    title=f"Applied to {job.title} at {job.company}",
+                    message="Your application was submitted successfully.",
+                    data={"job_id": job.id, "application_id": app.id},
+                ))
         else:
             app.status = ApplicationStatus.pending
             logger.warning(f"Application {application_id} submission failed: {result.get('error')}")
