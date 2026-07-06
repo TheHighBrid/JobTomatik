@@ -2,23 +2,31 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { register } from '../api/client'
+import { getApiErrorMessage, isNetworkError, register } from '../api/client'
 import ApiBaseUrlField from '../components/ApiBaseUrlField'
 import { useAuthStore } from '../store'
 
 export default function Register() {
   const [form, setForm] = useState({ email: '', password: '', full_name: '' })
+  const [error, setError] = useState('')
+  const [showApiConnection, setShowApiConnection] = useState(false)
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
 
   const mut = useMutation({
     mutationFn: () => register(form),
+    onMutate: () => setError(''),
     onSuccess: (res) => {
       setAuth(res.data.user, res.data.access_token)
       toast.success('Account created! Welcome to JobTomatik.')
       navigate('/')
     },
-    onError: (err) => toast.error(err.response?.data?.detail || 'Registration failed'),
+    onError: (err) => {
+      const message = getApiErrorMessage(err, 'Registration failed')
+      setError(message)
+      if (isNetworkError(err)) setShowApiConnection(true)
+      toast.error(message)
+    },
   })
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
@@ -63,7 +71,7 @@ export default function Register() {
               placeholder="Minimum 8 characters"
               value={form.password}
               onChange={set('password')}
-              onKeyDown={(e) => e.key === 'Enter' && mut.mutate()}
+              onKeyDown={(e) => e.key === 'Enter' && !mut.isPending && mut.mutate()}
             />
           </div>
           <button
@@ -73,14 +81,19 @@ export default function Register() {
           >
             {mut.isPending ? 'Creating account…' : 'Create account'}
           </button>
+          {error && <p className="text-sm text-red-600 leading-relaxed">{error}</p>}
         </div>
 
-        <details className="mt-4 card p-4 text-sm">
-          <summary className="cursor-pointer font-medium text-gray-700">API connection</summary>
-          <div className="mt-3">
-            <ApiBaseUrlField compact />
-          </div>
-        </details>
+        <div className="mt-4 card p-4 text-sm space-y-3">
+          <button
+            type="button"
+            onClick={() => setShowApiConnection((open) => !open)}
+            className="w-full text-left font-medium text-gray-700"
+          >
+            API connection {showApiConnection ? '−' : '+'}
+          </button>
+          {showApiConnection && <ApiBaseUrlField compact />}
+        </div>
 
         <p className="text-center text-sm text-gray-500 mt-4">
           Already have an account?{' '}

@@ -2,24 +2,32 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { login } from '../api/client'
+import { getApiErrorMessage, isNetworkError, login } from '../api/client'
 import ApiBaseUrlField from '../components/ApiBaseUrlField'
 import { useAuthStore } from '../store'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [showApiConnection, setShowApiConnection] = useState(false)
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
 
   const mut = useMutation({
     mutationFn: () => login(email, password),
+    onMutate: () => setError(''),
     onSuccess: (res) => {
       setAuth(res.data.user, res.data.access_token)
       toast.success('Welcome back!')
       navigate('/')
     },
-    onError: (err) => toast.error(err.response?.data?.detail || 'Login failed'),
+    onError: (err) => {
+      const message = getApiErrorMessage(err, 'Login failed')
+      setError(message)
+      if (isNetworkError(err)) setShowApiConnection(true)
+      toast.error(message)
+    },
   })
 
   return (
@@ -42,7 +50,7 @@ export default function Login() {
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && mut.mutate()}
+              onKeyDown={(e) => e.key === 'Enter' && !mut.isPending && mut.mutate()}
             />
           </div>
           <div>
@@ -53,7 +61,7 @@ export default function Login() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && mut.mutate()}
+              onKeyDown={(e) => e.key === 'Enter' && !mut.isPending && mut.mutate()}
             />
           </div>
           <button
@@ -63,14 +71,19 @@ export default function Login() {
           >
             {mut.isPending ? 'Signing in…' : 'Sign in'}
           </button>
+          {error && <p className="text-sm text-red-600 leading-relaxed">{error}</p>}
         </div>
 
-        <details className="mt-4 card p-4 text-sm">
-          <summary className="cursor-pointer font-medium text-gray-700">API connection</summary>
-          <div className="mt-3">
-            <ApiBaseUrlField compact />
-          </div>
-        </details>
+        <div className="mt-4 card p-4 text-sm space-y-3">
+          <button
+            type="button"
+            onClick={() => setShowApiConnection((open) => !open)}
+            className="w-full text-left font-medium text-gray-700"
+          >
+            API connection {showApiConnection ? '−' : '+'}
+          </button>
+          {showApiConnection && <ApiBaseUrlField compact />}
+        </div>
 
         <p className="text-center text-sm text-gray-500 mt-4">
           Don&apos;t have an account?{' '}
