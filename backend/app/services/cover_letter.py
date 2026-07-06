@@ -3,7 +3,10 @@ Cover letter generator using the Anthropic Claude API.
 Falls back to a template when no API key is configured.
 """
 from typing import Dict, Optional
-import anthropic
+try:
+    import anthropic as _anthropic
+except ImportError:
+    _anthropic = None
 from app.config import get_settings
 
 settings = get_settings()
@@ -46,7 +49,7 @@ async def generate_cover_letter(
     achievements = user_profile.get("key_achievements", "")
     linkedin = user_profile.get("linkedin_url", "")
 
-    if not settings.anthropic_api_key:
+    if not settings.anthropic_api_key or _anthropic is None:
         return FALLBACK_TEMPLATE.format(
             title=title,
             company=company,
@@ -55,7 +58,7 @@ async def generate_cover_letter(
             name=name,
         )
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     prompt = f"""Write a compelling, personalized cover letter for this job application.
 
