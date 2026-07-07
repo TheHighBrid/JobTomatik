@@ -46,5 +46,6 @@ app.include_router(notifications.router, prefix="/api")
 
 
 @app.get("/health")
+@app.get("/api/system/health")
 async def health():
     return {"status": "ok", "service": "JobTomatik API"}
