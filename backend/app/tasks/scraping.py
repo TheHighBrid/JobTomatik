@@ -113,3 +113,37 @@ def refresh_all_scores():
         return {"updated": updated}
     finally:
         db.close()
+
+
+@celery_app.task(name="app.tasks.scraping.daily_auto_search_all", queue="scraping")
+def daily_auto_search_all():
+    """Run automatic job searches for all users with auto_search_enabled=true."""
+    db = SessionLocal()
+    try:
+        users = db.query(User).filter(User.is_active == True).all()
+        kicked = 0
+        for user in users:
+            settings = user.automation_settings or {}
+            if not settings.get("auto_search_enabled"):
+                continue
+            prefs = user.job_preferences or {}
+            keywords_list = prefs.get("preferred_titles") or prefs.get("skills") or []
+            if not keywords_list:
+                continue
+            keywords = ", ".join(keywords_list[:3])
+            locations = prefs.get("preferred_locations", [])
+            location = locations[0] if locations else "Ottawa, Ontario"
+            run_job_search.delay(
+                user_id=user.id,
+                search_params={
+                    "keywords": keywords,
+                    "location": location,
+                    "salary_min": prefs.get("min_salary"),
+                    "sources": ["jobbank", "indeed", "linkedin", "glassdoor"],
+                    "limit": 40,
+                },
+            )
+            kicked += 1
+        return {"searched_for": kicked}
+    finally:
+        db.close()

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -28,8 +28,14 @@ export default function ApplicationDetail() {
     queryKey: ['application', id],
     queryFn: () => getApplication(id),
     select: (r) => r.data,
-    onSuccess: (a) => { setNotes(a.notes || ''); setNewStatus(a.status) },
   })
+
+  useEffect(() => {
+    if (app) {
+      setNotes(app.notes || '')
+      setNewStatus(app.status)
+    }
+  }, [app?.id])
 
   const updateMut = useMutation({
     mutationFn: (data) => updateApplication(id, data),

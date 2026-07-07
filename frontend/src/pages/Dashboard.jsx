@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { getApplicationStats, getJobQueue, listApplications } from '../api/client'
+import { getApplicationStats, getJobQueue, listApplications, runAutoPilot, bulkApply } from '../api/client'
 import { useAuthStore } from '../store'
 import StatusBadge from '../components/StatusBadge'
 import { StatCardSkeleton, JobCardSkeleton } from '../components/Skeleton'
-import { TrendingUp, Briefcase, Clock, Award, ChevronRight, Search, Zap, ListTodo } from 'lucide-react'
+import { TrendingUp, Briefcase, Clock, Award, ChevronRight, Search, Zap, ListTodo, Bot, Play, Send, Loader2 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 const CHART_COLORS = {
@@ -15,6 +16,84 @@ const CHART_COLORS = {
   offer: '#22c55e',
   rejected: '#ef4444',
   withdrawn: '#d1d5db',
+}
+
+function AutoPilotPanel() {
+  const qc = useQueryClient()
+  const [dryRun, setDryRun] = useState(true)
+  const [msg, setMsg] = useState(null)
+
+  const pilotMut = useMutation({
+    mutationFn: () => runAutoPilot({ dry_run: dryRun, min_score: 0.5, daily_limit: 15 }),
+    onSuccess: (res) => {
+      const d = res.data
+      setMsg(`Search started (task ${d.search_task_id?.slice(0,8)}…). Auto-approved ${d.auto_approved} jobs.`)
+      qc.invalidateQueries(['jobQueue'])
+      qc.invalidateQueries(['appStats'])
+    },
+    onError: (e) => setMsg('Auto-pilot error: ' + (e.response?.data?.detail || e.message)),
+  })
+
+  const bulkMut = useMutation({
+    mutationFn: () => bulkApply(dryRun, 20),
+    onSuccess: (res) => {
+      const d = res.data
+      setMsg(`Bulk apply: ${d.applied} applications queued, ${d.skipped} skipped.`)
+      qc.invalidateQueries(['appStats'])
+    },
+    onError: (e) => setMsg('Bulk apply error: ' + (e.response?.data?.detail || e.message)),
+  })
+
+  const running = pilotMut.isPending || bulkMut.isPending
+
+  return (
+    <div className="card p-5 border-2 border-tomato-100">
+      <div className="flex items-center gap-2 mb-3">
+        <Bot className="w-5 h-5 text-tomato-600" />
+        <h2 className="font-semibold text-gray-900">Auto-Pilot</h2>
+        <span className="ml-auto text-xs text-gray-400">Full autonomous mode</span>
+      </div>
+      <div className="flex flex-wrap gap-3 items-center">
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!dryRun}
+            onChange={(e) => setDryRun(!e.target.checked)}
+            className="accent-tomato-600"
+          />
+          <span className={`font-medium ${!dryRun ? 'text-tomato-700' : 'text-gray-500'}`}>
+            {dryRun ? 'Dry Run (safe)' : 'LIVE — will submit real applications'}
+          </span>
+        </label>
+      </div>
+      <div className="flex flex-wrap gap-3 mt-3">
+        <button
+          onClick={() => pilotMut.mutate()}
+          disabled={running}
+          className="btn-primary flex items-center gap-2 text-sm"
+        >
+          {pilotMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+          Search + Auto-Approve
+        </button>
+        <button
+          onClick={() => bulkMut.mutate()}
+          disabled={running}
+          className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium border transition-all ${!dryRun ? 'bg-tomato-600 text-white border-tomato-600 hover:bg-tomato-700' : 'btn-secondary'}`}
+        >
+          {bulkMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          Bulk Apply to Approved
+        </button>
+      </div>
+      {msg && (
+        <div className="mt-3 text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-lg">{msg}</div>
+      )}
+      {!dryRun && (
+        <p className="mt-2 text-xs text-tomato-600">
+          ⚠ Live mode active — applications will be submitted for real. Make sure <code>ALLOW_REAL_APPLICATION_SUBMIT=true</code> is set on the server.
+        </p>
+      )}
+    </div>
+  )
 }
 
 export default function Dashboard() {
@@ -102,6 +181,9 @@ export default function Dashboard() {
           <div className="text-xs font-medium text-gray-700">Applications</div>
         </Link>
       </div>
+
+      {/* Auto-Pilot panel */}
+      <AutoPilotPanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Pipeline chart */}
@@ -246,4 +328,3 @@ export default function Dashboard() {
     </div>
   )
 }
-

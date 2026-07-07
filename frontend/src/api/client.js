@@ -119,4 +119,14 @@ export const getUnreadCount = () => api.get('/notifications/unread-count')
 export const markRead = (id) => api.post(`/notifications/${id}/read`)
 export const markAllRead = () => api.post('/notifications/mark-all-read')
 
+// Settings
+export const getSettings = () => api.get('/settings')
+export const updateSettings = (data) => api.patch('/settings', data)
+
+// Bulk / Auto-pilot
+export const bulkApply = (dryRun = true, limit = 20) =>
+  api.post(`/jobs/bulk-apply?dry_run=${dryRun}&limit=${limit}`)
+export const runAutoPilot = (options = {}) =>
+  api.post('/jobs/autopilot', null, { params: options })
+
 export default api

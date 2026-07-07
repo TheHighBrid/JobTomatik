@@ -282,8 +282,8 @@ export default function Profile() {
           <Field label="Preferred Locations (comma-separated)">
             <input type="text" className="input" placeholder="San Francisco, Remote, New York" value={prefs.preferred_locations} onChange={setP('preferred_locations')} />
           </Field>
-          <Field label="Minimum Salary (USD / year)">
-            <input type="number" className="input" placeholder="150000" value={prefs.min_salary} onChange={setP('min_salary')} />
+          <Field label="Minimum Salary (CAD / year)">
+            <input type="number" className="input" placeholder="65000" value={prefs.min_salary} onChange={setP('min_salary')} />
           </Field>
         </div>
       </Section>

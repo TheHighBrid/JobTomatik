@@ -20,6 +20,7 @@ class User(Base):
     resume_filename = Column(String(255))
     profile_data = Column(JSON, default={})
     job_preferences = Column(JSON, default={})
+    automation_settings = Column(JSON, default={})
     email_signature = Column(Text)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

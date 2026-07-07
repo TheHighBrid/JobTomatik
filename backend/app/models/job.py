@@ -8,6 +8,7 @@ class JobSource(str, enum.Enum):
     linkedin = "linkedin"
     indeed = "indeed"
     glassdoor = "glassdoor"
+    jobbank = "jobbank"
     manual = "manual"
 
 

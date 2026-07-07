@@ -35,5 +35,9 @@ celery_app.conf.update(
             "task": "app.tasks.scraping.refresh_all_scores",
             "schedule": crontab(hour=3, minute=0),  # 3am UTC
         },
+        "daily-auto-search": {
+            "task": "app.tasks.scraping.daily_auto_search_all",
+            "schedule": crontab(hour="*/6", minute=0),  # every 6 hours
+        },
     },
 )

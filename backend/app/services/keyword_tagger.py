@@ -6,6 +6,19 @@ import re
 from typing import List, Dict, Tuple, Optional
 
 SKILLS_PATTERNS = {
+    # Compliance / Financial Crime
+    "AML": r"\baml\b|\banti[- ]money\s+launder",
+    "KYC": r"\bkyc\b|\bknow\s+your\s+customer\b",
+    "Fraud Investigation": r"\bfraud\s+invest|\bfraud\s+detect|\bfraud\s+analys",
+    "FINTRAC": r"\bfintrac\b",
+    "PCMLTFA": r"\bpcmltfa\b|\bproceeds\s+of\s+crime\b",
+    "STR Filing": r"\bstr\b|\bsuspicious\s+transaction\s+report",
+    "Transaction Monitoring": r"\btransaction\s+monitor",
+    "EDD": r"\bedd\b|\benhanced\s+due\s+diligence\b",
+    "CAMS": r"\bcams\b|\bcertified\s+anti[- ]money",
+    "Actimize": r"\bactimize\b",
+    "Sanctions Screening": r"\bsanctions?\s+screen|\bofac\b",
+    "Compliance": r"\bregulatory\s+compliance\b|\bcompliance\s+officer\b|\bcompliance\s+analyst\b",
     # Languages
     "Python": r"\bpython\b",
     "JavaScript": r"\bjavascript\b|\bjs\b",
@@ -103,6 +116,9 @@ INDUSTRY_PATTERNS = [
     ("DevTools", r"\bdeveloper\s+tools?\b|\bdev\s*tools?\b"),
     ("Cloud", r"\bcloud\s+infrastructure\b|\bcloud\s+platform\b"),
     ("Data Platform", r"\bdata\s+platform\b|\bdata\s+infrastructure\b|\banalytics\s+platform\b"),
+    ("Financial Crimes", r"\bfinancial\s+crime|\banti[- ]money\s+launder|\bkyc\b|\baml\b|\bfintrac\b|\bfraud\s+invest"),
+    ("Banking", r"\bcommercial\s+bank|\bretail\s+bank|\bbanking\s+compliance|\bbank\s+secrecy"),
+    ("Government", r"\bgovernment\s+of\s+canada\b|\bcra\b|\bcsps\b|\bpublic\s+service\b|\bfederal\s+public\s+service"),
 ]
 
 

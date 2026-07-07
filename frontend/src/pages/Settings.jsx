@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Shield, Bell, Cpu, Key, Wifi } from 'lucide-react'
+import { Shield, Bell, Cpu, Key, Wifi, Loader2, Bot } from 'lucide-react'
 import ApiBaseUrlField from '../components/ApiBaseUrlField'
+import { getSettings, updateSettings } from '../api/client'
 
 function Section({ title, icon: Icon, children }) {
   return (
@@ -15,7 +17,7 @@ function Section({ title, icon: Icon, children }) {
   )
 }
 
-function Toggle({ label, description, checked, onChange }) {
+function Toggle({ label, description, checked, onChange, disabled }) {
   return (
     <div className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
       <div>
@@ -25,8 +27,9 @@ function Toggle({ label, description, checked, onChange }) {
       <button
         role="switch"
         aria-checked={checked}
+        disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none ${checked ? 'bg-tomato-600' : 'bg-gray-200'}`}
+        className={`relative w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-50 ${checked ? 'bg-tomato-600' : 'bg-gray-200'}`}
       >
         <span
           className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${checked ? 'translate-x-5' : ''}`}
@@ -37,21 +40,41 @@ function Toggle({ label, description, checked, onChange }) {
 }
 
 export default function Settings() {
-  const [settings, setSettings] = useState({
-    emailOnStatusChange: true,
-    emailOnNewMatches: false,
-    emailOnInterview: true,
-    emailOnOffer: true,
-    autoFollowup: true,
-    autoFollowupDays: 7,
-    dryRunMode: true,
-    autoGenerateCoverLetters: true,
+  const qc = useQueryClient()
+  const [local, setLocal] = useState(null)
+
+  const { data: serverSettings, isLoading } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => getSettings(),
+    select: (r) => r.data,
   })
 
-  const toggle = (k) => (v) => setSettings((s) => ({ ...s, [k]: v }))
-  const set = (k) => (e) => setSettings((s) => ({ ...s, [k]: e.target.value }))
+  useEffect(() => {
+    if (serverSettings && !local) {
+      setLocal(serverSettings)
+    }
+  }, [serverSettings])
 
-  const save = () => toast.success('Settings saved!')
+  const mut = useMutation({
+    mutationFn: () => updateSettings(local),
+    onSuccess: (res) => {
+      setLocal(res.data)
+      qc.invalidateQueries(['settings'])
+      toast.success('Settings saved!')
+    },
+    onError: () => toast.error('Failed to save settings'),
+  })
+
+  const toggle = (k) => (v) => setLocal((s) => ({ ...s, [k]: v }))
+  const setNum = (k) => (e) => setLocal((s) => ({ ...s, [k]: Number(e.target.value) }))
+
+  if (isLoading || !local) {
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-tomato-500" />
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -64,35 +87,78 @@ export default function Settings() {
         <ApiBaseUrlField />
       </Section>
 
+      <Section title="Auto-Pilot" icon={Bot}>
+        <Toggle
+          label="Auto Search (every 6 hours)"
+          description="Automatically search for jobs using your profile preferences"
+          checked={local.auto_search_enabled}
+          onChange={toggle('auto_search_enabled')}
+        />
+        <Toggle
+          label="Auto Apply to High Matches"
+          description="Automatically apply to jobs above the match threshold (requires Auto Search)"
+          checked={local.auto_apply_enabled}
+          onChange={toggle('auto_apply_enabled')}
+        />
+        {local.auto_apply_enabled && (
+          <div className="mt-3 space-y-3 pl-0">
+            <div>
+              <label className="label">Minimum match score to auto-apply</label>
+              <input
+                type="range"
+                min="0.4"
+                max="1.0"
+                step="0.05"
+                className="w-full accent-tomato-600"
+                value={local.auto_apply_min_score}
+                onChange={setNum('auto_apply_min_score')}
+              />
+              <div className="text-xs text-gray-500 mt-1">{Math.round(local.auto_apply_min_score * 100)}% match required</div>
+            </div>
+            <div>
+              <label className="label">Daily application limit</label>
+              <input
+                type="number"
+                className="input w-20"
+                min="1"
+                max="50"
+                value={local.auto_apply_daily_limit}
+                onChange={setNum('auto_apply_daily_limit')}
+              />
+            </div>
+          </div>
+        )}
+      </Section>
+
       <Section title="Automation" icon={Cpu}>
         <Toggle
           label="Dry Run Mode"
-          description="Fill forms but don't submit — preview before going live"
-          checked={settings.dryRunMode}
-          onChange={toggle('dryRunMode')}
+          description="Fill forms but don't submit — safe preview mode. Disable only when ready to go live."
+          checked={local.dry_run_mode}
+          onChange={toggle('dry_run_mode')}
         />
         <Toggle
           label="Auto-Generate Cover Letters"
           description="Automatically generate a cover letter when creating an application"
-          checked={settings.autoGenerateCoverLetters}
-          onChange={toggle('autoGenerateCoverLetters')}
+          checked={local.auto_generate_cover_letters}
+          onChange={toggle('auto_generate_cover_letters')}
         />
         <Toggle
           label="Auto-Schedule Follow-ups"
           description="Automatically schedule a follow-up email after applying"
-          checked={settings.autoFollowup}
-          onChange={toggle('autoFollowup')}
+          checked={local.auto_followup}
+          onChange={toggle('auto_followup')}
         />
-        {settings.autoFollowup && (
-          <div className="mt-3 pl-0">
+        {local.auto_followup && (
+          <div className="mt-3">
             <label className="label">Follow-up delay (days after applying)</label>
             <input
               type="number"
               className="input w-24"
               min="1"
               max="30"
-              value={settings.autoFollowupDays}
-              onChange={set('autoFollowupDays')}
+              value={local.auto_followup_days}
+              onChange={setNum('auto_followup_days')}
             />
           </div>
         )}
@@ -102,52 +168,48 @@ export default function Settings() {
         <Toggle
           label="Status Changes"
           description="Email when application status changes"
-          checked={settings.emailOnStatusChange}
-          onChange={toggle('emailOnStatusChange')}
+          checked={local.email_on_status_change}
+          onChange={toggle('email_on_status_change')}
         />
         <Toggle
           label="New Job Matches"
           description="Email when new jobs match your preferences"
-          checked={settings.emailOnNewMatches}
-          onChange={toggle('emailOnNewMatches')}
+          checked={local.email_on_new_matches}
+          onChange={toggle('email_on_new_matches')}
         />
         <Toggle
           label="Interview Scheduled"
           description="Email when an interview is marked"
-          checked={settings.emailOnInterview}
-          onChange={toggle('emailOnInterview')}
+          checked={local.email_on_interview}
+          onChange={toggle('email_on_interview')}
         />
         <Toggle
           label="Offer Received"
           description="Email when an offer comes in"
-          checked={settings.emailOnOffer}
-          onChange={toggle('emailOnOffer')}
+          checked={local.email_on_offer}
+          onChange={toggle('email_on_offer')}
         />
       </Section>
 
       <Section title="Privacy & Security" icon={Shield}>
         <div className="text-sm text-gray-600 space-y-2">
-          <p>Your data is stored securely in your own database instance.</p>
-          <p>Never run live auto-submit before reviewing the dry-run log for each application.</p>
+          <p>Your data is stored locally in your own database instance.</p>
+          <p>Real application submission is controlled by the <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">ALLOW_REAL_APPLICATION_SUBMIT</code> environment variable on the server. Dry Run Mode here is an additional safety layer.</p>
           <p>Cover letters and resumes are only accessible to your authenticated account.</p>
         </div>
-        <button
-          className="mt-4 text-sm text-red-600 hover:underline"
-          onClick={() => toast('This would trigger account deletion in production.')}
-        >
-          Delete my account and all data
-        </button>
       </Section>
 
       <Section title="API Keys" icon={Key}>
         <p className="text-sm text-gray-500 mb-3">
-          Configure your API keys via <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">.env</code> file or environment variables on the server.
+          Configure via <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">.env</code> file on the server.
         </p>
         <div className="space-y-2 text-xs font-mono">
           {[
-            ['ANTHROPIC_API_KEY', 'Claude AI — cover letter generation'],
-            ['SENDGRID_API_KEY', 'SendGrid — email delivery'],
-            ['RAPIDAPI_KEY', 'Optional — enhanced job board access'],
+            ['AI_PROVIDER', 'template | anthropic | gemini (template = free)'],
+            ['ANTHROPIC_API_KEY', 'Claude AI cover letter generation'],
+            ['GEMINI_API_KEY', 'Gemini Flash-Lite (cheap alternative)'],
+            ['SENDGRID_API_KEY', 'Email delivery'],
+            ['ALLOW_REAL_APPLICATION_SUBMIT', 'Set to true to enable live submit'],
           ].map(([key, desc]) => (
             <div key={key} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg">
               <span className="text-gray-700">{key}</span>
@@ -157,8 +219,12 @@ export default function Settings() {
         </div>
       </Section>
 
-      <button onClick={save} className="btn-primary w-full">
-        Save Settings
+      <button
+        onClick={() => mut.mutate()}
+        disabled={mut.isPending}
+        className="btn-primary w-full flex items-center justify-center gap-2"
+      >
+        {mut.isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Saving…</> : 'Save Settings'}
       </button>
     </div>
   )

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from typing import Any, Coroutine
 from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.application import Application, ApplicationStatus, FollowUp
@@ -9,6 +10,14 @@ from app.models.notification import Notification, NotificationType
 from app.services.email_service import send_followup_email
 
 logger = logging.getLogger(__name__)
+
+
+def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    return loop.run_until_complete(coro)
 
 
 @celery_app.task(name="app.tasks.followup.send_pending_followups", queue="followup")
@@ -40,7 +49,7 @@ def send_pending_followups():
             job = app.job
             days_ago = (now - app.applied_at).days if app.applied_at else 7
 
-            success = asyncio.get_event_loop().run_until_complete(
+            success = _run_async(
                 send_followup_email(
                     to=followup.recipient_email,
                     applicant_name=user.full_name or user.email,
