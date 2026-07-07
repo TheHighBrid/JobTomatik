@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { getApiErrorMessage, register } from '../api/client'
+import { getApiErrorMessage, isNetworkError, register } from '../api/client'
 import ApiBaseUrlField from '../components/ApiBaseUrlField'
 import { useAuthStore } from '../store'
 
 export default function Register() {
   const [form, setForm] = useState({ email: '', password: '', full_name: '' })
   const [error, setError] = useState('')
+  const [showApiConnection, setShowApiConnection] = useState(false)
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
 
@@ -23,6 +24,7 @@ export default function Register() {
     onError: (err) => {
       const message = getApiErrorMessage(err, 'Registration failed')
       setError(message)
+      if (isNetworkError(err)) setShowApiConnection(true)
       toast.error(message)
     },
   })
@@ -83,13 +85,14 @@ export default function Register() {
         </div>
 
         <div className="mt-4 card p-4 text-sm space-y-3">
-          <div>
-            <h2 className="font-semibold text-gray-800">API connection</h2>
-            <p className="text-xs text-gray-500 mt-1">
-              Set and test the backend URL before signing in on Android.
-            </p>
-          </div>
-          <ApiBaseUrlField compact />
+          <button
+            type="button"
+            onClick={() => setShowApiConnection((open) => !open)}
+            className="w-full text-left font-medium text-gray-700"
+          >
+            API connection {showApiConnection ? '−' : '+'}
+          </button>
+          {showApiConnection && <ApiBaseUrlField compact />}
         </div>
 
         <p className="text-center text-sm text-gray-500 mt-4">
