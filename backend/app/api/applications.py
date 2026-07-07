@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from datetime import datetime
@@ -16,9 +16,10 @@ from app.schemas.application import (
     FollowUpOut,
 )
 from app.tasks.applications import generate_cover_letter_task, submit_application_task
-from app.tasks.followup import schedule_auto_followup
+from app.config import get_settings
 
 router = APIRouter(prefix="/applications", tags=["applications"])
+settings = get_settings()
 
 
 @router.post("", response_model=ApplicationOut, status_code=201)
@@ -55,6 +56,70 @@ async def create_application(
         generate_cover_letter_task.delay(app.id)
 
     return _load_application(db, app.id)
+
+
+@router.post("/bulk-submit")
+async def bulk_submit_applications(
+    dry_run: bool = Query(True),
+    limit: int = Query(10, ge=1, le=100),
+    min_score: float = Query(0.0, ge=0.0, le=1.0),
+    include_queued: bool = Query(False),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create and queue multiple applications for autonomous processing.
+
+    Live submission is intentionally gated by ALLOW_REAL_APPLICATION_SUBMIT=true.
+    Dry-run mode is the safe default and fills forms without clicking submit.
+    """
+    if not dry_run and not settings.allow_real_application_submit:
+        raise HTTPException(
+            status_code=403,
+            detail="Real submissions are disabled. Set ALLOW_REAL_APPLICATION_SUBMIT=true to enable autonomous live submits.",
+        )
+
+    capped_limit = min(limit, settings.bulk_apply_max)
+    statuses = [JobStatus.approved]
+    if include_queued:
+        statuses.append(JobStatus.queued)
+
+    existing_job_ids = [
+        row[0]
+        for row in db.query(Application.job_id)
+        .filter(Application.user_id == current_user.id)
+        .all()
+    ]
+    jobs = (
+        db.query(Job)
+        .filter(
+            Job.status.in_(statuses),
+            Job.relevance_score >= min_score,
+            Job.url.isnot(None),
+            ~Job.id.in_(existing_job_ids) if existing_job_ids else True,
+        )
+        .order_by(Job.relevance_score.desc(), Job.created_at.desc())
+        .limit(capped_limit)
+        .all()
+    )
+
+    queued = []
+    for job in jobs:
+        app = Application(user_id=current_user.id, job_id=job.id, status=ApplicationStatus.pending)
+        db.add(app)
+        job.status = JobStatus.applied
+        db.flush()
+        generate_cover_letter_task.delay(app.id)
+        task = submit_application_task.delay(app.id, dry_run=dry_run)
+        queued.append({"application_id": app.id, "job_id": job.id, "task_id": task.id, "dry_run": dry_run})
+
+    db.commit()
+    return {
+        "queued": queued,
+        "count": len(queued),
+        "dry_run": dry_run,
+        "live_submit_enabled": settings.allow_real_application_submit,
+        "limit_applied": capped_limit,
+    }
 
 
 @router.get("", response_model=List[ApplicationOut])
@@ -158,6 +223,11 @@ async def submit_application(
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
+    if not dry_run and not settings.allow_real_application_submit:
+        raise HTTPException(
+            status_code=403,
+            detail="Real submissions are disabled. Set ALLOW_REAL_APPLICATION_SUBMIT=true to enable autonomous live submits.",
+        )
     task = submit_application_task.delay(app_id, dry_run=dry_run)
     return {"task_id": task.id, "status": "queued", "dry_run": dry_run}
 

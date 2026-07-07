@@ -8,7 +8,13 @@ class Settings(BaseSettings):
     secret_key: str = "supersecretkey-change-in-production"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 10080  # 7 days
+    ai_provider: str = "template"
     anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-6"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash-lite"
+    allow_real_application_submit: bool = False
+    bulk_apply_max: int = 25
     sendgrid_api_key: str = ""
     from_email: str = "noreply@jobtomatik.com"
     rapidapi_key: str = ""

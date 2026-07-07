@@ -11,6 +11,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+from app.config import get_settings
+
+settings = get_settings()
+
 COMMON_FIELDS: List[Tuple[str, str]] = [
     (r"\bfirst\s*name\b|\bfname\b|given\s*name", "first_name"),
     (r"\blast\s*name\b|\blname\b|surname|family\s*name", "last_name"),
@@ -123,6 +127,11 @@ async def fill_and_submit_application(
     if not _is_allowed_url(job_url):
         result["error"] = "Invalid or unsupported job URL"
         log.append({"action": "error", "detail": result["error"], "ts": _now()})
+        return result
+
+    if not dry_run and not settings.allow_real_application_submit:
+        result["error"] = "Real submissions are disabled. Set ALLOW_REAL_APPLICATION_SUBMIT=true to enable autonomous live submits."
+        log.append({"action": "blocked_real_submit", "detail": result["error"], "ts": _now()})
         return result
 
     try:
