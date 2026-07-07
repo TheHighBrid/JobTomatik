@@ -1,15 +1,21 @@
 """
 Playwright-based form filler and application submitter.
 
-The filler intentionally supports a conservative dry-run mode. Dry-run mode fills
-recognized fields and uploads the resume, but never clicks a submit button.
+Dry-run mode fills recognized fields and uploads the resume, but never clicks a
+submit button. Real submission is hard-blocked unless explicitly enabled with
+ALLOW_REAL_APPLICATION_SUBMIT=true and the matching Settings flag.
 """
+
 import asyncio
 import os
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
+
+from app.config import get_settings
+
+settings = get_settings()
 
 COMMON_FIELDS: List[Tuple[str, str]] = [
     (r"\bfirst\s*name\b|\bfname\b|given\s*name", "first_name"),
@@ -65,7 +71,6 @@ def _extract_state(address: str) -> str:
 
 
 def _extract_postal_code(address: str) -> str:
-    # Supports US ZIP and Canadian postal codes.
     match = re.search(
         r"\b(?:\d{5}(?:-\d{4})?|[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d)\b",
         address,
@@ -97,6 +102,12 @@ def _profile_values(profile: Dict[str, Any], cover_letter: str) -> Dict[str, str
     }
 
 
+def _real_submit_allowed() -> bool:
+    env_value = os.getenv("ALLOW_REAL_APPLICATION_SUBMIT", "").lower()
+    settings_value = bool(getattr(settings, "allow_real_application_submit", False))
+    return settings_value or env_value in {"1", "true", "yes"}
+
+
 async def fill_and_submit_application(
     job_url: str,
     user_profile: Dict[str, Any],
@@ -118,11 +129,18 @@ async def fill_and_submit_application(
         "log": log,
         "submitted_at": None,
         "error": None,
+        "fields_filled": 0,
+        "requires_manual_review": True,
     }
 
     if not _is_allowed_url(job_url):
         result["error"] = "Invalid or unsupported job URL"
         log.append({"action": "error", "detail": result["error"], "ts": _now()})
+        return result
+
+    if not dry_run and not _real_submit_allowed():
+        result["error"] = "Real application submit is disabled. Set ALLOW_REAL_APPLICATION_SUBMIT=true only when ready."
+        log.append({"action": "submit_blocked", "detail": result["error"], "ts": _now()})
         return result
 
     try:
@@ -161,11 +179,13 @@ async def fill_and_submit_application(
 
             await asyncio.sleep(1)
             filled_count = await _fill_common_fields(page, user_profile, cover_letter, resume_path, log)
+            result["fields_filled"] = filled_count
+            result["requires_manual_review"] = filled_count < 3
 
             if dry_run:
                 result["success"] = True
                 log.append({"action": "dry_run_complete", "fields_filled": filled_count, "ts": _now()})
-            elif filled_count > 0:
+            elif filled_count >= 3:
                 submit_btn = await _find_submit_button(page)
                 if submit_btn:
                     log.append({"action": "submit", "ts": _now()})
@@ -173,13 +193,14 @@ async def fill_and_submit_application(
                     await asyncio.sleep(3)
                     result["submitted_at"] = _now()
                     result["success"] = True
+                    result["requires_manual_review"] = False
                     log.append({"action": "submitted", "status": "ok", "ts": _now()})
                 else:
                     result["error"] = "No submit button found"
                     log.append({"action": "submit_skipped", "reason": result["error"], "ts": _now()})
             else:
-                result["error"] = "No recognizable application fields were found"
-                log.append({"action": "no_fields_filled", "ts": _now()})
+                result["error"] = "Not enough recognizable application fields were found for safe submit"
+                log.append({"action": "submit_skipped", "reason": result["error"], "fields_filled": filled_count, "ts": _now()})
 
             await browser.close()
 
@@ -200,7 +221,6 @@ async def _fill_common_fields(
     resume_path: str,
     log: List[Dict[str, Any]],
 ) -> int:
-    """Fill recognizable form fields by inspecting actual element metadata."""
     values = _profile_values(profile, cover_letter)
     elements = await page.query_selector_all("input:not([type=hidden]), textarea")
     filled = 0
