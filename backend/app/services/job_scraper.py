@@ -20,45 +20,70 @@ settings = get_settings()
 # Data used by the mock generator
 # ---------------------------------------------------------------------------
 MOCK_COMPANIES = [
-    "Stripe", "Airbnb", "Notion", "Figma", "Vercel", "Linear", "Loom",
-    "Rippling", "Brex", "Scale AI", "Anthropic", "OpenAI", "Mistral",
-    "MongoDB", "Snowflake", "Datadog", "HashiCorp", "Confluent", "dbt Labs",
-    "Plaid", "Chime", "Mercury", "Ramp", "Carta", "Lattice",
+    "RBC Royal Bank", "TD Bank", "Scotiabank", "BMO Financial Group", "CIBC",
+    "National Bank of Canada", "Desjardins Group", "Canada Revenue Agency (CRA)",
+    "FINTRAC", "OSFI", "Public Services and Procurement Canada",
+    "Manulife", "Sun Life Financial", "Great-West Lifeco",
+    "Interac Corp", "Payments Canada", "Export Development Canada",
+    "BDC – Business Development Bank", "Farm Credit Canada",
 ]
 
 MOCK_TITLES_BY_KW = {
-    "python": ["Senior Python Engineer", "Python Backend Developer", "Python ML Engineer", "Staff Python Engineer"],
-    "react": ["Senior React Developer", "Frontend Engineer (React)", "React/TypeScript Engineer", "Staff Frontend Engineer"],
-    "data": ["Data Engineer", "Senior Data Scientist", "ML Engineer", "Data Platform Engineer"],
-    "devops": ["DevOps Engineer", "Platform Engineer", "SRE", "Infrastructure Engineer"],
-    "default": ["Software Engineer", "Senior Software Engineer", "Staff Engineer", "Principal Engineer"],
+    "fraud": [
+        "Fraud Analyst", "Senior Fraud Investigator", "Financial Crimes Analyst",
+        "Fraud Detection Specialist", "Fraud Risk Analyst",
+    ],
+    "aml": [
+        "AML Analyst", "Senior AML Analyst", "AML Compliance Officer",
+        "Anti-Money Laundering Specialist", "Transaction Monitoring Analyst",
+    ],
+    "kyc": [
+        "KYC Analyst", "KYC Due Diligence Analyst", "Client Onboarding Analyst",
+        "KYC/AML Compliance Analyst", "Senior KYC Analyst",
+    ],
+    "compliance": [
+        "Compliance Analyst", "Regulatory Compliance Specialist",
+        "Compliance Officer", "Financial Compliance Analyst",
+    ],
+    "banking": [
+        "Financial Crimes Compliance Analyst", "BSA/AML Analyst",
+        "Risk & Compliance Analyst", "Financial Intelligence Analyst",
+    ],
+    "default": [
+        "Financial Crimes Analyst", "Compliance Analyst",
+        "AML/KYC Analyst", "Risk Analyst",
+    ],
 }
 
 MOCK_LOCATIONS = [
-    "San Francisco, CA", "New York, NY", "Austin, TX", "Seattle, WA",
-    "Remote", "Remote (US)", "Chicago, IL", "Boston, MA", "Los Angeles, CA",
+    "Ottawa, ON", "Ottawa, ON (Hybrid)", "Ottawa, ON (Remote)",
+    "Toronto, ON", "Toronto, ON (Hybrid)", "Montréal, QC",
+    "Remote – Canada", "Ottawa-Gatineau, ON/QC",
 ]
 
 MOCK_DESCRIPTIONS = [
-    "We are looking for a talented {title} to join our growing engineering team. "
-    "You will work on challenging technical problems at scale, collaborating with "
-    "a world-class team to build products used by millions of users worldwide.\n\n"
+    "We are seeking a {title} to join our Financial Crimes Compliance team. "
+    "This role is responsible for detecting, investigating, and reporting suspicious financial activity "
+    "in accordance with FINTRAC guidelines and the Proceeds of Crime (Money Laundering) and "
+    "Terrorist Financing Act (PCMLTFA).\n\n"
     "**What you'll do:**\n"
-    "- Design and implement scalable backend systems\n"
-    "- Lead technical discussions and architecture reviews\n"
-    "- Mentor junior engineers and drive engineering excellence\n"
-    "- Partner with product and design to ship impactful features\n\n"
+    "- Review and analyze transactions for potential money laundering, fraud, or terrorist financing\n"
+    "- Prepare and file Suspicious Transaction Reports (STRs) and Large Cash Transaction Reports (LCTRs)\n"
+    "- Conduct enhanced due diligence (EDD) on high-risk clients\n"
+    "- Collaborate with frontline staff and senior investigators on escalated cases\n"
+    "- Maintain detailed case documentation and audit trails\n\n"
     "**Requirements:**\n"
-    "- 4+ years of software engineering experience\n"
-    "- Strong proficiency in {skill}\n"
-    "- Experience with distributed systems and cloud infrastructure\n"
-    "- Excellent communication and collaboration skills",
+    "- 2+ years of experience in AML, fraud, or financial compliance\n"
+    "- Knowledge of {skill} and Canadian regulatory frameworks\n"
+    "- Experience with transaction monitoring systems (Actimize, SAS, Mantas an asset)\n"
+    "- CAMS designation or working toward it is an asset\n"
+    "- Bilingualism (English/French) is an asset",
 ]
 
 
 def _mock_salary(salary_min: Optional[int], salary_max: Optional[int]):
-    base = random.randint(120, 250) * 1000
-    spread = random.randint(20, 60) * 1000
+    base = random.randint(55, 80) * 1000
+    spread = random.randint(8, 20) * 1000
     lo = salary_min or base
     hi = salary_max or (lo + spread)
     return lo, hi
@@ -94,10 +119,10 @@ def _build_mock_jobs(
             "location": loc,
             "salary_min": sal_lo,
             "salary_max": sal_hi,
-            "salary_currency": "USD",
+            "salary_currency": "CAD",
             "job_type": job_type or "full_time",
             "description": desc,
-            "requirements": f"Experience with {keywords}, Python, SQL, cloud platforms",
+            "requirements": f"Experience with {keywords}, AML/KYC frameworks, FINTRAC guidelines",
             "url": f"https://{source}.com/jobs/{_uid(source, company, title)}",
             "source": source,
             "posted_at": (datetime.utcnow() - timedelta(days=random.randint(0, 14))).isoformat(),
@@ -287,6 +312,90 @@ async def scrape_glassdoor(
 
 
 # ---------------------------------------------------------------------------
+# Job Bank Canada scraper (Government of Canada public job board)
+# ---------------------------------------------------------------------------
+async def scrape_jobbank(
+    keywords: str,
+    location: Optional[str],
+    salary_min: Optional[int],
+    salary_max: Optional[int],
+    job_type: Optional[str],
+    limit: int,
+) -> List[Dict[str, Any]]:
+    jobs: List[Dict[str, Any]] = []
+    loc = location or "Ottawa, Ontario"
+
+    params = {
+        "searchstring": keywords,
+        "locationstring": loc,
+        "mid": "",
+        "button.submit": "Search",
+    }
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-CA,en;q=0.9,fr-CA;q=0.8",
+        "Referer": "https://www.jobbank.gc.ca/jobsearch/jobsearch",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            resp = await client.get(
+                "https://www.jobbank.gc.ca/jobsearch/jobsearch",
+                params=params,
+                headers=headers,
+            )
+            if resp.status_code != 200:
+                raise ValueError(f"Job Bank returned {resp.status_code}")
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            articles = soup.select("article.resultArticle") or soup.select("article[class*='result']")
+
+            for article in articles[:limit]:
+                try:
+                    title_el = article.select_one("span.noctitle, h3.title, a.resultJobItem")
+                    company_el = article.select_one("li.business, span.business")
+                    location_el = article.select_one("li.location, span.location")
+                    salary_el = article.select_one("li.salary, span.salary")
+                    link_el = article.select_one("a[href*='/jobposting/']")
+
+                    title = title_el.get_text(strip=True) if title_el else keywords.title()
+                    company = company_el.get_text(strip=True) if company_el else "Government of Canada"
+                    job_loc = location_el.get_text(strip=True) if location_el else loc
+                    salary_text = salary_el.get_text(strip=True) if salary_el else ""
+                    href = link_el.get("href", "") if link_el else ""
+                    job_url = (
+                        f"https://www.jobbank.gc.ca{href}" if href.startswith("/") else href
+                    )
+                    external_id = _uid("jobbank", company, title)
+                    sal_lo, sal_hi = _parse_salary(salary_text, salary_min, salary_max)
+
+                    jobs.append({
+                        "external_id": external_id,
+                        "title": title,
+                        "company": company,
+                        "location": job_loc,
+                        "salary_min": sal_lo,
+                        "salary_max": sal_hi,
+                        "salary_currency": "CAD",
+                        "job_type": job_type or "full_time",
+                        "description": "",
+                        "requirements": "",
+                        "url": job_url,
+                        "source": "jobbank",
+                    })
+                except Exception:
+                    continue
+    except Exception:
+        jobs = _build_mock_jobs(keywords, location, salary_min, salary_max, job_type, "jobbank", min(limit, 15))
+
+    return jobs
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 def _parse_salary(text: str, fallback_min: Optional[int], fallback_max: Optional[int]):
@@ -312,10 +421,12 @@ async def search_jobs(
     limit: int = 50,
 ) -> List[Dict[str, Any]]:
     if sources is None:
-        sources = ["indeed", "linkedin", "glassdoor"]
+        sources = ["jobbank", "indeed", "linkedin", "glassdoor"]
 
     per_source = max(10, limit // len(sources))
     tasks = []
+    if "jobbank" in sources:
+        tasks.append(scrape_jobbank(keywords, location, salary_min, salary_max, job_type, per_source))
     if "indeed" in sources:
         tasks.append(scrape_indeed(keywords, location, salary_min, salary_max, job_type, per_source))
     if "linkedin" in sources:

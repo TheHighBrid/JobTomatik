@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 10080  # 7 days
     anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-5"
+    ai_provider: str = "template"  # "template", "anthropic", "gemini"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash-lite"
     sendgrid_api_key: str = ""
     from_email: str = "noreply@jobtomatik.com"
     rapidapi_key: str = ""
