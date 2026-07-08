@@ -1,20 +1,44 @@
+# Local secret files
+.env
+*.env
+.env.*
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+
 # Dependencies
 node_modules/
 frontend/node_modules/
 
 # Build output
 frontend/dist/
+frontend/build/
 dist/
+build/
 
 # Python caches/environments
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
 venv/
+env/
 
-# Local environment and databases
-.env
+# Local database, uploads, logs
 *.db
+*.sqlite
+*.sqlite3
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+backend/uploads/
+*.log
+logs/
 
 # OS/editor noise
 .DS_Store
+.vscode/
+.idea/
