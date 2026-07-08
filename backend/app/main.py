@@ -61,5 +61,6 @@ app.include_router(settings_api.router, prefix="/api")
 
 
 @app.get("/health")
+@app.get("/api/system/health")
 async def health():
     return {"status": "ok", "service": "JobTomatik API"}

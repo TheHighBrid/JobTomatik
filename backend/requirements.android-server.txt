@@ -1,0 +1,22 @@
+# Minimal backend dependencies for running the API on Android via Ubuntu/proot or
+# another constrained local server. This intentionally excludes browser/image
+# automation packages such as Playwright and Pillow; auth/login/register do not
+# need them.
+fastapi==0.111.0
+uvicorn==0.29.0
+sqlalchemy==2.0.30
+alembic==1.13.1
+redis==5.0.4
+celery==5.4.0
+anthropic==0.26.0
+sendgrid==6.11.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+httpx==0.27.0
+beautifulsoup4==4.12.3
+python-dotenv==1.0.1
+pydantic==2.7.1
+pydantic-settings==2.3.0
+aiofiles==23.2.1
+email-validator==2.2.0

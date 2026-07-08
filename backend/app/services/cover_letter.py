@@ -1,196 +1,139 @@
 """
 Cover letter generator.
-AI_PROVIDER controls which backend is used:
-  template  — free, no API key needed (default)
-  anthropic — Anthropic Claude API
-  gemini    — Google Gemini Flash-Lite (cheap)
+
+The default provider is a free local template. Paid AI providers are optional
+and must never be required for the app to work.
 """
-from typing import Dict, Optional
+
+from typing import Dict, Iterable, Optional, Union
 
 try:
-    import anthropic as _anthropic
-except ImportError:
-    _anthropic = None
+    import anthropic
+except Exception:  # pragma: no cover - optional dependency/runtime
+    anthropic = None
 
 from app.config import get_settings
 
-settings = get_settings()
+import httpx
+
+from app.config import get_settings
+
+def _clean_list(values: Optional[Union[Iterable[str], str]], limit: int = 8) -> str:
+    if not values:
+        return ""
+    if isinstance(values, str):
+        return values.strip()
+    return ", ".join(str(v).strip() for v in list(values)[:limit] if str(v).strip())
 
 
-BANKING_TEMPLATE = """\
-{opening}
+def _fallback_cover_letter(job: Dict, user_profile: Dict) -> str:
+    title = job.get("title") or "the position"
+    company = job.get("company") or "your organization"
 
-With {years_exp} years of experience in {domain}, I bring hands-on expertise in {primary_skill} and a strong track record in {secondary_skill}. My background includes conducting thorough investigations, preparing detailed case documentation, and working closely with compliance and regulatory teams to meet reporting obligations under FINTRAC and PCMLTFA requirements.
+    profile_skills = user_profile.get("skills") or []
+    job_skills = job.get("skills") or []
+    skills = (
+        _clean_list(profile_skills, 7)
+        or _clean_list(job_skills, 7)
+        or "banking, fraud prevention, AML, KYC, compliance, client service, and risk analysis"
+    )
 
-In my most recent role as {current_role}, I {achievement_sentence} I am comfortable working in bilingual environments and producing reports in both English and French when required.
+    name = user_profile.get("full_name") or "Applicant"
+    current_role = user_profile.get("current_role") or "banking professional"
+    years_exp = user_profile.get("years_experience") or "several"
+    achievements = (user_profile.get("key_achievements") or "").strip()
 
-I am drawn to {company} because of its commitment to robust financial crime prevention and its reputation as a responsible institution. I am eager to contribute my analytical skills, attention to detail, and knowledge of AML/KYC frameworks to support your compliance program.
+    achievement_sentence = (
+        "My background includes measurable compliance-focused work, including KYC accuracy, "
+        "audit-ready documentation, quality assurance, fraud awareness, and client issue resolution."
+        if achievements
+        else "My background includes careful documentation, sensitive client support, policy awareness, and risk-focused decision-making."
+    )
 
-Thank you for considering my application. I look forward to the opportunity to discuss how my background aligns with your team's needs.
+    return f"""Dear Hiring Team,
+
+I am writing to express my interest in the {title} position at {company}. With {years_exp} years of experience as a {current_role}, I bring a strong foundation in {skills}, along with the judgment, accuracy, and professionalism required for high-trust banking and financial-crime work.
+
+In my previous roles, I developed a careful and detail-oriented approach to reviewing client information, identifying potential issues, documenting actions clearly, and supporting customers through sensitive financial situations. {achievement_sentence} I understand the importance of confidentiality, regulatory awareness, and calm communication when dealing with financial risk.
+
+What makes this opportunity especially appealing is the chance to contribute to {company} in a role where investigation, customer protection, compliance, and sound decision-making all matter. I am confident that my banking experience, bilingual communication skills, and fraud/risk awareness would allow me to contribute quickly and responsibly.
+
+Thank you for considering my application. I would welcome the opportunity to discuss how my background aligns with the needs of your team.
 
 Best regards,
 {name}
-"""
-
-_OPENINGS = [
-    "I am pleased to apply for the {title} position at {company}.",
-    "I am writing to express my strong interest in the {title} role at {company}.",
-    "Please accept this letter as my application for the {title} opportunity at {company}.",
-]
-
-_ACHIEVEMENTS = [
-    "identified and escalated over 40 suspicious transaction reports (STRs) within prescribed timelines.",
-    "conducted KYC reviews on high-risk client accounts, reducing onboarding risk by strengthening due-diligence controls.",
-    "supported internal audits by preparing comprehensive AML documentation and transaction monitoring reports.",
-    "reviewed complex multi-jurisdictional transactions to detect layering and structuring patterns.",
-]
-
-_DOMAINS = {
-    "fraud": ("financial crime and fraud investigation", "fraud detection", "case documentation and STR filing"),
-    "aml": ("AML compliance and transaction monitoring", "AML/CTF frameworks", "risk-based client due diligence"),
-    "kyc": ("KYC and customer due diligence", "know-your-customer processes", "enhanced due diligence (EDD)"),
-    "compliance": ("regulatory compliance", "compliance monitoring", "policy implementation and audit support"),
-    "banking": ("banking and financial services compliance", "AML/KYC", "regulatory reporting"),
-}
+""".strip()
 
 
-def _free_template(job: Dict, profile: Dict) -> str:
-    import random
+def _build_prompt(job: Dict[str, Any], user_profile: Dict[str, Any]) -> str:
+    title = job.get("title", "the role")
+    company = job.get("company", "the company")
+    description = str(job.get("description") or "")[:1800]
+    requirements = str(job.get("requirements") or "")[:1000]
+    skills = _as_text(job.get("skills"))
+    domains = ", ".join(_detect_domains(job))
 
-    title = job.get("title", "Compliance Analyst")
-    company = job.get("company", "your organization")
-    skills = job.get("skills") or []
-    kw = " ".join(skills + [title]).lower()
-
-    domain_key = next((k for k in _DOMAINS if k in kw), "banking")
-    domain, primary_skill, secondary_skill = _DOMAINS[domain_key]
-
-    name = profile.get("full_name") or "Applicant"
-    current_role = profile.get("current_role") or "Financial Crime Analyst"
-    years_exp = profile.get("years_experience") or "several"
-    achievement = profile.get("key_achievements") or random.choice(_ACHIEVEMENTS)
-    achievement_sentence = achievement if achievement.endswith(".") else achievement + "."
-
-    opening = random.choice(_OPENINGS).format(title=title, company=company)
-
-    return BANKING_TEMPLATE.format(
-        opening=opening,
-        years_exp=years_exp,
-        domain=domain,
-        primary_skill=primary_skill,
-        secondary_skill=secondary_skill,
-        current_role=current_role,
-        achievement_sentence=achievement_sentence,
-        company=company,
-        name=name,
-    )
-
-
-async def _anthropic_generate(job: Dict, profile: Dict) -> str:
-    if _anthropic is None:
-        raise ImportError("anthropic package not installed")
-
-    title = job.get("title", "Compliance Analyst")
-    company = job.get("company", "your organization")
-    description = job.get("description", "")
-    requirements = job.get("requirements", "")
-    skills = ", ".join((job.get("skills") or [])[:8]) or "AML, KYC, fraud investigation"
-    name = profile.get("full_name") or "Applicant"
-    current_role = profile.get("current_role") or "Financial Crime Analyst"
-    years_exp = profile.get("years_experience") or "several"
-    profile_skills = ", ".join((profile.get("skills") or [])[:6]) or skills
-    achievements = profile.get("key_achievements") or ""
-    linkedin = profile.get("linkedin_url") or ""
-
-    prompt = f"""Write a compelling, personalized cover letter for this job application.
-
-**Job Details:**
-- Position: {title}
-- Company: {company}
-- Job Description: {description[:1500]}
-- Key Requirements: {requirements[:800]}
-- Required Skills: {skills}
-
-**Applicant Profile:**
-- Name: {name}
-- Current/Most Recent Role: {current_role}
-- Years of Experience: {years_exp}
-- Skills: {profile_skills}
-- Key Achievements: {achievements}
-- LinkedIn: {linkedin}
-
-**Instructions:**
-- Write a professional 3-4 paragraph cover letter for a banking/compliance/financial crime role
-- Open with a direct statement of interest in the specific role and company
-- Highlight relevant AML, KYC, fraud investigation, or compliance achievements
-- Reference Canadian regulatory context (FINTRAC, PCMLTFA) if relevant
-- Close with a clear call to action
-- Keep it under 400 words
-- Sign off with the applicant's name
-- Do NOT use placeholder text like [X years] — use the actual data provided
-
-Write only the cover letter text, no meta-commentary."""
-
-    client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    message = client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return message.content[0].text.strip()
-
-
-async def _gemini_generate(job: Dict, profile: Dict) -> str:
-    try:
-        import httpx
-    except ImportError:
-        raise ImportError("httpx package not installed")
-
-    title = job.get("title", "Compliance Analyst")
-    company = job.get("company", "your organization")
-    description = job.get("description", "")
-    skills = ", ".join((job.get("skills") or [])[:8]) or "AML, KYC, fraud investigation"
-    name = profile.get("full_name") or "Applicant"
-    current_role = profile.get("current_role") or "Financial Crime Analyst"
-    years_exp = profile.get("years_experience") or "several"
-    profile_skills = ", ".join((profile.get("skills") or [])[:6]) or skills
-    achievements = profile.get("key_achievements") or ""
-
-    prompt = (
-        f"Write a 3-4 paragraph professional cover letter for a {title} position at {company}. "
-        f"The applicant is {name}, currently working as {current_role} with {years_exp} years of experience. "
-        f"Key skills: {profile_skills}. Achievements: {achievements}. "
-        f"Job description excerpt: {description[:800]}. "
-        f"Focus on AML/KYC/fraud compliance experience, Canadian regulatory context (FINTRAC), "
-        f"and close with a call to action. Under 400 words. Sign off as {name}."
-    )
-
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{settings.gemini_model}:generateContent?key={settings.gemini_api_key}"
-    )
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-
+    return f"""Write a concise, professional cover letter for a Canadian banking/compliance/fraud job application.
 
 async def generate_cover_letter(job: Dict, user_profile: Dict) -> str:
-    provider = (settings.ai_provider or "template").lower()
+    ai_provider = (getattr(settings, "ai_provider", "template") or "template").lower().strip()
 
-    if provider == "anthropic" and settings.anthropic_api_key and _anthropic is not None:
+    if ai_provider in ("", "template", "free", "local", "none"):
+        return _fallback_cover_letter(job, user_profile)
+
+    if ai_provider == "anthropic":
+        if not getattr(settings, "anthropic_api_key", "") or anthropic is None:
+            return _fallback_cover_letter(job, user_profile)
+
+        title = job.get("title") or "the position"
+        company = job.get("company") or "your organization"
+        description = job.get("description") or ""
+        requirements = job.get("requirements") or ""
+        skills = _clean_list(job.get("skills") or [], 8) or "banking and compliance"
+        name = user_profile.get("full_name") or "Applicant"
+        current_role = user_profile.get("current_role") or "banking professional"
+        years_exp = user_profile.get("years_experience") or "several"
+        profile_skills = _clean_list(user_profile.get("skills") or [], 8) or skills
+        achievements = user_profile.get("key_achievements") or ""
+        linkedin = user_profile.get("linkedin_url") or ""
+
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+        prompt = f"""Write a professional Canadian banking cover letter.
+
+Job:
+- Title: {title}
+- Company: {company}
+- Description: {description[:1500]}
+- Requirements: {requirements[:900]}
+- Job skills: {skills}
+
+Applicant:
+- Name: {name}
+- Current/most recent role: {current_role}
+- Years of experience: {years_exp}
+- Skills: {profile_skills}
+- Achievements: {achievements}
+- LinkedIn: {linkedin}
+
+Rules:
+- Write 3 to 4 polished paragraphs.
+- Use a banking, fraud, AML, KYC, compliance, risk, or client-service tone.
+- Do not invent software-engineering experience.
+- Do not mention scalable systems, coding, engineering culture, or shipping software unless the job is actually technical.
+- Keep it under 350 words.
+- Output only the letter text."""
+
         try:
-            return await _anthropic_generate(job, user_profile)
+            message = client.messages.create(
+                model=getattr(settings, "anthropic_model", "claude-sonnet-5"),
+                max_tokens=900,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return message.content[0].text.strip()
         except Exception:
-            pass
+            # Billing/quota/model-access/network failures should not break the app.
+            return _fallback_cover_letter(job, user_profile)
 
-    if provider == "gemini" and settings.gemini_api_key:
-        try:
-            return await _gemini_generate(job, user_profile)
-        except Exception:
-            pass
-
-    return _free_template(job, user_profile)
+    # Unknown providers fail safe and stay free.
+    return _fallback_cover_letter(job, user_profile)

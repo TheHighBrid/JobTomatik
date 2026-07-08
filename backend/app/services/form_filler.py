@@ -1,15 +1,21 @@
 """
 Playwright-based form filler and application submitter.
 
-dry_run=True fills recognized fields and uploads the resume but never clicks submit.
-ALLOW_REAL_APPLICATION_SUBMIT env var must be set to enable live submission.
+Dry-run mode fills recognized fields and uploads the resume, but never clicks a
+submit button. Real submission is hard-blocked unless explicitly enabled with
+ALLOW_REAL_APPLICATION_SUBMIT=true and the matching Settings flag.
 """
+
 import asyncio
 import os
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
+
+from app.config import get_settings
+
+settings = get_settings()
 
 COMMON_FIELDS: List[Tuple[str, str]] = [
     # Name fields
@@ -134,179 +140,10 @@ def _profile_values(profile: Dict[str, Any], cover_letter: str) -> Dict[str, str
     }
 
 
-async def _element_descriptor(page, element) -> str:
-    """Build a rich descriptor string for a form element to match against field patterns."""
-    attrs = []
-    for attr in ("name", "id", "placeholder", "aria-label", "autocomplete", "title", "data-label"):
-        value = await element.get_attribute(attr)
-        if value:
-            attrs.append(value)
-
-    # Try label[for=id]
-    element_id = await element.get_attribute("id")
-    if element_id:
-        try:
-            label = await page.query_selector(f'label[for="{element_id}"]')
-            if label:
-                text = await label.inner_text()
-                if text:
-                    attrs.append(text)
-        except Exception:
-            pass
-
-    # Try ancestor label
-    if not any(a for a in attrs if len(a) > 3):
-        try:
-            label_text = await element.evaluate("""el => {
-                let cur = el.parentElement;
-                for (let i = 0; i < 5; i++) {
-                    if (!cur) break;
-                    const label = cur.querySelector('label');
-                    if (label) return label.innerText;
-                    if (cur.tagName === 'LABEL') return cur.innerText;
-                    const legend = cur.querySelector('legend');
-                    if (legend) return legend.innerText;
-                    cur = cur.parentElement;
-                }
-                return '';
-            }""")
-            if label_text:
-                attrs.append(label_text)
-        except Exception:
-            pass
-
-    return _normalize_text(" ".join(attrs))
-
-
-def _match_field_key(descriptor: str) -> Optional[str]:
-    for pattern, key in COMMON_FIELDS:
-        if re.search(pattern, descriptor, flags=re.IGNORECASE):
-            return key
-    return None
-
-
-def _match_select_answer(descriptor: str) -> Optional[str]:
-    for pattern, answer in COMMON_SELECT_ANSWERS.items():
-        if re.search(pattern, descriptor, flags=re.IGNORECASE):
-            return answer
-    return None
-
-
-async def _fill_select(page, element, descriptor: str, log: List[Dict]) -> bool:
-    """Try to pick the most appropriate option in a <select> based on descriptor."""
-    answer_hint = _match_select_answer(descriptor)
-    if not answer_hint:
-        return False
-    try:
-        options = await element.evaluate("""el => Array.from(el.options).map(o => ({value: o.value, text: o.text}))""")
-        best = None
-        hint_lower = answer_hint.lower()
-        for opt in options:
-            if opt["value"].lower() in ("", "select", "please select", "--"):
-                continue
-            if hint_lower in opt["text"].lower() or hint_lower in opt["value"].lower():
-                best = opt["value"]
-                break
-        if best is None and options:
-            # Skip blank/placeholder option; pick first real option
-            for opt in options:
-                if opt["value"] not in ("", "select", "--"):
-                    best = opt["value"]
-                    break
-        if best:
-            await element.select_option(value=best)
-            log.append({"action": "select", "field": descriptor[:80], "value": best, "ts": _now()})
-            return True
-    except Exception as exc:
-        log.append({"action": "select_skipped", "detail": str(exc), "ts": _now()})
-    return False
-
-
-async def _fill_common_fields(
-    page,
-    profile: Dict[str, Any],
-    cover_letter: str,
-    resume_path: str,
-    log: List[Dict[str, Any]],
-) -> int:
-    values = _profile_values(profile, cover_letter)
-    filled = 0
-
-    # --- Text inputs and textareas ---
-    elements = await page.query_selector_all("input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]), textarea")
-    for element in elements:
-        try:
-            descriptor = await _element_descriptor(page, element)
-            if not descriptor:
-                continue
-            field_key = _match_field_key(descriptor)
-            value = values.get(field_key or "", "")
-            if not value:
-                continue
-            await element.fill(str(value))
-            filled += 1
-            log.append({"action": "fill", "field": field_key, "descriptor": descriptor[:120], "ts": _now()})
-        except Exception as exc:
-            log.append({"action": "fill_skipped", "detail": str(exc)[:100], "ts": _now()})
-
-    # --- Select dropdowns ---
-    selects = await page.query_selector_all("select")
-    for element in selects:
-        try:
-            descriptor = await _element_descriptor(page, element)
-            if await _fill_select(page, element, descriptor, log):
-                filled += 1
-        except Exception:
-            pass
-
-    # --- Checkboxes: accept terms ---
-    checkboxes = await page.query_selector_all('input[type="checkbox"]')
-    for cb in checkboxes:
-        try:
-            descriptor = await _element_descriptor(page, cb)
-            if re.search(r"terms|agree|consent|privacy|policy|confirm", descriptor, re.IGNORECASE):
-                is_checked = await cb.is_checked()
-                if not is_checked:
-                    await cb.check()
-                    filled += 1
-                    log.append({"action": "checkbox_checked", "descriptor": descriptor[:80], "ts": _now()})
-        except Exception:
-            pass
-
-    # --- File upload (resume) ---
-    if resume_path and os.path.exists(resume_path):
-        file_inputs = await page.query_selector_all('input[type="file"]')
-        for file_input in file_inputs:
-            try:
-                accept = await file_input.get_attribute("accept") or ""
-                if accept and "pdf" not in accept.lower() and "image" in accept.lower():
-                    continue
-                await file_input.set_input_files(resume_path)
-                filled += 1
-                log.append({"action": "upload_resume", "path": resume_path, "ts": _now()})
-                break
-            except Exception as exc:
-                log.append({"action": "upload_resume_skipped", "detail": str(exc)[:100], "ts": _now()})
-    elif resume_path:
-        log.append({"action": "upload_resume_skipped", "detail": "resume file not found on disk", "ts": _now()})
-
-    return filled
-
-
-async def _find_submit_button(page):
-    for selector in SUBMIT_SELECTORS:
-        try:
-            button = await page.query_selector(selector)
-            if button and await button.is_visible():
-                return button
-        except Exception:
-            pass
-    return None
-
-
-def _is_allowed_url(url: str) -> bool:
-    parsed = urlparse(url)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+def _real_submit_allowed() -> bool:
+    env_value = os.getenv("ALLOW_REAL_APPLICATION_SUBMIT", "").lower()
+    settings_value = bool(getattr(settings, "allow_real_application_submit", False))
+    return settings_value or env_value in {"1", "true", "yes"}
 
 
 async def fill_and_submit_application(
@@ -324,11 +161,18 @@ async def fill_and_submit_application(
         "log": log,
         "submitted_at": None,
         "error": None,
+        "fields_filled": 0,
+        "requires_manual_review": True,
     }
 
     if not _is_allowed_url(job_url):
         result["error"] = "Invalid or unsupported job URL"
         log.append({"action": "error", "detail": result["error"], "ts": _now()})
+        return result
+
+    if not dry_run and not _real_submit_allowed():
+        result["error"] = "Real application submit is disabled. Set ALLOW_REAL_APPLICATION_SUBMIT=true only when ready."
+        log.append({"action": "submit_blocked", "detail": result["error"], "ts": _now()})
         return result
 
     try:
@@ -367,11 +211,13 @@ async def fill_and_submit_application(
 
             await asyncio.sleep(1.5)
             filled_count = await _fill_common_fields(page, user_profile, cover_letter, resume_path, log)
+            result["fields_filled"] = filled_count
+            result["requires_manual_review"] = filled_count < 3
 
             if dry_run:
                 result["success"] = True
                 log.append({"action": "dry_run_complete", "fields_filled": filled_count, "ts": _now()})
-            elif filled_count > 0:
+            elif filled_count >= 3:
                 submit_btn = await _find_submit_button(page)
                 if submit_btn:
                     log.append({"action": "submit_click", "ts": _now()})
@@ -379,13 +225,14 @@ async def fill_and_submit_application(
                     await asyncio.sleep(3)
                     result["submitted_at"] = _now()
                     result["success"] = True
+                    result["requires_manual_review"] = False
                     log.append({"action": "submitted", "status": "ok", "ts": _now()})
                 else:
                     result["error"] = "No submit button found"
                     log.append({"action": "submit_skipped", "reason": result["error"], "ts": _now()})
             else:
-                result["error"] = "No recognizable application fields were found on this page"
-                log.append({"action": "no_fields_filled", "ts": _now()})
+                result["error"] = "Not enough recognizable application fields were found for safe submit"
+                log.append({"action": "submit_skipped", "reason": result["error"], "fields_filled": filled_count, "ts": _now()})
 
             await browser.close()
 
@@ -398,3 +245,87 @@ async def fill_and_submit_application(
         log.append({"action": "error", "detail": str(exc)[:300], "ts": _now()})
 
     return result
+
+
+async def _fill_common_fields(
+    page,
+    profile: Dict[str, Any],
+    cover_letter: str,
+    resume_path: str,
+    log: List[Dict[str, Any]],
+) -> int:
+    values = _profile_values(profile, cover_letter)
+    elements = await page.query_selector_all("input:not([type=hidden]), textarea")
+    filled = 0
+
+    for element in elements:
+        try:
+            input_type = _normalize_text(await element.get_attribute("type"))
+            if input_type in {"hidden", "submit", "button", "reset", "checkbox", "radio", "file"}:
+                continue
+
+            descriptor = await _element_descriptor(page, element)
+            field_key = _match_field_key(descriptor)
+            value = values.get(field_key or "", "")
+            if not value:
+                continue
+
+            await element.fill(str(value))
+            filled += 1
+            log.append({"action": "fill", "field": field_key, "descriptor": descriptor[:120], "ts": _now()})
+        except Exception as exc:
+            log.append({"action": "fill_skipped", "detail": str(exc), "ts": _now()})
+
+    if resume_path and os.path.exists(resume_path):
+        file_inputs = await page.query_selector_all('input[type="file"]')
+        for file_input in file_inputs:
+            try:
+                await file_input.set_input_files(resume_path)
+                filled += 1
+                log.append({"action": "upload_resume", "path": resume_path, "ts": _now()})
+                break
+            except Exception as exc:
+                log.append({"action": "upload_resume_skipped", "detail": str(exc), "ts": _now()})
+    elif resume_path:
+        log.append({"action": "upload_resume_skipped", "detail": "resume path not found", "ts": _now()})
+
+    return filled
+
+
+async def _element_descriptor(page, element) -> str:
+    attrs = []
+    for attr in ("name", "id", "placeholder", "aria-label", "autocomplete"):
+        value = await element.get_attribute(attr)
+        if value:
+            attrs.append(value)
+
+    element_id = await element.get_attribute("id")
+    if element_id:
+        label = await page.query_selector(f'label[for="{element_id}"]')
+        if label:
+            attrs.append(await label.inner_text())
+
+    return _normalize_text(" ".join(attrs))
+
+
+def _match_field_key(descriptor: str) -> Optional[str]:
+    for pattern, key in COMMON_FIELDS:
+        if re.search(pattern, descriptor, flags=re.IGNORECASE):
+            return key
+    return None
+
+
+async def _find_submit_button(page):
+    for selector in SUBMIT_SELECTORS:
+        try:
+            button = await page.query_selector(selector)
+            if button:
+                return button
+        except Exception:
+            pass
+    return None
+
+
+def _is_allowed_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)

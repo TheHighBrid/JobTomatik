@@ -51,6 +51,30 @@ export function resetApiBaseUrl() {
   return normalizeApiBaseUrl(DEFAULT_API_URL)
 }
 
+export function isNetworkError(err) {
+  return Boolean(err?.request && !err?.response)
+}
+
+export function getApiErrorMessage(err, fallback = 'Request failed') {
+  if (isNetworkError(err)) {
+    return 'Cannot reach backend API. Open API connection and set the correct backend URL.'
+  }
+
+  const detail = err?.response?.data?.detail
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item?.msg || String(item)).join(', ')
+  }
+  if (detail) return String(detail)
+  if (err?.message) return err.message
+  return fallback
+}
+
+export async function testApiConnection(baseUrl = getApiBaseUrl()) {
+  const normalized = normalizeApiBaseUrl(baseUrl)
+  const response = await axios.get(`${normalized}/health`, { timeout: 8000 })
+  return response.data
+}
+
 const api = axios.create({
   baseURL: `${getApiBaseUrl()}/api`,
   headers: { 'Content-Type': 'application/json' },
@@ -110,6 +134,7 @@ export const updateApplication = (id, data) => api.patch(`/applications/${id}`, 
 export const generateCoverLetter = (id) => api.post(`/applications/${id}/generate-cover-letter`)
 export const submitApplication = (id, dryRun = false) =>
   api.post(`/applications/${id}/submit?dry_run=${dryRun}`)
+export const bulkSubmitApplications = (params) => api.post('/applications/bulk-submit', null, { params })
 export const createFollowup = (appId, data) => api.post(`/applications/${appId}/followups`, data)
 export const listFollowups = (appId) => api.get(`/applications/${appId}/followups`)
 

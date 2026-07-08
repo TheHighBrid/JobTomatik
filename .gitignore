@@ -1,29 +1,44 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.Python
-*.egg-info/
+# Local secret files
+.env
+*.env
+.env.*
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build output
+frontend/dist/
+frontend/build/
 dist/
 build/
-.env
+
+# Python caches/environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local database, uploads, logs
 *.db
+*.sqlite
 *.sqlite3
-
-# Node
-node_modules/
-frontend/dist/
-frontend/.vite/
-
-# Android (generated native project — build locally or via CI)
-frontend/android/
-frontend/ios/
-
-# Built APK deliverables are committed at repo root for download
-!jobtomatik-debug.apk
-
-# Misc
-.DS_Store
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+backend/uploads/
 *.log
-uploads/
+logs/
+
+# OS/editor noise
+.DS_Store
+.vscode/
+.idea/
