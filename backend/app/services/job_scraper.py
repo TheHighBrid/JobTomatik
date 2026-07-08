@@ -275,7 +275,7 @@ async def scrape_indeed(
             if resp.status_code != 200:
                 raise ValueError(f"Indeed returned {resp.status_code}")
 
-            soup = BeautifulSoup(resp.text, "lxml")
+            soup = BeautifulSoup(resp.text, "html.parser")
             cards = soup.select("div.job_seen_beacon") or soup.select("div[data-jk]")
 
             for card in cards[:limit]:
@@ -348,7 +348,7 @@ async def scrape_linkedin(
             if resp.status_code != 200:
                 raise ValueError(f"LinkedIn returned {resp.status_code}")
 
-            soup = BeautifulSoup(resp.text, "lxml")
+            soup = BeautifulSoup(resp.text, "html.parser")
             cards = soup.select("div.base-search-card") or soup.select("li.jobs-search-results__list-item")
 
             for card in cards[:limit]:

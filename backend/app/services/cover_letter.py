@@ -14,8 +14,9 @@ except Exception:  # pragma: no cover - optional dependency/runtime
 
 from app.config import get_settings
 
-settings = get_settings()
+import httpx
 
+from app.config import get_settings
 
 def _clean_list(values: Optional[Union[Iterable[str], str]], limit: int = 8) -> str:
     if not values:
@@ -61,8 +62,18 @@ Thank you for considering my application. I would welcome the opportunity to dis
 
 Best regards,
 {name}
-"""
+""".strip()
 
+
+def _build_prompt(job: Dict[str, Any], user_profile: Dict[str, Any]) -> str:
+    title = job.get("title", "the role")
+    company = job.get("company", "the company")
+    description = str(job.get("description") or "")[:1800]
+    requirements = str(job.get("requirements") or "")[:1000]
+    skills = _as_text(job.get("skills"))
+    domains = ", ".join(_detect_domains(job))
+
+    return f"""Write a concise, professional cover letter for a Canadian banking/compliance/fraud job application.
 
 async def generate_cover_letter(job: Dict, user_profile: Dict) -> str:
     ai_provider = (getattr(settings, "ai_provider", "template") or "template").lower().strip()

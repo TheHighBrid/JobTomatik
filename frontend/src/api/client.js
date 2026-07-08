@@ -134,6 +134,7 @@ export const updateApplication = (id, data) => api.patch(`/applications/${id}`, 
 export const generateCoverLetter = (id) => api.post(`/applications/${id}/generate-cover-letter`)
 export const submitApplication = (id, dryRun = false) =>
   api.post(`/applications/${id}/submit?dry_run=${dryRun}`)
+export const bulkSubmitApplications = (params) => api.post('/applications/bulk-submit', null, { params })
 export const createFollowup = (appId, data) => api.post(`/applications/${appId}/followups`, data)
 export const listFollowups = (appId) => api.get(`/applications/${appId}/followups`)
 
