@@ -4,8 +4,12 @@ import { Link } from 'react-router-dom'
 import { getApplicationStats, getJobQueue, listApplications, runAutoPilot, bulkApply } from '../api/client'
 import { useAuthStore } from '../store'
 import StatusBadge from '../components/StatusBadge'
-import { StatCardSkeleton, JobCardSkeleton } from '../components/Skeleton'
-import { TrendingUp, Briefcase, Clock, Award, ChevronRight, Search, Zap, ListTodo, Bot, Play, Send, Loader2 } from 'lucide-react'
+import { StatCardSkeleton } from '../components/Skeleton'
+import {
+  TrendingUp, Briefcase, Clock, Award, ChevronRight,
+  Search, Zap, ListTodo, Bot, Play, Send, Loader2,
+  CheckCircle2, Activity, Rocket
+} from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 const CHART_COLORS = {
@@ -20,77 +24,86 @@ const CHART_COLORS = {
 
 function AutoPilotPanel() {
   const qc = useQueryClient()
-  const [dryRun, setDryRun] = useState(true)
   const [msg, setMsg] = useState(null)
+  const [msgType, setMsgType] = useState('info')
 
   const pilotMut = useMutation({
-    mutationFn: () => runAutoPilot({ dry_run: dryRun, min_score: 0.5, daily_limit: 15 }),
+    mutationFn: () => runAutoPilot({ dry_run: false, min_score: 0.55, daily_limit: 15 }),
     onSuccess: (res) => {
       const d = res.data
-      setMsg(`Search started (task ${d.search_task_id?.slice(0,8)}…). Auto-approved ${d.auto_approved} jobs.`)
+      setMsgType('success')
+      setMsg(
+        `Pipeline launched: ${d.auto_approved} jobs auto-approved, ` +
+        `${d.applications_queued ?? 0} applications queued for submission.`
+      )
       qc.invalidateQueries(['jobQueue'])
       qc.invalidateQueries(['appStats'])
+      qc.invalidateQueries(['recentApps'])
     },
-    onError: (e) => setMsg('Auto-pilot error: ' + (e.response?.data?.detail || e.message)),
+    onError: (e) => {
+      setMsgType('error')
+      setMsg('Auto-pilot error: ' + (e.response?.data?.detail || e.message))
+    },
   })
 
   const bulkMut = useMutation({
-    mutationFn: () => bulkApply(dryRun, 20),
+    mutationFn: () => bulkApply(false, 20),
     onSuccess: (res) => {
       const d = res.data
-      setMsg(`Bulk apply: ${d.applied} applications queued, ${d.skipped} skipped.`)
+      setMsgType('success')
+      setMsg(`Bulk apply: ${d.applied} applications queued, ${d.skipped} already submitted.`)
       qc.invalidateQueries(['appStats'])
+      qc.invalidateQueries(['recentApps'])
     },
-    onError: (e) => setMsg('Bulk apply error: ' + (e.response?.data?.detail || e.message)),
+    onError: (e) => {
+      setMsgType('error')
+      setMsg('Bulk apply error: ' + (e.response?.data?.detail || e.message))
+    },
   })
 
   const running = pilotMut.isPending || bulkMut.isPending
 
   return (
-    <div className="card p-5 border-2 border-tomato-100">
-      <div className="flex items-center gap-2 mb-3">
-        <Bot className="w-5 h-5 text-tomato-600" />
-        <h2 className="font-semibold text-gray-900">Auto-Pilot</h2>
-        <span className="ml-auto text-xs text-gray-400">Full autonomous mode</span>
+    <div className="rounded-2xl p-5 bg-gradient-to-br from-tomato-600 to-rose-700 text-white shadow-lg">
+      <div className="flex items-center gap-2 mb-1">
+        <Rocket className="w-5 h-5" />
+        <h2 className="font-bold text-lg">Auto-Pilot</h2>
+        <span className="ml-auto text-xs bg-white/20 px-2 py-0.5 rounded-full">Fully Autonomous</span>
       </div>
-      <div className="flex flex-wrap gap-3 items-center">
-        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={!dryRun}
-            onChange={(e) => setDryRun(!e.target.checked)}
-            className="accent-tomato-600"
-          />
-          <span className={`font-medium ${!dryRun ? 'text-tomato-700' : 'text-gray-500'}`}>
-            {dryRun ? 'Dry Run (safe)' : 'LIVE — will submit real applications'}
-          </span>
-        </label>
-      </div>
-      <div className="flex flex-wrap gap-3 mt-3">
+      <p className="text-white/75 text-xs mb-4">
+        Search → approve → generate cover letter → submit. All automatic.
+      </p>
+
+      <div className="flex flex-wrap gap-2.5">
         <button
           onClick={() => pilotMut.mutate()}
           disabled={running}
-          className="btn-primary flex items-center gap-2 text-sm"
+          className="flex items-center gap-2 bg-white text-tomato-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-tomato-50 transition-all disabled:opacity-60 shadow-sm"
         >
-          {pilotMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          Search + Auto-Approve
+          {pilotMut.isPending
+            ? <Loader2 className="w-4 h-4 animate-spin" />
+            : <Play className="w-4 h-4" />}
+          Full Auto-Pilot
         </button>
         <button
           onClick={() => bulkMut.mutate()}
           disabled={running}
-          className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium border transition-all ${!dryRun ? 'bg-tomato-600 text-white border-tomato-600 hover:bg-tomato-700' : 'btn-secondary'}`}
+          className="flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-all disabled:opacity-60 border border-white/20"
         >
-          {bulkMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          Bulk Apply to Approved
+          {bulkMut.isPending
+            ? <Loader2 className="w-4 h-4 animate-spin" />
+            : <Send className="w-4 h-4" />}
+          Bulk Apply Approved
         </button>
       </div>
+
       {msg && (
-        <div className="mt-3 text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-lg">{msg}</div>
-      )}
-      {!dryRun && (
-        <p className="mt-2 text-xs text-tomato-600">
-          ⚠ Live mode active — applications will be submitted for real. Make sure <code>ALLOW_REAL_APPLICATION_SUBMIT=true</code> is set on the server.
-        </p>
+        <div className={`mt-3 text-xs px-3 py-2 rounded-lg ${
+          msgType === 'success' ? 'bg-white/20' : 'bg-red-900/40'
+        }`}>
+          {msgType === 'success' && <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />}
+          {msg}
+        </div>
       )}
     </div>
   )
@@ -138,9 +151,9 @@ export default function Dashboard() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">
-            Hey{user?.full_name ? ` ${user.full_name.split(' ')[0]}` : ''}! 👋
+            {user?.full_name ? `Hey ${user.full_name.split(' ')[0]}!` : 'Dashboard'}
           </h1>
-          <p className="text-gray-500 mt-1 text-sm">Here's your job search overview.</p>
+          <p className="text-gray-500 mt-0.5 text-sm">Your autonomous job search is active.</p>
         </div>
         {queueCount > 0 && (
           <Link
@@ -153,12 +166,15 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Auto-Pilot (hero position) */}
+      <AutoPilotPanel />
+
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {statsLoading
           ? Array(4).fill(0).map((_, i) => <StatCardSkeleton key={i} />)
           : topStats.map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className={`card p-4 bg-gradient-to-br ${color} text-white`}>
+            <div key={label} className={`rounded-2xl p-4 bg-gradient-to-br ${color} text-white`}>
               <Icon className="w-5 h-5 opacity-80 mb-2" />
               <div className="text-2xl md:text-3xl font-bold">{value}</div>
               <div className="text-xs opacity-80 mt-0.5">{label}</div>
@@ -168,31 +184,30 @@ export default function Dashboard() {
 
       {/* Quick actions */}
       <div className="grid grid-cols-3 gap-3">
-        <Link to="/search" className="card p-4 text-center hover:shadow-md transition-shadow group">
-          <Search className="w-6 h-6 text-blue-500 mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
-          <div className="text-xs font-medium text-gray-700">New Search</div>
-        </Link>
-        <Link to="/queue" className="card p-4 text-center hover:shadow-md transition-shadow group">
-          <ListTodo className="w-6 h-6 text-yellow-500 mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
-          <div className="text-xs font-medium text-gray-700">Review Queue</div>
-        </Link>
-        <Link to="/applications" className="card p-4 text-center hover:shadow-md transition-shadow group">
-          <TrendingUp className="w-6 h-6 text-green-500 mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
-          <div className="text-xs font-medium text-gray-700">Applications</div>
-        </Link>
+        {[
+          { to: '/search', icon: Search, label: 'New Search', color: 'text-blue-500' },
+          { to: '/queue', icon: ListTodo, label: 'Review Queue', color: 'text-yellow-500' },
+          { to: '/applications', icon: Activity, label: 'Pipeline', color: 'text-green-500' },
+        ].map(({ to, icon: Icon, label, color }) => (
+          <Link
+            key={to}
+            to={to}
+            className="card p-4 text-center hover:shadow-md transition-all group hover:-translate-y-0.5"
+          >
+            <Icon className={`w-6 h-6 ${color} mx-auto mb-1.5 group-hover:scale-110 transition-transform`} />
+            <div className="text-xs font-medium text-gray-700">{label}</div>
+          </Link>
+        ))}
       </div>
-
-      {/* Auto-Pilot panel */}
-      <AutoPilotPanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Pipeline chart */}
         <div className="card p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Pipeline</h2>
+          <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Activity className="w-4 h-4 text-tomato-600" /> Pipeline
+          </h2>
           {statsLoading ? (
-            <div className="h-40 flex items-center justify-center">
-              <div className="w-full h-full bg-gray-100 rounded-lg animate-pulse" />
-            </div>
+            <div className="h-40 bg-gray-100 rounded-lg animate-pulse" />
           ) : chartData.length === 0 ? (
             <div className="h-40 flex flex-col items-center justify-center text-gray-400 text-sm gap-2">
               <Search className="w-8 h-8 opacity-50" />
@@ -208,13 +223,13 @@ export default function Dashboard() {
                 <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={25} />
                 <Tooltip
                   contentStyle={{
-                    borderRadius: 8,
+                    borderRadius: 10,
                     border: 'none',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
                     fontSize: 12,
                   }}
                 />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                   {chartData.map((entry) => (
                     <Cell key={entry.name} fill={CHART_COLORS[entry.name] || '#6b7280'} />
                   ))}
@@ -227,7 +242,9 @@ export default function Dashboard() {
         {/* Job queue preview */}
         <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">Jobs to Review</h2>
+            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-yellow-500" /> Jobs to Review
+            </h2>
             <Link to="/queue" className="text-sm text-tomato-600 hover:underline flex items-center gap-1">
               All {queueCount > 0 && `(${queueCount})`} <ChevronRight className="w-3 h-3" />
             </Link>
@@ -236,7 +253,7 @@ export default function Dashboard() {
             <div className="space-y-2">
               {Array(3).fill(0).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 p-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-gray-200 animate-pulse" />
+                  <div className="w-8 h-8 rounded-xl bg-gray-200 animate-pulse" />
                   <div className="flex-1 space-y-1.5">
                     <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4" />
                     <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/2" />
@@ -246,10 +263,10 @@ export default function Dashboard() {
             </div>
           ) : !queueData?.jobs?.length ? (
             <div className="py-8 text-center text-gray-400 text-sm">
-              <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="mb-2">No jobs in queue.</p>
+              <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="mb-2">Queue empty — auto-pilot will fill it.</p>
               <Link to="/search" className="text-tomato-600 hover:underline text-sm">
-                Run a job search
+                Or run a manual search
               </Link>
             </div>
           ) : (
@@ -258,16 +275,16 @@ export default function Dashboard() {
                 <Link
                   key={job.id}
                   to="/queue"
-                  className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 transition-colors"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-tomato-100 flex items-center justify-center text-tomato-700 font-bold text-xs flex-shrink-0">
-                    {job.company[0]}
+                  <div className="w-8 h-8 rounded-xl bg-tomato-100 flex items-center justify-center text-tomato-700 font-bold text-xs flex-shrink-0">
+                    {(job.company || '?')[0]}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-gray-900 truncate">{job.title}</div>
                     <div className="text-xs text-gray-500 truncate">{job.company}</div>
                   </div>
-                  <div className="text-xs text-tomato-600 font-medium flex-shrink-0">
+                  <div className="text-xs font-bold text-tomato-600 flex-shrink-0 bg-tomato-50 px-2 py-0.5 rounded-full">
                     {Math.round((job.relevance_score || 0) * 100)}%
                   </div>
                 </Link>
@@ -280,7 +297,9 @@ export default function Dashboard() {
       {/* Recent applications */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-gray-900">Recent Applications</h2>
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-indigo-500" /> Recent Applications
+          </h2>
           <Link to="/applications" className="text-sm text-tomato-600 hover:underline flex items-center gap-1">
             View all <ChevronRight className="w-3 h-3" />
           </Link>
@@ -289,7 +308,7 @@ export default function Dashboard() {
           <div className="space-y-1">
             {Array(3).fill(0).map((_, i) => (
               <div key={i} className="flex items-center gap-4 py-3">
-                <div className="w-8 h-8 rounded-lg bg-gray-200 animate-pulse" />
+                <div className="w-8 h-8 rounded-xl bg-gray-200 animate-pulse" />
                 <div className="flex-1 space-y-1.5">
                   <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2" />
                   <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/3" />
@@ -300,7 +319,7 @@ export default function Dashboard() {
           </div>
         ) : !recentApps?.length ? (
           <div className="py-6 text-center text-gray-400 text-sm">
-            No applications yet. Approve jobs from the queue to start.
+            No applications yet. Hit <span className="text-tomato-600 font-medium">Full Auto-Pilot</span> above to start.
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
@@ -308,9 +327,9 @@ export default function Dashboard() {
               <Link
                 key={app.id}
                 to={`/applications/${app.id}`}
-                className="flex items-center gap-4 py-3 hover:bg-gray-50 -mx-1 px-1 rounded-lg transition-colors"
+                className="flex items-center gap-4 py-3 hover:bg-gray-50 -mx-1 px-1 rounded-xl transition-colors"
               >
-                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 font-bold text-xs flex-shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 font-bold text-xs flex-shrink-0">
                   {(app.job?.company || '?')[0]}
                 </div>
                 <div className="flex-1 min-w-0">

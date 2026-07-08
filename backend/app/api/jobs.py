@@ -133,7 +133,7 @@ async def get_task_status(task_id: str, current_user: User = Depends(get_current
 
 @router.post("/bulk-apply")
 async def bulk_apply(
-    dry_run: bool = Query(True),
+    dry_run: bool = Query(False),
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -170,10 +170,11 @@ async def bulk_apply(
         db.flush()
 
         cl_task = generate_cover_letter_task.delay(app_obj.id)
+        # Generate cover letter first (60s), then submit
         sub_task = submit_application_task.apply_async(
             args=[app_obj.id],
             kwargs={"dry_run": dry_run},
-            countdown=30,
+            countdown=60,
         )
         results.append({
             "job_id": job.id,
@@ -193,20 +194,26 @@ async def bulk_apply(
 
 @router.post("/autopilot")
 async def run_autopilot(
-    dry_run: bool = Query(True),
-    min_score: float = Query(0.6, ge=0.0, le=1.0),
-    daily_limit: int = Query(10, ge=1, le=50),
+    dry_run: bool = Query(False),
+    min_score: float = Query(0.55, ge=0.0, le=1.0),
+    daily_limit: int = Query(15, ge=1, le=50),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Full autonomous pipeline:
     1. Search jobs using user preferences
-    2. Auto-approve jobs above min_score
-    3. Bulk-apply to all approved jobs
+    2. Auto-approve all queued jobs above min_score
+    3. Generate cover letters + submit applications
     """
+    from app.models.application import ApplicationStatus
+    from app.tasks.applications import generate_cover_letter_task, submit_application_task
+
     prefs = current_user.job_preferences or {}
-    keywords = ", ".join(prefs.get("preferred_titles", []) or prefs.get("skills", []) or ["AML analyst", "fraud analyst"])
+    keywords = ", ".join(
+        prefs.get("preferred_titles", []) or prefs.get("skills", [])
+        or ["AML analyst", "fraud analyst", "KYC analyst", "compliance analyst"]
+    )
     locations = prefs.get("preferred_locations", [])
     location = locations[0] if locations else "Ottawa, Ontario"
 
@@ -218,11 +225,11 @@ async def run_autopilot(
             "location": location,
             "salary_min": prefs.get("min_salary"),
             "sources": ["jobbank", "indeed", "linkedin", "glassdoor"],
-            "limit": 40,
+            "limit": 50,
         },
     )
 
-    # Step 2: auto-approve queued jobs above threshold immediately (from DB)
+    # Step 2: auto-approve all queued jobs above threshold
     queued_jobs = (
         db.query(Job)
         .filter(Job.status == JobStatus.queued, Job.relevance_score >= min_score)
@@ -236,9 +243,51 @@ async def run_autopilot(
         auto_approved += 1
     db.commit()
 
+    # Step 3: create applications and queue submissions for all approved jobs
+    approved_jobs = (
+        db.query(Job)
+        .filter(Job.status == JobStatus.approved)
+        .limit(daily_limit)
+        .all()
+    )
+    applied = 0
+    skipped = 0
+    for job in approved_jobs:
+        existing = (
+            db.query(Application)
+            .filter(Application.user_id == current_user.id, Application.job_id == job.id)
+            .first()
+        )
+        if existing:
+            skipped += 1
+            continue
+        app_obj = Application(
+            user_id=current_user.id,
+            job_id=job.id,
+            status=ApplicationStatus.pending,
+        )
+        db.add(app_obj)
+        job.status = JobStatus.applied
+        db.flush()
+        generate_cover_letter_task.delay(app_obj.id)
+        submit_application_task.apply_async(
+            args=[app_obj.id],
+            kwargs={"dry_run": dry_run},
+            countdown=90,
+        )
+        applied += 1
+
+    db.commit()
+
     return {
         "search_task_id": search_task.id,
         "auto_approved": auto_approved,
-        "message": f"Search started. Auto-approved {auto_approved} jobs above {min_score*100:.0f}% match. Use /jobs/bulk-apply to submit applications.",
+        "applications_queued": applied,
+        "applications_skipped": skipped,
         "dry_run": dry_run,
+        "message": (
+            f"Autonomous pipeline running. "
+            f"Search started, {auto_approved} jobs auto-approved, "
+            f"{applied} applications queued for submission."
+        ),
     }

@@ -124,9 +124,9 @@ export const getSettings = () => api.get('/settings')
 export const updateSettings = (data) => api.patch('/settings', data)
 
 // Bulk / Auto-pilot
-export const bulkApply = (dryRun = true, limit = 20) =>
+export const bulkApply = (dryRun = false, limit = 20) =>
   api.post(`/jobs/bulk-apply?dry_run=${dryRun}&limit=${limit}`)
 export const runAutoPilot = (options = {}) =>
-  api.post('/jobs/autopilot', null, { params: options })
+  api.post('/jobs/autopilot', null, { params: { dry_run: false, min_score: 0.55, daily_limit: 15, ...options } })
 
 export default api

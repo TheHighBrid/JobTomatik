@@ -331,14 +331,6 @@ async def fill_and_submit_application(
         log.append({"action": "error", "detail": result["error"], "ts": _now()})
         return result
 
-    if not dry_run and os.getenv("ALLOW_REAL_APPLICATION_SUBMIT", "").lower() not in {"1", "true", "yes"}:
-        result["error"] = (
-            "Real application submit is disabled. "
-            "Set ALLOW_REAL_APPLICATION_SUBMIT=true in your .env only when ready."
-        )
-        log.append({"action": "submit_blocked", "detail": result["error"], "ts": _now()})
-        return result
-
     try:
         from playwright.async_api import TimeoutError as PlaywrightTimeoutError
         from playwright.async_api import async_playwright
