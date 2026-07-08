@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { searchJobs, getTaskStatus } from '../api/client'
 import { Search, MapPin, DollarSign, Briefcase, Loader2, CheckCircle2 } from 'lucide-react'
 
-const SOURCES = ['indeed', 'linkedin', 'glassdoor']
+const SOURCES = ['jobbank', 'indeed', 'linkedin', 'glassdoor']
 const JOB_TYPES = [
   { value: 'full_time', label: 'Full Time' },
   { value: 'part_time', label: 'Part Time' },
@@ -21,7 +21,7 @@ export default function JobSearch() {
     salary_min: '',
     salary_max: '',
     job_type: '',
-    sources: ['indeed', 'linkedin', 'glassdoor'],
+    sources: ['jobbank', 'indeed', 'linkedin', 'glassdoor'],
     limit: 50,
   })
   const [taskId, setTaskId] = useState(null)
@@ -84,7 +84,7 @@ export default function JobSearch() {
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Job Search</h1>
-        <p className="text-gray-500 mt-1">Search LinkedIn, Indeed, and Glassdoor simultaneously.</p>
+        <p className="text-gray-500 mt-1">Search Job Bank Canada, LinkedIn, Indeed, and Glassdoor simultaneously.</p>
       </div>
 
       <div className="card p-6 space-y-5">
@@ -111,7 +111,7 @@ export default function JobSearch() {
             <input
               type="text"
               className="input pl-10"
-              placeholder="San Francisco, CA or Remote"
+              placeholder="Ottawa, Ontario or Remote"
               value={form.location}
               onChange={set('location')}
             />
@@ -120,7 +120,7 @@ export default function JobSearch() {
 
         {/* Salary range */}
         <div>
-          <label className="label">Salary Range (USD)</label>
+          <label className="label">Salary Range (CAD)</label>
           <div className="flex gap-3">
             <div className="relative flex-1">
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

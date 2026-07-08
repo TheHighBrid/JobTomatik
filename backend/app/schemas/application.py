@@ -22,7 +22,7 @@ class ApplicationUpdate(BaseModel):
 class FollowUpCreate(BaseModel):
     scheduled_at: datetime
     subject: str
-    message: str
+    message: Optional[str] = None
     recipient_email: str
 
 

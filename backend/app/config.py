@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql://jobtomatik:jobtomatik_pass@localhost:5432/jobtomatik"
+    database_url: str = "sqlite:///./jobtomatik.db"
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str = "supersecretkey-change-in-production"
     algorithm: str = "HS256"
@@ -25,8 +25,7 @@ class Settings(BaseSettings):
     dev_mock_jobs: bool = False
     allow_real_application_submit: bool = False
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 @lru_cache

@@ -119,6 +119,15 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
                     message="Your application was submitted successfully.",
                     data={"job_id": job.id, "application_id": app.id},
                 ))
+                db.commit()
+                from app.tasks.followup import schedule_auto_followup
+                auto_settings = user.automation_settings or {}
+                if auto_settings.get("auto_followup", True):
+                    days = int(auto_settings.get("auto_followup_days", 7))
+                    schedule_auto_followup.apply_async(
+                        args=[application_id, days],
+                        countdown=5,
+                    )
         else:
             app.status = ApplicationStatus.pending
             logger.warning(f"Application {application_id} submission failed: {result.get('error')}")

@@ -14,5 +14,7 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "categories": ["productivity", "business"],
+  "prefer_related_applications": false
 }

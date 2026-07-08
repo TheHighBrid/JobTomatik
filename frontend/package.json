@@ -7,6 +7,10 @@
     "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
     "preview": "vite preview",
+    "cap:add:android": "cap add android",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "build:apk": "npm run build && cap sync android",
     "android:prepare": "npm run build && npx cap sync android",
     "android:open": "npm run android:prepare && npx cap open android"
   },

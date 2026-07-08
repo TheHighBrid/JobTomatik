@@ -113,3 +113,102 @@ def refresh_all_scores():
         return {"updated": updated}
     finally:
         db.close()
+
+
+@celery_app.task(name="app.tasks.scraping.daily_auto_search_all", queue="scraping")
+def daily_auto_search_all():
+    """
+    Fully autonomous pipeline for all users with auto_search_enabled=True:
+    1. Scrape jobs
+    2. Auto-approve jobs above threshold (if auto_apply_enabled)
+    3. Queue cover letter + submission tasks
+    """
+    from app.models.application import Application, ApplicationStatus
+    from app.tasks.applications import generate_cover_letter_task, submit_application_task
+
+    db = SessionLocal()
+    try:
+        users = db.query(User).filter(User.is_active == True).all()
+        kicked = 0
+        for user in users:
+            settings = user.automation_settings or {}
+            if not settings.get("auto_search_enabled", True):
+                continue
+            prefs = user.job_preferences or {}
+            keywords_list = prefs.get("preferred_titles") or prefs.get("skills") or []
+            if not keywords_list:
+                keywords_list = ["AML analyst", "fraud analyst", "KYC analyst"]
+            keywords = ", ".join(keywords_list[:4])
+            locations = prefs.get("preferred_locations", [])
+            location = locations[0] if locations else "Ottawa, Ontario"
+
+            # Kick off scrape
+            run_job_search.delay(
+                user_id=user.id,
+                search_params={
+                    "keywords": keywords,
+                    "location": location,
+                    "salary_min": prefs.get("min_salary"),
+                    "sources": ["jobbank", "indeed", "linkedin", "glassdoor"],
+                    "limit": 50,
+                },
+            )
+            kicked += 1
+
+            # Auto-approve + submit if enabled
+            if settings.get("auto_apply_enabled", True):
+                min_score = float(settings.get("auto_apply_min_score", 0.55))
+                daily_limit = int(settings.get("auto_apply_daily_limit", 15))
+
+                queued = (
+                    db.query(Job)
+                    .filter(Job.status == JobStatus.queued, Job.relevance_score >= min_score)
+                    .order_by(Job.relevance_score.desc())
+                    .limit(daily_limit)
+                    .all()
+                )
+                for job in queued:
+                    job.status = JobStatus.approved
+
+                db.commit()
+
+                approved = (
+                    db.query(Job)
+                    .filter(Job.status == JobStatus.approved)
+                    .limit(daily_limit)
+                    .all()
+                )
+                countdown = 120
+                for job in approved:
+                    existing = (
+                        db.query(Application)
+                        .filter(Application.user_id == user.id, Application.job_id == job.id)
+                        .first()
+                    )
+                    if existing:
+                        continue
+                    app_obj = Application(
+                        user_id=user.id,
+                        job_id=job.id,
+                        status=ApplicationStatus.pending,
+                    )
+                    db.add(app_obj)
+                    job.status = JobStatus.applied
+                    db.flush()
+                    generate_cover_letter_task.delay(app_obj.id)
+                    submit_application_task.apply_async(
+                        args=[app_obj.id],
+                        kwargs={"dry_run": False},
+                        countdown=countdown,
+                    )
+                    countdown += 30  # stagger submissions
+
+                db.commit()
+
+        return {"searched_for": kicked}
+    except Exception as e:
+        logger.exception("daily_auto_search_all failed")
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()

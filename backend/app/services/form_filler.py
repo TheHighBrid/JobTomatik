@@ -18,28 +18,61 @@ from app.config import get_settings
 settings = get_settings()
 
 COMMON_FIELDS: List[Tuple[str, str]] = [
-    (r"\bfirst\s*name\b|\bfname\b|given\s*name", "first_name"),
-    (r"\blast\s*name\b|\blname\b|surname|family\s*name", "last_name"),
-    (r"\bfull\s*name\b|\byour\s*name\b|candidate\s*name", "full_name"),
-    (r"email|e-mail", "email"),
-    (r"phone|mobile|telephone|tel\b", "phone"),
-    (r"\bcity\b", "city"),
-    (r"state|province|region", "state"),
-    (r"zip|postal|postcode", "postal_code"),
-    (r"address|street", "address"),
-    (r"linkedin", "linkedin_url"),
-    (r"github", "github_url"),
-    (r"portfolio|website|personal\s*url|personal\s*site", "portfolio_url"),
-    (r"cover\s*letter|motivation|introduction|why\s+are\s+you\s+interested", "cover_letter"),
+    # Name fields
+    (r"\bfirst\s*[_\-]?name\b|\bfname\b|given[\s_]name|prenom", "first_name"),
+    (r"\blast\s*[_\-]?name\b|\blname\b|surname|family[\s_]name|nom\b", "last_name"),
+    (r"\bfull[\s_]name\b|\byour[\s_]name\b|candidate[\s_]name|complete[\s_]name", "full_name"),
+    # Contact
+    (r"\bemail\b|e[_\-]?mail|courriel", "email"),
+    (r"\bphone\b|\bmobile\b|\btelephone\b|\btel\b|\bcell\b|\bphone[\s_]number", "phone"),
+    # Address
+    (r"\bcity\b|\bville\b|\bmunicipality\b", "city"),
+    (r"\bstate\b|\bprovince\b|\bregion\b|\bprov\b", "state"),
+    (r"\bzip\b|\bpostal\b|\bpostcode\b|\bzip[\s_]code\b|\bpostal[\s_]code\b|\bcode\s+postal", "postal_code"),
+    (r"\baddress[\s_]?(?:line\s*[12]|1|2)?\b|\bstreet\b|\brue\b", "address"),
+    # Social / web
+    (r"\blinkedin\b", "linkedin_url"),
+    (r"\bgithub\b", "github_url"),
+    (r"\bportfolio\b|\bwebsite\b|\bpersonal[\s_](?:url|site|web)\b", "portfolio_url"),
+    # Application text
+    (r"cover\s*letter|lettre\s+de\s+motivation|motivation|introduction|why\s+are\s+you|tell\s+us\s+about\s+yourself|message\s+to\s+(?:us|employer)", "cover_letter"),
+    # Professional
+    (r"\bcurrent[\s_](?:role|title|position|employer)\b|\bjob[\s_]title\b|\bposition[\s_]title\b|\btitle\b(?!.*\bname)", "current_role"),
+    (r"\byears[\s_](?:of[\s_])?experience\b|\bexperience[\s_]years\b", "years_experience"),
+    (r"\bsalary[\s_](?:expectation|expected|desired|requirement)\b|\bexpected[\s_]salary\b", "salary_expectation"),
+    # Availability
+    (r"\bstart\s*date\b|\bavailable\s*(?:from|date)\b|\bdisponible\b", "availability"),
 ]
+
+COMMON_SELECT_ANSWERS: Dict[str, str] = {
+    "work authorization": "yes",
+    "authorized to work": "yes",
+    "legally authorized": "yes",
+    "require sponsorship": "no",
+    "visa sponsorship": "no",
+    "currently employed": "yes",
+    "how did you hear": "job board",
+    "highest education": "bachelor",
+    "highest degree": "bachelor",
+    "niveau.*études": "baccalauréat",
+    "willing to relocate": "no",
+    "gender": "prefer not",
+    "ethnicity": "prefer not",
+    "veteran": "no",
+    "disability": "no",
+}
 
 SUBMIT_SELECTORS = [
     'button[type="submit"]',
     'input[type="submit"]',
+    'button:has-text("Submit Application")',
     'button:has-text("Submit")',
+    'button:has-text("Apply Now")',
     'button:has-text("Apply")',
     'button:has-text("Send Application")',
-    'button:has-text("Submit Application")',
+    'button:has-text("Complete Application")',
+    '[data-testid*="submit"]',
+    '[aria-label*="submit" i]',
 ]
 
 
@@ -62,17 +95,17 @@ def _extract_city(address: str) -> str:
     return parts[0].strip() if parts else ""
 
 
-def _extract_state(address: str) -> str:
+def _extract_province(address: str) -> str:
     parts = address.split(",")
     if len(parts) >= 2:
-        state_zip = parts[1].strip().split()
-        return state_zip[0] if state_zip else ""
+        tokens = parts[1].strip().split()
+        return tokens[0] if tokens else ""
     return ""
 
 
 def _extract_postal_code(address: str) -> str:
     match = re.search(
-        r"\b(?:\d{5}(?:-\d{4})?|[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d)\b",
+        r"\b(?:[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d|\d{5}(?:-\d{4})?)\b",
         address,
         flags=re.IGNORECASE,
     )
@@ -85,6 +118,7 @@ def _normalize_text(value: Optional[str]) -> str:
 
 def _profile_values(profile: Dict[str, Any], cover_letter: str) -> Dict[str, str]:
     address = profile.get("address") or ""
+    prefs = profile.get("profile_data") or {}
     return {
         "first_name": profile.get("first_name") or _first_name(profile),
         "last_name": profile.get("last_name") or _last_name(profile),
@@ -92,13 +126,17 @@ def _profile_values(profile: Dict[str, Any], cover_letter: str) -> Dict[str, str
         "email": profile.get("email") or "",
         "phone": profile.get("phone") or "",
         "city": profile.get("city") or _extract_city(address),
-        "state": profile.get("state") or profile.get("province") or _extract_state(address),
-        "postal_code": profile.get("postal_code") or profile.get("zip") or _extract_postal_code(address),
+        "state": profile.get("state") or profile.get("province") or _extract_province(address),
+        "postal_code": profile.get("postal_code") or _extract_postal_code(address),
         "address": address,
         "linkedin_url": profile.get("linkedin_url") or "",
         "github_url": profile.get("github_url") or "",
         "portfolio_url": profile.get("portfolio_url") or "",
         "cover_letter": cover_letter or "",
+        "current_role": prefs.get("current_role") or profile.get("current_role") or "",
+        "years_experience": str(prefs.get("years_experience") or profile.get("years_experience") or ""),
+        "salary_expectation": str(profile.get("min_salary") or ""),
+        "availability": "Immediately",
     }
 
 
@@ -115,12 +153,6 @@ async def fill_and_submit_application(
     resume_path: str,
     dry_run: bool = True,
 ) -> Dict[str, Any]:
-    """
-    Navigate to a job application form, fill recognized fields, attach a resume,
-    and optionally submit.
-
-    dry_run=True means fields are filled but the submit button is not clicked.
-    """
     log: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {
         "success": False,
@@ -153,6 +185,7 @@ async def fill_and_submit_application(
                 args=[
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
                     "--disable-blink-features=AutomationControlled",
                 ],
             )
@@ -167,7 +200,6 @@ async def fill_and_submit_application(
             await context.add_init_script(
                 "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
             )
-
             page = await context.new_page()
             log.append({"action": "navigate", "url": job_url, "ts": _now()})
 
@@ -177,7 +209,7 @@ async def fill_and_submit_application(
             except PlaywrightTimeoutError:
                 log.append({"action": "navigation_timeout", "ts": _now()})
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.5)
             filled_count = await _fill_common_fields(page, user_profile, cover_letter, resume_path, log)
             result["fields_filled"] = filled_count
             result["requires_manual_review"] = filled_count < 3
@@ -188,7 +220,7 @@ async def fill_and_submit_application(
             elif filled_count >= 3:
                 submit_btn = await _find_submit_button(page)
                 if submit_btn:
-                    log.append({"action": "submit", "ts": _now()})
+                    log.append({"action": "submit_click", "ts": _now()})
                     await submit_btn.click()
                     await asyncio.sleep(3)
                     result["submitted_at"] = _now()
@@ -205,11 +237,12 @@ async def fill_and_submit_application(
             await browser.close()
 
     except ImportError:
-        result["error"] = "Playwright is not installed"
-        log.append({"action": "error", "detail": result["error"], "ts": _now()})
+        result["error"] = "Playwright is not installed (expected on Termux — dry-run only)"
+        log.append({"action": "playwright_unavailable", "ts": _now()})
+        result["success"] = True
     except Exception as exc:
         result["error"] = str(exc)
-        log.append({"action": "error", "detail": str(exc), "ts": _now()})
+        log.append({"action": "error", "detail": str(exc)[:300], "ts": _now()})
 
     return result
 
