@@ -403,6 +403,9 @@ async def _fill_common_fields(
         except Exception as exc:
             log.append({"action": "fill_skipped", "detail": str(exc), "ts": _now()})
 
+    filled += await _fill_select_fields(page, log)
+    filled += await _fill_choice_fields(page, log)
+
     if resume_path and os.path.exists(resume_path):
         file_inputs = await page.query_selector_all('input[type="file"]')
         for file_input in file_inputs:
@@ -416,6 +419,79 @@ async def _fill_common_fields(
     elif resume_path:
         log.append({"action": "upload_resume_skipped", "detail": "resume path not found", "ts": _now()})
 
+    return filled
+
+
+async def _fill_select_fields(page, log: List[Dict[str, Any]]) -> int:
+    filled = 0
+    selects = await page.query_selector_all("select")
+    for select in selects:
+        try:
+            descriptor = await _element_descriptor(page, select)
+            answer_hint = _select_answer_hint(descriptor)
+            options = await select.query_selector_all("option")
+            selected_value = None
+            fallback_value = None
+
+            for option in options:
+                value = await option.get_attribute("value")
+                label = _normalize_text(await option.inner_text())
+                disabled = await option.get_attribute("disabled")
+                if disabled is not None or not value:
+                    continue
+                if not fallback_value and not _is_placeholder_option(label):
+                    fallback_value = value
+                if answer_hint and answer_hint in label:
+                    selected_value = value
+                    break
+
+            selected_value = selected_value or fallback_value
+            if not selected_value:
+                continue
+
+            await select.select_option(value=selected_value)
+            filled += 1
+            log.append({"action": "select", "descriptor": descriptor[:120], "value": selected_value, "ts": _now()})
+        except Exception as exc:
+            log.append({"action": "select_skipped", "detail": str(exc), "ts": _now()})
+    return filled
+
+
+def _select_answer_hint(descriptor: str) -> Optional[str]:
+    for pattern, answer in COMMON_SELECT_ANSWERS.items():
+        if re.search(pattern, descriptor, flags=re.IGNORECASE):
+            return answer
+    return None
+
+
+def _is_placeholder_option(label: str) -> bool:
+    return not label or any(token in label for token in ("select", "choose", "please", "--"))
+
+
+async def _fill_choice_fields(page, log: List[Dict[str, Any]]) -> int:
+    filled = 0
+    groups = await page.query_selector_all("fieldset, [role='radiogroup']")
+    for group in groups:
+        try:
+            descriptor = _normalize_text(await group.inner_text())
+            answer_hint = _select_answer_hint(descriptor)
+            if not answer_hint:
+                continue
+
+            choices = await group.query_selector_all("input[type='radio'], input[type='checkbox']")
+            for choice in choices:
+                choice_descriptor = await _element_descriptor(page, choice)
+                choice_text = choice_descriptor or _normalize_text(await choice.evaluate("el => el.closest('label')?.innerText || ''"))
+                if answer_hint not in choice_text:
+                    continue
+                checked = await choice.is_checked()
+                if not checked:
+                    await choice.check()
+                filled += 1
+                log.append({"action": "choice", "descriptor": descriptor[:120], "value": answer_hint, "ts": _now()})
+                break
+        except Exception as exc:
+            log.append({"action": "choice_skipped", "detail": str(exc), "ts": _now()})
     return filled
 
 
