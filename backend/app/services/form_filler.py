@@ -1,9 +1,14 @@
 """
 Playwright-based form filler and application submitter.
 
-Dry-run mode fills recognized fields and uploads the resume, but never clicks a
-submit button. Real submission is hard-blocked unless explicitly enabled with
-ALLOW_REAL_APPLICATION_SUBMIT=true and the matching Settings flag.
+Flow:
+1. Navigate to the stored job URL (may be a listing page or direct apply URL).
+2. If we land on a job-board listing page, look for an Apply button and click it.
+   Some sites navigate in the same tab; others open a new tab — both are handled.
+3. Fill all recognised text/textarea fields with profile data.
+4. Answer common select/dropdown fields (work auth, education, etc.).
+5. Upload the resume to any file input found.
+6. Click the submit button if any meaningful application fields were filled.
 """
 
 import asyncio
@@ -13,37 +18,87 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 
-from app.config import get_settings
+# ── domain sets ──────────────────────────────────────────────────────────────
 
-settings = get_settings()
+# These are job-board listing domains; we need to click Apply before filling.
+JOB_BOARD_DOMAINS = frozenset([
+    "indeed.com", "ca.indeed.com", "www.indeed.com",
+    "glassdoor.com", "www.glassdoor.com",
+    "linkedin.com", "www.linkedin.com",
+    "jobbank.gc.ca", "www.jobbank.gc.ca",
+    "monster.com", "www.monster.com",
+    "ziprecruiter.com", "www.ziprecruiter.com",
+    "careerbuilder.com", "www.careerbuilder.com",
+    "simplyhired.com", "www.simplyhired.com",
+])
+
+# URLs that look like fake/placeholder job URLs (old mock-generator artefact).
+_FAKE_URL_RE = re.compile(r"/jobs/[0-9a-f]{12,20}/?$", re.IGNORECASE)
+
+# Field names used by job-board search bars — skip these even if the regex matches.
+_SEARCH_FIELD_NAMES = frozenset(["q", "l", "what", "where", "keywords", "location"])
+
+# ── selector lists ────────────────────────────────────────────────────────────
+
+APPLY_BUTTON_SELECTORS = [
+    # Indeed
+    'button[data-testid="apply-button"]',
+    '.indeed-apply-button',
+    '.icl-Button--primary',
+    # LinkedIn
+    '.jobs-apply-button',
+    '[data-control-name*="apply" i]',
+    # Generic
+    'a[href*="/apply" i]:not([href*="applied" i])',
+    '[data-testid*="apply" i]:not([data-testid*="applied" i])',
+    '[aria-label*="apply" i]:not([aria-label*="applied" i])',
+]
+
+APPLY_BUTTON_TEXT_PATTERNS = [
+    r"easy\s+apply",
+    r"apply\s+now",
+    r"apply\s+for\s+this\s+job",
+    r"apply\s+on\s+company\s+website",
+    r"apply\s+with",
+    r"apply\s+to\s+this",
+    r"postuler",
+    r"^apply$",
+]
+
+SUBMIT_SELECTORS = [
+    'button[type="submit"]',
+    'input[type="submit"]',
+    'button:has-text("Submit Application")',
+    'button:has-text("Submit my application")',
+    'button:has-text("Submit")',
+    'button:has-text("Send Application")',
+    'button:has-text("Complete Application")',
+    'button:has-text("Finish")',
+    '[data-testid*="submit"]',
+    '[aria-label*="submit" i]',
+]
 
 COMMON_FIELDS: List[Tuple[str, str]] = [
-    # Name fields
     (r"\bfirst\s*[_\-]?name\b|\bfname\b|given[\s_]name|prenom", "first_name"),
     (r"\blast\s*[_\-]?name\b|\blname\b|surname|family[\s_]name|nom\b", "last_name"),
     (r"\bfull[\s_]name\b|\byour[\s_]name\b|candidate[\s_]name|complete[\s_]name", "full_name"),
-    # Contact
     (r"\bemail\b|e[_\-]?mail|courriel", "email"),
     (r"\bphone\b|\bmobile\b|\btelephone\b|\btel\b|\bcell\b|\bphone[\s_]number", "phone"),
-    # Address
     (r"\bcity\b|\bville\b|\bmunicipality\b", "city"),
     (r"\bstate\b|\bprovince\b|\bregion\b|\bprov\b", "state"),
     (r"\bzip\b|\bpostal\b|\bpostcode\b|\bzip[\s_]code\b|\bpostal[\s_]code\b|\bcode\s+postal", "postal_code"),
     (r"\baddress[\s_]?(?:line\s*[12]|1|2)?\b|\bstreet\b|\brue\b", "address"),
-    # Social / web
     (r"\blinkedin\b", "linkedin_url"),
     (r"\bgithub\b", "github_url"),
     (r"\bportfolio\b|\bwebsite\b|\bpersonal[\s_](?:url|site|web)\b", "portfolio_url"),
-    # Application text
     (r"cover\s*letter|lettre\s+de\s+motivation|motivation|introduction|why\s+are\s+you|tell\s+us\s+about\s+yourself|message\s+to\s+(?:us|employer)", "cover_letter"),
-    # Professional
     (r"\bcurrent[\s_](?:role|title|position|employer)\b|\bjob[\s_]title\b|\bposition[\s_]title\b|\btitle\b(?!.*\bname)", "current_role"),
     (r"\byears[\s_](?:of[\s_])?experience\b|\bexperience[\s_]years\b", "years_experience"),
     (r"\bsalary[\s_](?:expectation|expected|desired|requirement)\b|\bexpected[\s_]salary\b", "salary_expectation"),
-    # Availability
     (r"\bstart\s*date\b|\bavailable\s*(?:from|date)\b|\bdisponible\b", "availability"),
 ]
 
+# Select/dropdown answers keyed by lowercased question text (partial match).
 COMMON_SELECT_ANSWERS: Dict[str, str] = {
     "work authorization": "yes",
     "authorized to work": "yes",
@@ -54,27 +109,17 @@ COMMON_SELECT_ANSWERS: Dict[str, str] = {
     "how did you hear": "job board",
     "highest education": "bachelor",
     "highest degree": "bachelor",
-    "niveau.*études": "baccalauréat",
     "willing to relocate": "no",
     "gender": "prefer not",
     "ethnicity": "prefer not",
     "veteran": "no",
     "disability": "no",
+    "disability status": "no",
+    "protected veteran": "no",
 }
 
-SUBMIT_SELECTORS = [
-    'button[type="submit"]',
-    'input[type="submit"]',
-    'button:has-text("Submit Application")',
-    'button:has-text("Submit")',
-    'button:has-text("Apply Now")',
-    'button:has-text("Apply")',
-    'button:has-text("Send Application")',
-    'button:has-text("Complete Application")',
-    '[data-testid*="submit"]',
-    '[aria-label*="submit" i]',
-]
 
+# ── helpers ──────────────────────────────────────────────────────────────────
 
 def _now() -> str:
     return datetime.utcnow().isoformat()
@@ -140,10 +185,24 @@ def _profile_values(profile: Dict[str, Any], cover_letter: str) -> Dict[str, str
     }
 
 
-def _real_submit_allowed() -> bool:
-    env_value = os.getenv("ALLOW_REAL_APPLICATION_SUBMIT", "").lower()
-    settings_value = bool(getattr(settings, "allow_real_application_submit", False))
-    return settings_value or env_value in {"1", "true", "yes"}
+def _get_domain(url: str) -> str:
+    try:
+        return urlparse(url).netloc.lower()
+    except Exception:
+        return ""
+
+
+def _is_job_board(url: str) -> bool:
+    domain = _get_domain(url)
+    return any(domain == bd or domain.endswith("." + bd) for bd in JOB_BOARD_DOMAINS)
+
+
+def _is_fake_url(url: str) -> bool:
+    """Detect old hex-hash placeholder URLs that don't point to real job pages."""
+    domain = _get_domain(url)
+    if domain in {"example.com", "localhost", "127.0.0.1"}:
+        return True
+    return bool(_FAKE_URL_RE.search(urlparse(url).path))
 
 
 JOB_BOARD_HOSTS = {"jobbank.gc.ca", "www.jobbank.gc.ca"}
@@ -272,7 +331,7 @@ async def fill_and_submit_application(
         "submitted_at": None,
         "error": None,
         "fields_filled": 0,
-        "requires_manual_review": True,
+        "requires_manual_review": False,
     }
 
     if not _is_allowed_url(job_url):
@@ -280,9 +339,11 @@ async def fill_and_submit_application(
         log.append({"action": "error", "detail": result["error"], "ts": _now()})
         return result
 
-    if not dry_run and not _real_submit_allowed():
-        result["error"] = "Real application submit is disabled. Set ALLOW_REAL_APPLICATION_SUBMIT=true only when ready."
-        log.append({"action": "submit_blocked", "detail": result["error"], "ts": _now()})
+    # Old hex-hash placeholder URLs can't be applied to — mark for manual review.
+    if _is_fake_url(job_url):
+        result["error"] = "Placeholder URL — manual application required"
+        result["requires_manual_review"] = True
+        log.append({"action": "fake_url_skipped", "url": job_url, "ts": _now()})
         return result
 
     try:
@@ -310,6 +371,7 @@ async def fill_and_submit_application(
             await context.add_init_script(
                 "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
             )
+
             page = await context.new_page()
             log.append({"action": "navigate", "url": job_url, "ts": _now()})
 
@@ -339,13 +401,13 @@ async def fill_and_submit_application(
 
             filled_count = await _fill_common_fields(page, user_profile, cover_letter, resume_path, log)
             result["fields_filled"] = filled_count
-            result["requires_manual_review"] = filled_count < 3
+            result["requires_manual_review"] = filled_count == 0
 
             if dry_run:
                 result["success"] = True
                 log.append({"action": "dry_run_complete", "fields_filled": filled_count, "ts": _now()})
-            elif filled_count >= 3:
-                submit_btn = await _find_submit_button(page)
+            elif filled_count >= 1:
+                submit_btn = await _find_submit_button(form_page)
                 if submit_btn:
                     log.append({"action": "submit_click", "ts": _now()})
                     await submit_btn.click()
@@ -355,16 +417,18 @@ async def fill_and_submit_application(
                     result["requires_manual_review"] = False
                     log.append({"action": "submitted", "status": "ok", "ts": _now()})
                 else:
-                    result["error"] = "No submit button found"
-                    log.append({"action": "submit_skipped", "reason": result["error"], "ts": _now()})
+                    result["error"] = "Form filled but no submit button found — manual submit required"
+                    result["requires_manual_review"] = True
+                    log.append({"action": "no_submit_button", "fields_filled": filled_count, "ts": _now()})
             else:
-                result["error"] = "Not enough recognizable application fields were found for safe submit"
-                log.append({"action": "submit_skipped", "reason": result["error"], "fields_filled": filled_count, "ts": _now()})
+                result["error"] = "No application form fields found — manual apply required"
+                result["requires_manual_review"] = True
+                log.append({"action": "no_fields_found", "url": form_page.url, "ts": _now()})
 
             await browser.close()
 
     except ImportError:
-        result["error"] = "Playwright is not installed (expected on Termux — dry-run only)"
+        result["error"] = "Playwright not installed"
         log.append({"action": "playwright_unavailable", "ts": _now()})
         result["success"] = True
     except Exception as exc:

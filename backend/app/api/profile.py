@@ -36,8 +36,10 @@ async def upload_resume(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if file.content_type not in ("application/pdf",):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+    # Validate by extension only — Android/iOS MIME types are unreliable
+    filename_lower = (file.filename or "").lower()
+    if not filename_lower.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Please upload a PDF file (.pdf extension required)")
 
     upload_dir = settings.upload_dir
     os.makedirs(upload_dir, exist_ok=True)

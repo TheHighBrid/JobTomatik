@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">JobTomatik</string>
+    <string name="title_activity_main">JobTomatik</string>
+    <string name="package_name">ca.jobtomatik.app</string>
+    <string name="custom_url_scheme">ca.jobtomatik.app</string>
+</resources>
