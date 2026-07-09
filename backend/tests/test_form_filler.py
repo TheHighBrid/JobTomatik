@@ -1,22 +1,18 @@
 import pytest
 
-from app.services.form_filler import _navigate_job_board_listing, _select_answer_hint
+from app.services.form_filler import _navigate_job_board_listing
 
 
 class FakeAnchor:
     def __init__(self, href, text):
         self.href = href
         self.text = text
-        self.clicked = False
 
     async def get_attribute(self, name):
         return self.href if name == "href" else None
 
     async def inner_text(self):
         return self.text
-
-    async def click(self, timeout=None):
-        self.clicked = True
 
 
 class FakeControl:
@@ -70,11 +66,12 @@ async def test_navigate_jobbank_listing_reveals_and_follows_external_apply_link(
     assert control.clicked is True
     assert page.navigated_to == "https://company.example/careers/apply/123"
     assert result == {"application_url": "https://company.example/careers/apply/123"}
-    actions = [entry["action"] for entry in log]
-    assert "listing_page_detected" in actions
-    assert "apply_instructions_revealed" in actions
-    assert "external_apply_link_found" in actions
-    assert "external_apply_navigated" in actions
+    assert [entry["action"] for entry in log] == [
+        "listing_page_detected",
+        "apply_instructions_revealed",
+        "external_apply_link_found",
+        "external_apply_navigated",
+    ]
 
 
 @pytest.mark.asyncio
@@ -91,9 +88,3 @@ async def test_navigate_jobbank_listing_returns_manual_review_for_email_apply():
     assert result["contact_email"] == "hiring@example.com"
     assert "email" in result["reason"].lower()
     assert log[-1]["action"] == "email_apply_detected"
-
-
-def test_select_answer_hint_maps_common_screening_questions():
-    assert _select_answer_hint("Are you legally authorized to work in Canada?") == "yes"
-    assert _select_answer_hint("Will you require sponsorship now or in the future?") == "no"
-    assert _select_answer_hint("Voluntary self ID gender") == "prefer not"

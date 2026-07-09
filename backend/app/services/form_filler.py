@@ -232,7 +232,14 @@ async def _navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[s
             continue
 
         log.append({"action": "external_apply_link_found", "url": target, "text": text[:120], "ts": _now()})
-        return await _open_external_apply_target(page, anchor, target, log)
+        try:
+            await page.goto(target, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_load_state("networkidle", timeout=10000)
+            log.append({"action": "external_apply_navigated", "url": page.url, "ts": _now()})
+            return {"application_url": page.url}
+        except Exception as exc:
+            log.append({"action": "external_apply_navigation_failed", "url": target, "detail": str(exc)[:200], "ts": _now()})
+            return {"application_url": target}
 
     page_text = await page.inner_text("body")
     email_match = re.search(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", page_text, flags=re.IGNORECASE)
@@ -247,49 +254,6 @@ async def _navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[s
 
     log.append({"action": "apply_target_not_found", "url": current_url, "ts": _now()})
     return {}
-
-
-async def _open_external_apply_target(page, anchor, target: str, log: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Open the employer apply target, including links that spawn a new tab."""
-    try:
-        async with page.expect_popup(timeout=5000) as popup_info:
-            await anchor.click(timeout=5000)
-        popup = await popup_info.value
-        await popup.wait_for_load_state("domcontentloaded", timeout=30000)
-        try:
-            await popup.wait_for_load_state("networkidle", timeout=10000)
-        except Exception:
-            pass
-        log.append({"action": "external_apply_popup_opened", "url": popup.url, "ts": _now()})
-        return {"application_url": popup.url, "page": popup}
-    except Exception:
-        pass
-
-    page_before_click = page.url
-    try:
-        await anchor.click(timeout=5000)
-        await page.wait_for_load_state("domcontentloaded", timeout=30000)
-        try:
-            await page.wait_for_load_state("networkidle", timeout=10000)
-        except Exception:
-            pass
-        if page.url != page_before_click:
-            log.append({"action": "external_apply_navigated", "url": page.url, "ts": _now()})
-            return {"application_url": page.url}
-    except Exception as exc:
-        log.append({"action": "external_apply_click_failed", "url": target, "detail": str(exc)[:200], "ts": _now()})
-
-    try:
-        await page.goto(target, wait_until="domcontentloaded", timeout=30000)
-        try:
-            await page.wait_for_load_state("networkidle", timeout=10000)
-        except Exception:
-            pass
-        log.append({"action": "external_apply_navigated", "url": page.url, "ts": _now()})
-        return {"application_url": page.url}
-    except Exception as exc:
-        log.append({"action": "external_apply_navigation_failed", "url": target, "detail": str(exc)[:200], "ts": _now()})
-        return {"application_url": target}
 
 
 async def fill_and_submit_application(
@@ -357,8 +321,6 @@ async def fill_and_submit_application(
 
             await asyncio.sleep(1.5)
             handoff = await _navigate_job_board_listing(page, log)
-            if handoff.get("page"):
-                page = handoff["page"]
             if handoff.get("application_url"):
                 result["application_url"] = handoff["application_url"]
             if handoff.get("contact_email"):
