@@ -25,18 +25,26 @@ JOB_BOARD_DOMAINS = frozenset([
     "indeed.com", "ca.indeed.com", "www.indeed.com",
     "glassdoor.com", "www.glassdoor.com",
     "linkedin.com", "www.linkedin.com",
+    # Job Bank Canada (English and French versions)
     "jobbank.gc.ca", "www.jobbank.gc.ca",
+    "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
     "monster.com", "www.monster.com",
     "ziprecruiter.com", "www.ziprecruiter.com",
     "careerbuilder.com", "www.careerbuilder.com",
     "simplyhired.com", "www.simplyhired.com",
+    "eluta.ca", "www.eluta.ca",
+    "workopolis.com", "www.workopolis.com",
 ])
 
 # URLs that look like fake/placeholder job URLs (old mock-generator artefact).
 _FAKE_URL_RE = re.compile(r"/jobs/[0-9a-f]{12,20}/?$", re.IGNORECASE)
 
 # Field names used by job-board search bars — skip these even if the regex matches.
-_SEARCH_FIELD_NAMES = frozenset(["q", "l", "what", "where", "keywords", "location"])
+_SEARCH_FIELD_NAMES = frozenset([
+    "q", "l", "what", "where", "keywords", "location",
+    # Job Bank Canada search bar field names (English + French)
+    "searchstring", "locationstring", "recherchestring", "localisationstring",
+])
 
 # ── selector lists ────────────────────────────────────────────────────────────
 
@@ -61,7 +69,10 @@ APPLY_BUTTON_TEXT_PATTERNS = [
     r"apply\s+on\s+company\s+website",
     r"apply\s+with",
     r"apply\s+to\s+this",
+    r"postuler\s+maintenant",
     r"postuler",
+    r"how\s+to\s+apply",
+    r"comment\s+postuler",
     r"^apply$",
 ]
 
