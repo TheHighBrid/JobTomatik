@@ -183,13 +183,13 @@ def daily_auto_search_all():
                     generate_cover_letter_task.delay(app_obj.id)
                     submit_application_task.apply_async(
                         args=[app_obj.id],
-                        kwargs={"dry_run": not settings.allow_real_application_submit},
+                        kwargs={"dry_run": False},
                         countdown=countdown,
                     )
                     countdown += 30
                 db.commit()
 
-        return {"searched_for": kicked, "live_submit_enabled": settings.allow_real_application_submit}
+        return {"searched_for": kicked}
     except Exception as e:
         logger.exception("daily_auto_search_all failed")
         db.rollback()

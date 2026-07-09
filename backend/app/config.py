@@ -24,10 +24,6 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     dev_mock_jobs: bool = False
 
-    # Safety gates.
-    allow_real_application_submit: bool = False
-    bulk_apply_max: int = 10
-
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

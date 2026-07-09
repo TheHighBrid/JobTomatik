@@ -68,14 +68,6 @@ def _manual_result(job: Job, dry_run: bool, reason: str, action: str = "manual_r
     }
 
 
-def _blocked_live_result(job: Job, dry_run: bool) -> Dict[str, Any]:
-    return _manual_result(
-        job,
-        dry_run,
-        "Live submission is disabled. Run Dry Run first, then set ALLOW_REAL_APPLICATION_SUBMIT=true only when you are ready.",
-        "live_submit_blocked",
-    )
-
 
 def _sendgrid_email(to_email: str, subject: str, body: str, resume_path: str = "") -> None:
     from sendgrid import SendGridAPIClient
@@ -198,13 +190,6 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
 
         if not job.url:
             result = _manual_result(job, dry_run, "No URL for job", "missing_url")
-            app.status = ApplicationStatus.pending
-            app.automation_log = result["log"]
-            db.commit()
-            return result
-
-        if not dry_run and not settings.allow_real_application_submit:
-            result = _blocked_live_result(job, dry_run)
             app.status = ApplicationStatus.pending
             app.automation_log = result["log"]
             db.commit()
