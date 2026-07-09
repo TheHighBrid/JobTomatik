@@ -10,8 +10,8 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.models.application import Application, ApplicationStatus
 from app.models.job import Job
-from app.models.user import User
 from app.models.notification import Notification, NotificationType
+from app.models.user import User
 from app.services.apply_resolver import resolve_application_method
 from app.services.cover_letter import generate_cover_letter
 from app.services.form_filler import fill_and_submit_application
@@ -21,7 +21,6 @@ settings = get_settings()
 
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
-    """Run async code reliably inside Celery worker processes."""
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -67,6 +66,15 @@ def _manual_result(job: Job, dry_run: bool, reason: str, action: str = "manual_r
         "fields_filled": 0,
         "requires_manual_review": True,
     }
+
+
+def _blocked_live_result(job: Job, dry_run: bool) -> Dict[str, Any]:
+    return _manual_result(
+        job,
+        dry_run,
+        "Live submission is disabled. Run Dry Run first, then set ALLOW_REAL_APPLICATION_SUBMIT=true only when you are ready.",
+        "live_submit_blocked",
+    )
 
 
 def _sendgrid_email(to_email: str, subject: str, body: str, resume_path: str = "") -> None:
@@ -142,16 +150,13 @@ def _email_application_result(app: Application, job: Job, user: User, dry_run: b
 def _ensure_application_method(job: Job) -> Dict[str, Any]:
     raw = dict(job.raw_data or {})
     method = raw.get("application_method")
-
     if method:
         return raw
 
     resolved = _run_async(resolve_application_method(job.url or ""))
     raw.update(resolved)
-
     if resolved.get("application_method") == "external_url" and resolved.get("selected_apply_url"):
         job.url = resolved["selected_apply_url"]
-
     job.raw_data = raw
     return raw
 
@@ -163,14 +168,12 @@ def generate_cover_letter_task(self, application_id: int):
         app = db.query(Application).filter(Application.id == application_id).first()
         if not app:
             return {"error": "Application not found"}
-
         job = db.query(Job).filter(Job.id == app.job_id).first()
         user = db.query(User).filter(User.id == app.user_id).first()
         if not job or not user:
             return {"error": "Missing job or user"}
 
-        letter = _run_async(generate_cover_letter(_job_dict(job), _profile_dict(user)))
-        app.cover_letter = letter
+        app.cover_letter = _run_async(generate_cover_letter(_job_dict(job), _profile_dict(user)))
         db.commit()
         return {"application_id": application_id, "generated": True}
     except Exception as e:
@@ -188,17 +191,24 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
         app = db.query(Application).filter(Application.id == application_id).first()
         if not app:
             return {"error": "Application not found"}
-
         job = db.query(Job).filter(Job.id == app.job_id).first()
         user = db.query(User).filter(User.id == app.user_id).first()
         if not job or not user:
             return {"error": "Missing job or user"}
 
         if not job.url:
+            result = _manual_result(job, dry_run, "No URL for job", "missing_url")
             app.status = ApplicationStatus.pending
-            app.automation_log = [{"action": "missing_url", "error": "No application URL", "ts": _now()}]
+            app.automation_log = result["log"]
             db.commit()
-            return {"success": False, "error": "No URL for job", "requires_manual_review": True}
+            return result
+
+        if not dry_run and not settings.allow_real_application_submit:
+            result = _blocked_live_result(job, dry_run)
+            app.status = ApplicationStatus.pending
+            app.automation_log = result["log"]
+            db.commit()
+            return result
 
         app.status = ApplicationStatus.applying
         db.commit()
@@ -239,13 +249,11 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
                 data={"job_id": job.id, "application_id": app.id, "method": method},
             ))
             db.commit()
-
             from app.tasks.followup import schedule_auto_followup
             auto_settings = user.automation_settings or {}
             if auto_settings.get("auto_followup", True):
                 days = int(auto_settings.get("auto_followup_days", 7))
                 schedule_auto_followup.apply_async(args=[application_id, days], countdown=5)
-
         elif result.get("success") and dry_run:
             app.status = ApplicationStatus.pending
         elif result.get("requires_manual_review"):
