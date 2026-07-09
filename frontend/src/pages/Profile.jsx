@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
@@ -53,6 +53,7 @@ const DEFAULT_PREFS = {
 export default function Profile() {
   const { updateUser } = useAuthStore()
   const qc = useQueryClient()
+  const fileInputRef = useRef(null)
 
   const [form, setForm] = useState(DEFAULT_FORM)
   const [prefs, setPrefs] = useState(DEFAULT_PREFS)
@@ -132,6 +133,8 @@ export default function Profile() {
   })
 
   const handleFile = useCallback((file) => {
+    // Always reset the hidden input so re-picking the same file fires onChange next time
+    if (fileInputRef.current) fileInputRef.current.value = ''
     if (!file) return
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       toast.error('Please select a PDF file (.pdf)')
@@ -231,27 +234,28 @@ export default function Profile() {
               <p className="text-xs text-gray-400 mt-1">or use the button below</p>
             </div>
             {/* Fallback plain file picker — more reliable on Android */}
-            <label className="block">
-              <span className="sr-only">Pick PDF file</span>
-              <input
-                type="file"
-                accept=".pdf,application/pdf,application/octet-stream"
-                className="hidden"
-                disabled={resumeMut.isPending}
-                onChange={(e) => handleFile(e.target.files?.[0])}
-              />
-              <button
-                type="button"
-                disabled={resumeMut.isPending}
-                onClick={(e) => e.currentTarget.previousElementSibling.click()}
-                className="btn-secondary w-full flex items-center justify-center gap-2 text-sm"
-              >
-                {resumeMut.isPending
-                  ? <><Loader2 className="w-4 h-4 animate-spin" />Uploading…</>
-                  : <><Upload className="w-4 h-4" />Browse & Upload PDF</>
-                }
-              </button>
-            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              disabled={resumeMut.isPending}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                handleFile(file)
+              }}
+            />
+            <button
+              type="button"
+              disabled={resumeMut.isPending}
+              onClick={() => fileInputRef.current?.click()}
+              className="btn-secondary w-full flex items-center justify-center gap-2 text-sm"
+            >
+              {resumeMut.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin" />Uploading…</>
+                : <><Upload className="w-4 h-4" />Browse & Upload PDF</>
+              }
+            </button>
           </div>
         )}
       </Section>

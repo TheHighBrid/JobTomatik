@@ -36,18 +36,10 @@ async def upload_resume(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Android and iOS often send PDFs as application/octet-stream — check by extension too
+    # Validate by extension only — Android/iOS MIME types are unreliable
     filename_lower = (file.filename or "").lower()
-    content_type = (file.content_type or "").lower()
-    is_pdf_by_type = content_type in {
-        "application/pdf", "application/x-pdf", "application/octet-stream",
-        "application/force-download", "binary/octet-stream", "",
-    }
-    is_pdf_by_name = filename_lower.endswith(".pdf")
-    if not (is_pdf_by_type or is_pdf_by_name):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
-    if not is_pdf_by_name:
-        raise HTTPException(status_code=400, detail="File must have a .pdf extension")
+    if not filename_lower.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Please upload a PDF file (.pdf extension required)")
 
     upload_dir = settings.upload_dir
     os.makedirs(upload_dir, exist_ok=True)
