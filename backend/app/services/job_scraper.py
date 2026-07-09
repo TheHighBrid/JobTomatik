@@ -293,8 +293,14 @@ async def scrape_indeed(
                     loc = location_el.get_text(strip=True) if location_el else (location or "")
                     salary_text = salary_el.get_text(strip=True) if salary_el else ""
                     href = link_el.get("href", "") if link_el else ""
-                    job_url = f"https://ca.indeed.com{href}" if href.startswith("/") else href
                     jk = card.get("data-jk") or (link_el.get("data-jk") if link_el else None)
+                    # Prefer viewjob URL so the form filler lands on a page with an Apply button
+                    if jk:
+                        job_url = f"https://ca.indeed.com/viewjob?jk={jk}"
+                    elif href:
+                        job_url = f"https://ca.indeed.com{href}" if href.startswith("/") else href
+                    else:
+                        job_url = ""
 
                     sal_lo, sal_hi = _parse_salary(salary_text, salary_min, salary_max)
 

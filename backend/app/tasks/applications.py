@@ -108,29 +108,34 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
         )
 
         app.automation_log = result.get("log", [])
-        if result.get("success"):
-            app.status = ApplicationStatus.pending if dry_run else ApplicationStatus.applied
-            if not dry_run:
-                app.applied_at = datetime.utcnow()
-                db.add(Notification(
-                    user_id=user.id,
-                    type=NotificationType.application_submitted,
-                    title=f"Applied to {job.title} at {job.company}",
-                    message="Your application was submitted successfully.",
-                    data={"job_id": job.id, "application_id": app.id},
-                ))
-                db.commit()
-                from app.tasks.followup import schedule_auto_followup
-                auto_settings = user.automation_settings or {}
-                if auto_settings.get("auto_followup", True):
-                    days = int(auto_settings.get("auto_followup_days", 7))
-                    schedule_auto_followup.apply_async(
-                        args=[application_id, days],
-                        countdown=5,
-                    )
+        if result.get("success") and not dry_run:
+            app.status = ApplicationStatus.applied
+            app.applied_at = datetime.utcnow()
+            db.add(Notification(
+                user_id=user.id,
+                type=NotificationType.application_submitted,
+                title=f"Applied to {job.title} at {job.company}",
+                message="Your application was submitted automatically.",
+                data={"job_id": job.id, "application_id": app.id},
+            ))
+            db.commit()
+            from app.tasks.followup import schedule_auto_followup
+            auto_settings = user.automation_settings or {}
+            if auto_settings.get("auto_followup", True):
+                days = int(auto_settings.get("auto_followup_days", 7))
+                schedule_auto_followup.apply_async(
+                    args=[application_id, days],
+                    countdown=5,
+                )
+        elif result.get("success") and dry_run:
+            app.status = ApplicationStatus.pending
+        elif result.get("requires_manual_review"):
+            # Form filler could not complete — leave as pending so user can apply manually
+            app.status = ApplicationStatus.pending
+            logger.info(f"Application {application_id} requires manual review: {result.get('error')}")
         else:
             app.status = ApplicationStatus.pending
-            logger.warning(f"Application {application_id} submission failed: {result.get('error')}")
+            logger.warning(f"Application {application_id} failed: {result.get('error')}")
 
         db.commit()
         return result
