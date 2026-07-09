@@ -1,9 +1,7 @@
 """
 Playwright-based form filler and application submitter.
 
-Dry-run mode fills recognized fields and uploads the resume, but never clicks a
-submit button. Real submission is hard-blocked unless explicitly enabled with
-ALLOW_REAL_APPLICATION_SUBMIT=true and the matching Settings flag.
+Dry-run mode fills recognized fields and uploads the resume but never clicks submit.
 """
 
 import asyncio
@@ -12,10 +10,6 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
-
-from app.config import get_settings
-
-settings = get_settings()
 
 COMMON_FIELDS: List[Tuple[str, str]] = [
     # Name fields
@@ -140,12 +134,6 @@ def _profile_values(profile: Dict[str, Any], cover_letter: str) -> Dict[str, str
     }
 
 
-def _real_submit_allowed() -> bool:
-    env_value = os.getenv("ALLOW_REAL_APPLICATION_SUBMIT", "").lower()
-    settings_value = bool(getattr(settings, "allow_real_application_submit", False))
-    return settings_value or env_value in {"1", "true", "yes"}
-
-
 async def fill_and_submit_application(
     job_url: str,
     user_profile: Dict[str, Any],
@@ -168,11 +156,6 @@ async def fill_and_submit_application(
     if not _is_allowed_url(job_url):
         result["error"] = "Invalid or unsupported job URL"
         log.append({"action": "error", "detail": result["error"], "ts": _now()})
-        return result
-
-    if not dry_run and not _real_submit_allowed():
-        result["error"] = "Real application submit is disabled. Set ALLOW_REAL_APPLICATION_SUBMIT=true only when ready."
-        log.append({"action": "submit_blocked", "detail": result["error"], "ts": _now()})
         return result
 
     try:
