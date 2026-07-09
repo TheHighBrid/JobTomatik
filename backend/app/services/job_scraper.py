@@ -1,9 +1,10 @@
 """
 Job scraper service.
 
-Real job boards can block automated access. By default, failures return no jobs
-instead of fake software-engineering postings. Local demo mock jobs are available
-only when DEV_MOCK_JOBS=true.
+The scraper now separates job discovery from application automation. It does not
+pretend listing pages are application forms. Job Bank postings are enriched into
+one of these methods: external_url, email, manual. LinkedIn/Indeed are kept as
+discovery-only unless a future connector provides a real application target.
 """
 
 import asyncio
@@ -18,6 +19,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.config import get_settings
+from app.services.apply_resolver import resolve_application_method
 
 settings = get_settings()
 
@@ -29,46 +31,14 @@ BANKING_COMPANIES = [
 ]
 
 MOCK_TITLES_BY_KW = {
-    "fraud": [
-        "Fraud Analyst",
-        "Bilingual Fraud Analyst",
-        "Fraud Prevention Specialist",
-        "Fraud Investigator",
-        "Transaction Monitoring Analyst",
-    ],
-    "aml": [
-        "AML Analyst",
-        "Anti-Money Laundering Investigator",
-        "Financial Crime Analyst",
-        "KYC Compliance Analyst",
-        "Enhanced Due Diligence Analyst",
-    ],
-    "kyc": [
-        "KYC Compliance Officer",
-        "Client Due Diligence Analyst",
-        "Account Review Analyst",
-        "Compliance Operations Analyst",
-    ],
-    "banking": [
-        "Banking Risk Analyst",
-        "Credit Risk Analyst",
-        "Client Resolution Specialist",
-        "Quality Assurance Analyst, Banking",
-        "Account Administration Officer",
-    ],
-    "default": [
-        "Fraud Analyst",
-        "KYC Compliance Analyst",
-        "AML Investigator",
-        "Risk Mitigation Specialist",
-        "Bilingual Banking Compliance Analyst",
-    ],
+    "fraud": ["Fraud Analyst", "Bilingual Fraud Analyst", "Fraud Prevention Specialist", "Fraud Investigator", "Transaction Monitoring Analyst"],
+    "aml": ["AML Analyst", "Anti-Money Laundering Investigator", "Financial Crime Analyst", "KYC Compliance Analyst", "Enhanced Due Diligence Analyst"],
+    "kyc": ["KYC Compliance Officer", "Client Due Diligence Analyst", "Account Review Analyst", "Compliance Operations Analyst"],
+    "banking": ["Banking Risk Analyst", "Credit Risk Analyst", "Client Resolution Specialist", "Quality Assurance Analyst, Banking", "Account Administration Officer"],
+    "default": ["Fraud Analyst", "KYC Compliance Analyst", "AML Investigator", "Risk Mitigation Specialist", "Bilingual Banking Compliance Analyst"],
 }
 
-MOCK_LOCATIONS = [
-    "Ottawa, ON", "Gatineau, QC", "Montreal, QC", "Toronto, ON",
-    "Remote, Canada", "Hybrid, Ottawa, ON",
-]
+MOCK_LOCATIONS = ["Ottawa, ON", "Gatineau, QC", "Montreal, QC", "Toronto, ON", "Remote, Canada", "Hybrid, Ottawa, ON"]
 
 MOCK_DESCRIPTIONS = [
     "We are seeking a detail-oriented {title} to support fraud prevention, account monitoring, compliance review, and client protection work. "
@@ -84,8 +54,24 @@ MOCK_DESCRIPTIONS = [
     "- Strong attention to detail and documentation skills\n"
     "- Bilingual English/French communication is an asset\n"
     "- Ability to handle confidential information professionally\n"
-    "- Strong proficiency in {skill}",
+    "- Strong proficiency in {skill}"
 ]
+
+
+def _headers() -> Dict[str, str]:
+    return {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-CA,en;q=0.9,fr-CA;q=0.8,fr;q=0.7",
+    }
+
+
+def _uid(source: str, company: str, title: str, url: str = "") -> str:
+    raw = f"{source}-{company}-{title}-{url or datetime.utcnow().date()}"
+    return hashlib.md5(raw.encode()).hexdigest()[:16]
 
 
 def _mock_salary(salary_min: Optional[int], salary_max: Optional[int]):
@@ -96,20 +82,7 @@ def _mock_salary(salary_min: Optional[int], salary_max: Optional[int]):
     return lo, hi
 
 
-def _uid(source: str, company: str, title: str, url: str = "") -> str:
-    raw = f"{source}-{company}-{title}-{url or datetime.utcnow().date()}"
-    return hashlib.md5(raw.encode()).hexdigest()[:16]
-
-
-def _build_mock_jobs(
-    keywords: str,
-    location: Optional[str],
-    salary_min: Optional[int],
-    salary_max: Optional[int],
-    job_type: Optional[str],
-    source: str,
-    count: int = 15,
-) -> List[Dict[str, Any]]:
+def _build_mock_jobs(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], source: str, count: int = 15) -> List[Dict[str, Any]]:
     kw_lower = keywords.lower()
     titles = next((v for k, v in MOCK_TITLES_BY_KW.items() if k in kw_lower), MOCK_TITLES_BY_KW["default"])
     jobs = []
@@ -132,283 +105,22 @@ def _build_mock_jobs(
             "description": desc,
             "requirements": f"Experience with {keywords}, fraud review, KYC, AML, banking compliance, case documentation",
             "url": url,
-            "source": source if source in {"linkedin", "indeed", "glassdoor", "manual"} else "manual",
+            "source": source if source in {"linkedin", "indeed", "glassdoor", "jobbank", "manual"} else "manual",
             "posted_at": (datetime.utcnow() - timedelta(days=random.randint(0, 14))).isoformat(),
+            "raw_data": {"application_method": "manual", "reason": "mock job"},
         })
     return jobs
 
 
-def _fallback_or_empty(
-    keywords: str,
-    location: Optional[str],
-    salary_min: Optional[int],
-    salary_max: Optional[int],
-    job_type: Optional[str],
-    source: str,
-    limit: int,
-) -> List[Dict[str, Any]]:
+def _fallback_or_empty(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], source: str, limit: int) -> List[Dict[str, Any]]:
     if getattr(settings, "dev_mock_jobs", False):
         return _build_mock_jobs(keywords, location, salary_min, salary_max, job_type, source, min(limit, 15))
     return []
 
 
-def _headers() -> Dict[str, str]:
-    return {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        ),
-        "Accept-Language": "en-CA,en;q=0.9,fr-CA;q=0.8,fr;q=0.7",
-    }
-
-
-async def scrape_jobbank(
-    keywords: str,
-    location: Optional[str],
-    salary_min: Optional[int],
-    salary_max: Optional[int],
-    job_type: Optional[str],
-    limit: int,
-) -> List[Dict[str, Any]]:
-    """Best-effort public Job Bank search scraper, focused on Canada."""
-    jobs: List[Dict[str, Any]] = []
-    search_url = (
-        "https://www.jobbank.gc.ca/jobsearch/jobsearch"
-        f"?searchstring={quote_plus(keywords)}"
-        f"&locationstring={quote_plus(location or 'Canada')}"
-    )
-
-    try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            resp = await client.get(search_url, headers=_headers())
-            if resp.status_code != 200:
-                raise ValueError(f"Job Bank returned {resp.status_code}")
-
-        soup = BeautifulSoup(resp.text, "lxml")
-        cards = (
-            soup.select("article")
-            or soup.select(".resultJobItem")
-            or soup.select("[data-job-id]")
-            or soup.select("li")
-        )
-
-        for card in cards:
-            if len(jobs) >= limit:
-                break
-
-            title_el = card.select_one("a, h3, h2")
-            if not title_el:
-                continue
-
-            title = title_el.get_text(" ", strip=True)
-            if not title or len(title) > 180:
-                continue
-
-            href = title_el.get("href", "")
-            if href and href.startswith("/"):
-                url = f"https://www.jobbank.gc.ca{href}"
-            elif href:
-                url = href
-            else:
-                url = search_url
-
-            text = card.get_text(" ", strip=True)
-            company = "Unknown"
-            location_text = location or "Canada"
-
-            for selector in [".business", ".employer", ".company", "[class*=employer]", "[class*=business]"]:
-                found = card.select_one(selector)
-                if found and found.get_text(strip=True):
-                    company = found.get_text(" ", strip=True)
-                    break
-
-            for selector in [".location", "[class*=location]", "[class*=city]"]:
-                found = card.select_one(selector)
-                if found and found.get_text(strip=True):
-                    location_text = found.get_text(" ", strip=True)
-                    break
-
-            sal_lo, sal_hi = _parse_salary(text, salary_min, salary_max)
-
-            jobs.append({
-                "external_id": _uid("jobbank", company, title, url),
-                "title": title,
-                "company": company,
-                "location": location_text,
-                "salary_min": sal_lo,
-                "salary_max": sal_hi,
-                "salary_currency": "CAD",
-                "job_type": job_type or "full_time",
-                "description": text[:2000],
-                "requirements": "",
-                "url": url,
-                "source": "manual",
-            })
-    except Exception:
-        return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "manual", limit)
-
-    return jobs
-
-
-async def scrape_indeed(
-    keywords: str,
-    location: Optional[str],
-    salary_min: Optional[int],
-    salary_max: Optional[int],
-    job_type: Optional[str],
-    limit: int,
-) -> List[Dict[str, Any]]:
-    jobs: List[Dict[str, Any]] = []
-    query_params = {
-        "q": keywords,
-        "l": location or "",
-        "limit": min(limit, 50),
-        "fromage": "14",
-    }
-    if salary_min:
-        query_params["salary"] = f"${salary_min}"
-
-    try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            resp = await client.get("https://ca.indeed.com/jobs", params=query_params, headers=_headers())
-            if resp.status_code != 200:
-                raise ValueError(f"Indeed returned {resp.status_code}")
-
-            soup = BeautifulSoup(resp.text, "html.parser")
-            cards = soup.select("div.job_seen_beacon") or soup.select("div[data-jk]")
-
-            for card in cards[:limit]:
-                try:
-                    title_el = card.select_one("h2.jobTitle span[title], h2.jobTitle a")
-                    company_el = card.select_one("span.companyName, [data-testid='company-name']")
-                    location_el = card.select_one("div.companyLocation, [data-testid='text-location']")
-                    salary_el = card.select_one("div.salary-snippet-container, [data-testid='attribute_snippet_testid']")
-                    link_el = card.select_one("h2.jobTitle a, a[data-jk]")
-
-                    title = title_el.get_text(strip=True) if title_el else ""
-                    if not title:
-                        continue
-                    company = company_el.get_text(strip=True) if company_el else "Unknown"
-                    loc = location_el.get_text(strip=True) if location_el else (location or "")
-                    salary_text = salary_el.get_text(strip=True) if salary_el else ""
-                    href = link_el.get("href", "") if link_el else ""
-                    jk = card.get("data-jk") or (link_el.get("data-jk") if link_el else None)
-                    # Prefer viewjob URL so the form filler lands on a page with an Apply button
-                    if jk:
-                        job_url = f"https://ca.indeed.com/viewjob?jk={jk}"
-                    elif href:
-                        job_url = f"https://ca.indeed.com{href}" if href.startswith("/") else href
-                    else:
-                        job_url = ""
-
-                    sal_lo, sal_hi = _parse_salary(salary_text, salary_min, salary_max)
-
-                    jobs.append({
-                        "external_id": jk or _uid("indeed", company, title, job_url),
-                        "title": title,
-                        "company": company,
-                        "location": loc,
-                        "salary_min": sal_lo,
-                        "salary_max": sal_hi,
-                        "salary_currency": "CAD",
-                        "job_type": job_type or "full_time",
-                        "description": "",
-                        "requirements": "",
-                        "url": job_url,
-                        "source": "indeed",
-                    })
-                except Exception:
-                    continue
-    except Exception:
-        return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "indeed", limit)
-
-    return jobs
-
-
-async def scrape_linkedin(
-    keywords: str,
-    location: Optional[str],
-    salary_min: Optional[int],
-    salary_max: Optional[int],
-    job_type: Optional[str],
-    limit: int,
-) -> List[Dict[str, Any]]:
-    jobs: List[Dict[str, Any]] = []
-    jt_map = {
-        "full_time": "F",
-        "part_time": "P",
-        "contract": "C",
-        "internship": "I",
-    }
-    params = {
-        "keywords": keywords,
-        "location": location or "Canada",
-        "f_JT": jt_map.get(job_type or "", ""),
-        "start": 0,
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            resp = await client.get("https://www.linkedin.com/jobs/search", params=params, headers=_headers())
-            if resp.status_code != 200:
-                raise ValueError(f"LinkedIn returned {resp.status_code}")
-
-            soup = BeautifulSoup(resp.text, "html.parser")
-            cards = soup.select("div.base-search-card") or soup.select("li.jobs-search-results__list-item")
-
-            for card in cards[:limit]:
-                try:
-                    title_el = card.select_one("h3.base-search-card__title, h3.job-result-card__title")
-                    company_el = card.select_one("h4.base-search-card__subtitle, a.job-result-card__subtitle-link")
-                    location_el = card.select_one("span.job-search-card__location")
-                    link_el = card.select_one("a.base-card__full-link, a.result-card__full-card-link")
-
-                    title = title_el.get_text(strip=True) if title_el else ""
-                    if not title:
-                        continue
-                    company = company_el.get_text(strip=True) if company_el else "Unknown"
-                    loc = location_el.get_text(strip=True) if location_el else (location or "")
-                    href = link_el.get("href", "") if link_el else ""
-
-                    jobs.append({
-                        "external_id": _uid("linkedin", company, title, href),
-                        "title": title,
-                        "company": company,
-                        "location": loc,
-                        "salary_min": salary_min,
-                        "salary_max": salary_max,
-                        "salary_currency": "CAD",
-                        "job_type": job_type or "full_time",
-                        "description": "",
-                        "requirements": "",
-                        "url": href,
-                        "source": "linkedin",
-                    })
-                except Exception:
-                    continue
-    except Exception:
-        return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "linkedin", limit)
-
-    return jobs
-
-
-async def scrape_glassdoor(
-    keywords: str,
-    location: Optional[str],
-    salary_min: Optional[int],
-    salary_max: Optional[int],
-    job_type: Optional[str],
-    limit: int,
-) -> List[Dict[str, Any]]:
-    # Glassdoor aggressively blocks scrapers. Do not invent jobs unless dev mocks are explicitly enabled.
-    return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "glassdoor", limit)
-
-
 def _parse_salary(text: str, fallback_min: Optional[int], fallback_max: Optional[int]):
     if not text:
         return fallback_min, fallback_max
-
     cleaned = text.replace(",", "").replace("$", "")
     matches = re.findall(r"(\d+(?:\.\d+)?)\s*([kK])?", cleaned)
     values: List[int] = []
@@ -416,10 +128,9 @@ def _parse_salary(text: str, fallback_min: Optional[int], fallback_max: Optional
         value = float(raw)
         if suffix.lower() == "k":
             value *= 1000
-        elif value < 1000 and ("hour" not in cleaned.lower()):
+        elif value < 1000 and "hour" not in cleaned.lower():
             value *= 1000
         values.append(int(value))
-
     yearly_values = [v for v in values if v >= 20000]
     if len(yearly_values) >= 2:
         return min(yearly_values), max(yearly_values)
@@ -428,9 +139,213 @@ def _parse_salary(text: str, fallback_min: Optional[int], fallback_max: Optional
     return fallback_min, fallback_max
 
 
+def _jobbank_url(href: str, search_url: str) -> str:
+    if not href:
+        return search_url
+    if href.startswith("/"):
+        return f"https://www.jobbank.gc.ca{href}"
+    return href
+
+
+def _looks_relevant(title: str, text: str, keywords: str) -> bool:
+    hay = f"{title} {text}".lower()
+    tokens = [t for t in re.split(r"[^a-z0-9]+", keywords.lower()) if len(t) >= 3]
+    if not tokens:
+        return True
+    return any(t in hay for t in tokens)
+
+
+async def scrape_jobbank(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    """Best-effort public Job Bank search scraper, enriched with application method."""
+    jobs: List[Dict[str, Any]] = []
+    search_url = (
+        "https://www.jobbank.gc.ca/jobsearch/jobsearch"
+        f"?searchstring={quote_plus(keywords)}"
+        f"&locationstring={quote_plus(location or 'Canada')}"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers=_headers()) as client:
+            resp = await client.get(search_url)
+            if resp.status_code != 200:
+                raise ValueError(f"Job Bank returned {resp.status_code}")
+
+            soup = BeautifulSoup(resp.text, "lxml")
+            cards = soup.select("article") or soup.select(".resultJobItem") or soup.select("[data-job-id]") or soup.select("li")
+
+            for card in cards:
+                if len(jobs) >= limit:
+                    break
+
+                title_el = card.select_one("a, h3, h2")
+                if not title_el:
+                    continue
+
+                title = title_el.get_text(" ", strip=True)
+                if not title or len(title) > 180:
+                    continue
+
+                href = title_el.get("href", "")
+                jobbank_listing_url = _jobbank_url(href, search_url)
+                text = card.get_text(" ", strip=True)
+
+                if not _looks_relevant(title, text, keywords):
+                    continue
+
+                company = "Unknown"
+                location_text = location or "Canada"
+                for selector in [".business", ".employer", ".company", "[class*=employer]", "[class*=business]"]:
+                    found = card.select_one(selector)
+                    if found and found.get_text(strip=True):
+                        company = found.get_text(" ", strip=True)
+                        break
+
+                for selector in [".location", "[class*=location]", "[class*=city]"]:
+                    found = card.select_one(selector)
+                    if found and found.get_text(strip=True):
+                        location_text = found.get_text(" ", strip=True)
+                        break
+
+                sal_lo, sal_hi = _parse_salary(text, salary_min, salary_max)
+                apply_info = await resolve_application_method(jobbank_listing_url, client=client)
+                method = apply_info.get("application_method", "manual")
+                selected_url = apply_info.get("selected_apply_url") if method == "external_url" else jobbank_listing_url
+
+                jobs.append({
+                    "external_id": _uid("jobbank", company, title, jobbank_listing_url),
+                    "title": title,
+                    "company": company,
+                    "location": location_text,
+                    "salary_min": sal_lo,
+                    "salary_max": sal_hi,
+                    "salary_currency": "CAD",
+                    "job_type": job_type or "full_time",
+                    "description": text[:2000],
+                    "requirements": "",
+                    "url": selected_url,
+                    "source": "jobbank",
+                    "posted_at": datetime.utcnow().isoformat(),
+                    "application_method": method,
+                    "raw_data": {
+                        **apply_info,
+                        "jobbank_original_url": jobbank_listing_url,
+                        "search_url": search_url,
+                    },
+                })
+    except Exception:
+        return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "jobbank", limit)
+
+    return jobs
+
+
+async def scrape_indeed(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    """Discovery-only. Indeed regularly blocks scraping and login-less auto-submit is unsafe."""
+    jobs: List[Dict[str, Any]] = []
+    query_params = {"q": keywords, "l": location or "", "limit": min(limit, 50), "fromage": "14"}
+    if salary_min:
+        query_params["salary"] = f"${salary_min}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=_headers()) as client:
+            resp = await client.get("https://ca.indeed.com/jobs", params=query_params)
+            if resp.status_code != 200:
+                raise ValueError(f"Indeed returned {resp.status_code}")
+            soup = BeautifulSoup(resp.text, "html.parser")
+            cards = soup.select("div.job_seen_beacon") or soup.select("div[data-jk]")
+            for card in cards[:limit]:
+                title_el = card.select_one("h2.jobTitle span[title], h2.jobTitle a")
+                company_el = card.select_one("span.companyName, [data-testid='company-name']")
+                location_el = card.select_one("div.companyLocation, [data-testid='text-location']")
+                salary_el = card.select_one("div.salary-snippet-container, [data-testid='attribute_snippet_testid']")
+                link_el = card.select_one("h2.jobTitle a, a[data-jk]")
+                title = title_el.get_text(strip=True) if title_el else ""
+                if not title:
+                    continue
+                company = company_el.get_text(strip=True) if company_el else "Unknown"
+                loc = location_el.get_text(strip=True) if location_el else (location or "")
+                salary_text = salary_el.get_text(strip=True) if salary_el else ""
+                jk = card.get("data-jk") or (link_el.get("data-jk") if link_el else None)
+                href = link_el.get("href", "") if link_el else ""
+                job_url = f"https://ca.indeed.com/viewjob?jk={jk}" if jk else (f"https://ca.indeed.com{href}" if href.startswith("/") else href)
+                sal_lo, sal_hi = _parse_salary(salary_text, salary_min, salary_max)
+                jobs.append({
+                    "external_id": jk or _uid("indeed", company, title, job_url),
+                    "title": title,
+                    "company": company,
+                    "location": loc,
+                    "salary_min": sal_lo,
+                    "salary_max": sal_hi,
+                    "salary_currency": "CAD",
+                    "job_type": job_type or "full_time",
+                    "description": "",
+                    "requirements": "",
+                    "url": job_url,
+                    "source": "indeed",
+                    "raw_data": {"application_method": "unsupported_job_board", "reason": "Indeed listing pages are discovery-only"},
+                })
+    except Exception:
+        return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "indeed", limit)
+
+    return jobs
+
+
+async def scrape_linkedin(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    """Discovery-only. LinkedIn apply usually requires login and is not safe for headless auto-submit."""
+    jobs: List[Dict[str, Any]] = []
+    jt_map = {"full_time": "F", "part_time": "P", "contract": "C", "internship": "I"}
+    params = {"keywords": keywords, "location": location or "Canada", "f_JT": jt_map.get(job_type or "", ""), "start": 0}
+
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=_headers()) as client:
+            resp = await client.get("https://www.linkedin.com/jobs/search", params=params)
+            if resp.status_code != 200:
+                raise ValueError(f"LinkedIn returned {resp.status_code}")
+            soup = BeautifulSoup(resp.text, "html.parser")
+            cards = soup.select("div.base-search-card") or soup.select("li.jobs-search-results__list-item")
+            for card in cards[:limit]:
+                title_el = card.select_one("h3.base-search-card__title, h3.job-result-card__title")
+                company_el = card.select_one("h4.base-search-card__subtitle, a.job-result-card__subtitle-link")
+                location_el = card.select_one("span.job-search-card__location")
+                link_el = card.select_one("a.base-card__full-link, a.result-card__full-card-link")
+                title = title_el.get_text(strip=True) if title_el else ""
+                if not title:
+                    continue
+                text = card.get_text(" ", strip=True)
+                if not _looks_relevant(title, text, keywords):
+                    continue
+                company = company_el.get_text(strip=True) if company_el else "Unknown"
+                loc = location_el.get_text(strip=True) if location_el else (location or "")
+                href = link_el.get("href", "") if link_el else ""
+                jobs.append({
+                    "external_id": _uid("linkedin", company, title, href),
+                    "title": title,
+                    "company": company,
+                    "location": loc,
+                    "salary_min": salary_min,
+                    "salary_max": salary_max,
+                    "salary_currency": "CAD",
+                    "job_type": job_type or "full_time",
+                    "description": text[:2000],
+                    "requirements": "",
+                    "url": href,
+                    "source": "linkedin",
+                    "raw_data": {"application_method": "unsupported_job_board", "reason": "LinkedIn listing pages are discovery-only"},
+                })
+    except Exception:
+        return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "linkedin", limit)
+
+    return jobs
+
+
+async def scrape_glassdoor(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    # Glassdoor aggressively blocks scrapers. Do not invent jobs unless dev mocks are explicitly enabled.
+    return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "glassdoor", limit)
+
+
 def _normalize_sources(sources: Optional[List[Any]]) -> List[str]:
+    # Default to Job Bank only because LinkedIn/Indeed are discovery-only and cause repeated manual-review loops.
     if not sources:
-        return ["jobbank", "linkedin", "indeed"]
+        return ["jobbank"]
     normalized = []
     for source in sources:
         value = getattr(source, "value", source)
@@ -438,15 +353,7 @@ def _normalize_sources(sources: Optional[List[Any]]) -> List[str]:
     return normalized
 
 
-async def search_jobs(
-    keywords: str,
-    location: Optional[str] = None,
-    salary_min: Optional[int] = None,
-    salary_max: Optional[int] = None,
-    job_type: Optional[str] = None,
-    sources: Optional[List[str]] = None,
-    limit: int = 50,
-) -> List[Dict[str, Any]]:
+async def search_jobs(keywords: str, location: Optional[str] = None, salary_min: Optional[int] = None, salary_max: Optional[int] = None, job_type: Optional[str] = None, sources: Optional[List[str]] = None, limit: int = 50) -> List[Dict[str, Any]]:
     normalized_sources = _normalize_sources(sources)
     per_source = max(5, min(25, limit // max(len(normalized_sources), 1) + 1))
 
@@ -470,9 +377,19 @@ async def search_jobs(
     unique: List[Dict[str, Any]] = []
     for job in all_jobs:
         eid = job.get("external_id") or _uid(job.get("source", "manual"), job.get("company", ""), job.get("title", ""), job.get("url", ""))
-        if eid not in seen:
-            seen.add(eid)
-            job["external_id"] = eid
-            unique.append(job)
+        if eid in seen:
+            continue
+        seen.add(eid)
+        job["external_id"] = eid
+        raw = dict(job.get("raw_data") or {})
+        if job.get("application_method") and "application_method" not in raw:
+            raw["application_method"] = job.get("application_method")
+        job["raw_data"] = raw
+        unique.append(job)
 
+    def _priority(job: Dict[str, Any]) -> int:
+        method = (job.get("raw_data") or {}).get("application_method")
+        return {"external_url": 0, "email": 1, "manual": 2, "unsupported_job_board": 3}.get(method, 4)
+
+    unique.sort(key=lambda job: (_priority(job), -float(job.get("salary_min") or 0)))
     return unique[:limit]
