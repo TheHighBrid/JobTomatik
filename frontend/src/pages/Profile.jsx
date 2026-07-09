@@ -131,15 +131,26 @@ export default function Profile() {
     },
   })
 
-  const onDrop = useCallback((acceptedFiles) => {
-    const file = acceptedFiles[0]
-    if (file) resumeMut.mutate(file)
+  const handleFile = useCallback((file) => {
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Please select a PDF file (.pdf)')
+      return
+    }
+    resumeMut.mutate(file)
   }, [resumeMut])
+
+  const onDrop = useCallback((accepted, rejected) => {
+    // Try accepted first, then rejected (Android sends wrong MIME so dropzone rejects them)
+    const file = accepted[0] ?? rejected[0]?.file
+    handleFile(file)
+  }, [handleFile])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'application/pdf': ['.pdf'] },
+    // No MIME type filter — Android/iOS send wrong types for PDFs
     maxFiles: 1,
+    noClick: false,
   })
 
   if (isLoading) {
@@ -198,24 +209,49 @@ export default function Profile() {
             </button>
           </div>
         ) : (
-          <div
-            {...getRootProps()}
-            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-              isDragActive
-                ? 'border-tomato-400 bg-tomato-50'
-                : 'border-gray-200 hover:border-tomato-300 hover:bg-gray-50'
-            }`}
-          >
-            <input {...getInputProps()} />
-            {resumeMut.isPending ? (
-              <Loader2 className="w-8 h-8 animate-spin text-tomato-500 mx-auto mb-2" />
-            ) : (
-              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-            )}
-            <p className="text-sm text-gray-600 font-medium">
-              {isDragActive ? 'Drop your resume here' : 'Drag & drop your resume (PDF)'}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">or click to browse</p>
+          <div className="space-y-3">
+            {/* Drag-drop zone */}
+            <div
+              {...getRootProps()}
+              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+                isDragActive
+                  ? 'border-tomato-400 bg-tomato-50'
+                  : 'border-gray-200 hover:border-tomato-300 hover:bg-gray-50'
+              }`}
+            >
+              <input {...getInputProps()} />
+              {resumeMut.isPending ? (
+                <Loader2 className="w-8 h-8 animate-spin text-tomato-500 mx-auto mb-2" />
+              ) : (
+                <Upload className="w-7 h-7 text-gray-400 mx-auto mb-2" />
+              )}
+              <p className="text-sm text-gray-600 font-medium">
+                {isDragActive ? 'Drop your PDF here' : 'Drag & drop your resume PDF'}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">or use the button below</p>
+            </div>
+            {/* Fallback plain file picker — more reliable on Android */}
+            <label className="block">
+              <span className="sr-only">Pick PDF file</span>
+              <input
+                type="file"
+                accept=".pdf,application/pdf,application/octet-stream"
+                className="hidden"
+                disabled={resumeMut.isPending}
+                onChange={(e) => handleFile(e.target.files?.[0])}
+              />
+              <button
+                type="button"
+                disabled={resumeMut.isPending}
+                onClick={(e) => e.currentTarget.previousElementSibling.click()}
+                className="btn-secondary w-full flex items-center justify-center gap-2 text-sm"
+              >
+                {resumeMut.isPending
+                  ? <><Loader2 className="w-4 h-4 animate-spin" />Uploading…</>
+                  : <><Upload className="w-4 h-4" />Browse & Upload PDF</>
+                }
+              </button>
+            </label>
           </div>
         )}
       </Section>
