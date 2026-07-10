@@ -62,6 +62,7 @@ UNSUPPORTED_JOB_BOARDS = (
 
 SKIP_DOMAINS = (
     "jobbank.gc.ca",
+    "guichetemplois.gc.ca",
     "canada.ca",
     "facebook.com",
     "twitter.com",
@@ -202,7 +203,9 @@ async def resolve_application_method(job_url: str, client: Optional[httpx.AsyncC
             "jobbank_original_url": job_url,
         }
 
-    if is_probably_ats_or_company_apply_url(job_url) and "jobbank.gc.ca" not in _domain(job_url):
+    _dom = _domain(job_url)
+    _job_bank_domains = ("jobbank.gc.ca", "guichetemplois.gc.ca")
+    if is_probably_ats_or_company_apply_url(job_url) and not any(d in _dom for d in _job_bank_domains):
         return {
             "application_method": "external_url",
             "selected_apply_url": job_url,

@@ -38,6 +38,11 @@ backend/uploads/
 *.log
 logs/
 
+# Release artifacts and signing keys — never commit these
+*.apk
+*.jks
+*.keystore
+
 # Capacitor Android — machine-specific and generated files
 frontend/android/local.properties
 frontend/android/.gradle/

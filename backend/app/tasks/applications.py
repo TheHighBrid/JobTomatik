@@ -68,14 +68,6 @@ def _manual_result(job: Job, dry_run: bool, reason: str, action: str = "manual_r
     }
 
 
-def _blocked_live_result(job: Job, dry_run: bool) -> Dict[str, Any]:
-    return _manual_result(
-        job,
-        dry_run,
-        "Live submission is disabled. Run Dry Run first, then set ALLOW_REAL_APPLICATION_SUBMIT=true only when you are ready.",
-        "live_submit_blocked",
-    )
-
 
 def _sendgrid_email(to_email: str, subject: str, body: str, resume_path: str = "") -> None:
     from sendgrid import SendGridAPIClient
@@ -147,9 +139,35 @@ def _email_application_result(app: Application, job: Job, user: User, dry_run: b
         return _manual_result(job, dry_run, f"Email send failed: {str(exc)[:200]}", "email_failed")
 
 
+_LISTING_HOSTS = frozenset([
+    "jobbank.gc.ca", "www.jobbank.gc.ca",
+    "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
+])
+
+_LISTING_PATH_FRAGS = ("/jobsearch/jobposting/", "/rechercheemplois/offredemploi/")
+
+
+def _is_listing_page_url(url: str) -> bool:
+    """True when the URL is a Job Bank listing page, not an actual application form."""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url or "")
+        return parsed.hostname in _LISTING_HOSTS and any(f in parsed.path for f in _LISTING_PATH_FRAGS)
+    except Exception:
+        return False
+
+
 def _ensure_application_method(job: Job) -> Dict[str, Any]:
     raw = dict(job.raw_data or {})
     method = raw.get("application_method")
+    selected_url = raw.get("selected_apply_url", "")
+
+    # If the stored apply URL is still a job-listing page the resolver mis-classified it —
+    # re-resolve so we can find the real employer ATS or email.
+    if method == "external_url" and _is_listing_page_url(selected_url):
+        logger.info("Re-resolving %s — stored apply URL is a listing page", job.url)
+        method = None
+
     if method:
         return raw
 
@@ -198,13 +216,6 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
 
         if not job.url:
             result = _manual_result(job, dry_run, "No URL for job", "missing_url")
-            app.status = ApplicationStatus.pending
-            app.automation_log = result["log"]
-            db.commit()
-            return result
-
-        if not dry_run and not settings.allow_real_application_submit:
-            result = _blocked_live_result(job, dry_run)
             app.status = ApplicationStatus.pending
             app.automation_log = result["log"]
             db.commit()

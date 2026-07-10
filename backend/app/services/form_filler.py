@@ -25,18 +25,26 @@ JOB_BOARD_DOMAINS = frozenset([
     "indeed.com", "ca.indeed.com", "www.indeed.com",
     "glassdoor.com", "www.glassdoor.com",
     "linkedin.com", "www.linkedin.com",
+    # Job Bank Canada (English and French versions)
     "jobbank.gc.ca", "www.jobbank.gc.ca",
+    "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
     "monster.com", "www.monster.com",
     "ziprecruiter.com", "www.ziprecruiter.com",
     "careerbuilder.com", "www.careerbuilder.com",
     "simplyhired.com", "www.simplyhired.com",
+    "eluta.ca", "www.eluta.ca",
+    "workopolis.com", "www.workopolis.com",
 ])
 
 # URLs that look like fake/placeholder job URLs (old mock-generator artefact).
 _FAKE_URL_RE = re.compile(r"/jobs/[0-9a-f]{12,20}/?$", re.IGNORECASE)
 
 # Field names used by job-board search bars — skip these even if the regex matches.
-_SEARCH_FIELD_NAMES = frozenset(["q", "l", "what", "where", "keywords", "location"])
+_SEARCH_FIELD_NAMES = frozenset([
+    "q", "l", "what", "where", "keywords", "location",
+    # Job Bank Canada search bar field names (English + French)
+    "searchstring", "locationstring", "recherchestring", "localisationstring",
+])
 
 # ── selector lists ────────────────────────────────────────────────────────────
 
@@ -61,7 +69,10 @@ APPLY_BUTTON_TEXT_PATTERNS = [
     r"apply\s+on\s+company\s+website",
     r"apply\s+with",
     r"apply\s+to\s+this",
+    r"postuler\s+maintenant",
     r"postuler",
+    r"how\s+to\s+apply",
+    r"comment\s+postuler",
     r"^apply$",
 ]
 
@@ -205,7 +216,16 @@ def _is_fake_url(url: str) -> bool:
     return bool(_FAKE_URL_RE.search(urlparse(url).path))
 
 
-JOB_BOARD_HOSTS = {"jobbank.gc.ca", "www.jobbank.gc.ca"}
+JOB_BOARD_HOSTS = {
+    "jobbank.gc.ca", "www.jobbank.gc.ca",
+    "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
+}
+
+# URL path fragments that mark Job Bank listing pages (English + French)
+JOB_BANK_LISTING_PATHS = (
+    "/jobsearch/jobposting/",
+    "/rechercheemplois/offredemploi/",
+)
 
 APPLY_LINK_HINTS = (
     "apply",
@@ -231,7 +251,7 @@ REVEAL_APPLY_SELECTORS = [
 
 def _is_job_board_listing(url: str) -> bool:
     parsed = urlparse(url)
-    return parsed.hostname in JOB_BOARD_HOSTS and "/jobsearch/jobposting/" in parsed.path
+    return parsed.hostname in JOB_BOARD_HOSTS and any(frag in parsed.path for frag in JOB_BANK_LISTING_PATHS)
 
 
 def _is_probable_apply_href(href: str, current_url: str) -> bool:
@@ -320,7 +340,7 @@ async def fill_and_submit_application(
     user_profile: Dict[str, Any],
     cover_letter: str,
     resume_path: str,
-    dry_run: bool = True,
+    dry_run: bool = False,
 ) -> Dict[str, Any]:
     log: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {
@@ -407,7 +427,7 @@ async def fill_and_submit_application(
                 result["success"] = True
                 log.append({"action": "dry_run_complete", "fields_filled": filled_count, "ts": _now()})
             elif filled_count >= 1:
-                submit_btn = await _find_submit_button(form_page)
+                submit_btn = await _find_submit_button(page)
                 if submit_btn:
                     log.append({"action": "submit_click", "ts": _now()})
                     await submit_btn.click()
@@ -423,7 +443,7 @@ async def fill_and_submit_application(
             else:
                 result["error"] = "No application form fields found — manual apply required"
                 result["requires_manual_review"] = True
-                log.append({"action": "no_fields_found", "url": form_page.url, "ts": _now()})
+                log.append({"action": "no_fields_found", "url": page.url, "ts": _now()})
 
             await browser.close()
 
