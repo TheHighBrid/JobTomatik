@@ -139,12 +139,24 @@ def _parse_salary(text: str, fallback_min: Optional[int], fallback_max: Optional
     return fallback_min, fallback_max
 
 
-def _jobbank_url(href: str, search_url: str) -> str:
-    if not href:
-        return search_url
+def _jobbank_url(href: str) -> Optional[str]:
+    """Return an absolute Job Bank posting URL, or None if href is missing/invalid."""
+    if not href or href.startswith("?") or href.startswith("#"):
+        return None
     if href.startswith("/"):
-        return f"https://www.jobbank.gc.ca{href}"
-    return href
+        url = f"https://www.jobbank.gc.ca{href}"
+        # Must be an individual posting, not the search results page
+        if "/jobposting/" in url or "/offredemploi/" in url:
+            return url
+        return None
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(href)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            return href
+    except Exception:
+        pass
+    return None
 
 
 def _looks_relevant(title: str, text: str, keywords: str) -> bool:
@@ -186,7 +198,9 @@ async def scrape_jobbank(keywords: str, location: Optional[str], salary_min: Opt
                     continue
 
                 href = title_el.get("href", "")
-                jobbank_listing_url = _jobbank_url(href, search_url)
+                jobbank_listing_url = _jobbank_url(href)
+                if not jobbank_listing_url:
+                    continue
                 text = card.get_text(" ", strip=True)
 
                 if not _looks_relevant(title, text, keywords):
