@@ -145,7 +145,7 @@ def daily_auto_search_all():
                     "keywords": keywords,
                     "location": location,
                     "salary_min": prefs.get("min_salary"),
-                    "sources": ["jobbank"],
+                    "sources": ["jobbank", "linkedin", "indeed"],
                     "limit": 50,
                 },
             )

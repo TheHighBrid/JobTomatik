@@ -357,9 +357,8 @@ async def scrape_glassdoor(keywords: str, location: Optional[str], salary_min: O
 
 
 def _normalize_sources(sources: Optional[List[Any]]) -> List[str]:
-    # Default to Job Bank only because LinkedIn/Indeed are discovery-only and cause repeated manual-review loops.
     if not sources:
-        return ["jobbank"]
+        return ["jobbank", "linkedin", "indeed"]
     normalized = []
     for source in sources:
         value = getattr(source, "value", source)
