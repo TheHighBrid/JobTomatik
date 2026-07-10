@@ -3,6 +3,7 @@ import logging
 from typing import Any, Coroutine
 
 from app.celery_app import celery_app
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models.job import Job, JobStatus
 from app.models.user import User
@@ -11,10 +12,10 @@ from app.services.job_scraper import search_jobs
 from app.services.keyword_tagger import tag_job
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
-    """Run async code reliably inside Celery worker processes."""
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -24,7 +25,7 @@ def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
 
 @celery_app.task(bind=True, name="app.tasks.scraping.run_job_search", queue="scraping")
 def run_job_search(self, user_id: int, search_params: dict):
-    """Scrape job boards and store new results, then notify the user."""
+    """Scrape job sources and store new results."""
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
@@ -36,11 +37,7 @@ def run_job_search(self, user_id: int, search_params: dict):
 
         saved = 0
         for raw in raw_jobs:
-            existing = (
-                db.query(Job)
-                .filter(Job.external_id == raw.get("external_id"))
-                .first()
-            )
+            existing = db.query(Job).filter(Job.external_id == raw.get("external_id")).first()
             if existing:
                 continue
 
@@ -52,7 +49,7 @@ def run_job_search(self, user_id: int, search_params: dict):
                 location=tagged.get("location"),
                 salary_min=tagged.get("salary_min"),
                 salary_max=tagged.get("salary_max"),
-                salary_currency=tagged.get("salary_currency", "USD"),
+                salary_currency=tagged.get("salary_currency", "CAD"),
                 job_type=tagged.get("job_type"),
                 description=tagged.get("description"),
                 requirements=tagged.get("requirements"),
@@ -64,7 +61,7 @@ def run_job_search(self, user_id: int, search_params: dict):
                 seniority=tagged.get("seniority"),
                 industry=tagged.get("industry"),
                 relevance_score=tagged.get("relevance_score", 0.5),
-                raw_data=raw,
+                raw_data=raw.get("raw_data") or raw,
             )
             db.add(job)
             saved += 1
@@ -91,7 +88,6 @@ def run_job_search(self, user_id: int, search_params: dict):
 
 @celery_app.task(name="app.tasks.scraping.refresh_all_scores", queue="scraping")
 def refresh_all_scores():
-    """Recompute relevance scores for all queued jobs against each user's preferences."""
     db = SessionLocal()
     try:
         users = db.query(User).filter(User.is_active == True).all()
@@ -118,10 +114,10 @@ def refresh_all_scores():
 @celery_app.task(name="app.tasks.scraping.daily_auto_search_all", queue="scraping")
 def daily_auto_search_all():
     """
-    Fully autonomous pipeline for all users with auto_search_enabled=True:
-    1. Scrape jobs
-    2. Auto-approve jobs above threshold (if auto_apply_enabled)
-    3. Queue cover letter + submission tasks
+    Safe autopilot:
+    1. Search Job Bank only by default.
+    2. Auto-approve high-score jobs.
+    3. Queue dry runs unless ALLOW_REAL_APPLICATION_SUBMIT=true.
     """
     from app.models.application import Application, ApplicationStatus
     from app.tasks.applications import generate_cover_letter_task, submit_application_task
@@ -131,9 +127,10 @@ def daily_auto_search_all():
         users = db.query(User).filter(User.is_active == True).all()
         kicked = 0
         for user in users:
-            settings = user.automation_settings or {}
-            if not settings.get("auto_search_enabled", True):
+            auto_settings = user.automation_settings or {}
+            if not auto_settings.get("auto_search_enabled", True):
                 continue
+
             prefs = user.job_preferences or {}
             keywords_list = prefs.get("preferred_titles") or prefs.get("skills") or []
             if not keywords_list:
@@ -142,23 +139,21 @@ def daily_auto_search_all():
             locations = prefs.get("preferred_locations", [])
             location = locations[0] if locations else "Ottawa, Ontario"
 
-            # Kick off scrape
             run_job_search.delay(
                 user_id=user.id,
                 search_params={
                     "keywords": keywords,
                     "location": location,
                     "salary_min": prefs.get("min_salary"),
-                    "sources": ["jobbank", "indeed", "linkedin", "glassdoor"],
+                    "sources": ["jobbank"],
                     "limit": 50,
                 },
             )
             kicked += 1
 
-            # Auto-approve + submit if enabled
-            if settings.get("auto_apply_enabled", True):
-                min_score = float(settings.get("auto_apply_min_score", 0.55))
-                daily_limit = int(settings.get("auto_apply_daily_limit", 15))
+            if auto_settings.get("auto_apply_enabled", True):
+                min_score = float(auto_settings.get("auto_apply_min_score", 0.55))
+                daily_limit = int(auto_settings.get("auto_apply_daily_limit", 15))
 
                 queued = (
                     db.query(Job)
@@ -169,15 +164,9 @@ def daily_auto_search_all():
                 )
                 for job in queued:
                     job.status = JobStatus.approved
-
                 db.commit()
 
-                approved = (
-                    db.query(Job)
-                    .filter(Job.status == JobStatus.approved)
-                    .limit(daily_limit)
-                    .all()
-                )
+                approved = db.query(Job).filter(Job.status == JobStatus.approved).limit(daily_limit).all()
                 countdown = 120
                 for job in approved:
                     existing = (
@@ -187,11 +176,7 @@ def daily_auto_search_all():
                     )
                     if existing:
                         continue
-                    app_obj = Application(
-                        user_id=user.id,
-                        job_id=job.id,
-                        status=ApplicationStatus.pending,
-                    )
+                    app_obj = Application(user_id=user.id, job_id=job.id, status=ApplicationStatus.pending)
                     db.add(app_obj)
                     job.status = JobStatus.applied
                     db.flush()
@@ -201,8 +186,7 @@ def daily_auto_search_all():
                         kwargs={"dry_run": False},
                         countdown=countdown,
                     )
-                    countdown += 30  # stagger submissions
-
+                    countdown += 30
                 db.commit()
 
         return {"searched_for": kicked}

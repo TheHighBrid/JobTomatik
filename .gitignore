@@ -38,6 +38,19 @@ backend/uploads/
 *.log
 logs/
 
+# Release artifacts and signing keys — never commit these
+*.apk
+*.jks
+*.keystore
+
+# Capacitor Android — machine-specific and generated files
+frontend/android/local.properties
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/build/
+frontend/android/capacitor-cordova-android-plugins/build/
+frontend/android/**/*.apk
+
 # OS/editor noise
 .DS_Store
 .vscode/
