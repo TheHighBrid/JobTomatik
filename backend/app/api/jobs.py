@@ -6,10 +6,62 @@ from app.auth import get_current_user
 from app.models.user import User
 from app.models.job import Job, JobStatus
 from app.models.application import Application
+from app.models.notification import Notification, NotificationType
 from app.schemas.job import JobOut, JobSearch, JobListOut
+from app.services.job_scraper import search_jobs
+from app.services.keyword_tagger import tag_job
 from app.tasks.scraping import run_job_search
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+def _save_search_results(db: Session, user: User, raw_jobs: List[dict], keywords: str) -> int:
+    saved = 0
+    prefs = user.job_preferences or {}
+    for raw in raw_jobs:
+        existing = (
+            db.query(Job)
+            .filter(Job.external_id == raw.get("external_id"))
+            .first()
+        )
+        if existing:
+            continue
+
+        tagged = tag_job(raw, prefs)
+        job = Job(
+            external_id=tagged.get("external_id"),
+            title=tagged["title"],
+            company=tagged["company"],
+            location=tagged.get("location"),
+            salary_min=tagged.get("salary_min"),
+            salary_max=tagged.get("salary_max"),
+            salary_currency=tagged.get("salary_currency", "USD"),
+            job_type=tagged.get("job_type"),
+            description=tagged.get("description"),
+            requirements=tagged.get("requirements"),
+            url=tagged.get("url"),
+            source=tagged.get("source"),
+            status=JobStatus.queued,
+            tags=tagged.get("tags", []),
+            skills=tagged.get("skills", []),
+            seniority=tagged.get("seniority"),
+            industry=tagged.get("industry"),
+            relevance_score=tagged.get("relevance_score", 0.5),
+            raw_data=raw,
+        )
+        db.add(job)
+        saved += 1
+
+    if saved > 0:
+        db.add(Notification(
+            user_id=user.id,
+            type=NotificationType.new_match,
+            title=f"{saved} new job matches found",
+            message=f"We found {saved} new jobs matching your search for \"{keywords}\".",
+            data={"count": saved, "keywords": keywords},
+        ))
+
+    return saved
 
 
 @router.post("/search", response_model=dict)
@@ -217,17 +269,20 @@ async def run_autopilot(
     locations = prefs.get("preferred_locations", [])
     location = locations[0] if locations else "Ottawa, Ontario"
 
-    # Step 1: kick off search
-    search_task = run_job_search.delay(
-        user_id=current_user.id,
-        search_params={
-            "keywords": keywords,
-            "location": location,
-            "salary_min": prefs.get("min_salary"),
-            "sources": ["jobbank", "indeed", "linkedin", "glassdoor"],
-            "limit": 50,
-        },
-    )
+    # Step 1: run the search now so this autopilot call can approve and submit
+    # the jobs it just found. Queuing the search and immediately querying the DB
+    # left fresh autopilot runs with zero applications because the Celery search
+    # had not finished yet.
+    search_params = {
+        "keywords": keywords,
+        "location": location,
+        "salary_min": prefs.get("min_salary"),
+        "sources": ["jobbank", "indeed", "linkedin", "glassdoor"],
+        "limit": 50,
+    }
+    raw_jobs = await search_jobs(**search_params)
+    saved_jobs = _save_search_results(db, current_user, raw_jobs, keywords)
+    db.commit()
 
     # Step 2: auto-approve all queued jobs above threshold
     queued_jobs = (
@@ -280,7 +335,9 @@ async def run_autopilot(
     db.commit()
 
     return {
-        "search_task_id": search_task.id,
+        "search_task_id": None,
+        "jobs_found": len(raw_jobs),
+        "jobs_saved": saved_jobs,
         "auto_approved": auto_approved,
         "applications_queued": applied,
         "applications_skipped": skipped,

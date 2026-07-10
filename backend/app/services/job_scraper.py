@@ -243,7 +243,7 @@ async def scrape_jobbank(
                 "description": text[:2000],
                 "requirements": "",
                 "url": url,
-                "source": "manual",
+                "source": "jobbank",
             })
     except Exception:
         return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "manual", limit)

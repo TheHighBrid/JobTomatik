@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     rapidapi_key: str = ""
     upload_dir: str = "uploads"
     dev_mock_jobs: bool = False
-    allow_real_application_submit: bool = False
+    allow_real_application_submit: bool = True
+    bulk_apply_max: int = 100
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
