@@ -335,6 +335,132 @@ async def _navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[s
     return {}
 
 
+JOB_BOARD_HOSTS = {"jobbank.gc.ca", "www.jobbank.gc.ca"}
+
+APPLY_LINK_HINTS = (
+    "apply",
+    "application",
+    "career",
+    "careers",
+    "recruit",
+    "mailto:",
+)
+
+REVEAL_APPLY_SELECTORS = [
+    'button:has-text("Show how to apply")',
+    'a:has-text("Show how to apply")',
+    'button:has-text("How to apply")',
+    'a:has-text("How to apply")',
+    'button:has-text("Apply now")',
+    'a:has-text("Apply now")',
+    '[aria-controls*="apply" i]',
+    '[data-cy*="apply" i]',
+    '[id*="apply" i]',
+]
+
+
+def _is_job_board_listing(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.hostname in JOB_BOARD_HOSTS and "/jobsearch/jobposting/" in parsed.path
+
+
+def _is_probable_apply_href(href: str, current_url: str) -> bool:
+    lowered = href.lower()
+    if lowered.startswith("mailto:"):
+        return True
+    if not any(hint in lowered for hint in APPLY_LINK_HINTS):
+        return False
+    parsed = urlparse(urljoin(current_url, href))
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+async def _navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Move from an aggregator listing, such as Job Bank, to the real apply target.
+
+    Job Bank search results store the employer's instructions behind a
+    "Show how to apply" section. Treating that page itself as the application
+    form leaves the automation stuck on the listing.
+    """
+    current_url = page.url
+    if not _is_job_board_listing(current_url):
+        return {}
+
+    log.append({"action": "listing_page_detected", "url": current_url, "ts": _now()})
+
+    for selector in REVEAL_APPLY_SELECTORS:
+        try:
+            control = await page.query_selector(selector)
+            if control:
+                await control.click(timeout=5000)
+                await page.wait_for_load_state("networkidle", timeout=5000)
+                log.append({"action": "apply_instructions_revealed", "selector": selector, "ts": _now()})
+                break
+        except Exception as exc:
+            log.append({"action": "apply_reveal_skipped", "selector": selector, "detail": str(exc)[:160], "ts": _now()})
+
+    await page.wait_for_timeout(1000)
+
+    anchors = await page.query_selector_all("a[href]")
+    for anchor in anchors:
+        href = await anchor.get_attribute("href") or ""
+        text = _normalize_text(await anchor.inner_text())
+        if not _is_probable_apply_href(href, current_url) and not any(hint in text for hint in APPLY_LINK_HINTS):
+            continue
+
+        target = urljoin(current_url, href)
+        if target.startswith("mailto:"):
+            email = target.removeprefix("mailto:").split("?", 1)[0]
+            log.append({"action": "email_apply_detected", "email": email, "ts": _now()})
+            return {
+                "manual_review_only": True,
+                "contact_email": email,
+                "reason": "Employer accepts applications by email; review and send manually.",
+            }
+
+        if urlparse(target).netloc in JOB_BOARD_HOSTS:
+            continue
+
+        log.append({"action": "external_apply_link_found", "url": target, "text": text[:120], "ts": _now()})
+        return await _open_external_apply_target(page, anchor, target, log)
+
+    page_text = await page.inner_text("body")
+    email_match = re.search(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", page_text, flags=re.IGNORECASE)
+    if email_match:
+        email = email_match.group(0)
+        log.append({"action": "email_apply_detected", "email": email, "ts": _now()})
+        return {
+            "manual_review_only": True,
+            "contact_email": email,
+            "reason": "Employer accepts applications by email; review and send manually.",
+        }
+
+    log.append({"action": "apply_target_not_found", "url": current_url, "ts": _now()})
+    return {}
+
+
+async def _open_external_apply_target(page, anchor, target: str, log: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Open the employer apply target without double-clicking aggregator links.
+
+    Job-board pages often render regular links with fully resolved hrefs. A
+    prior version clicked while waiting for popups and then clicked/goto'd again
+    on timeout, which could leave the browser on a half-navigated page. Prefer a
+    single direct navigation to the discovered target; this is deterministic and
+    still handles links that would normally open in a new tab.
+    """
+
+    try:
+        await page.goto(target, wait_until="domcontentloaded", timeout=30000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=10000)
+        except Exception:
+            pass
+        log.append({"action": "external_apply_navigated", "url": page.url, "ts": _now()})
+        return {"application_url": page.url}
+    except Exception as exc:
+        log.append({"action": "external_apply_navigation_failed", "url": target, "detail": str(exc)[:200], "ts": _now()})
+        return {"application_url": target}
+
+
 async def fill_and_submit_application(
     job_url: str,
     user_profile: Dict[str, Any],
