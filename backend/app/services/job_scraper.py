@@ -1,10 +1,10 @@
 """
 Job scraper service.
 
-The scraper now separates job discovery from application automation. It does not
-pretend listing pages are application forms. Job Bank postings are enriched into
-one of these methods: external_url, email, manual. LinkedIn/Indeed are kept as
-discovery-only unless a future connector provides a real application target.
+Job fetching uses the broad discovery sources again: Indeed, LinkedIn, and Job Bank.
+Application submission remains guarded elsewhere. LinkedIn/Indeed results are useful
+for discovery/manual review, while Job Bank postings are enriched when possible into
+external URL, email, or manual lanes.
 """
 
 import asyncio
@@ -139,36 +139,30 @@ def _parse_salary(text: str, fallback_min: Optional[int], fallback_max: Optional
     return fallback_min, fallback_max
 
 
-def _jobbank_url(href: str) -> Optional[str]:
-    """Return an absolute Job Bank posting URL, or None if href is missing/invalid."""
-    if not href or href.startswith("?") or href.startswith("#"):
-        return None
+def _jobbank_url(href: str, search_url: str) -> str:
+    if not href:
+        return search_url
     if href.startswith("/"):
-        url = f"https://www.jobbank.gc.ca{href}"
-        # Must be an individual posting, not the search results page
-        if "/jobposting/" in url or "/offredemploi/" in url:
-            return url
-        return None
-    try:
-        from urllib.parse import urlparse
-        parsed = urlparse(href)
-        if parsed.scheme in {"http", "https"} and parsed.netloc:
-            return href
-    except Exception:
-        pass
-    return None
+        return f"https://www.jobbank.gc.ca{href}"
+    return href
+
+
+def _keyword_tokens(keywords: str) -> List[str]:
+    stop = {"and", "the", "for", "with", "remote", "ottawa", "canada", "ontario", "full", "time"}
+    return [t for t in re.split(r"[^a-z0-9]+", (keywords or "").lower()) if len(t) >= 3 and t not in stop]
 
 
 def _looks_relevant(title: str, text: str, keywords: str) -> bool:
-    hay = f"{title} {text}".lower()
-    tokens = [t for t in re.split(r"[^a-z0-9]+", keywords.lower()) if len(t) >= 3]
+    tokens = _keyword_tokens(keywords)
     if not tokens:
         return True
-    return any(t in hay for t in tokens)
+    hay = f"{title} {text}".lower()
+    strong_terms = {"fraud", "aml", "kyc", "compliance", "banking", "risk", "financial", "crime", "investigation", "investigator", "analyst", "credit", "collections"}
+    important = [t for t in tokens if t in strong_terms] or tokens
+    return any(t in hay for t in important)
 
 
 async def scrape_jobbank(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], limit: int) -> List[Dict[str, Any]]:
-    """Best-effort public Job Bank search scraper, enriched with application method."""
     jobs: List[Dict[str, Any]] = []
     search_url = (
         "https://www.jobbank.gc.ca/jobsearch/jobsearch"
@@ -188,21 +182,16 @@ async def scrape_jobbank(keywords: str, location: Optional[str], salary_min: Opt
             for card in cards:
                 if len(jobs) >= limit:
                     break
-
                 title_el = card.select_one("a, h3, h2")
                 if not title_el:
                     continue
-
                 title = title_el.get_text(" ", strip=True)
                 if not title or len(title) > 180:
                     continue
 
                 href = title_el.get("href", "")
-                jobbank_listing_url = _jobbank_url(href)
-                if not jobbank_listing_url:
-                    continue
+                jobbank_listing_url = _jobbank_url(href, search_url)
                 text = card.get_text(" ", strip=True)
-
                 if not _looks_relevant(title, text, keywords):
                     continue
 
@@ -213,7 +202,6 @@ async def scrape_jobbank(keywords: str, location: Optional[str], salary_min: Opt
                     if found and found.get_text(strip=True):
                         company = found.get_text(" ", strip=True)
                         break
-
                 for selector in [".location", "[class*=location]", "[class*=city]"]:
                     found = card.select_one(selector)
                     if found and found.get_text(strip=True):
@@ -240,11 +228,7 @@ async def scrape_jobbank(keywords: str, location: Optional[str], salary_min: Opt
                     "source": "jobbank",
                     "posted_at": datetime.utcnow().isoformat(),
                     "application_method": method,
-                    "raw_data": {
-                        **apply_info,
-                        "jobbank_original_url": jobbank_listing_url,
-                        "search_url": search_url,
-                    },
+                    "raw_data": {**apply_info, "jobbank_original_url": jobbank_listing_url, "search_url": search_url},
                 })
     except Exception:
         return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "jobbank", limit)
@@ -253,7 +237,6 @@ async def scrape_jobbank(keywords: str, location: Optional[str], salary_min: Opt
 
 
 async def scrape_indeed(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], limit: int) -> List[Dict[str, Any]]:
-    """Discovery-only. Indeed regularly blocks scraping and login-less auto-submit is unsafe."""
     jobs: List[Dict[str, Any]] = []
     query_params = {"q": keywords, "l": location or "", "limit": min(limit, 50), "fromage": "14"}
     if salary_min:
@@ -266,7 +249,7 @@ async def scrape_indeed(keywords: str, location: Optional[str], salary_min: Opti
                 raise ValueError(f"Indeed returned {resp.status_code}")
             soup = BeautifulSoup(resp.text, "html.parser")
             cards = soup.select("div.job_seen_beacon") or soup.select("div[data-jk]")
-            for card in cards[:limit]:
+            for card in cards[:limit * 2]:
                 title_el = card.select_one("h2.jobTitle span[title], h2.jobTitle a")
                 company_el = card.select_one("span.companyName, [data-testid='company-name']")
                 location_el = card.select_one("div.companyLocation, [data-testid='text-location']")
@@ -274,6 +257,9 @@ async def scrape_indeed(keywords: str, location: Optional[str], salary_min: Opti
                 link_el = card.select_one("h2.jobTitle a, a[data-jk]")
                 title = title_el.get_text(strip=True) if title_el else ""
                 if not title:
+                    continue
+                text = card.get_text(" ", strip=True)
+                if not _looks_relevant(title, text, keywords):
                     continue
                 company = company_el.get_text(strip=True) if company_el else "Unknown"
                 loc = location_el.get_text(strip=True) if location_el else (location or "")
@@ -291,12 +277,14 @@ async def scrape_indeed(keywords: str, location: Optional[str], salary_min: Opti
                     "salary_max": sal_hi,
                     "salary_currency": "CAD",
                     "job_type": job_type or "full_time",
-                    "description": "",
+                    "description": text[:2000],
                     "requirements": "",
                     "url": job_url,
                     "source": "indeed",
                     "raw_data": {"application_method": "unsupported_job_board", "reason": "Indeed listing pages are discovery-only"},
                 })
+                if len(jobs) >= limit:
+                    break
     except Exception:
         return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "indeed", limit)
 
@@ -304,7 +292,6 @@ async def scrape_indeed(keywords: str, location: Optional[str], salary_min: Opti
 
 
 async def scrape_linkedin(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], limit: int) -> List[Dict[str, Any]]:
-    """Discovery-only. LinkedIn apply usually requires login and is not safe for headless auto-submit."""
     jobs: List[Dict[str, Any]] = []
     jt_map = {"full_time": "F", "part_time": "P", "contract": "C", "internship": "I"}
     params = {"keywords": keywords, "location": location or "Canada", "f_JT": jt_map.get(job_type or "", ""), "start": 0}
@@ -316,7 +303,7 @@ async def scrape_linkedin(keywords: str, location: Optional[str], salary_min: Op
                 raise ValueError(f"LinkedIn returned {resp.status_code}")
             soup = BeautifulSoup(resp.text, "html.parser")
             cards = soup.select("div.base-search-card") or soup.select("li.jobs-search-results__list-item")
-            for card in cards[:limit]:
+            for card in cards[:limit * 2]:
                 title_el = card.select_one("h3.base-search-card__title, h3.job-result-card__title")
                 company_el = card.select_one("h4.base-search-card__subtitle, a.job-result-card__subtitle-link")
                 location_el = card.select_one("span.job-search-card__location")
@@ -345,6 +332,8 @@ async def scrape_linkedin(keywords: str, location: Optional[str], salary_min: Op
                     "source": "linkedin",
                     "raw_data": {"application_method": "unsupported_job_board", "reason": "LinkedIn listing pages are discovery-only"},
                 })
+                if len(jobs) >= limit:
+                    break
     except Exception:
         return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "linkedin", limit)
 
@@ -352,14 +341,12 @@ async def scrape_linkedin(keywords: str, location: Optional[str], salary_min: Op
 
 
 async def scrape_glassdoor(keywords: str, location: Optional[str], salary_min: Optional[int], salary_max: Optional[int], job_type: Optional[str], limit: int) -> List[Dict[str, Any]]:
-    # Glassdoor aggressively blocks scrapers. Do not invent jobs unless dev mocks are explicitly enabled.
     return _fallback_or_empty(keywords, location, salary_min, salary_max, job_type, "glassdoor", limit)
 
 
 def _normalize_sources(sources: Optional[List[Any]]) -> List[str]:
-    # Default to Job Bank only because LinkedIn/Indeed are discovery-only and cause repeated manual-review loops.
     if not sources:
-        return ["jobbank"]
+        return ["indeed", "linkedin", "jobbank"]
     normalized = []
     for source in sources:
         value = getattr(source, "value", source)
@@ -372,12 +359,12 @@ async def search_jobs(keywords: str, location: Optional[str] = None, salary_min:
     per_source = max(5, min(25, limit // max(len(normalized_sources), 1) + 1))
 
     tasks = []
-    if "jobbank" in normalized_sources:
-        tasks.append(scrape_jobbank(keywords, location, salary_min, salary_max, job_type, per_source))
     if "indeed" in normalized_sources:
         tasks.append(scrape_indeed(keywords, location, salary_min, salary_max, job_type, per_source))
     if "linkedin" in normalized_sources:
         tasks.append(scrape_linkedin(keywords, location, salary_min, salary_max, job_type, per_source))
+    if "jobbank" in normalized_sources:
+        tasks.append(scrape_jobbank(keywords, location, salary_min, salary_max, job_type, per_source))
     if "glassdoor" in normalized_sources:
         tasks.append(scrape_glassdoor(keywords, location, salary_min, salary_max, job_type, per_source))
 
@@ -401,9 +388,4 @@ async def search_jobs(keywords: str, location: Optional[str] = None, salary_min:
         job["raw_data"] = raw
         unique.append(job)
 
-    def _priority(job: Dict[str, Any]) -> int:
-        method = (job.get("raw_data") or {}).get("application_method")
-        return {"external_url": 0, "email": 1, "manual": 2, "unsupported_job_board": 3}.get(method, 4)
-
-    unique.sort(key=lambda job: (_priority(job), -float(job.get("salary_min") or 0)))
     return unique[:limit]
