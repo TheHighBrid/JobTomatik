@@ -139,9 +139,35 @@ def _email_application_result(app: Application, job: Job, user: User, dry_run: b
         return _manual_result(job, dry_run, f"Email send failed: {str(exc)[:200]}", "email_failed")
 
 
+_LISTING_HOSTS = frozenset([
+    "jobbank.gc.ca", "www.jobbank.gc.ca",
+    "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
+])
+
+_LISTING_PATH_FRAGS = ("/jobsearch/jobposting/", "/rechercheemplois/offredemploi/")
+
+
+def _is_listing_page_url(url: str) -> bool:
+    """True when the URL is a Job Bank listing page, not an actual application form."""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url or "")
+        return parsed.hostname in _LISTING_HOSTS and any(f in parsed.path for f in _LISTING_PATH_FRAGS)
+    except Exception:
+        return False
+
+
 def _ensure_application_method(job: Job) -> Dict[str, Any]:
     raw = dict(job.raw_data or {})
     method = raw.get("application_method")
+    selected_url = raw.get("selected_apply_url", "")
+
+    # If the stored apply URL is still a job-listing page the resolver mis-classified it —
+    # re-resolve so we can find the real employer ATS or email.
+    if method == "external_url" and _is_listing_page_url(selected_url):
+        logger.info("Re-resolving %s — stored apply URL is a listing page", job.url)
+        method = None
+
     if method:
         return raw
 
