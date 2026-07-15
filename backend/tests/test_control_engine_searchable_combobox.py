@@ -63,6 +63,17 @@ async def test_searchable_react_combobox_materializes_and_verifies_suggestion(pa
           const list = document.querySelector('#location-list');
           const selected = document.querySelector('.selected-value');
           const hidden = document.querySelector('input[type=hidden]');
+          let activeOption = null;
+
+          function choose(option) {
+            option.setAttribute('aria-selected', 'true');
+            selected.textContent = option.textContent;
+            hidden.value = option.dataset.value;
+            input.value = '';
+            list.hidden = true;
+            input.setAttribute('aria-expanded', 'false');
+            input.removeAttribute('aria-activedescendant');
+          }
 
           input.addEventListener('click', () => {
             input.setAttribute('aria-expanded', 'true');
@@ -70,23 +81,25 @@ async def test_searchable_react_combobox_materializes_and_verifies_suggestion(pa
           input.addEventListener('input', () => {
             if (input.value.toLowerCase().includes('ottawa')) {
               list.innerHTML = `
-                <div role="option" aria-selected="false"
+                <div id="ottawa-option" role="option" aria-selected="false"
                      data-value="ottawa-on-ca">Ottawa, Ontario, Canada</div>`;
               list.hidden = false;
               input.setAttribute('aria-expanded', 'true');
               const option = list.querySelector('[role=option]');
-              option.addEventListener('click', () => {
-                option.setAttribute('aria-selected', 'true');
-                selected.textContent = option.textContent;
-                hidden.value = option.dataset.value;
-                input.value = '';
-                list.hidden = true;
-                input.setAttribute('aria-expanded', 'false');
-              });
+              option.addEventListener('click', () => choose(option));
             }
           });
-          document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') {
+          input.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowDown') {
+              activeOption = list.querySelector('[role=option]');
+              if (activeOption) {
+                input.setAttribute('aria-activedescendant', activeOption.id);
+              }
+              event.preventDefault();
+            } else if (event.key === 'Enter' && activeOption) {
+              choose(activeOption);
+              event.preventDefault();
+            } else if (event.key === 'Escape') {
               list.hidden = true;
               input.setAttribute('aria-expanded', 'false');
             }
