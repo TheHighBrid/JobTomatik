@@ -9,7 +9,35 @@ from app.services.ats_greenhouse import GreenhouseAdapter
 from app.services.ats_lever import LeverAdapter
 
 
-_ADAPTERS = [GreenhouseAdapter(), LeverAdapter()]
+class RegisteredLeverAdapter(LeverAdapter):
+    """Lever implementation after fixture, live-form, and handoff validation."""
+
+    version = "1.1.0"
+    certification_level = "fixture_live_inspection_synthetic_and_handoff_certified"
+
+    def manifest(self) -> Dict[str, Any]:
+        value = super().manifest()
+        value["version"] = self.version
+        value["certification_level"] = self.certification_level
+        value["live_certification"] = {
+            "mode": "public_inspection_synthetic_full_form_and_resumable_handoff",
+            "public_form_smoke": "certified",
+            "synthetic_full_form_exercise": "certified",
+            "resumable_handoff": "certified",
+            "accepted_safe_outcomes": [
+                "ready_to_submit",
+                "manual_challenge_handoff",
+            ],
+            "latest_certified_boundary": "dry_run_pre_submit_or_manual_challenge",
+            "official_metadata_verified": True,
+            "custom_questions_verified_from_hosted_dom": True,
+            "verified_resume_upload": True,
+            "final_submit_clicked": False,
+        }
+        return value
+
+
+_ADAPTERS = [GreenhouseAdapter(), RegisteredLeverAdapter()]
 _GENERIC = ATSAdapter()
 
 
