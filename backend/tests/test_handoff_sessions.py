@@ -10,7 +10,7 @@ from app.models.application import (
     ManualReviewStatus,
     ManualReviewTask,
 )
-from app.models.handoff import HandoffSessionStatus
+from app.models.handoff import HandoffSessionEvent, HandoffSessionStatus
 from app.models.job import Job
 from app.models.user import User
 from app.services.handoff_session import (
@@ -172,9 +172,20 @@ def test_heartbeat_ready_and_resume_state_machine_is_retry_safe(db_session):
             "code": "must-not-be-persisted",
         },
     )
+    db_session.flush()
+    ready_event = (
+        db_session.query(HandoffSessionEvent)
+        .filter(
+            HandoffSessionEvent.handoff_session_id == issued.session.id,
+            HandoffSessionEvent.event_type == "handoff_ready_to_resume",
+        )
+        .order_by(HandoffSessionEvent.id.desc())
+        .first()
+    )
     assert issued.session.status == HandoffSessionStatus.ready_to_resume.value
     assert issued.session.lease_token_hash is None
-    assert "code" not in issued.session.events[-1].payload
+    assert ready_event is not None
+    assert "code" not in ready_event.payload
 
     begin_handoff_resume(db_session, issued.session)
     begin_handoff_resume(db_session, issued.session)
