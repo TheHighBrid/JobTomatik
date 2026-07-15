@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import get_current_user
 from app.database import get_db
 from app.models.application import Application
-from app.models.handoff import HandoffActorType, HandoffSessionEvent, ManualHandoffSession
+from app.models.handoff import (
+    HandoffActorType,
+    HandoffSessionEvent,
+    HandoffSessionStatus,
+    ManualHandoffSession,
+)
 from app.models.user import User
 from app.schemas.handoff import (
     HandoffBrowserActionOut,
@@ -15,6 +20,7 @@ from app.schemas.handoff import (
     HandoffClaimOut,
     HandoffClaimRequest,
     HandoffDetailOut,
+    HandoffIssuedOut,
     HandoffLeaseRequest,
     HandoffReadyRequest,
     HandoffSessionOut,
@@ -32,6 +38,7 @@ from app.services.handoff_session import (
     HandoffTokenInvalid,
     cancel_handoff_session,
     claim_handoff_session,
+    decrypt_handoff_secret,
     heartbeat_handoff_session,
     mark_handoff_ready,
     verify_handoff_lease,
@@ -92,6 +99,41 @@ async def get_handoff_session(
     db: Session = Depends(get_db),
 ):
     return _get_owned_session(db, public_id, current_user.id, include_events=True)
+
+
+@router.post("/{public_id}/bootstrap", response_model=HandoffIssuedOut)
+async def bootstrap_handoff(
+    public_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Disclose the resume token once to the authenticated session owner."""
+    session = _get_owned_session(db, public_id, current_user.id)
+    if session.status != HandoffSessionStatus.awaiting_user.value:
+        raise HTTPException(status_code=409, detail="Handoff session is no longer awaiting bootstrap")
+    already_disclosed = (
+        db.query(HandoffSessionEvent.id)
+        .filter(
+            HandoffSessionEvent.handoff_session_id == session.id,
+            HandoffSessionEvent.event_type == "handoff_resume_token_disclosed",
+        )
+        .first()
+    )
+    if already_disclosed:
+        raise HTTPException(status_code=409, detail="Resume token has already been disclosed")
+    token = decrypt_handoff_secret(session.encrypted_resume_token)
+    if not token:
+        raise HTTPException(status_code=409, detail="Resume token cannot be recovered safely")
+    db.add(HandoffSessionEvent(
+        handoff_session_id=session.id,
+        application_id=session.application_id,
+        event_type="handoff_resume_token_disclosed",
+        actor_type=HandoffActorType.user.value,
+        payload={"resume_token_prefix": session.resume_token_prefix},
+    ))
+    db.commit()
+    db.refresh(session)
+    return {"session": session, "resume_token": token}
 
 
 @router.post("/{public_id}/claim", response_model=HandoffClaimOut)
