@@ -73,6 +73,71 @@ async def _wait_for_step_change(
     return last_surface, last_fingerprint
 
 
+async def _captcha_can_be_deferred_until_handoff(
+    challenge: Dict[str, Any],
+    adapter: ATSAdapter,
+    surface: Any,
+) -> bool:
+    """Defer only a passive embedded CAPTCHA when the ATS form is still usable.
+
+    This does not interact with or bypass the challenge. It allows safe field filling
+    and evidence collection before returning a mandatory manual-review boundary.
+    """
+    if challenge.get("reason_code") != "captcha_detected":
+        return False
+    try:
+        return bool(
+            await adapter.find_next_button(surface)
+            or await adapter.find_submit_button(surface)
+        )
+    except Exception:
+        return False
+
+
+async def _return_manual_challenge_handoff(
+    result: ATSFlowResult,
+    log: List[Dict[str, Any]],
+    challenge: Dict[str, Any],
+    *,
+    adapter: ATSAdapter,
+    step_number: int,
+    fingerprint: str,
+) -> ATSFlowResult:
+    result.requires_manual_review = True
+    result.error = challenge["summary"]
+    details = dict(challenge.get("details") or {})
+    details.update({
+        "adapter": adapter.name,
+        "adapter_version": adapter.version,
+        "step": step_number,
+        "handoff_stage": "post_fill_pre_action",
+        "fields_filled": result.fields_filled,
+        "control_evidence_count": len(result.control_evidence),
+        "upload_evidence_count": len(result.upload_evidence),
+        "fingerprint": fingerprint,
+        "submit_clicked": False,
+    })
+    result.review_items.append({
+        "reason_code": challenge["reason_code"],
+        "summary": challenge["summary"],
+        "details": details,
+    })
+    _record_step_event(result, log, {
+        "action": "ats_manual_challenge_ready",
+        "adapter": adapter.name,
+        "adapter_version": adapter.version,
+        "step": step_number,
+        "reason_code": challenge["reason_code"],
+        "fields_filled": result.fields_filled,
+        "control_evidence_count": len(result.control_evidence),
+        "upload_evidence_count": len(result.upload_evidence),
+        "submit_clicked": False,
+        "fingerprint": fingerprint,
+        "ts": _now(),
+    })
+    return result
+
+
 async def run_ats_application_flow(
     page: Any,
     adapter: ATSAdapter,
@@ -96,10 +161,19 @@ async def run_ats_application_flow(
     for step_number in range(1, max_steps + 1):
         challenge = await detect_blocking_challenge(page)
         if challenge:
-            result.requires_manual_review = True
-            result.error = challenge["summary"]
-            result.review_items.append(challenge)
-            return result
+            if await _captcha_can_be_deferred_until_handoff(challenge, adapter, surface):
+                log.append({
+                    "action": "captcha_widget_deferred_until_manual_handoff",
+                    "adapter": adapter.name,
+                    "step": step_number,
+                    "submit_clicked": False,
+                    "ts": _now(),
+                })
+            else:
+                result.requires_manual_review = True
+                result.error = challenge["summary"]
+                result.review_items.append(challenge)
+                return result
 
         entry_fingerprint = await adapter.step_fingerprint(surface)
         if entry_fingerprint in seen:
@@ -144,6 +218,20 @@ async def run_ats_application_flow(
             result.requires_manual_review = True
             result.error = "Required application fields need review before the ATS flow can continue."
             return result
+
+        # A passive CAPTCHA widget may be present from page load. It is checked only
+        # after all safe fields and uploads are verified, and before any navigation or
+        # final-submit action. The challenge itself is never touched.
+        challenge = await detect_blocking_challenge(page)
+        if challenge:
+            return await _return_manual_challenge_handoff(
+                result,
+                log,
+                challenge,
+                adapter=adapter,
+                step_number=step_number,
+                fingerprint=filled_fingerprint,
+            )
 
         submit = await adapter.find_submit_button(surface)
         next_button = await adapter.find_next_button(surface)
