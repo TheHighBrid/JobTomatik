@@ -45,6 +45,37 @@ async def _is_combobox_internal(element: Any) -> bool:
         return False
 
 
+async def _anonymous_text_context(element: Any) -> Dict[str, Any]:
+    try:
+        return await element.evaluate(
+            """(el) => {
+              const root = el.closest(
+                '[data-field],.field-wrapper,.application-field,' +
+                '[class*="field-wrapper"],[class*="application-field"],fieldset'
+              ) || el.parentElement;
+              const text = (root?.innerText || '').replace(/\s+/g, ' ').trim();
+              return {
+                tag: el.tagName.toLowerCase(),
+                id: el.id || '',
+                name: el.getAttribute('name') || '',
+                type: el.getAttribute('type') || '',
+                role: el.getAttribute('role') || '',
+                ariaAutocomplete: el.getAttribute('aria-autocomplete') || '',
+                placeholder: el.getAttribute('placeholder') || '',
+                rootText: text.slice(0, 300),
+                rootTextLength: text.length,
+                hasFileInput: Boolean(root?.querySelector('input[type="file"]')),
+                hasCombobox: Boolean(root?.querySelector('[role="combobox"],[aria-autocomplete]')),
+                textInputCount: root?.querySelectorAll(
+                  'input:not([type="hidden"]):not([type="file"]),textarea'
+                ).length || 0
+              };
+            }"""
+        )
+    except Exception:
+        return {}
+
+
 async def _fill_text_fields(
     surface: Any,
     *,
@@ -71,6 +102,20 @@ async def _fill_text_fields(
             if await _is_combobox_internal(element):
                 continue
             descriptor = await element_descriptor(surface, element)
+            context: Dict[str, Any] = {}
+            if not normalize_text(descriptor):
+                context = await _anonymous_text_context(element)
+                if context.get("hasFileInput") or context.get("hasCombobox"):
+                    log.append({
+                        "action": "subordinate_text_control_skipped",
+                        "control": context,
+                        "ts": now_iso(),
+                    })
+                    continue
+                root_text = str(context.get("rootText") or "").strip()
+                if root_text and int(context.get("rootTextLength") or 0) <= 300:
+                    descriptor = root_text
+
             if normalize_text(await element.get_attribute("name")) in _SEARCH_FIELDS:
                 continue
 
@@ -102,12 +147,15 @@ async def _fill_text_fields(
                             summary=f"Policy answer could not be verified: {descriptor}",
                         )
                 elif await _required(element):
+                    before = len(review_items)
                     _append_review(
                         review_items,
                         descriptor=descriptor,
                         policy=policy,
                         control_type="text",
                     )
+                    if context and len(review_items) > before:
+                        review_items[-1].setdefault("details", {})["control_metadata"] = context
                 continue
 
             field = _safe_field(descriptor)
@@ -137,6 +185,7 @@ async def _fill_text_fields(
                             summary=f"Profile field could not be verified: {descriptor}",
                         )
                 elif await _required(element):
+                    before = len(review_items)
                     _append_review(
                         review_items,
                         descriptor=descriptor,
@@ -145,15 +194,20 @@ async def _fill_text_fields(
                         reason_code="ambiguous_question",
                         summary=f"Required profile value is missing: {descriptor or field}",
                     )
+                    if context and len(review_items) > before:
+                        review_items[-1].setdefault("details", {})["control_metadata"] = context
                 continue
 
             if await _required(element):
+                before = len(review_items)
                 _append_review(
                     review_items,
                     descriptor=descriptor,
                     policy=policy,
                     control_type="text",
                 )
+                if context and len(review_items) > before:
+                    review_items[-1].setdefault("details", {})["control_metadata"] = context
         except Exception as exc:
             log.append({
                 "action": "fill_skipped",
