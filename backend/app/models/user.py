@@ -28,3 +28,9 @@ class User(Base):
 
     applications = relationship("Application", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    answer_policies = relationship(
+        "ApplicantAnswerPolicy",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="ApplicantAnswerPolicy.category, ApplicantAnswerPolicy.canonical_key",
+    )
