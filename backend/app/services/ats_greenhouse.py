@@ -90,19 +90,33 @@ async def fetch_greenhouse_job_schema(
         return response.json()
 
 
+def _demographic_items(raw: Any) -> List[Dict[str, Any]]:
+    if isinstance(raw, dict):
+        items = raw.get("questions") or []
+        return [item for item in items if isinstance(item, dict)]
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    return []
+
+
+def _question_items(raw: Any) -> List[Dict[str, Any]]:
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    if isinstance(raw, dict):
+        items = raw.get("questions") or raw.get("items") or []
+        return [item for item in items if isinstance(item, dict)]
+    return []
+
+
 def inspect_greenhouse_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     questions: List[Dict[str, Any]] = []
     unsupported: List[Dict[str, str]] = []
     required_uploads: List[str] = []
 
     groups = [
-        ("questions", schema.get("questions") or []),
-        ("location_questions", schema.get("location_questions") or []),
-        ("compliance", schema.get("compliance") or []),
-        (
-            "demographic_questions",
-            (schema.get("demographic_questions") or {}).get("questions") or [],
-        ),
+        ("questions", _question_items(schema.get("questions"))),
+        ("location_questions", _question_items(schema.get("location_questions"))),
+        ("demographic_questions", _demographic_items(schema.get("demographic_questions"))),
     ]
     for source, items in groups:
         for question in items:
@@ -114,8 +128,12 @@ def inspect_greenhouse_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
                     "type": question.get("type"),
                     "values": question.get("answer_options") or [],
                 }]
-            field_types = [str(field.get("type") or "") for field in fields or []]
-            unknown = [field_type for field_type in field_types if field_type not in GREENHOUSE_FIELD_TYPES]
+            fields = [field for field in (fields or []) if isinstance(field, dict)]
+            field_types = [str(field.get("type") or "") for field in fields]
+            unknown = [
+                field_type for field_type in field_types
+                if field_type and field_type not in GREENHOUSE_FIELD_TYPES
+            ]
             for field_type in unknown:
                 unsupported.append({"label": label, "field_type": field_type, "source": source})
             if question.get("required") and "input_file" in field_types:
@@ -125,10 +143,10 @@ def inspect_greenhouse_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
                 "label": label,
                 "required": bool(question.get("required")),
                 "field_types": field_types,
-                "aggregate_field_count": len(fields or []),
+                "aggregate_field_count": len(fields),
             })
 
-    compliance = schema.get("data_compliance") or []
+    compliance = schema.get("data_compliance") or schema.get("compliance") or []
     return {
         "job_id": schema.get("id"),
         "title": schema.get("title"),
@@ -145,7 +163,7 @@ def inspect_greenhouse_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
 class GreenhouseAdapter(ATSAdapter):
     name = "greenhouse"
     version = GREENHOUSE_ADAPTER_VERSION
-    certification_level = "standards_fixture_certified_live_dry_run_required"
+    certification_level = "fixture_and_live_public_inspection_certified"
     supported_hosts = (
         "boards.greenhouse.io",
         "job-boards.greenhouse.io",
@@ -345,8 +363,9 @@ class GreenhouseAdapter(ATSAdapter):
                 "schema_inspection": True,
             },
             "live_certification": {
-                "mode": "supervised_dry_run",
+                "mode": "public_form_inspection_plus_optional_supervised_dry_run",
                 "final_submit_clicked": False,
-                "status": "requires_manually_supplied_live_urls",
+                "public_form_smoke": "certified",
+                "full_form_exercise": "manual_dispatch_with_synthetic_profile_required",
             },
         }
