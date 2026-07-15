@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from app.models.application import (
     Application,
     ApplicationAutomationState,
@@ -6,7 +8,7 @@ from app.models.application import (
     ManualReviewStatus,
     ManualReviewTask,
 )
-from app.models.handoff import HandoffSessionEvent, HandoffSessionStatus
+from app.models.handoff import HandoffSessionEvent, HandoffSessionStatus, ManualHandoffSession
 from app.models.job import Job
 from app.models.user import User
 from app.services.browser_handoff import BrowserVerification
@@ -70,6 +72,12 @@ def test_bootstrap_discloses_resume_token_only_once(auth_client, db_session):
     second = auth_client.post(f"/api/handoffs/{public_id}/bootstrap")
     assert second.status_code == 409
 
+    db_session.expire_all()
+    session = db_session.query(ManualHandoffSession).filter(
+        ManualHandoffSession.public_id == public_id
+    ).one()
+    assert session.resume_token_disclosed_at is not None
+
     detail = auth_client.get(f"/api/handoffs/{public_id}")
     assert detail.status_code == 200
     detail_payload = detail.json()
@@ -105,6 +113,36 @@ def test_claim_rotates_to_lease_and_owner_can_heartbeat(auth_client, db_session)
         json={"resume_token": token},
     )
     assert replay.status_code == 409
+
+
+def test_expired_lease_can_be_recovered_but_active_lease_cannot(auth_client, db_session):
+    public_id, _ = create_session_for_authenticated_user(db_session)
+    token = auth_client.post(f"/api/handoffs/{public_id}/bootstrap").json()["resume_token"]
+    first_lease = auth_client.post(
+        f"/api/handoffs/{public_id}/claim",
+        json={"resume_token": token},
+    ).json()["lease_token"]
+
+    active_recovery = auth_client.post(f"/api/handoffs/{public_id}/recover")
+    assert active_recovery.status_code == 409
+
+    session = db_session.query(ManualHandoffSession).filter(
+        ManualHandoffSession.public_id == public_id
+    ).one()
+    session.lease_expires_at = datetime.utcnow() - timedelta(seconds=1)
+    db_session.commit()
+
+    recovered = auth_client.post(f"/api/handoffs/{public_id}/recover")
+    assert recovered.status_code == 200
+    second_lease = recovered.json()["lease_token"]
+    assert second_lease != first_lease
+
+    db_session.expire_all()
+    session = db_session.query(ManualHandoffSession).filter(
+        ManualHandoffSession.public_id == public_id
+    ).one()
+    assert session.lease_recovery_count == 1
+    assert any(event.event_type == "handoff_lease_recovered" for event in session.events)
 
 
 def test_browser_action_never_persists_typed_secret(auth_client, db_session, monkeypatch):
