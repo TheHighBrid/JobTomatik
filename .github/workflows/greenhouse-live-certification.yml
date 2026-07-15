@@ -26,6 +26,7 @@ jobs:
         working-directory: backend
 
     env:
+      PYTHONPATH: .
       DATABASE_URL: sqlite:///./greenhouse-live-certification.db
       REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: greenhouse-live-certification-secret
@@ -66,17 +67,25 @@ jobs:
           test -s "$GREENHOUSE_CERT_RESUME_PATH"
 
       - name: Run supervised live dry-run
+        id: live_certification
         shell: bash
         env:
           GREENHOUSE_CERT_URLS: ${{ inputs.urls }}
         run: |
+          set +e
           args=(--report greenhouse-live-certification.json)
           if [[ "${{ inputs.exercise }}" == "true" ]]; then
             args+=(--exercise)
           fi
-          python scripts/certify_greenhouse_live.py "${args[@]}"
+          python -u scripts/certify_greenhouse_live.py "${args[@]}" \
+            > greenhouse-live-certification-output.txt 2>&1
+          status=$?
+          cat greenhouse-live-certification-output.txt
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Assert no final submit action occurred
+        if: always()
         shell: bash
         run: |
           python - <<'PY'
@@ -92,6 +101,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: greenhouse-supervised-live-certification-report
-          path: backend/greenhouse-live-certification.json
-          if-no-files-found: error
+          path: |
+            backend/greenhouse-live-certification.json
+            backend/greenhouse-live-certification-output.txt
+          if-no-files-found: warn
           retention-days: 30
+
+      - name: Fail when live certification failed
+        if: steps.live_certification.outputs.exit_code != '0'
+        run: exit 1
