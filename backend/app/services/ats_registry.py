@@ -42,7 +42,38 @@ class RegisteredLeverAdapter(LeverAdapter):
         return value
 
 
-_ADAPTERS = [GreenhouseAdapter(), RegisteredLeverAdapter(), AshbyAdapter()]
+class RegisteredAshbyAdapter(AshbyAdapter):
+    """Ashby implementation after fixture, live-form, and handoff validation."""
+
+    version = "1.1.0"
+    certification_level = "fixture_live_inspection_synthetic_and_handoff_certified"
+
+    def manifest(self) -> Dict[str, Any]:
+        value = super().manifest()
+        value["version"] = self.version
+        value["certification_level"] = self.certification_level
+        value["live_certification"] = {
+            "mode": "public_inspection_synthetic_full_form_and_resumable_handoff",
+            "public_form_smoke": "certified",
+            "synthetic_full_form_exercise": "certified",
+            "resumable_handoff": "certified",
+            "accepted_safe_outcomes": [
+                "ready_to_submit",
+                "manual_challenge_handoff",
+            ],
+            "latest_certified_boundary": "dry_run_pre_submit_or_manual_challenge",
+            "public_board_metadata_verified": True,
+            "hosted_dom_controls_verified": True,
+            "credentialed_form_definition_support": "fixture_certified_optional_runtime_validation",
+            "official_form_field_types_verified": True,
+            "exact_name_system_field_alias_verified": True,
+            "verified_resume_upload": True,
+            "final_submit_clicked": False,
+        }
+        return value
+
+
+_ADAPTERS = [GreenhouseAdapter(), RegisteredLeverAdapter(), RegisteredAshbyAdapter()]
 _GENERIC = ATSAdapter()
 
 
