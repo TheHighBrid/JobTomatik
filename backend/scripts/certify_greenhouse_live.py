@@ -131,6 +131,26 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
             pass
 
 
+def _manual_challenge_ready(result: Dict[str, Any], submit_clicked: bool) -> bool:
+    review_items = result.get("review_items") or []
+    captcha_handoff = any(
+        item.get("reason_code") == "captcha_detected"
+        and (item.get("details") or {}).get("handoff_stage") == "post_fill_pre_action"
+        for item in review_items
+    )
+    verified_upload = any(
+        item.get("verification") == "passed"
+        for item in result.get("upload_evidence") or []
+    )
+    return bool(
+        captcha_handoff
+        and result.get("requires_manual_review")
+        and int(result.get("fields_filled") or 0) > 0
+        and verified_upload
+        and not submit_clicked
+    )
+
+
 async def exercise_live_url(
     url: str,
     *,
@@ -160,19 +180,35 @@ async def exercise_live_url(
         item.get("action") in {"ats_submit_clicked", "submit_click", "submit_clicked"}
         for item in result.get("log") or []
     )
-    passed = bool(
+    ready_to_submit = bool(
         result.get("success")
         and result.get("ready_to_submit")
         and result.get("ats_adapter") == "greenhouse"
         and not submit_clicked
     )
+    manual_challenge_ready = _manual_challenge_ready(result, submit_clicked)
+    passed = bool(
+        result.get("ats_adapter") == "greenhouse"
+        and (ready_to_submit or manual_challenge_ready)
+        and not submit_clicked
+    )
+    certification_outcome = (
+        "ready_to_submit"
+        if ready_to_submit
+        else "manual_challenge_handoff"
+        if manual_challenge_ready
+        else "failed"
+    )
     return {
         "url": url,
         "mode": "exercise",
         "passed": passed,
+        "certification_outcome": certification_outcome,
+        "manual_challenge_ready": manual_challenge_ready,
         "adapter": result.get("ats_adapter"),
         "adapter_version": result.get("ats_adapter_version"),
         "ready_to_submit": result.get("ready_to_submit"),
+        "requires_manual_review": result.get("requires_manual_review"),
         "steps_completed": result.get("steps_completed"),
         "fields_filled": result.get("fields_filled"),
         "review_items": result.get("review_items") or [],
