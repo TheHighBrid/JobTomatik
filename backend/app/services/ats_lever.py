@@ -52,7 +52,6 @@ def parse_lever_job_url(url: str) -> Tuple[Optional[str], Optional[str], str]:
     region = "eu" if host in {LEVER_EU_JOBS_HOST, LEVER_EU_API_HOST} else "global"
 
     if host in {LEVER_GLOBAL_API_HOST, LEVER_EU_API_HOST}:
-        # /v0/postings/SITE/POSTING-ID
         try:
             index = parts.index("postings")
         except ValueError:
@@ -60,7 +59,6 @@ def parse_lever_job_url(url: str) -> Tuple[Optional[str], Optional[str], str]:
         site = parts[index + 1] if len(parts) > index + 1 else None
         posting_id = parts[index + 2] if len(parts) > index + 2 else None
     elif host in {LEVER_GLOBAL_JOBS_HOST, LEVER_EU_JOBS_HOST}:
-        # /SITE/POSTING-ID[/apply]
         site = parts[0] if parts else None
         posting_id = parts[1] if len(parts) > 1 else None
     else:
@@ -100,11 +98,7 @@ async def fetch_lever_posting(
 
 
 def inspect_lever_posting(posting: Dict[str, Any]) -> Dict[str, Any]:
-    """Inspect the official Postings API response without claiming custom-question coverage.
-
-    Lever's official Postings API exposes posting and apply URLs, but employer custom
-    questions must be inspected from the hosted application DOM.
-    """
+    """Inspect official metadata without claiming custom-question coverage."""
     present_fields = sorted(field for field in LEVER_POSTING_FIELDS if field in posting)
     missing_fields = sorted(LEVER_POSTING_FIELDS.difference(present_fields))
     apply_url = str(posting.get("applyUrl") or "")
@@ -152,13 +146,10 @@ class LeverAdapter(ATSAdapter):
         if host in self.supported_hosts:
             return True
         selectors = (
-            'form[action*="lever.co" i]',
+            'form[action*="jobs.lever.co" i]',
+            'form[action*="jobs.eu.lever.co" i]',
             'a[href*="jobs.lever.co" i][href*="/apply" i]',
             'a[href*="jobs.eu.lever.co" i][href*="/apply" i]',
-            '.application-form',
-            '.posting-page',
-            '[data-qa="posting-page"]',
-            '[data-qa="application-form"]',
         )
         for selector in selectors:
             try:
