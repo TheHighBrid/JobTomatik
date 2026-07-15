@@ -1,0 +1,158 @@
+name: Ashby synthetic live exercise
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/ashby_certification.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/scripts/certify_ashby_live.py"
+      - ".github/workflows/ashby-synthetic-live.yml"
+  schedule:
+    - cron: "41 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-full-form-dry-run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./ashby-synthetic-live.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ashby-synthetic-live-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Select current certification candidates
+        shell: bash
+        run: |
+          python - <<'PY'
+          import httpx
+
+          response = httpx.get(
+              'https://api.ashbyhq.com/posting-api/job-board/ashby',
+              timeout=25,
+              follow_redirects=True,
+          )
+          response.raise_for_status()
+          jobs = [
+              job for job in (response.json().get('jobs') or [])
+              if job.get('isListed') and job.get('applyUrl')
+          ]
+          jobs.sort(key=lambda job: job.get('publishedAt') or '', reverse=True)
+          preferred_terms = (
+              'support', 'customer success', 'operations', 'analyst', 'manager'
+          )
+          preferred = [
+              job for job in jobs
+              if any(term in str(job.get('title') or '').lower() for term in preferred_terms)
+          ]
+          ordered = preferred + [job for job in jobs if job not in preferred]
+          urls = [job['applyUrl'] for job in ordered[:6]]
+          if not urls:
+              raise SystemExit('No current Ashby application URLs were returned.')
+          open('ashby-synthetic-candidates.txt', 'w').write('\n'.join(urls))
+          print('\n'.join(urls))
+          PY
+
+      - name: Exercise a current real form without submission
+        id: live_exercise
+        shell: bash
+        run: |
+          set +e
+          : > ashby-synthetic-attempts.txt
+          rm -f ashby-synthetic-live.json
+          index=0
+          success=1
+          while IFS= read -r url; do
+            [ -z "$url" ] && continue
+            index=$((index + 1))
+            report="ashby-synthetic-attempt-${index}.json"
+            echo "=== Attempt ${index}: ${url} ===" | tee -a ashby-synthetic-attempts.txt
+            python -u scripts/certify_ashby_live.py \
+              --urls "$url" \
+              --exercise \
+              --synthetic-resume-path ashby-synthetic-resume.pdf \
+              --report "$report" \
+              >> ashby-synthetic-attempts.txt 2>&1
+            status=$?
+            if [ "$status" -eq 0 ]; then
+              cp "$report" ashby-synthetic-live.json
+              success=0
+              break
+            fi
+          done < ashby-synthetic-candidates.txt
+          cat ashby-synthetic-attempts.txt
+          echo "exit_code=$success" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Assert full-form readiness without submission
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open('ashby-synthetic-live.json'))
+          assert report['final_submit_clicked'] is False
+          assert report['passed'] is True
+          exercises = [item for item in report['reports'] if item.get('mode') == 'exercise']
+          assert len(exercises) == 1
+          exercise = exercises[0]
+          assert exercise['adapter'] == 'ashby'
+          assert exercise['certification_outcome'] in {
+              'ready_to_submit', 'manual_challenge_handoff'
+          }
+          assert exercise['fields_filled'] > 0
+          assert any(
+              item.get('verification') == 'passed'
+              for item in exercise.get('upload_evidence') or []
+          )
+          assert exercise['final_submit_clicked'] is False
+          PY
+
+      - name: Upload synthetic live certification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ashby-synthetic-live-report
+          path: |
+            backend/ashby-synthetic-live.json
+            backend/ashby-synthetic-attempt-*.json
+            backend/ashby-synthetic-attempts.txt
+            backend/ashby-synthetic-candidates.txt
+            backend/ashby-synthetic-resume.pdf
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail when the synthetic exercise failed
+        if: steps.live_exercise.outputs.exit_code != '0'
+        run: exit 1
