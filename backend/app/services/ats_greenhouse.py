@@ -30,7 +30,7 @@ GREENHOUSE_FIELD_TYPES = {
     "multi_value_single_select",
     "multi_value_multi_select",
 }
-GREENHOUSE_ADAPTER_VERSION = "1.0.0"
+GREENHOUSE_ADAPTER_VERSION = "1.1.0"
 
 
 def is_greenhouse_host(host: str) -> bool:
@@ -163,7 +163,7 @@ def inspect_greenhouse_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
 class GreenhouseAdapter(ATSAdapter):
     name = "greenhouse"
     version = GREENHOUSE_ADAPTER_VERSION
-    certification_level = "fixture_and_live_public_inspection_certified"
+    certification_level = "fixture_live_inspection_and_synthetic_exercise_certified"
     supported_hosts = (
         "boards.greenhouse.io",
         "job-boards.greenhouse.io",
@@ -361,11 +361,19 @@ class GreenhouseAdapter(ATSAdapter):
                 "validation_extraction": True,
                 "confirmation_detection": True,
                 "schema_inspection": True,
+                "searchable_comboboxes": True,
+                "manual_captcha_handoff": True,
             },
             "live_certification": {
-                "mode": "public_form_inspection_plus_optional_supervised_dry_run",
-                "final_submit_clicked": False,
+                "mode": "public_inspection_and_synthetic_full_form_dry_run",
                 "public_form_smoke": "certified",
-                "full_form_exercise": "manual_dispatch_with_synthetic_profile_required",
+                "synthetic_full_form_exercise": "certified",
+                "accepted_safe_outcomes": [
+                    "ready_to_submit",
+                    "manual_challenge_handoff",
+                ],
+                "latest_certified_boundary": "captcha_detected_post_fill_pre_action",
+                "verified_resume_upload": True,
+                "final_submit_clicked": False,
             },
         }
