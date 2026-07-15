@@ -9,6 +9,7 @@ on:
       - "backend/app/services/greenhouse_certification.py"
       - "backend/tests/test_greenhouse_adapter.py"
       - "backend/tests/test_ats_flow_safety.py"
+      - "backend/tests/test_ats_captcha_handoff.py"
       - "backend/tests/test_greenhouse_synthetic_certification.py"
       - ".github/workflows/greenhouse-adapter-certification.yml"
   push:
@@ -21,6 +22,7 @@ on:
       - "backend/app/services/greenhouse_certification.py"
       - "backend/tests/test_greenhouse_adapter.py"
       - "backend/tests/test_ats_flow_safety.py"
+      - "backend/tests/test_ats_captcha_handoff.py"
       - "backend/tests/test_greenhouse_synthetic_certification.py"
       - ".github/workflows/greenhouse-adapter-certification.yml"
 
@@ -69,6 +71,7 @@ jobs:
           pytest -q --tb=short -ra \
             tests/test_greenhouse_adapter.py \
             tests/test_ats_flow_safety.py \
+            tests/test_ats_captcha_handoff.py \
             tests/test_greenhouse_synthetic_certification.py \
             > greenhouse-certification.txt 2>&1
           status=$?
