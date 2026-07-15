@@ -145,6 +145,32 @@ async def _type_search_answer(page, combobox, answer: str) -> bool:
         return False
 
 
+async def _activate_combobox_option(
+    page, combobox, option, option_index: int,
+) -> tuple[bool, str, str]:
+    """Use normal pointer activation first, then the ARIA keyboard pattern."""
+    pointer_error = ""
+    keyboard_error = ""
+    try:
+        await option.scroll_into_view_if_needed(timeout=1500)
+        await option.click(timeout=3000)
+        return True, pointer_error, keyboard_error
+    except Exception as exc:
+        pointer_error = str(exc)[:500]
+
+    try:
+        await combobox.evaluate("(el) => el.focus()")
+        for _ in range(option_index + 1):
+            await combobox.press("ArrowDown")
+            await page.wait_for_timeout(40)
+        await combobox.press("Enter")
+        await page.wait_for_timeout(120)
+        return True, pointer_error, keyboard_error
+    except Exception as exc:
+        keyboard_error = str(exc)[:500]
+        return False, pointer_error, keyboard_error
+
+
 async def _combobox_display_state(combobox) -> str:
     """Read React-style selected labels from the control and its nearest field shell."""
     try:
@@ -288,18 +314,22 @@ async def handle_combobox(
 
     index = options.index(match.matched[0])
     option = handles[index]
-    try:
-        await option.click(timeout=3000)
-    except Exception:
+    activated, pointer_error, keyboard_error = await _activate_combobox_option(
+        page, combobox, option, index
+    )
+    if not activated:
         append_review(outcome.review_items, make_review(
             descriptor=descriptor, control_type="aria_combobox",
             policy_result=policy, required=required, options=options,
             reason_code="unsupported_control",
             summary=f"Matched custom dropdown option could not be selected: {descriptor}",
+            details={
+                "pointer_error": pointer_error,
+                "keyboard_error": keyboard_error,
+            },
         ))
         await _close_visible_listboxes(page, combobox)
         return 0
-    await page.wait_for_timeout(120)
 
     selected = False
     try:
@@ -322,6 +352,7 @@ async def handle_combobox(
             details={
                 "search_attempted": searched,
                 "display_state": displayed[:500],
+                "pointer_error": pointer_error,
             },
         ))
         return 0
