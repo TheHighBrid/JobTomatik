@@ -146,6 +146,23 @@ export const bulkSubmitApplications = (params) => api.post('/applications/bulk-s
 export const createFollowup = (appId, data) => api.post(`/applications/${appId}/followups`, data)
 export const listFollowups = (appId) => api.get(`/applications/${appId}/followups`)
 
+// Resumable manual handoffs
+export const listApplicationHandoffs = (appId) => api.get(`/handoffs/application/${appId}/sessions`)
+export const getHandoffSession = (publicId) => api.get(`/handoffs/${publicId}`)
+export const bootstrapHandoff = (publicId) => api.post(`/handoffs/${publicId}/bootstrap`)
+export const claimHandoff = (publicId, resumeToken) =>
+  api.post(`/handoffs/${publicId}/claim`, { resume_token: resumeToken })
+export const heartbeatHandoff = (publicId, leaseToken) =>
+  api.post(`/handoffs/${publicId}/heartbeat`, { lease_token: leaseToken })
+export const getHandoffFrame = (publicId, leaseToken) =>
+  api.post(`/handoffs/${publicId}/frame`, { lease_token: leaseToken }, { responseType: 'blob' })
+export const sendHandoffAction = (publicId, leaseToken, action) =>
+  api.post(`/handoffs/${publicId}/actions`, { lease_token: leaseToken, ...action })
+export const completeHandoff = (publicId, leaseToken) =>
+  api.post(`/handoffs/${publicId}/complete`, { lease_token: leaseToken })
+export const cancelHandoff = (publicId, reason) =>
+  api.post(`/handoffs/${publicId}/cancel`, { reason })
+
 // Notifications
 export const getNotifications = (params) => api.get('/notifications', { params })
 export const getUnreadCount = () => api.get('/notifications/unread-count')
