@@ -7,6 +7,7 @@ on:
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/tests/test_greenhouse_adapter.py"
+      - "backend/tests/test_ats_flow_safety.py"
       - ".github/workflows/greenhouse-adapter-certification.yml"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/tests/test_greenhouse_adapter.py"
+      - "backend/tests/test_ats_flow_safety.py"
       - ".github/workflows/greenhouse-adapter-certification.yml"
 
 permissions:
@@ -60,7 +62,9 @@ jobs:
         shell: bash
         run: |
           set +e
-          pytest -q --tb=short -ra tests/test_greenhouse_adapter.py \
+          pytest -q --tb=short -ra \
+            tests/test_greenhouse_adapter.py \
+            tests/test_ats_flow_safety.py \
             > greenhouse-certification.txt 2>&1
           status=$?
           cat greenhouse-certification.txt
