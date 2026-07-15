@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect, text
 
-from app.api import applications, auth, export, jobs, notifications, profile, settings as settings_api
+from app.api import answer_policies, applications, auth, export, jobs, notifications, profile, settings as settings_api
 from app.config import get_settings
 from app.database import Base, engine
 
@@ -89,6 +89,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
+app.include_router(answer_policies.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(settings_api.router, prefix="/api")
