@@ -47,4 +47,4 @@ jobs:
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
 
       - name: Run backend test suite
-        run: pytest -q
+        run: pytest -q --tb=short --maxfail=5 -ra
