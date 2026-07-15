@@ -1,6 +1,7 @@
 import json
 
 from app.services.greenhouse_certification import (
+    SYNTHETIC_LOCATION,
     SYNTHETIC_TEXT_RESPONSE,
     build_synthetic_profile,
     choose_synthetic_answer,
@@ -29,6 +30,11 @@ def test_synthetic_answer_selection_is_explicit_and_question_aware():
         ["Canada", "United States"],
         multiple=True,
     )) == ["Canada"]
+    assert choose_synthetic_answer(
+        "Location (City)",
+        [],
+        multiple=False,
+    ) == SYNTHETIC_LOCATION
     assert choose_synthetic_answer(
         "Describe your interest",
         [],
@@ -62,6 +68,21 @@ def test_build_synthetic_profile_uses_exact_schema_question_phrases():
                 }],
             },
             {
+                "label": "Location (City)",
+                "required": True,
+                "fields": [{"type": "input_text", "name": "location"}],
+            },
+            {
+                "label": "Longitude",
+                "required": False,
+                "fields": [{"type": "input_hidden", "name": "longitude"}],
+            },
+            {
+                "label": "Latitude",
+                "required": False,
+                "fields": [{"type": "input_hidden", "name": "latitude"}],
+            },
+            {
                 "label": "Why are you interested in this role?",
                 "required": True,
                 "fields": [{"type": "textarea", "name": "question_2"}],
@@ -84,14 +105,17 @@ def test_build_synthetic_profile_uses_exact_schema_question_phrases():
     assert profile["synthetic_certification_only"] is True
     assert profile["email"].endswith("@example.test")
     policies = profile["answer_policies"]
-    assert len(policies) == 3
+    assert len(policies) == 4
     assert all(policy["confirmed_at"] for policy in policies)
     assert all(policy["allow_autofill"] is True for policy in policies)
 
     by_phrase = {policy["match_phrases"][0]: policy for policy in policies}
     assert by_phrase["Will you require sponsorship?"]["answer_label"] == "No"
+    assert by_phrase["Location (City)"]["answer_label"] == SYNTHETIC_LOCATION
     assert by_phrase["Why are you interested in this role?"]["answer_label"] == SYNTHETIC_TEXT_RESPONSE
     assert by_phrase["Gender identity"]["answer_label"] == "Prefer not to say"
+    assert "Longitude" not in by_phrase
+    assert "Latitude" not in by_phrase
 
 
 def test_write_synthetic_resume_creates_valid_pdf(tmp_path):
