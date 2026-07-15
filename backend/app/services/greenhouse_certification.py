@@ -23,6 +23,7 @@ SYNTHETIC_TEXT_RESPONSE = (
     "Synthetic certification response. This public form is being tested in dry-run "
     "mode and will not be submitted."
 )
+SYNTHETIC_LOCATION = "Ottawa, Ontario, Canada"
 
 _PROFILE_LABELS = {
     "first name",
@@ -139,6 +140,12 @@ def choose_synthetic_answer(label: str, options: List[str], *, multiple: bool) -
     elif "country" in question or "country of residence" in question:
         selected = _find_option(options, ("Canada",))
     elif any(term in question for term in (
+        "location", "city", "where are you located", "where are you based",
+    )):
+        selected = _find_option(options, ("Ottawa", "Canada"))
+        if selected is None and not options:
+            selected = SYNTHETIC_LOCATION
+    elif any(term in question for term in (
         "authorized to work", "legally authorized", "work authorization",
     )):
         selected = _find_option(options, ("Yes",))
@@ -169,6 +176,8 @@ def choose_synthetic_answer(label: str, options: List[str], *, multiple: bool) -
 def _is_profile_or_upload_question(label: str, field_types: List[str]) -> bool:
     normalized = _normalize(label)
     if normalized in _PROFILE_LABELS:
+        return True
+    if field_types and set(field_types) == {"input_hidden"}:
         return True
     return "input_file" in field_types and not any(
         field_type in {"multi_value_single_select", "multi_value_multi_select"}
