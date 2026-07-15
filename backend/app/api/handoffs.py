@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -32,6 +33,7 @@ from app.services.browser_handoff import (
     perform_handoff_action,
     verify_browser_handoff_completion,
 )
+from app.services.handoff_recovery import recover_handoff_lease
 from app.services.handoff_session import (
     HandoffSessionConflict,
     HandoffSessionExpired,
@@ -54,14 +56,18 @@ def _get_owned_session(
     user_id: int,
     *,
     include_events: bool = False,
+    for_update: bool = False,
 ) -> ManualHandoffSession:
     query = db.query(ManualHandoffSession)
     if include_events:
         query = query.options(joinedload(ManualHandoffSession.events))
-    session = query.filter(
+    query = query.filter(
         ManualHandoffSession.public_id == public_id,
         ManualHandoffSession.user_id == user_id,
-    ).first()
+    )
+    if for_update:
+        query = query.with_for_update()
+    session = query.first()
     if not session:
         raise HTTPException(status_code=404, detail="Handoff session not found")
     return session
@@ -108,22 +114,21 @@ async def bootstrap_handoff(
     db: Session = Depends(get_db),
 ):
     """Disclose the resume token once to the authenticated session owner."""
-    session = _get_owned_session(db, public_id, current_user.id)
+    session = _get_owned_session(
+        db,
+        public_id,
+        current_user.id,
+        for_update=True,
+    )
     if session.status != HandoffSessionStatus.awaiting_user.value:
         raise HTTPException(status_code=409, detail="Handoff session is no longer awaiting bootstrap")
-    already_disclosed = (
-        db.query(HandoffSessionEvent.id)
-        .filter(
-            HandoffSessionEvent.handoff_session_id == session.id,
-            HandoffSessionEvent.event_type == "handoff_resume_token_disclosed",
-        )
-        .first()
-    )
-    if already_disclosed:
+    if session.resume_token_disclosed_at is not None:
         raise HTTPException(status_code=409, detail="Resume token has already been disclosed")
     token = decrypt_handoff_secret(session.encrypted_resume_token)
     if not token:
         raise HTTPException(status_code=409, detail="Resume token cannot be recovered safely")
+    session.resume_token_disclosed_at = datetime.utcnow()
+    session.lock_version = (session.lock_version or 0) + 1
     db.add(HandoffSessionEvent(
         handoff_session_id=session.id,
         application_id=session.application_id,
@@ -143,7 +148,7 @@ async def claim_handoff(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    session = _get_owned_session(db, public_id, current_user.id)
+    session = _get_owned_session(db, public_id, current_user.id, for_update=True)
     try:
         claimed = claim_handoff_session(
             db,
@@ -159,6 +164,27 @@ async def claim_handoff(
         raise _translate_error(exc)
 
 
+@router.post("/{public_id}/recover", response_model=HandoffClaimOut)
+async def recover_handoff(
+    public_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = _get_owned_session(db, public_id, current_user.id, for_update=True)
+    try:
+        recovered = recover_handoff_lease(
+            db,
+            session,
+            user_id=current_user.id,
+        )
+        db.commit()
+        db.refresh(session)
+        return {"session": session, "lease_token": recovered.lease_token}
+    except Exception as exc:
+        db.rollback()
+        raise _translate_error(exc)
+
+
 @router.post("/{public_id}/heartbeat", response_model=HandoffSessionOut)
 async def heartbeat_handoff(
     public_id: str,
@@ -166,7 +192,7 @@ async def heartbeat_handoff(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    session = _get_owned_session(db, public_id, current_user.id)
+    session = _get_owned_session(db, public_id, current_user.id, for_update=True)
     try:
         heartbeat_handoff_session(
             db,
@@ -211,7 +237,7 @@ async def act_on_handoff_browser(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    session = _get_owned_session(db, public_id, current_user.id)
+    session = _get_owned_session(db, public_id, current_user.id, for_update=True)
     try:
         verify_handoff_lease(
             db,
@@ -258,7 +284,7 @@ async def complete_handoff(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    session = _get_owned_session(db, public_id, current_user.id)
+    session = _get_owned_session(db, public_id, current_user.id, for_update=True)
     try:
         verify_handoff_lease(
             db,
@@ -297,7 +323,7 @@ async def cancel_handoff(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    session = _get_owned_session(db, public_id, current_user.id)
+    session = _get_owned_session(db, public_id, current_user.id, for_update=True)
     try:
         cancel_handoff_session(
             db,
