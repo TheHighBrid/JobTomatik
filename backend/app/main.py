@@ -1,25 +1,59 @@
 import os
+
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from contextlib import asynccontextmanager
-from app.database import engine, Base
-from app.api import auth, jobs, applications, profile, notifications, export, settings as settings_api
+from sqlalchemy import inspect as sa_inspect, text
+
+from app.api import applications, auth, export, jobs, notifications, profile, settings as settings_api
 from app.config import get_settings
-from sqlalchemy import text, inspect as sa_inspect
+from app.database import Base, engine
 
 settings = get_settings()
 
 
 def _safe_migrate(eng):
+    """Add backward-compatible columns for local beta databases.
+
+    New tables are created by ``Base.metadata.create_all``. These additive column
+    migrations keep existing SQLite/PostgreSQL beta databases usable until a
+    formal Alembic revision chain is introduced.
+    """
     with eng.connect() as conn:
         try:
-            cols = {c['name'] for c in sa_inspect(eng).get_columns('users')}
-            if 'automation_settings' not in cols:
-                conn.execute(text('ALTER TABLE users ADD COLUMN automation_settings JSON'))
+            user_cols = {c["name"] for c in sa_inspect(eng).get_columns("users")}
+            if "automation_settings" not in user_cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN automation_settings JSON"))
                 conn.commit()
         except Exception:
-            pass
+            conn.rollback()
+
+        try:
+            app_cols = {c["name"] for c in sa_inspect(eng).get_columns("applications")}
+            additions = {
+                "automation_state": "VARCHAR(50) DEFAULT 'preparing' NOT NULL",
+                "submission_idempotency_key": "VARCHAR(255)",
+                "submission_attempt_count": "INTEGER DEFAULT 0 NOT NULL",
+                "last_submission_attempt_at": "TIMESTAMP",
+            }
+            for column_name, definition in additions.items():
+                if column_name not in app_cols:
+                    conn.execute(text(f"ALTER TABLE applications ADD COLUMN {column_name} {definition}"))
+                    conn.commit()
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "ix_applications_submission_idempotency_key "
+                "ON applications (submission_idempotency_key)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_applications_automation_state "
+                "ON applications (automation_state)"
+            ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
 
 @asynccontextmanager
