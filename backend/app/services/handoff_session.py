@@ -63,9 +63,17 @@ def _now() -> datetime:
     return datetime.utcnow()
 
 
+def _setting(name: str, default: Any) -> Any:
+    return getattr(get_settings(), name, default)
+
+
 def _fernet() -> Fernet:
     settings = get_settings()
-    secret = settings.handoff_encryption_key or settings.answer_vault_key or settings.secret_key
+    secret = (
+        getattr(settings, "handoff_encryption_key", "")
+        or settings.answer_vault_key
+        or settings.secret_key
+    )
     digest = hashlib.sha256(secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 
@@ -87,7 +95,8 @@ def decrypt_handoff_secret(value: Optional[str]) -> Optional[str]:
 
 def _secret_hash(value: str) -> str:
     settings = get_settings()
-    key = (settings.handoff_token_pepper or settings.secret_key).encode("utf-8")
+    configured_key = getattr(settings, "handoff_hash_key", "")
+    key = (configured_key or settings.secret_key).encode("utf-8")
     return hmac.new(key, value.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -165,10 +174,11 @@ def issue_handoff_session(
         raise HandoffSessionConflict("Manual review is no longer active.")
 
     challenge_type = challenge_type_for_review(review)
-    settings = get_settings()
-    ttl = ttl_minutes or settings.handoff_session_ttl_minutes
+    configured_ttl = int(_setting("handoff_session_ttl_minutes", 20))
+    max_ttl = int(_setting("handoff_session_max_ttl_minutes", 60))
+    ttl = ttl_minutes or configured_ttl
     now = _now()
-    expires_at = now + timedelta(minutes=max(1, min(ttl, settings.handoff_session_max_ttl_minutes)))
+    expires_at = now + timedelta(minutes=max(1, min(ttl, max_ttl)))
     idempotency_key = f"handoff:{application.id}:review:{review.id}:v1"
 
     existing = (
@@ -215,7 +225,6 @@ def issue_handoff_session(
     db.flush()
     review.status = ManualReviewStatus.in_progress.value
     review.expires_at = expires_at
-    # The legacy plaintext field is deliberately cleared.
     review.resume_token = None
     _event(
         db,
@@ -249,11 +258,8 @@ def claim_handoff_session(
         raise HandoffTokenInvalid("Resume token is invalid.")
 
     lease_token = _new_secret()
-    settings = get_settings()
-    lease_expires_at = min(
-        session.expires_at,
-        now + timedelta(minutes=settings.handoff_lease_ttl_minutes),
-    )
+    lease_minutes = int(_setting("handoff_lease_ttl_minutes", 5))
+    lease_expires_at = min(session.expires_at, now + timedelta(minutes=lease_minutes))
     session.status = HandoffSessionStatus.claimed.value
     session.resume_token_consumed_at = now
     session.claimed_at = now
@@ -303,12 +309,9 @@ def heartbeat_handoff_session(
 ) -> ManualHandoffSession:
     verify_handoff_lease(db, session, user_id=user_id, lease_token=lease_token)
     now = _now()
-    settings = get_settings()
+    lease_minutes = int(_setting("handoff_lease_ttl_minutes", 5))
     session.last_heartbeat_at = now
-    session.lease_expires_at = min(
-        session.expires_at,
-        now + timedelta(minutes=settings.handoff_lease_ttl_minutes),
-    )
+    session.lease_expires_at = min(session.expires_at, now + timedelta(minutes=lease_minutes))
     session.lock_version = (session.lock_version or 0) + 1
     _event(
         db,
