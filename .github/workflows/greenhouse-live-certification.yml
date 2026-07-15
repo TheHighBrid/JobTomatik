@@ -1,0 +1,97 @@
+name: Supervised live Greenhouse certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Public Greenhouse job URLs, separated by commas or new lines"
+        required: true
+        type: string
+      exercise:
+        description: "Traverse and fill every step in dry-run mode using certification secrets"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  supervised-live-dry-run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: sqlite:///./greenhouse-live-certification.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: greenhouse-live-certification-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      GREENHOUSE_CERT_PROFILE_JSON: ${{ secrets.GREENHOUSE_CERT_PROFILE_JSON }}
+      GREENHOUSE_CERT_RESUME_B64: ${{ secrets.GREENHOUSE_CERT_RESUME_B64 }}
+      GREENHOUSE_CERT_RESUME_PATH: ./greenhouse-cert-resume.pdf
+      GREENHOUSE_CERT_COVER_LETTER: ${{ secrets.GREENHOUSE_CERT_COVER_LETTER }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Prepare synthetic certification resume
+        if: ${{ inputs.exercise }}
+        shell: bash
+        run: |
+          test -n "$GREENHOUSE_CERT_RESUME_B64" || {
+            echo "GREENHOUSE_CERT_RESUME_B64 secret is required for exercise mode."
+            exit 1
+          }
+          printf '%s' "$GREENHOUSE_CERT_RESUME_B64" | base64 --decode > "$GREENHOUSE_CERT_RESUME_PATH"
+          test -s "$GREENHOUSE_CERT_RESUME_PATH"
+
+      - name: Run supervised live dry-run
+        shell: bash
+        env:
+          GREENHOUSE_CERT_URLS: ${{ inputs.urls }}
+        run: |
+          args=(--report greenhouse-live-certification.json)
+          if [[ "${{ inputs.exercise }}" == "true" ]]; then
+            args+=(--exercise)
+          fi
+          python scripts/certify_greenhouse_live.py "${args[@]}"
+
+      - name: Assert no final submit action occurred
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open('greenhouse-live-certification.json'))
+          assert report['final_submit_clicked'] is False
+          for item in report['reports']:
+              assert item.get('final_submit_clicked', False) is False
+          PY
+
+      - name: Upload live certification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: greenhouse-supervised-live-certification-report
+          path: backend/greenhouse-live-certification.json
+          if-no-files-found: error
+          retention-days: 30
