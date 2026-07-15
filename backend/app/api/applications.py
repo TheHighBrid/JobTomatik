@@ -1,21 +1,38 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session, joinedload
-from typing import List, Optional
 from datetime import datetime
-from app.database import get_db
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, joinedload
+
 from app.auth import get_current_user
 from app.config import get_settings
-from app.models.user import User
+from app.database import get_db
+from app.models.application import (
+    Application,
+    ApplicationAutomationState,
+    ApplicationEvent,
+    ApplicationStatus,
+    FollowUp,
+    ManualReviewStatus,
+    ManualReviewTask,
+    SubmissionEvidence,
+)
 from app.models.job import Job, JobStatus
-from app.models.application import Application, ApplicationStatus, FollowUp
 from app.models.notification import Notification, NotificationType
+from app.models.user import User
 from app.schemas.application import (
     ApplicationCreate,
-    ApplicationUpdate,
+    ApplicationEventOut,
     ApplicationOut,
+    ApplicationUpdate,
     FollowUpCreate,
     FollowUpOut,
+    ManualReviewResolve,
+    ManualReviewTaskOut,
+    SubmissionEvidenceOut,
 )
+from app.services.application_state import resolve_manual_review_task
 from app.tasks.applications import generate_cover_letter_task, submit_application_task
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -32,6 +49,10 @@ def _require_live_submit_enabled(dry_run: bool) -> None:
         raise HTTPException(status_code=409, detail=LIVE_SUBMIT_BLOCKED_DETAIL)
 
 
+def _application_idempotency_key(user_id: int, job_id: int) -> str:
+    return f"application:{user_id}:job:{job_id}"
+
+
 @router.post("", response_model=ApplicationOut, status_code=201)
 async def create_application(
     data: ApplicationCreate,
@@ -41,6 +62,17 @@ async def create_application(
     job = db.query(Job).filter(Job.id == data.job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    idempotency_key = data.idempotency_key or _application_idempotency_key(current_user.id, data.job_id)
+    existing_by_key = (
+        db.query(Application)
+        .filter(Application.submission_idempotency_key == idempotency_key)
+        .first()
+    )
+    if existing_by_key:
+        if data.idempotency_key and existing_by_key.user_id == current_user.id and existing_by_key.job_id == data.job_id:
+            return _load_application(db, existing_by_key.id)
+        raise HTTPException(status_code=400, detail="Application already exists for this job")
 
     existing = (
         db.query(Application)
@@ -56,8 +88,34 @@ async def create_application(
         cover_letter=data.cover_letter,
         notes=data.notes,
         status=ApplicationStatus.pending,
+        automation_state=(
+            ApplicationAutomationState.ready_to_apply.value
+            if data.cover_letter
+            else ApplicationAutomationState.preparing.value
+        ),
+        submission_idempotency_key=idempotency_key,
     )
     db.add(app)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        existing = (
+            db.query(Application)
+            .filter(Application.submission_idempotency_key == idempotency_key)
+            .first()
+        )
+        if existing and existing.user_id == current_user.id and existing.job_id == data.job_id:
+            return _load_application(db, existing.id)
+        raise HTTPException(status_code=409, detail="Duplicate application request")
+
+    db.add(ApplicationEvent(
+        application_id=app.id,
+        event_type="application_created",
+        from_state=None,
+        to_state=app.automation_state,
+        payload={"job_id": job.id, "idempotency_key": idempotency_key},
+    ))
     job.status = JobStatus.applied
     db.commit()
     db.refresh(app)
@@ -106,10 +164,26 @@ async def bulk_submit_applications(
 
     queued = []
     for job in jobs:
-        app = Application(user_id=current_user.id, job_id=job.id, status=ApplicationStatus.pending)
+        idempotency_key = _application_idempotency_key(current_user.id, job.id)
+        if db.query(Application.id).filter(Application.submission_idempotency_key == idempotency_key).first():
+            continue
+        app = Application(
+            user_id=current_user.id,
+            job_id=job.id,
+            status=ApplicationStatus.pending,
+            automation_state=ApplicationAutomationState.preparing.value,
+            submission_idempotency_key=idempotency_key,
+        )
         db.add(app)
         job.status = JobStatus.applied
         db.flush()
+        db.add(ApplicationEvent(
+            application_id=app.id,
+            event_type="application_created",
+            from_state=None,
+            to_state=ApplicationAutomationState.preparing.value,
+            payload={"job_id": job.id, "source": "bulk_submit"},
+        ))
         generate_cover_letter_task.delay(app.id)
         task = submit_application_task.apply_async(
             args=[app.id],
@@ -136,7 +210,13 @@ async def list_applications(
 ):
     query = (
         db.query(Application)
-        .options(joinedload(Application.job), joinedload(Application.followups))
+        .options(
+            joinedload(Application.job),
+            joinedload(Application.followups),
+            joinedload(Application.manual_reviews),
+            joinedload(Application.submission_evidence),
+            joinedload(Application.events),
+        )
         .filter(Application.user_id == current_user.id)
     )
     if status:
@@ -152,9 +232,25 @@ async def get_application_stats(
 ):
     apps = db.query(Application).filter(Application.user_id == current_user.id).all()
     stats = {s.value: 0 for s in ApplicationStatus}
+    automation = {s.value: 0 for s in ApplicationAutomationState}
     for app in apps:
         stats[app.status.value] += 1
+        state = app.automation_state or ApplicationAutomationState.preparing.value
+        automation[state] = automation.get(state, 0) + 1
     stats["total"] = len(apps)
+    stats["automation_states"] = automation
+    stats["open_manual_reviews"] = (
+        db.query(ManualReviewTask.id)
+        .join(Application, ManualReviewTask.application_id == Application.id)
+        .filter(
+            Application.user_id == current_user.id,
+            ManualReviewTask.status.in_([
+                ManualReviewStatus.open.value,
+                ManualReviewStatus.in_progress.value,
+            ]),
+        )
+        .count()
+    )
     return stats
 
 
@@ -229,8 +325,112 @@ async def submit_application(
         raise HTTPException(status_code=404, detail="Application not found")
 
     _require_live_submit_enabled(dry_run)
+    state = app.automation_state or ApplicationAutomationState.preparing.value
+    if not dry_run and state in {
+        ApplicationAutomationState.submitted.value,
+        ApplicationAutomationState.confirmed.value,
+    }:
+        return {
+            "status": "already_submitted",
+            "dry_run": False,
+            "application_id": app.id,
+            "idempotency_key": app.submission_idempotency_key,
+        }
+    if state == ApplicationAutomationState.applying.value:
+        raise HTTPException(status_code=409, detail="An application attempt is already in progress")
+
     task = submit_application_task.delay(app_id, dry_run=dry_run)
-    return {"task_id": task.id, "status": "queued", "dry_run": dry_run}
+    return {
+        "task_id": task.id,
+        "status": "queued",
+        "dry_run": dry_run,
+        "idempotency_key": app.submission_idempotency_key,
+    }
+
+
+@router.get("/{app_id}/manual-reviews", response_model=List[ManualReviewTaskOut])
+async def list_manual_reviews(
+    app_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return (
+        db.query(ManualReviewTask)
+        .filter(ManualReviewTask.application_id == app_id)
+        .order_by(ManualReviewTask.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/{app_id}/manual-reviews/{review_id}/resolve", response_model=ManualReviewTaskOut)
+async def resolve_manual_review(
+    app_id: int,
+    review_id: int,
+    data: ManualReviewResolve,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    review = db.query(ManualReviewTask).filter(
+        ManualReviewTask.id == review_id,
+        ManualReviewTask.application_id == app_id,
+    ).first()
+    if not review:
+        raise HTTPException(status_code=404, detail="Manual review task not found")
+    if review.status == ManualReviewStatus.resolved.value:
+        return review
+
+    resolve_manual_review_task(db, app, review, data.resolution_notes)
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+@router.get("/{app_id}/evidence", response_model=List[SubmissionEvidenceOut])
+async def list_submission_evidence(
+    app_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return (
+        db.query(SubmissionEvidence)
+        .filter(SubmissionEvidence.application_id == app_id)
+        .order_by(SubmissionEvidence.captured_at.desc())
+        .all()
+    )
+
+
+@router.get("/{app_id}/events", response_model=List[ApplicationEventOut])
+async def list_application_events(
+    app_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return (
+        db.query(ApplicationEvent)
+        .filter(ApplicationEvent.application_id == app_id)
+        .order_by(ApplicationEvent.created_at.desc())
+        .all()
+    )
 
 
 @router.post("/{app_id}/followups", response_model=FollowUpOut, status_code=201)
@@ -277,7 +477,13 @@ async def list_followups(
 def _load_application(db: Session, app_id: int) -> Optional[Application]:
     return (
         db.query(Application)
-        .options(joinedload(Application.job), joinedload(Application.followups))
+        .options(
+            joinedload(Application.job),
+            joinedload(Application.followups),
+            joinedload(Application.manual_reviews),
+            joinedload(Application.submission_evidence),
+            joinedload(Application.events),
+        )
         .filter(Application.id == app_id)
         .first()
     )
