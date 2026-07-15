@@ -127,6 +127,12 @@ class Application(Base):
         cascade="all, delete-orphan",
         order_by="ApplicationEvent.created_at",
     )
+    handoff_sessions = relationship(
+        "ManualHandoffSession",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ManualHandoffSession.created_at",
+    )
 
 
 class FollowUp(Base):
@@ -164,6 +170,12 @@ class ManualReviewTask(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     application = relationship("Application", back_populates="manual_reviews")
+    handoff_sessions = relationship(
+        "ManualHandoffSession",
+        back_populates="manual_review",
+        cascade="all, delete-orphan",
+        order_by="ManualHandoffSession.created_at",
+    )
 
 
 class SubmissionEvidence(Base):
