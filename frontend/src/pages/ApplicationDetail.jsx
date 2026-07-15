@@ -6,6 +6,7 @@ import {
   getApplication, updateApplication, generateCoverLetter,
   submitApplication, createFollowup
 } from '../api/client'
+import ManualHandoffPanel from '../components/ManualHandoffPanel'
 import StatusBadge from '../components/StatusBadge'
 import {
   ArrowLeft, Loader2, RefreshCw, Send, Calendar,
@@ -72,7 +73,7 @@ export default function ApplicationDetail() {
     setSubmitting(true)
     try {
       await submitApplication(id, dry)
-      toast(dry ? 'Dry run complete — check console for details.' : 'Application submission started!')
+      toast(dry ? 'Dry run complete. Check the application for details.' : 'Application submission started!')
       setTimeout(() => qc.invalidateQueries(['application', id]), 3000)
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Submission failed')
@@ -121,6 +122,8 @@ export default function ApplicationDetail() {
           </div>
         </div>
       </div>
+
+      <ManualHandoffPanel applicationId={Number(id)} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Status & Notes */}
