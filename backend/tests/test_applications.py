@@ -76,6 +76,32 @@ def test_applications_require_auth(client):
     assert resp.status_code == 401
 
 
+def test_submit_defaults_to_dry_run(auth_client):
+    job = _create_job()
+    create_resp = auth_client.post("/api/applications", json={"job_id": job.id})
+    app_id = create_resp.json()["id"]
+
+    resp = auth_client.post(f"/api/applications/{app_id}/submit")
+
+    assert resp.status_code == 200
+    assert resp.json()["dry_run"] is True
+
+
+def test_live_submit_is_blocked_when_gate_is_disabled(auth_client, monkeypatch):
+    monkeypatch.setattr(
+        "app.api.applications.settings.allow_real_application_submit",
+        False,
+    )
+    job = _create_job()
+    create_resp = auth_client.post("/api/applications", json={"job_id": job.id})
+    app_id = create_resp.json()["id"]
+
+    resp = auth_client.post(f"/api/applications/{app_id}/submit?dry_run=false")
+
+    assert resp.status_code == 409
+    assert "Real application submission is disabled" in resp.json()["detail"]
+
+
 def test_create_followup(auth_client):
     job = _create_job()
     create_resp = auth_client.post("/api/applications", json={"job_id": job.id})
