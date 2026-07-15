@@ -164,9 +164,9 @@ def test_live_success_without_evidence_becomes_submission_uncertain(auth_client,
             "selected_apply_url": current_job.url,
         },
     )
-    monkeypatch.setattr(
-        "app.tasks.applications._run_async",
-        lambda coroutine: {
+
+    async def fake_fill_and_submit_application(**kwargs):
+        return {
             "success": True,
             "dry_run": False,
             "url": job.url,
@@ -176,7 +176,11 @@ def test_live_success_without_evidence_becomes_submission_uncertain(auth_client,
             "error": None,
             "fields_filled": 4,
             "requires_manual_review": False,
-        },
+        }
+
+    monkeypatch.setattr(
+        "app.tasks.applications.fill_and_submit_application",
+        fake_fill_and_submit_application,
     )
 
     from app.tasks.applications import submit_application_task
