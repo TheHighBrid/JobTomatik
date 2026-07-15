@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -33,14 +33,14 @@ app.dependency_overrides[get_db] = override_get_db
 
 @pytest.fixture(autouse=True)
 def mock_celery(monkeypatch):
-    """Stub out all Celery .delay() calls so tests don't need Redis."""
+    """Stub API-triggered Celery calls so tests do not need Redis."""
     fake_result = MagicMock(id="test-task-id")
     mock_task = MagicMock()
     mock_task.delay.return_value = fake_result
+    mock_task.apply_async.return_value = fake_result
 
     monkeypatch.setattr("app.api.applications.generate_cover_letter_task", mock_task)
     monkeypatch.setattr("app.api.applications.submit_application_task", mock_task)
-    monkeypatch.setattr("app.api.applications.schedule_auto_followup", mock_task)
     monkeypatch.setattr("app.api.jobs.run_job_search", mock_task)
 
 
