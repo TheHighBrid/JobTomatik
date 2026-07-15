@@ -152,6 +152,7 @@ export const getHandoffSession = (publicId) => api.get(`/handoffs/${publicId}`)
 export const bootstrapHandoff = (publicId) => api.post(`/handoffs/${publicId}/bootstrap`)
 export const claimHandoff = (publicId, resumeToken) =>
   api.post(`/handoffs/${publicId}/claim`, { resume_token: resumeToken })
+export const recoverHandoffLease = (publicId) => api.post(`/handoffs/${publicId}/recover`)
 export const heartbeatHandoff = (publicId, leaseToken) =>
   api.post(`/handoffs/${publicId}/heartbeat`, { lease_token: leaseToken })
 export const getHandoffFrame = (publicId, leaseToken) =>
