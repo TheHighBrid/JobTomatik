@@ -18,28 +18,42 @@ SKILLS_PATTERNS = {
     "Banking": r"\bbanking\b|\bbank\b|\bcredit\b|\bloans?\b|\bfinancial services\b",
     "Customer Service": r"\bcustomer service\b|\bclient service\b|\bclient support\b",
     "Bilingual English/French": r"\bbilingual\b|\bfrench\b|\benglish/french\b|\bfrançais\b",
+    "Python": r"\bpython\b",
+    "PostgreSQL": r"\bpostgres(?:ql)?\b",
+    "AWS": r"\baws\b|\bamazon web services\b",
+    "React": r"\breact(?:\.js|js)?\b",
+    "TypeScript": r"\btypescript\b",
+    "Tailwind": r"\btailwind(?:\s+css)?\b",
+    "Django": r"\bdjango\b",
+    "Docker": r"\bdocker\b",
+    "Kubernetes": r"\bkubernetes\b|\bk8s\b",
     "SQL": r"\bsql\b",
     "Excel": r"\bexcel\b|\bspreadsheet\b",
     "Microsoft Office": r"\bmicrosoft office\b|\bms office\b|\boffice 365\b",
 }
 
+# Order matters. More specific leadership labels must precede broader levels.
 SENIORITY_PATTERNS = [
     ("Intern", r"\bintern\b|\binternship\b"),
     ("Junior", r"\bjunior\b|\bjr\.?\b|\bentry[- ]?level\b|\b0[- ]?[12]\s+years?\b"),
-    ("Mid-Level", r"\bmid[- ]?level\b|\bintermediate\b|\b[23][- ][45]\s+years?\b"),
-    ("Senior", r"\bsenior\b|\bsr\.?\b|\b5\+?\s+years?\b|\b[4-9]\+?\s+years?\b"),
+    ("Staff", r"\bstaff\b"),
     ("Principal", r"\bprincipal\b"),
     ("Lead", r"\blead\b"),
     ("Manager", r"\bmanager\b|\bmanagement\b"),
     ("Director", r"\bdirector\b"),
+    ("Senior", r"\bsenior\b|\bsr\.?\b|\b5\+?\s+years?\b|\b[4-9]\+?\s+years?\b"),
+    ("Mid-Level", r"\bmid[- ]?level\b|\bintermediate\b|\b[23][- ][45]\s+years?\b"),
 ]
 
+# Specific business models precede broad sectors so "payments and banking
+# software" resolves to FinTech rather than the generic Banking category.
 INDUSTRY_PATTERNS = [
     ("Financial Crime", r"\bfinancial crime\b|\bfraud\b|\baml\b|\bkyc\b"),
+    ("SaaS", r"\bsaas\b|\bsoftware[- ]as[- ]a[- ]service\b"),
+    ("FinTech", r"\bfintech\b|\bpayments?\b|\bdigital banking\b"),
     ("Banking", r"\bbanking\b|\bbank\b|\bcredit\b|\bloans?\b|\bfinancial services\b"),
     ("Government", r"\bgovernment\b|\bcra\b|\bcanada revenue\b|\bpublic service\b|\bfederal\b"),
     ("Compliance", r"\bcompliance\b|\bregulatory\b|\brisk\b"),
-    ("FinTech", r"\bfintech\b|\bpayments?\b|\bdigital banking\b"),
     ("Customer Operations", r"\bcustomer service\b|\bclient service\b|\boperations\b"),
     ("Technology", r"\bsoftware\b|\bdeveloper\b|\bengineer\b|\bcloud\b|\bapi\b|\bpython\b"),
 ]
