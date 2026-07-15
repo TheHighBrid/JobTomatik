@@ -4,6 +4,7 @@ from typing import List, Optional
 from datetime import datetime
 from app.database import get_db
 from app.auth import get_current_user
+from app.config import get_settings
 from app.models.user import User
 from app.models.job import Job, JobStatus
 from app.models.application import Application, ApplicationStatus, FollowUp
@@ -18,6 +19,17 @@ from app.schemas.application import (
 from app.tasks.applications import generate_cover_letter_task, submit_application_task
 
 router = APIRouter(prefix="/applications", tags=["applications"])
+settings = get_settings()
+
+LIVE_SUBMIT_BLOCKED_DETAIL = (
+    "Real application submission is disabled. Set "
+    "ALLOW_REAL_APPLICATION_SUBMIT=true only after supervised adapter certification."
+)
+
+
+def _require_live_submit_enabled(dry_run: bool) -> None:
+    if not dry_run and not settings.allow_real_application_submit:
+        raise HTTPException(status_code=409, detail=LIVE_SUBMIT_BLOCKED_DETAIL)
 
 
 @router.post("", response_model=ApplicationOut, status_code=201)
@@ -58,7 +70,7 @@ async def create_application(
 
 @router.post("/bulk-submit")
 async def bulk_submit_applications(
-    dry_run: bool = Query(False),
+    dry_run: bool = Query(True),
     limit: int = Query(10, ge=1, le=100),
     min_score: float = Query(0.0, ge=0.0, le=1.0),
     include_queued: bool = Query(False),
@@ -66,6 +78,8 @@ async def bulk_submit_applications(
     db: Session = Depends(get_db),
 ):
     """Create and queue multiple applications for autonomous processing."""
+    _require_live_submit_enabled(dry_run)
+
     capped_limit = min(limit, 50)
     statuses = [JobStatus.approved]
     if include_queued:
@@ -204,7 +218,7 @@ async def generate_cover_letter(
 @router.post("/{app_id}/submit")
 async def submit_application(
     app_id: int,
-    dry_run: bool = Query(False),
+    dry_run: bool = Query(True),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -213,6 +227,8 @@ async def submit_application(
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
+
+    _require_live_submit_enabled(dry_run)
     task = submit_application_task.delay(app_id, dry_run=dry_run)
     return {"task_id": task.id, "status": "queued", "dry_run": dry_run}
 
