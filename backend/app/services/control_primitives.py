@@ -193,7 +193,7 @@ async def element_text(element) -> str:
 
 async def element_descriptor(page, element) -> str:
     descriptor = await element.evaluate(
-        """(el) => {
+        r"""(el) => {
           const pieces = [];
           const push = (value) => {
             const clean = String(value || '').replace(/\s+/g, ' ').trim();
@@ -214,7 +214,6 @@ async def element_descriptor(page, element) -> str:
             push(group.querySelector(':scope > legend')?.innerText);
           }
           push(el.closest('label')?.innerText);
-          if (pieces.join(' ').length < 40) push(el.parentElement?.innerText);
           return pieces.join(' | ');
         }"""
     )
