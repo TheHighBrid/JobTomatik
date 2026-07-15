@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import signal
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,8 +88,6 @@ async def _connect_local_cdp(session: ManualHandoffSession):
 
 
 async def _disconnect(playwright) -> None:
-    # The Chromium process was launched independently. Stopping this Playwright
-    # client disconnects CDP without intentionally terminating that process.
     try:
         await playwright.stop()
     except Exception:
@@ -188,9 +187,7 @@ async def verify_browser_handoff_completion(
             cleared = challenge is None
 
         storage_state = await context.storage_state()
-        storage_digest = hashlib.sha256(
-            repr(storage_state).encode("utf-8")
-        ).hexdigest()
+        storage_digest = hashlib.sha256(repr(storage_state).encode("utf-8")).hexdigest()
         evidence["storage_state_hash"] = storage_digest
         evidence["verification_method"] = "browser_state"
 
@@ -205,6 +202,51 @@ async def verify_browser_handoff_completion(
         await _disconnect(playwright)
 
 
+async def resume_handoff_application(
+    session: ManualHandoffSession,
+    *,
+    user_profile: Dict[str, Any],
+    cover_letter: str,
+    resume_path: str,
+    dry_run: bool,
+) -> Dict[str, Any]:
+    """Reconnect to the retained page and continue the certified ATS flow."""
+    from app.services.ats_flow import run_ats_application_flow
+    from app.services.ats_registry import detect_ats_adapter
+    from app.services.form_filler_v3 import _fill_step_fields
+
+    playwright, _, _, page = await _connect_local_cdp(session)
+    log: list[Dict[str, Any]] = []
+    try:
+        adapter = await detect_ats_adapter(page, page.url)
+
+        async def fill_step(surface: Any, step_number: int) -> Dict[str, Any]:
+            return await _fill_step_fields(
+                surface,
+                profile=user_profile,
+                cover_letter=cover_letter,
+                resume_path=resume_path,
+                log=log,
+                step_number=step_number,
+            )
+
+        flow = await run_ats_application_flow(
+            page,
+            adapter,
+            fill_step=fill_step,
+            dry_run=dry_run,
+            log=log,
+        )
+        result = flow.as_dict()
+        result["log"] = log
+        result["ats_adapter"] = flow.adapter_name
+        result["ats_adapter_version"] = flow.adapter_version
+        result["url"] = page.url
+        return result
+    finally:
+        await _disconnect(playwright)
+
+
 async def persist_handoff_screenshot(
     session: ManualHandoffSession,
     target_path: str,
@@ -214,3 +256,17 @@ async def persist_handoff_screenshot(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
     return str(target)
+
+
+def terminate_retained_browser(session: ManualHandoffSession) -> bool:
+    _require_local_affinity(session)
+    pid = session.browser_process_id
+    if not pid:
+        return False
+    try:
+        os.kill(pid, signal.SIGTERM)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError as exc:
+        raise BrowserHandoffUnavailable("The retained browser process cannot be terminated safely.") from exc
