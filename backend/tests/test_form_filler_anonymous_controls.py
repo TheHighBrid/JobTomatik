@@ -58,7 +58,7 @@ async def test_uploader_subordinate_text_control_is_not_treated_as_question(page
 
 @pytest.mark.asyncio
 async def test_standalone_anonymous_required_text_control_still_blocks(page):
-    await page.set_content('<input id="mystery" required>')
+    await page.set_content('<input required>')
 
     outcome = await _fill_step_fields(
         page,
@@ -72,7 +72,9 @@ async def test_standalone_anonymous_required_text_control_still_blocks(page):
     assert len(outcome["review_items"]) == 1
     review = outcome["review_items"][0]
     assert review["reason_code"] == "ambiguous_question"
-    assert review["details"]["descriptor"] == "mystery"
-    assert review["details"]["control_metadata"]["id"] == "mystery"
-    assert review["details"]["control_metadata"]["hasFileInput"] is False
-    assert review["details"]["control_metadata"]["hasCombobox"] is False
+    assert review["details"]["descriptor"] == ""
+    metadata = review["details"]["control_metadata"]
+    assert metadata["id"] == ""
+    assert metadata["name"] == ""
+    assert metadata["hasFileInput"] is False
+    assert metadata["hasCombobox"] is False
