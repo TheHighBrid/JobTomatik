@@ -12,8 +12,10 @@ from app.config import get_settings
 from app.database import Base, engine
 from app.services.ats_registry import ats_certification_manifest
 from app.services.control_engine import certification_manifest
+from app.services.handoff_integration import install_handoff_task_integration
 
 settings = get_settings()
+install_handoff_task_integration()
 
 
 def _safe_migrate(eng):
