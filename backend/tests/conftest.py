@@ -41,6 +41,7 @@ def mock_celery(monkeypatch):
 
     monkeypatch.setattr("app.api.applications.generate_cover_letter_task", mock_task)
     monkeypatch.setattr("app.api.applications.submit_application_task", mock_task)
+    monkeypatch.setattr("app.api.handoffs.resume_handoff_session_task", mock_task)
     monkeypatch.setattr("app.api.jobs.run_job_search", mock_task)
 
 
