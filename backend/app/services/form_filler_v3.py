@@ -60,6 +60,41 @@ async def _fill_text_fields(
                 continue
 
             current = str(await element.input_value())
+            policy = resolve_control_policy(descriptor, policies)
+            if policy.get("matched"):
+                if policy.get("can_autofill"):
+                    answer = str(policy.get("answer") or "")
+                    if current == answer:
+                        continue
+                    await element.fill(answer)
+                    if str(await element.input_value()) == answer:
+                        filled += 1
+                        log.append({
+                            "action": "fill",
+                            "descriptor": descriptor[:200],
+                            "canonical_key": policy.get("canonical_key"),
+                            "source": "answer_policy",
+                            "verified": True,
+                            "ts": now_iso(),
+                        })
+                    else:
+                        _append_review(
+                            review_items,
+                            descriptor=descriptor,
+                            policy=policy,
+                            control_type="text",
+                            reason_code="unsupported_control",
+                            summary=f"Policy answer could not be verified: {descriptor}",
+                        )
+                elif await _required(element):
+                    _append_review(
+                        review_items,
+                        descriptor=descriptor,
+                        policy=policy,
+                        control_type="text",
+                    )
+                continue
+
             field = _safe_field(descriptor)
             if field:
                 value = str(values.get(field, "") or "")
@@ -97,32 +132,7 @@ async def _fill_text_fields(
                     )
                 continue
 
-            policy = resolve_control_policy(descriptor, policies)
-            if policy.get("can_autofill"):
-                answer = str(policy.get("answer") or "")
-                if current == answer:
-                    continue
-                await element.fill(answer)
-                if str(await element.input_value()) == answer:
-                    filled += 1
-                    log.append({
-                        "action": "fill",
-                        "descriptor": descriptor[:200],
-                        "canonical_key": policy.get("canonical_key"),
-                        "source": "answer_policy",
-                        "verified": True,
-                        "ts": now_iso(),
-                    })
-                else:
-                    _append_review(
-                        review_items,
-                        descriptor=descriptor,
-                        policy=policy,
-                        control_type="text",
-                        reason_code="unsupported_control",
-                        summary=f"Policy answer could not be verified: {descriptor}",
-                    )
-            elif await _required(element):
+            if await _required(element):
                 _append_review(
                     review_items,
                     descriptor=descriptor,
