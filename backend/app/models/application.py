@@ -42,6 +42,8 @@ class ManualReviewReason(str, enum.Enum):
     unsupported_platform = "unsupported_platform"
     login_required = "login_required"
     employer_contact_missing = "employer_contact_missing"
+    validation_error = "validation_error"
+    step_navigation_failed = "step_navigation_failed"
     submission_confirmation_uncertain = "submission_confirmation_uncertain"
     safety_gate_blocked = "safety_gate_blocked"
     missing_job_url = "missing_job_url"
