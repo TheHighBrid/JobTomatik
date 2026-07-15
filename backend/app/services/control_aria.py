@@ -52,6 +52,33 @@ async def collect_aria_groups(page, role: str) -> List[Tuple[str, Any, List[Any]
     return [(key, group, choices) for key, (group, choices) in groups.items()]
 
 
+async def _visible_listboxes(page) -> List[Any]:
+    visible = []
+    for candidate in await page.query_selector_all('[role="listbox"]'):
+        try:
+            if await candidate.is_visible():
+                visible.append(candidate)
+        except Exception:
+            continue
+    return visible
+
+
+async def _close_visible_listboxes(page, combobox) -> bool:
+    """Close custom dropdown overlays without forcing pointer events through them."""
+    if not await _visible_listboxes(page):
+        return True
+    for key in ("Escape", "Tab"):
+        try:
+            await combobox.evaluate("(el) => el.focus()")
+            await combobox.press(key)
+            await page.wait_for_timeout(100)
+        except Exception:
+            pass
+        if not await _visible_listboxes(page):
+            return True
+    return False
+
+
 async def _combobox_options(page, combobox):
     controls_id = (
         await combobox.get_attribute("aria-controls")
@@ -80,7 +107,7 @@ async def _combobox_options(page, combobox):
             disabled=normalize_text(await option.get_attribute("aria-disabled")) == "true",
             selected=normalize_text(await option.get_attribute("aria-selected")) == "true",
         ))
-    return handles, options
+    return listbox, handles, options
 
 
 async def handle_combobox(
@@ -105,11 +132,42 @@ async def handle_combobox(
                 ))
         return 0
 
-    await combobox.click()
-    await page.wait_for_timeout(50)
-    handles, options = await _combobox_options(page, combobox)
+    if not await _close_visible_listboxes(page, combobox):
+        append_review(outcome.review_items, make_review(
+            descriptor=descriptor, control_type="aria_combobox",
+            policy_result=policy, required=required,
+            reason_code="unsupported_control",
+            summary=f"A previous custom dropdown overlay could not be closed: {descriptor}",
+        ))
+        return 0
+
+    try:
+        await combobox.click(timeout=3000)
+    except Exception:
+        if not await _close_visible_listboxes(page, combobox):
+            append_review(outcome.review_items, make_review(
+                descriptor=descriptor, control_type="aria_combobox",
+                policy_result=policy, required=required,
+                reason_code="unsupported_control",
+                summary=f"Custom dropdown could not be opened safely: {descriptor}",
+            ))
+            return 0
+        try:
+            await combobox.click(timeout=3000)
+        except Exception:
+            append_review(outcome.review_items, make_review(
+                descriptor=descriptor, control_type="aria_combobox",
+                policy_result=policy, required=required,
+                reason_code="unsupported_control",
+                summary=f"Custom dropdown remained blocked by another overlay: {descriptor}",
+            ))
+            return 0
+
+    await page.wait_for_timeout(100)
+    listbox, handles, options = await _combobox_options(page, combobox)
     signature = f"{control_id}:aria-combobox:{options_fingerprint(options)}"
     if signature in processed:
+        await _close_visible_listboxes(page, combobox)
         return 0
     processed.add(signature)
 
@@ -127,16 +185,24 @@ async def handle_combobox(
                 "ambiguous_answers": match.ambiguous_answers,
             },
         ))
-        try:
-            await page.keyboard.press("Escape")
-        except Exception:
-            pass
+        await _close_visible_listboxes(page, combobox)
         return 0
 
     index = options.index(match.matched[0])
     option = handles[index]
-    await option.click()
-    await page.wait_for_timeout(50)
+    try:
+        await option.click(timeout=3000)
+    except Exception:
+        append_review(outcome.review_items, make_review(
+            descriptor=descriptor, control_type="aria_combobox",
+            policy_result=policy, required=required, options=options,
+            reason_code="unsupported_control",
+            summary=f"Matched custom dropdown option could not be selected: {descriptor}",
+        ))
+        await _close_visible_listboxes(page, combobox)
+        return 0
+    await page.wait_for_timeout(100)
+
     selected = normalize_text(await option.get_attribute("aria-selected")) == "true"
     try:
         displayed = await combobox.input_value()
@@ -156,6 +222,17 @@ async def handle_combobox(
             policy_result=policy, required=required, options=options,
             reason_code="unsupported_control",
             summary=f"Custom dropdown selection could not be verified: {descriptor}",
+        ))
+        await _close_visible_listboxes(page, combobox)
+        return 0
+
+    if not await _close_visible_listboxes(page, combobox):
+        append_review(outcome.review_items, make_review(
+            descriptor=descriptor, control_type="aria_combobox",
+            policy_result=policy, required=required, options=options,
+            reason_code="unsupported_control",
+            summary=f"Custom dropdown selection was verified but its overlay stayed open: {descriptor}",
+            details={"listbox_detected": bool(listbox)},
         ))
         return 0
 
