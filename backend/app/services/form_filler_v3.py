@@ -33,6 +33,18 @@ from app.services.form_filler_v2 import (
 from app.services.upload_handler import fill_upload_fields
 
 
+async def _is_combobox_internal(element: Any) -> bool:
+    try:
+        return bool(await element.evaluate(
+            """(el) => Boolean(
+              el.matches('[role="combobox"],[aria-autocomplete]')
+              || el.closest('[role="combobox"]')
+            )"""
+        ))
+    except Exception:
+        return False
+
+
 async def _fill_text_fields(
     surface: Any,
     *,
@@ -47,13 +59,16 @@ async def _fill_text_fields(
     selector = (
         'input:not([type="hidden"]):not([type="submit"]):not([type="button"])'
         ':not([type="reset"]):not([type="checkbox"]):not([type="radio"])'
-        ':not([type="file"]):not([list]),textarea'
+        ':not([type="file"]):not([list]):not([role="combobox"])'
+        ':not([aria-autocomplete]),textarea'
     )
     for element in await surface.query_selector_all(selector):
         try:
             if not await element.is_visible() or not await element.is_enabled():
                 continue
             if await element.get_attribute("readonly") is not None:
+                continue
+            if await _is_combobox_internal(element):
                 continue
             descriptor = await element_descriptor(surface, element)
             if normalize_text(await element.get_attribute("name")) in _SEARCH_FIELDS:
