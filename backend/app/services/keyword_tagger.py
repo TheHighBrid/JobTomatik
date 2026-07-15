@@ -45,8 +45,8 @@ SENIORITY_PATTERNS = [
     ("Mid-Level", r"\bmid[- ]?level\b|\bintermediate\b|\b[23][- ][45]\s+years?\b"),
 ]
 
-# Specific business models precede broad sectors so "payments and banking
-# software" resolves to FinTech rather than the generic Banking category.
+# Specific business models precede broad sectors so payments and banking
+# software resolves to FinTech rather than the generic Banking category.
 INDUSTRY_PATTERNS = [
     ("Financial Crime", r"\bfinancial crime\b|\bfraud\b|\baml\b|\bkyc\b"),
     ("SaaS", r"\bsaas\b|\bsoftware[- ]as[- ]a[- ]service\b"),
@@ -107,14 +107,20 @@ def compute_relevance(job: Dict, user_preferences: Dict) -> float:
         job.get("requirements") or "",
     ]).lower()
 
+    matching_skills = pref_skills & job_skills
+    skill_match = False
     if pref_skills and job_skills:
-        overlap = len(pref_skills & job_skills) / max(len(pref_skills), 1)
+        overlap = len(matching_skills) / max(len(pref_skills), 1)
         score += 0.25 * min(overlap, 1.0)
+        skill_match = bool(matching_skills)
     elif pref_skills and any(skill in combined_text for skill in pref_skills):
         score += 0.15
+        skill_match = True
 
+    title_match = False
     if pref_titles:
-        if any(title in job_title for title in pref_titles):
+        title_match = any(title in job_title for title in pref_titles)
+        if title_match:
             score += 0.2
     elif _text_has_any(job_title, ["fraud", "aml", "kyc", "financial crime", "compliance", "risk", "banking"]):
         score += 0.18
@@ -128,9 +134,16 @@ def compute_relevance(job: Dict, user_preferences: Dict) -> float:
     if pref_min_salary and job_salary_min:
         score += 0.1 if job_salary_min >= pref_min_salary else -0.1
 
-    if _text_has_any(job_title, ["software engineer", "developer", "devops", "frontend", "backend"]):
-        if not _text_has_any(combined_text, ["fraud", "aml", "kyc", "compliance", "banking", "risk"]):
-            score -= 0.25
+    is_software_role = _text_has_any(
+        job_title,
+        ["software engineer", "developer", "devops", "frontend", "backend"],
+    )
+    has_banking_context = _text_has_any(
+        combined_text,
+        ["fraud", "aml", "kyc", "compliance", "banking", "risk"],
+    )
+    if is_software_role and not has_banking_context and not skill_match and not title_match:
+        score -= 0.25
 
     return round(min(max(score, 0.0), 1.0), 3)
 
