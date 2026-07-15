@@ -11,11 +11,9 @@ from app.models.job import Job
 from app.models.user import User
 from app.services.browser_handoff import BrowserVerification
 from app.services.handoff_session import issue_handoff_session
-from conftest import TestingSessionLocal
 
 
-def create_session_for_authenticated_user():
-    db = TestingSessionLocal()
+def create_session_for_authenticated_user(db):
     user = db.query(User).filter(User.email == "test@example.com").first()
     job = Job(
         title="Handoff API Role",
@@ -53,14 +51,11 @@ def create_session_for_authenticated_user():
         metadata={"dry_run": True},
     )
     db.commit()
-    public_id = issued.session.public_id
-    application_id = application.id
-    db.close()
-    return public_id, application_id
+    return issued.session.public_id, application.id
 
 
-def test_bootstrap_discloses_resume_token_only_once(auth_client):
-    public_id, _ = create_session_for_authenticated_user()
+def test_bootstrap_discloses_resume_token_only_once(auth_client, db_session):
+    public_id, _ = create_session_for_authenticated_user(db_session)
 
     first = auth_client.post(f"/api/handoffs/{public_id}/bootstrap")
     assert first.status_code == 200
@@ -85,8 +80,8 @@ def test_bootstrap_discloses_resume_token_only_once(auth_client):
     )
 
 
-def test_claim_rotates_to_lease_and_owner_can_heartbeat(auth_client):
-    public_id, _ = create_session_for_authenticated_user()
+def test_claim_rotates_to_lease_and_owner_can_heartbeat(auth_client, db_session):
+    public_id, _ = create_session_for_authenticated_user(db_session)
     token = auth_client.post(f"/api/handoffs/{public_id}/bootstrap").json()["resume_token"]
 
     claim = auth_client.post(
@@ -112,8 +107,8 @@ def test_claim_rotates_to_lease_and_owner_can_heartbeat(auth_client):
     assert replay.status_code == 409
 
 
-def test_browser_action_never_persists_typed_secret(auth_client, monkeypatch):
-    public_id, _ = create_session_for_authenticated_user()
+def test_browser_action_never_persists_typed_secret(auth_client, db_session, monkeypatch):
+    public_id, _ = create_session_for_authenticated_user(db_session)
     token = auth_client.post(f"/api/handoffs/{public_id}/bootstrap").json()["resume_token"]
     lease = auth_client.post(
         f"/api/handoffs/{public_id}/claim",
@@ -140,24 +135,21 @@ def test_browser_action_never_persists_typed_secret(auth_client, monkeypatch):
     )
     assert response.status_code == 200
 
-    db = TestingSessionLocal()
-    try:
-        event = (
-            db.query(HandoffSessionEvent)
-            .filter(HandoffSessionEvent.event_type == "handoff_browser_action")
-            .order_by(HandoffSessionEvent.id.desc())
-            .first()
-        )
-        assert event.payload["action"] == "type"
-        assert event.payload["sensitive_value_logged"] is False
-        assert "654321" not in str(event.payload)
-        assert "text" not in event.payload
-    finally:
-        db.close()
+    db_session.expire_all()
+    event = (
+        db_session.query(HandoffSessionEvent)
+        .filter(HandoffSessionEvent.event_type == "handoff_browser_action")
+        .order_by(HandoffSessionEvent.id.desc())
+        .first()
+    )
+    assert event.payload["action"] == "type"
+    assert event.payload["sensitive_value_logged"] is False
+    assert "654321" not in str(event.payload)
+    assert "text" not in event.payload
 
 
-def test_complete_requires_browser_verified_clearance_and_queues_resume(auth_client, monkeypatch):
-    public_id, _ = create_session_for_authenticated_user()
+def test_complete_requires_browser_verified_clearance_and_queues_resume(auth_client, db_session, monkeypatch):
+    public_id, _ = create_session_for_authenticated_user(db_session)
     token = auth_client.post(f"/api/handoffs/{public_id}/bootstrap").json()["resume_token"]
     lease = auth_client.post(
         f"/api/handoffs/{public_id}/claim",
@@ -190,8 +182,8 @@ def test_complete_requires_browser_verified_clearance_and_queues_resume(auth_cli
     assert response.json()["failure_reason"] is None
 
 
-def test_application_handoff_listing_is_owner_scoped(auth_client):
-    public_id, application_id = create_session_for_authenticated_user()
+def test_application_handoff_listing_is_owner_scoped(auth_client, db_session):
+    public_id, application_id = create_session_for_authenticated_user(db_session)
     response = auth_client.get(f"/api/handoffs/application/{application_id}/sessions")
     assert response.status_code == 200
     assert [item["public_id"] for item in response.json()] == [public_id]
