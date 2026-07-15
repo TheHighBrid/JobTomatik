@@ -201,14 +201,22 @@ async def _combobox_display_state(combobox) -> str:
             return ""
 
 
+def _display_contains_answer(displayed: str, answer: str) -> bool:
+    normalized_displayed = normalize_text(displayed)
+    normalized_answer = normalize_text(answer)
+    if not normalized_displayed or not normalized_answer:
+        return False
+    return f" {normalized_answer} " in f" {normalized_displayed} "
+
+
 def _display_matches_option(displayed: str, option: OptionRecord) -> bool:
     normalized_displayed = normalize_text(displayed)
     if not normalized_displayed:
         return False
     return bool(
         normalized_displayed in {option.normalized_label, option.normalized_value}
-        or option.normalized_label in normalized_displayed
-        or option.normalized_value in normalized_displayed
+        or f" {option.normalized_label} " in f" {normalized_displayed} "
+        or f" {option.normalized_value} " in f" {normalized_displayed} "
     )
 
 
@@ -254,6 +262,13 @@ async def handle_combobox(
             reason_code="unsupported_control",
             summary=f"A previous custom dropdown overlay could not be closed: {descriptor}",
         ))
+        return 0
+
+    existing_display = await _combobox_display_state(combobox)
+    if _display_contains_answer(existing_display, answers[0]):
+        processed.add(
+            f"{control_id}:aria-combobox:already-selected:{normalize_text(answers[0])}"
+        )
         return 0
 
     try:
