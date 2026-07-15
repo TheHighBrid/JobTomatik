@@ -46,6 +46,16 @@ def _merge_unique(target: List[Dict[str, Any]], source: List[Dict[str, Any]]) ->
             target.append(item)
 
 
+def _record_step_event(
+    result: ATSFlowResult,
+    log: List[Dict[str, Any]],
+    event: Dict[str, Any],
+) -> None:
+    """Keep step evidence both in the result and the durable automation log."""
+    result.step_evidence.append(event)
+    log.append(dict(event))
+
+
 async def _wait_for_step_change(
     adapter: ATSAdapter,
     page: Any,
@@ -91,8 +101,8 @@ async def run_ats_application_flow(
             result.review_items.append(challenge)
             return result
 
-        fingerprint = await adapter.step_fingerprint(surface)
-        if fingerprint in seen:
+        entry_fingerprint = await adapter.step_fingerprint(surface)
+        if entry_fingerprint in seen:
             result.requires_manual_review = True
             result.error = "The ATS flow repeated a previously visited step."
             result.review_items.append(_review(
@@ -101,11 +111,11 @@ async def run_ats_application_flow(
                 {
                     "adapter": adapter.name,
                     "step": step_number,
-                    "fingerprint": fingerprint,
+                    "fingerprint": entry_fingerprint,
                 },
             ))
             return result
-        seen.add(fingerprint)
+        seen.add(entry_fingerprint)
 
         step_outcome = await fill_step(surface, step_number)
         result.fields_filled += int(step_outcome.get("filled_count", 0))
@@ -113,12 +123,18 @@ async def run_ats_application_flow(
         _merge_unique(result.control_evidence, step_outcome.get("control_evidence") or [])
         _merge_unique(result.upload_evidence, step_outcome.get("upload_evidence") or [])
         result.steps_completed = step_number
-        result.step_evidence.append({
+
+        # Filling fields changes the page fingerprint. Navigation must be measured
+        # from this post-fill state, otherwise a failed Next click could be mistaken
+        # for a successful step transition merely because input values changed.
+        filled_fingerprint = await adapter.step_fingerprint(surface)
+        _record_step_event(result, log, {
             "action": "ats_step_filled",
             "adapter": adapter.name,
             "adapter_version": adapter.version,
             "step": step_number,
-            "fingerprint": fingerprint,
+            "entry_fingerprint": entry_fingerprint,
+            "filled_fingerprint": filled_fingerprint,
             "fields_filled": int(step_outcome.get("filled_count", 0)),
             "control_passes": step_outcome.get("control_passes", 0),
             "ts": _now(),
@@ -134,7 +150,7 @@ async def run_ats_application_flow(
 
         if next_button:
             before_url = getattr(surface, "url", "") or getattr(page, "url", "")
-            before = fingerprint
+            before = filled_fingerprint
             try:
                 await next_button.click()
                 log.append({
@@ -185,7 +201,7 @@ async def run_ats_application_flow(
                     },
                 ))
                 return result
-            result.step_evidence.append({
+            _record_step_event(result, log, {
                 "action": "ats_step_advanced",
                 "adapter": adapter.name,
                 "from_step": step_number,
@@ -200,17 +216,18 @@ async def run_ats_application_flow(
             if dry_run:
                 result.success = True
                 result.ready_to_submit = True
-                result.step_evidence.append({
+                _record_step_event(result, log, {
                     "action": "ats_final_submit_ready",
                     "adapter": adapter.name,
                     "step": step_number,
                     "submit_clicked": False,
+                    "fingerprint": filled_fingerprint,
                     "ts": _now(),
                 })
                 return result
 
             before_url = result.final_url
-            before_fingerprint = fingerprint
+            before_fingerprint = filled_fingerprint
             try:
                 await submit.click()
                 log.append({
@@ -283,7 +300,7 @@ async def run_ats_application_flow(
             {
                 "adapter": adapter.name,
                 "step": step_number,
-                "fingerprint": fingerprint,
+                "fingerprint": filled_fingerprint,
             },
         ))
         return result
