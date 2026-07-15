@@ -100,6 +100,26 @@ def test_greenhouse_url_parsing_and_schema_inspection():
     assert report["unsupported_fields"] == []
 
 
+def test_greenhouse_schema_accepts_list_demographic_payloads():
+    report = inspect_greenhouse_schema({
+        "id": 456,
+        "questions": [],
+        "demographic_questions": [{
+            "id": 12,
+            "label": "Gender",
+            "required": False,
+            "type": "multi_value_single_select",
+            "answer_options": [{"id": 1, "label": "Prefer not to say"}],
+        }],
+        "compliance": [{"type": "gdpr"}],
+    })
+
+    assert report["schema_certified"] is True
+    assert report["question_count"] == 1
+    assert report["questions"][0]["source"] == "demographic_questions"
+    assert report["data_compliance"] == [{"type": "gdpr"}]
+
+
 @pytest.mark.asyncio
 async def test_greenhouse_multistep_dynamic_upload_and_dry_run_ready(page, tmp_path):
     resume = tmp_path / "resume.pdf"
