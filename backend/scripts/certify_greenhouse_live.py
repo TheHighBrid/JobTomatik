@@ -1,8 +1,8 @@
 """Supervised live Greenhouse dry-run certification.
 
 This script never clicks a final submit control. It can inspect public Greenhouse
-forms and, when explicitly configured, exercise all earlier form steps using a
-user-provided synthetic certification profile.
+forms and exercise all earlier form steps using either an explicitly configured
+profile or a generated synthetic certification identity.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import os
 import re
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.services.ats_greenhouse import (
     fetch_greenhouse_job_schema,
@@ -23,6 +23,11 @@ from app.services.ats_greenhouse import (
 )
 from app.services.ats_registry import detect_ats_adapter
 from app.services.form_filler import fill_and_submit_application
+from app.services.greenhouse_certification import (
+    SYNTHETIC_TEXT_RESPONSE,
+    build_synthetic_profile_for_url,
+    write_synthetic_resume,
+)
 
 
 def parse_urls(raw: str) -> List[str]:
@@ -38,7 +43,8 @@ def load_profile() -> Dict[str, Any]:
     raw = os.getenv("GREENHOUSE_CERT_PROFILE_JSON", "").strip()
     if not raw:
         raise RuntimeError(
-            "GREENHOUSE_CERT_PROFILE_JSON is required when --exercise is enabled."
+            "GREENHOUSE_CERT_PROFILE_JSON is required when --exercise is enabled "
+            "without --synthetic-profile."
         )
     profile = json.loads(raw)
     if not isinstance(profile, dict):
@@ -131,6 +137,7 @@ async def exercise_live_url(
     profile: Dict[str, Any],
     resume_path: str,
     cover_letter: str,
+    certification_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     try:
         result = await fill_and_submit_application(
@@ -146,6 +153,7 @@ async def exercise_live_url(
             "mode": "exercise",
             "passed": False,
             "final_submit_clicked": False,
+            "certification_metadata": certification_metadata or {},
             "error": f"{type(exc).__name__}: {str(exc)[:500]}",
         }
     submit_clicked = any(
@@ -171,7 +179,9 @@ async def exercise_live_url(
         "validation_errors": result.get("validation_errors") or [],
         "upload_evidence": result.get("upload_evidence") or [],
         "step_evidence": result.get("step_evidence") or [],
+        "control_evidence_count": len(result.get("control_evidence") or []),
         "final_submit_clicked": submit_clicked,
+        "certification_metadata": certification_metadata or {},
         "error": result.get("error"),
     }
 
@@ -196,21 +206,54 @@ async def main_async(args) -> int:
             await browser.close()
 
     if args.exercise:
-        profile = load_profile()
-        resume_path = os.getenv("GREENHOUSE_CERT_RESUME_PATH", "").strip()
-        if not resume_path or not Path(resume_path).exists():
-            raise RuntimeError(
-                "GREENHOUSE_CERT_RESUME_PATH must point to a synthetic resume file "
-                "when --exercise is enabled."
+        synthetic_mode = bool(args.synthetic_profile)
+        shared_profile: Optional[Dict[str, Any]] = None
+        if synthetic_mode:
+            resume_path = args.synthetic_resume_path or os.getenv(
+                "GREENHOUSE_CERT_RESUME_PATH", "greenhouse-synthetic-resume.pdf"
             )
-        cover_letter = os.getenv("GREENHOUSE_CERT_COVER_LETTER", "")
+            write_synthetic_resume(resume_path)
+            cover_letter = os.getenv(
+                "GREENHOUSE_CERT_COVER_LETTER", SYNTHETIC_TEXT_RESPONSE
+            )
+        else:
+            shared_profile = load_profile()
+            resume_path = os.getenv("GREENHOUSE_CERT_RESUME_PATH", "").strip()
+            if not resume_path or not Path(resume_path).exists():
+                raise RuntimeError(
+                    "GREENHOUSE_CERT_RESUME_PATH must point to a synthetic resume file "
+                    "when --exercise is enabled."
+                )
+            cover_letter = os.getenv("GREENHOUSE_CERT_COVER_LETTER", "")
+
         for url in urls:
-            reports.append(await exercise_live_url(
-                url,
-                profile=profile,
-                resume_path=resume_path,
-                cover_letter=cover_letter,
-            ))
+            try:
+                if synthetic_mode:
+                    profile, metadata = await build_synthetic_profile_for_url(url)
+                    metadata["synthetic_profile"] = True
+                else:
+                    profile = dict(shared_profile or {})
+                    metadata = {
+                        "synthetic_profile": False,
+                        "policy_count": len(profile.get("answer_policies") or []),
+                    }
+                reports.append(await exercise_live_url(
+                    url,
+                    profile=profile,
+                    resume_path=resume_path,
+                    cover_letter=cover_letter,
+                    certification_metadata=metadata,
+                ))
+            except Exception as exc:
+                reports.append({
+                    "url": url,
+                    "mode": "exercise",
+                    "passed": False,
+                    "final_submit_clicked": False,
+                    "certification_metadata": {"synthetic_profile": synthetic_mode},
+                    "error": f"{type(exc).__name__}: {str(exc)[:500]}",
+                    "traceback": traceback.format_exc(limit=8)[-4000:],
+                })
 
     summary = {
         "certification": "greenhouse_supervised_live_dry_run",
@@ -219,6 +262,7 @@ async def main_async(args) -> int:
         ),
         "url_count": len(urls),
         "exercise_enabled": bool(args.exercise),
+        "synthetic_profile": bool(args.synthetic_profile),
         "reports": reports,
         "passed": bool(reports) and all(item.get("passed") for item in reports),
     }
@@ -231,6 +275,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--urls", default="")
     parser.add_argument("--exercise", action="store_true")
+    parser.add_argument("--synthetic-profile", action="store_true")
+    parser.add_argument(
+        "--synthetic-resume-path",
+        default="greenhouse-synthetic-resume.pdf",
+    )
     parser.add_argument("--report", default="greenhouse-live-certification.json")
     args = parser.parse_args()
     raise SystemExit(asyncio.run(main_async(args)))
