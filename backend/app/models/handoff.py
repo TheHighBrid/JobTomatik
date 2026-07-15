@@ -67,6 +67,7 @@ class ManualHandoffSession(Base):
     encrypted_resume_token = Column(Text, nullable=False)
     resume_token_prefix = Column(String(16), nullable=False)
     resume_token_version = Column(Integer, nullable=False, default=1)
+    resume_token_disclosed_at = Column(DateTime(timezone=True))
     resume_token_consumed_at = Column(DateTime(timezone=True))
 
     lease_token_hash = Column(String(64), nullable=True, index=True)
@@ -74,6 +75,7 @@ class ManualHandoffSession(Base):
     lease_expires_at = Column(DateTime(timezone=True))
     claimed_at = Column(DateTime(timezone=True))
     last_heartbeat_at = Column(DateTime(timezone=True))
+    lease_recovery_count = Column(Integer, nullable=False, default=0)
 
     browser_provider = Column(String(60), nullable=False, default="unavailable")
     browser_session_id = Column(String(255))
