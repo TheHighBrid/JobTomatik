@@ -10,6 +10,7 @@ on:
       - "backend/tests/test_greenhouse_adapter.py"
       - "backend/tests/test_ats_flow_safety.py"
       - "backend/tests/test_ats_captcha_handoff.py"
+      - "backend/tests/test_form_filler_anonymous_controls.py"
       - "backend/tests/test_greenhouse_synthetic_certification.py"
       - ".github/workflows/greenhouse-adapter-certification.yml"
   push:
@@ -23,6 +24,7 @@ on:
       - "backend/tests/test_greenhouse_adapter.py"
       - "backend/tests/test_ats_flow_safety.py"
       - "backend/tests/test_ats_captcha_handoff.py"
+      - "backend/tests/test_form_filler_anonymous_controls.py"
       - "backend/tests/test_greenhouse_synthetic_certification.py"
       - ".github/workflows/greenhouse-adapter-certification.yml"
 
@@ -72,6 +74,7 @@ jobs:
             tests/test_greenhouse_adapter.py \
             tests/test_ats_flow_safety.py \
             tests/test_ats_captcha_handoff.py \
+            tests/test_form_filler_anonymous_controls.py \
             tests/test_greenhouse_synthetic_certification.py \
             > greenhouse-certification.txt 2>&1
           status=$?
