@@ -10,22 +10,31 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from app.services.control_aria import collect_aria_groups, handle_combobox
-from app.services.control_native import (
-    collect_native_groups,
-    handle_choice_group,
-    handle_datalist,
-    handle_select,
-)
+from app.services import control_aria as aria_controls
+from app.services import control_native as native_controls
+from app.services.control_descriptors import element_descriptor
+from app.services.control_policy import resolve_control_policy
 from app.services.control_primitives import (
     CONTROL_ENGINE_VERSION,
     ControlEngineOutcome,
     OptionRecord,
-    element_descriptor,
     match_answers_to_options,
     normalize_text,
     parse_policy_answers,
 )
+
+# Both handler modules use an injected specificity-aware resolver. This keeps the
+# answer-vault contract intact while preventing generic words from outranking a
+# more precise question phrase.
+native_controls.resolve_runtime_policy = resolve_control_policy
+aria_controls.resolve_runtime_policy = resolve_control_policy
+
+collect_aria_groups = aria_controls.collect_aria_groups
+handle_combobox = aria_controls.handle_combobox
+collect_native_groups = native_controls.collect_native_groups
+handle_choice_group = native_controls.handle_choice_group
+handle_datalist = native_controls.handle_datalist
+handle_select = native_controls.handle_select
 
 MAX_DYNAMIC_PASSES = 5
 _SETTLE_MS = 175
