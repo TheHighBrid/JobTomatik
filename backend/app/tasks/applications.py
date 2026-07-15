@@ -3,7 +3,7 @@ import base64
 import logging
 import os
 from datetime import datetime
-from typing import Any, Coroutine, Dict, Iterable
+from typing import Any, Coroutine, Dict, Iterable, List
 
 from app.celery_app import celery_app
 from app.config import get_settings
@@ -19,6 +19,7 @@ from app.models.application import (
 from app.models.job import Job
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
+from app.services.answer_policy import load_runtime_policies
 from app.services.application_state import (
     create_manual_review_task,
     has_sufficient_submission_evidence,
@@ -51,9 +52,19 @@ def _now() -> str:
     return datetime.utcnow().isoformat()
 
 
-def _profile_dict(user: User) -> Dict[str, Any]:
+def _profile_dict(user: User, db=None, job: Job | None = None) -> Dict[str, Any]:
+    profile_data = dict(user.profile_data or {})
+    runtime_policies: List[Dict[str, Any]] = []
+    if db is not None:
+        runtime_policies = load_runtime_policies(
+            db,
+            user.id,
+            target_url=(job.url if job else "") or "",
+            company=(job.company if job else "") or "",
+        )
     return {
-        **(user.profile_data or {}),
+        **profile_data,
+        "profile_data": profile_data,
         "full_name": user.full_name,
         "email": user.email,
         "phone": user.phone,
@@ -61,6 +72,7 @@ def _profile_dict(user: User) -> Dict[str, Any]:
         "linkedin_url": user.linkedin_url,
         "github_url": user.github_url,
         "portfolio_url": user.portfolio_url,
+        "answer_policies": runtime_policies,
     }
 
 
@@ -84,6 +96,7 @@ def _manual_result(job: Job, dry_run: bool, reason: str, action: str = "manual_r
         "error": reason,
         "fields_filled": 0,
         "requires_manual_review": True,
+        "review_items": [],
     }
 
 
@@ -99,8 +112,8 @@ def _sendgrid_email(to_email: str, subject: str, body: str, resume_path: str = "
     )
 
     if resume_path and os.path.exists(resume_path):
-        with open(resume_path, "rb") as f:
-            encoded = base64.b64encode(f.read()).decode()
+        with open(resume_path, "rb") as file_handle:
+            encoded = base64.b64encode(file_handle.read()).decode()
         filename = os.path.basename(resume_path)
         message.attachment = Attachment(
             FileContent(encoded),
@@ -109,8 +122,7 @@ def _sendgrid_email(to_email: str, subject: str, body: str, resume_path: str = "
             Disposition("attachment"),
         )
 
-    client = SendGridAPIClient(settings.sendgrid_api_key)
-    response = client.send(message)
+    response = SendGridAPIClient(settings.sendgrid_api_key).send(message)
     headers = dict(getattr(response, "headers", {}) or {})
     return {
         "status_code": int(getattr(response, "status_code", 0) or 0),
@@ -122,12 +134,20 @@ def _email_application_result(app: Application, job: Job, user: User, dry_run: b
     raw = job.raw_data or {}
     to_email = raw.get("selected_apply_email") or (raw.get("apply_email_candidates") or [None])[0]
     if not to_email:
-        return _manual_result(job, dry_run, "Email application method selected but no employer email was found", "email_missing")
+        return _manual_result(
+            job,
+            dry_run,
+            "Email application method selected but no employer email was found",
+            "email_missing",
+        )
 
     subject = f"Application for {job.title} - {user.full_name or user.email}"
     body = (app.cover_letter or "").strip()
     if not body:
-        body = f"Dear Hiring Manager,\n\nPlease accept my application for the {job.title} position at {job.company}.\n\nBest regards,\n{user.full_name or user.email}"
+        body = (
+            f"Dear Hiring Manager,\n\nPlease accept my application for the {job.title} "
+            f"position at {job.company}.\n\nBest regards,\n{user.full_name or user.email}"
+        )
 
     if dry_run:
         return {
@@ -140,10 +160,16 @@ def _email_application_result(app: Application, job: Job, user: User, dry_run: b
             "fields_filled": 0,
             "requires_manual_review": False,
             "application_method": "email",
+            "review_items": [],
         }
 
     if not settings.sendgrid_api_key:
-        return _manual_result(job, dry_run, "SENDGRID_API_KEY is missing, so email application was prepared but not sent", "email_provider_missing")
+        return _manual_result(
+            job,
+            dry_run,
+            "SENDGRID_API_KEY is missing, so email application was prepared but not sent",
+            "email_provider_missing",
+        )
 
     try:
         provider_receipt = _sendgrid_email(to_email, subject, body, user.resume_path or "")
@@ -164,6 +190,7 @@ def _email_application_result(app: Application, job: Job, user: User, dry_run: b
             "fields_filled": 0,
             "requires_manual_review": not accepted,
             "application_method": "email",
+            "review_items": [],
             "confirmation_evidence": [{
                 "evidence_type": SubmissionEvidenceType.email_provider_receipt.value,
                 "is_sufficient": accepted,
@@ -184,16 +211,14 @@ _LISTING_HOSTS = frozenset([
     "jobbank.gc.ca", "www.jobbank.gc.ca",
     "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
 ])
-
 _LISTING_PATH_FRAGS = ("/jobsearch/jobposting/", "/rechercheemplois/offredemploi/")
 
 
 def _is_listing_page_url(url: str) -> bool:
-    """True when the URL is a Job Bank listing page, not an actual application form."""
     try:
         from urllib.parse import urlparse
         parsed = urlparse(url or "")
-        return parsed.hostname in _LISTING_HOSTS and any(f in parsed.path for f in _LISTING_PATH_FRAGS)
+        return parsed.hostname in _LISTING_HOSTS and any(fragment in parsed.path for fragment in _LISTING_PATH_FRAGS)
     except Exception:
         return False
 
@@ -219,6 +244,13 @@ def _ensure_application_method(job: Job) -> Dict[str, Any]:
 
 
 def _manual_reason_code(result: Dict[str, Any], method: str) -> ManualReviewReason:
+    review_items = result.get("review_items") or []
+    if review_items:
+        try:
+            return ManualReviewReason(review_items[0].get("reason_code"))
+        except (ValueError, TypeError):
+            pass
+
     actions = " ".join(str(item.get("action", "")) for item in result.get("log", []))
     text = f"{actions} {result.get('error') or ''}".lower()
     if "captcha" in text:
@@ -271,6 +303,64 @@ def _record_result_evidence(db, app: Application, result: Dict[str, Any]) -> Non
         )
 
 
+def _group_review_items(result: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for item in result.get("review_items") or []:
+        reason_code = item.get("reason_code") or ManualReviewReason.ambiguous_question.value
+        grouped.setdefault(reason_code, []).append(item)
+    return grouped
+
+
+def _create_result_review_tasks(
+    db,
+    app: Application,
+    result: Dict[str, Any],
+    method: str,
+    blocking_url: str,
+) -> ManualReviewReason:
+    grouped = _group_review_items(result)
+    if grouped:
+        first_reason = ManualReviewReason.ambiguous_question
+        for index, (reason_value, items) in enumerate(grouped.items()):
+            try:
+                reason_code = ManualReviewReason(reason_value)
+            except ValueError:
+                reason_code = ManualReviewReason.ambiguous_question
+            if index == 0:
+                first_reason = reason_code
+            create_manual_review_task(
+                db,
+                app,
+                reason_code,
+                f"{len(items)} application question(s) require an approved answer policy.",
+                details={
+                    "method": method,
+                    "questions": items,
+                    "log": result.get("log", []),
+                },
+                blocking_url=blocking_url,
+                target_state=ApplicationAutomationState.needs_review,
+            )
+        return first_reason
+
+    reason_code = _manual_reason_code(result, method)
+    target_state = (
+        ApplicationAutomationState.submission_uncertain
+        if reason_code == ManualReviewReason.submission_confirmation_uncertain
+        else ApplicationAutomationState.needs_review
+    )
+    create_manual_review_task(
+        db,
+        app,
+        reason_code,
+        result.get("error") or "No safe automatic application method was found.",
+        details={"method": method, "log": result.get("log", [])},
+        blocking_url=blocking_url,
+        target_state=target_state,
+    )
+    return reason_code
+
+
 @celery_app.task(bind=True, name="app.tasks.applications.generate_cover_letter_task", queue="applications")
 def generate_cover_letter_task(self, application_id: int):
     db = SessionLocal()
@@ -302,10 +392,10 @@ def generate_cover_letter_task(self, application_id: int):
             ))
         db.commit()
         return {"application_id": application_id, "generated": True}
-    except Exception as e:
+    except Exception as exc:
         logger.exception("generate_cover_letter_task failed")
         db.rollback()
-        raise self.retry(exc=e, countdown=30, max_retries=2)
+        raise self.retry(exc=exc, countdown=30, max_retries=2)
     finally:
         db.close()
 
@@ -421,7 +511,7 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
             result = _run_async(
                 fill_and_submit_application(
                     job_url=target_url,
-                    user_profile=_profile_dict(user),
+                    user_profile=_profile_dict(user, db, job),
                     cover_letter=app.cover_letter or "",
                     resume_path=user.resume_path or "",
                     dry_run=dry_run,
@@ -489,27 +579,20 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
             )
         elif result.get("requires_manual_review"):
             app.status = ApplicationStatus.pending
-            reason_code = _manual_reason_code(result, method)
-            target_state = (
-                ApplicationAutomationState.submission_uncertain
-                if reason_code == ManualReviewReason.submission_confirmation_uncertain
-                else ApplicationAutomationState.needs_review
-            )
-            create_manual_review_task(
-                db,
-                app,
-                reason_code,
-                result.get("error") or "No safe automatic application method was found.",
-                details={"method": method, "log": result.get("log", [])},
-                blocking_url=result.get("application_url") or result.get("url") or job.url,
-                target_state=target_state,
-            )
+            blocking_url = result.get("application_url") or result.get("url") or job.url
+            reason_code = _create_result_review_tasks(db, app, result, method, blocking_url)
             db.add(Notification(
                 user_id=user.id,
                 type=NotificationType.system,
                 title=f"Manual review needed: {job.title}",
                 message=result.get("error") or "No safe automatic application method was found.",
-                data={"job_id": job.id, "application_id": app.id, "method": method, "reason": reason_code.value},
+                data={
+                    "job_id": job.id,
+                    "application_id": app.id,
+                    "method": method,
+                    "reason": reason_code.value,
+                    "question_count": len(result.get("review_items") or []),
+                },
             ))
             logger.info("Application %s requires manual review: %s", application_id, result.get("error"))
         else:
@@ -525,9 +608,9 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
 
         db.commit()
         return result
-    except Exception as e:
+    except Exception as exc:
         logger.exception("submit_application_task failed")
         db.rollback()
-        raise self.retry(exc=e, countdown=60, max_retries=2)
+        raise self.retry(exc=exc, countdown=60, max_retries=2)
     finally:
         db.close()
