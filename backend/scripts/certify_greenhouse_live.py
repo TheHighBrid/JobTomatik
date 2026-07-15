@@ -12,6 +12,7 @@ import asyncio
 import json
 import os
 import re
+import traceback
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -45,17 +46,36 @@ def load_profile() -> Dict[str, Any]:
     return profile
 
 
+async def _visible_control_count(surface: Any) -> int:
+    return int(await surface.locator(
+        'input:not([type="hidden"]),textarea,select,button,[role="combobox"],'
+        '[role="radio"],[role="checkbox"]'
+    ).evaluate_all(
+        """(elements) => elements.filter((el) => {
+          const style = getComputedStyle(el);
+          const rect = el.getBoundingClientRect();
+          return style.visibility !== 'hidden' && style.display !== 'none'
+            && rect.width > 0 && rect.height > 0;
+        }).length"""
+    ))
+
+
 async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
     page = await browser.new_page()
     report: Dict[str, Any] = {"url": url, "mode": "inspect", "passed": False}
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        except Exception as exc:
+            report["navigation_warning"] = str(exc)[:500]
         try:
             await page.wait_for_load_state("networkidle", timeout=12000)
         except Exception:
             pass
 
-        adapter = await detect_ats_adapter(page, page.url)
+        report["loaded_url"] = page.url
+        report["title"] = await page.title()
+        adapter = await detect_ats_adapter(page, page.url or url)
         report["adapter"] = adapter.name
         report["adapter_version"] = adapter.version
         if adapter.name != "greenhouse":
@@ -66,18 +86,16 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
         await adapter.prepare(surface, [])
         surface = await adapter.resolve_surface(page)
         report["surface_url"] = getattr(surface, "url", "") or page.url
-        report["visible_controls"] = await surface.locator(
-            'input:not([type="hidden"]),textarea,select,button,[role="combobox"],'
-            '[role="radio"],[role="checkbox"]'
-        ).count()
+        report["visible_controls"] = await _visible_control_count(surface)
         report["next_control_present"] = bool(await adapter.find_next_button(surface))
         report["submit_control_present"] = bool(await adapter.find_submit_button(surface))
 
         board_token, job_id = parse_greenhouse_job_url(report["surface_url"])
         if not job_id:
-            board_token2, job_id2 = parse_greenhouse_job_url(page.url)
+            board_token2, job_id2 = parse_greenhouse_job_url(page.url or url)
             board_token = board_token or board_token2
             job_id = job_id or job_id2
+        report["board_token"] = board_token
         report["board_token_detected"] = bool(board_token)
         report["job_id"] = job_id
 
@@ -86,7 +104,7 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
                 schema = await fetch_greenhouse_job_schema(board_token, job_id)
                 report["schema"] = inspect_greenhouse_schema(schema)
             except Exception as exc:
-                report["schema_error"] = str(exc)[:300]
+                report["schema_error"] = f"{type(exc).__name__}: {str(exc)[:500]}"
 
         report["passed"] = (
             report["visible_controls"] > 0
@@ -96,8 +114,15 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
         if not report["passed"] and not report.get("error"):
             report["error"] = "Greenhouse surface was detected but was not certification-ready."
         return report
+    except Exception as exc:
+        report["error"] = f"{type(exc).__name__}: {str(exc)[:500]}"
+        report["traceback"] = traceback.format_exc(limit=8)[-4000:]
+        return report
     finally:
-        await page.close()
+        try:
+            await page.close()
+        except Exception:
+            pass
 
 
 async def exercise_live_url(
@@ -107,13 +132,22 @@ async def exercise_live_url(
     resume_path: str,
     cover_letter: str,
 ) -> Dict[str, Any]:
-    result = await fill_and_submit_application(
-        job_url=url,
-        user_profile=profile,
-        cover_letter=cover_letter,
-        resume_path=resume_path,
-        dry_run=True,
-    )
+    try:
+        result = await fill_and_submit_application(
+            job_url=url,
+            user_profile=profile,
+            cover_letter=cover_letter,
+            resume_path=resume_path,
+            dry_run=True,
+        )
+    except Exception as exc:
+        return {
+            "url": url,
+            "mode": "exercise",
+            "passed": False,
+            "final_submit_clicked": False,
+            "error": f"{type(exc).__name__}: {str(exc)[:500]}",
+        }
     submit_clicked = any(
         item.get("action") in {"ats_submit_clicked", "submit_click", "submit_clicked"}
         for item in result.get("log") or []
@@ -180,15 +214,17 @@ async def main_async(args) -> int:
 
     summary = {
         "certification": "greenhouse_supervised_live_dry_run",
-        "final_submit_clicked": False,
+        "final_submit_clicked": any(
+            item.get("final_submit_clicked", False) for item in reports
+        ),
         "url_count": len(urls),
         "exercise_enabled": bool(args.exercise),
         "reports": reports,
-        "passed": all(item.get("passed") for item in reports),
+        "passed": bool(reports) and all(item.get("passed") for item in reports),
     }
     Path(args.report).write_text(json.dumps(summary, indent=2, default=str))
     print(json.dumps(summary, indent=2, default=str))
-    return 0 if summary["passed"] else 1
+    return 0 if summary["passed"] and not summary["final_submit_clicked"] else 1
 
 
 def main() -> None:
