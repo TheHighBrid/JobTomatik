@@ -10,6 +10,7 @@ from sqlalchemy import inspect as sa_inspect, text
 from app.api import answer_policies, applications, auth, export, jobs, notifications, profile, settings as settings_api
 from app.config import get_settings
 from app.database import Base, engine
+from app.services.control_engine import certification_manifest
 
 settings = get_settings()
 
@@ -99,3 +100,8 @@ app.include_router(settings_api.router, prefix="/api")
 @app.get("/api/system/health")
 async def health():
     return {"status": "ok", "service": "JobTomatik API"}
+
+
+@app.get("/api/system/control-certification")
+async def control_certification():
+    return certification_manifest()
