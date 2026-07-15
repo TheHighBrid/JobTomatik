@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     dev_mock_jobs: bool = False
 
+    # Defense-in-depth gate for any non-dry-run application attempt.
+    # Keep disabled until the active adapter has passed supervised certification.
+    allow_real_application_submit: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
