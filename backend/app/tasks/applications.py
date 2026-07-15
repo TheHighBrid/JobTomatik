@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+LIVE_SUBMIT_BLOCKED_REASON = (
+    "Real application submission is disabled. Set "
+    "ALLOW_REAL_APPLICATION_SUBMIT=true only after supervised adapter certification."
+)
+
+
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     try:
         loop = asyncio.get_running_loop()
@@ -66,7 +72,6 @@ def _manual_result(job: Job, dry_run: bool, reason: str, action: str = "manual_r
         "fields_filled": 0,
         "requires_manual_review": True,
     }
-
 
 
 def _sendgrid_email(to_email: str, subject: str, body: str, resume_path: str = "") -> None:
@@ -162,10 +167,10 @@ def _ensure_application_method(job: Job) -> Dict[str, Any]:
     method = raw.get("application_method")
     selected_url = raw.get("selected_apply_url", "")
 
-    # If the stored apply URL is still a job-listing page the resolver mis-classified it —
+    # If the stored apply URL is still a job-listing page the resolver mis-classified it,
     # re-resolve so we can find the real employer ATS or email.
     if method == "external_url" and _is_listing_page_url(selected_url):
-        logger.info("Re-resolving %s — stored apply URL is a listing page", job.url)
+        logger.info("Re-resolving %s - stored apply URL is a listing page", job.url)
         method = None
 
     if method:
@@ -203,7 +208,7 @@ def generate_cover_letter_task(self, application_id: int):
 
 
 @celery_app.task(bind=True, name="app.tasks.applications.submit_application_task", queue="applications")
-def submit_application_task(self, application_id: int, dry_run: bool = False):
+def submit_application_task(self, application_id: int, dry_run: bool = True):
     db = SessionLocal()
     try:
         app = db.query(Application).filter(Application.id == application_id).first()
@@ -213,6 +218,21 @@ def submit_application_task(self, application_id: int, dry_run: bool = False):
         user = db.query(User).filter(User.id == app.user_id).first()
         if not job or not user:
             return {"error": "Missing job or user"}
+
+        if not dry_run and not settings.allow_real_application_submit:
+            result = _manual_result(job, False, LIVE_SUBMIT_BLOCKED_REASON, "live_submit_blocked")
+            app.status = ApplicationStatus.pending
+            app.automation_log = result["log"]
+            db.add(Notification(
+                user_id=user.id,
+                type=NotificationType.system,
+                title=f"Live submission blocked: {job.title}",
+                message=LIVE_SUBMIT_BLOCKED_REASON,
+                data={"job_id": job.id, "application_id": app.id, "reason": "live_submit_blocked"},
+            ))
+            db.commit()
+            logger.warning("Blocked live application submission for application %s", application_id)
+            return result
 
         if not job.url:
             result = _manual_result(job, dry_run, "No URL for job", "missing_url")
