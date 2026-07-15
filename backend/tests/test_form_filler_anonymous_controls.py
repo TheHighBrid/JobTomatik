@@ -72,7 +72,7 @@ async def test_standalone_anonymous_required_text_control_still_blocks(page):
     assert len(outcome["review_items"]) == 1
     review = outcome["review_items"][0]
     assert review["reason_code"] == "ambiguous_question"
-    assert review["details"]["descriptor"] == ""
+    assert review["details"]["descriptor"] == "mystery"
     assert review["details"]["control_metadata"]["id"] == "mystery"
     assert review["details"]["control_metadata"]["hasFileInput"] is False
     assert review["details"]["control_metadata"]["hasCombobox"] is False
