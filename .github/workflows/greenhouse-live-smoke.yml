@@ -25,6 +25,7 @@ jobs:
         working-directory: backend
 
     env:
+      PYTHONPATH: .
       DATABASE_URL: sqlite:///./greenhouse-live-smoke.db
       REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: greenhouse-live-smoke-secret
