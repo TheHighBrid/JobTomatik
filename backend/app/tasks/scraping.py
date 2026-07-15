@@ -115,7 +115,7 @@ def refresh_all_scores():
 def daily_auto_search_all():
     """
     Safe autopilot:
-    1. Search Job Bank only by default.
+    1. Search the configured default discovery sources.
     2. Auto-approve high-score jobs.
     3. Queue dry runs unless ALLOW_REAL_APPLICATION_SUBMIT=true.
     """
@@ -183,7 +183,7 @@ def daily_auto_search_all():
                     generate_cover_letter_task.delay(app_obj.id)
                     submit_application_task.apply_async(
                         args=[app_obj.id],
-                        kwargs={"dry_run": False},
+                        kwargs={"dry_run": not settings.allow_real_application_submit},
                         countdown=countdown,
                     )
                     countdown += 30
