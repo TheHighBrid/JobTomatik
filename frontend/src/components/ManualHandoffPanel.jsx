@@ -14,6 +14,7 @@ import {
   getHandoffFrame,
   heartbeatHandoff,
   listApplicationHandoffs,
+  recoverHandoffLease,
   sendHandoffAction,
 } from '../api/client'
 
@@ -113,12 +114,18 @@ export default function ManualHandoffPanel({ applicationId }) {
         if ([403, 409, 410].includes(error?.response?.status)) {
           writeLease(session.public_id, '')
           setLeaseToken('')
-          toast.error('The secure handoff lease expired. Reopen the handoff from the application.')
+          toast.error('The secure handoff lease expired. Recover it to continue.')
         }
       }
     }, 60000)
     return () => window.clearInterval(timer)
   }, [leaseToken, session])
+
+  const storeLease = (token) => {
+    writeLease(session.public_id, token)
+    setLeaseToken(token)
+    invalidate()
+  }
 
   const openMutation = useMutation({
     mutationFn: async () => {
@@ -127,13 +134,22 @@ export default function ManualHandoffPanel({ applicationId }) {
       return claimed.data
     },
     onSuccess: (data) => {
-      const token = data.lease_token
-      writeLease(session.public_id, token)
-      setLeaseToken(token)
+      storeLease(data.lease_token)
       toast.success('Secure handoff opened')
-      invalidate()
     },
     onError: (error) => toast.error(getApiErrorMessage(error, 'Could not open secure handoff')),
+  })
+
+  const recoverMutation = useMutation({
+    mutationFn: () => recoverHandoffLease(session.public_id),
+    onSuccess: (response) => {
+      storeLease(response.data.lease_token)
+      toast.success('Secure handoff lease recovered')
+    },
+    onError: (error) => toast.error(getApiErrorMessage(
+      error,
+      'The previous lease may still be active. Try again after it expires.'
+    )),
   })
 
   const actionMutation = useMutation({
@@ -225,6 +241,22 @@ export default function ManualHandoffPanel({ applicationId }) {
             >
               {openMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Hand className="w-4 h-4" />}
               Open secure handoff
+            </button>
+          </div>
+        )}
+
+        {session.status === 'claimed' && !leaseToken && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-gray-50 p-4">
+            <div className="text-sm text-gray-600">
+              This handoff was previously opened, but this tab no longer has its lease. Recovery is allowed only after the previous lease expires.
+            </div>
+            <button
+              className="btn-secondary flex items-center gap-2 justify-center whitespace-nowrap"
+              onClick={() => recoverMutation.mutate()}
+              disabled={recoverMutation.isPending}
+            >
+              {recoverMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Recover secure lease
             </button>
           </div>
         )}
