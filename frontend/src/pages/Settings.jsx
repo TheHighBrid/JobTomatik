@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { Bell, Cpu, Key, Wifi, Loader2, Rocket, Shield } from 'lucide-react'
 import ApiBaseUrlField from '../components/ApiBaseUrlField'
+import AnswerPolicyVault from '../components/AnswerPolicyVault'
 import { getSettings, updateSettings } from '../api/client'
 
 function Section({ title, icon: Icon, children, accent }) {
@@ -97,7 +98,7 @@ export default function Settings() {
         />
         <Toggle
           label="Auto Apply to Matches"
-          description="Automatically approve high-scoring jobs and submit applications"
+          description="Automatically approve high-scoring jobs and prepare safe application attempts"
           checked={local.auto_apply_enabled}
           onChange={toggle('auto_apply_enabled')}
         />
@@ -139,8 +140,8 @@ export default function Settings() {
       <Section title="Automation" icon={Cpu}>
         <Toggle
           label="Dry Run Mode"
-          description="Fill forms but don't click submit. Useful for testing field detection."
-          checked={local.dry_run_mode ?? false}
+          description="Fill forms but do not click submit. This remains the safe default."
+          checked={local.dry_run_mode ?? true}
           onChange={toggle('dry_run_mode')}
         />
         <Toggle
@@ -151,7 +152,7 @@ export default function Settings() {
         />
         <Toggle
           label="Auto-Schedule Follow-ups"
-          description="Send a follow-up email N days after applying"
+          description="Send a follow-up email N days after a confirmed application"
           checked={local.auto_followup}
           onChange={toggle('auto_followup')}
         />
@@ -171,6 +172,10 @@ export default function Settings() {
             </div>
           </div>
         )}
+      </Section>
+
+      <Section title="Answer Policy Vault" icon={Shield}>
+        <AnswerPolicyVault />
       </Section>
 
       <Section title="Email Notifications" icon={Bell}>
@@ -201,14 +206,15 @@ export default function Settings() {
       <Section title="AI & Integrations" icon={Key}>
         <p className="text-sm text-gray-500 mb-3">
           Configure via <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">.env</code> on the server.
-          The app works 100% free without any API keys using the built-in banking/AML cover letter template.
+          The app works without paid AI using the built-in cover-letter templates.
         </p>
         <div className="space-y-2 text-xs font-mono">
           {[
             ['AI_PROVIDER', 'template (free) | anthropic | gemini'],
-            ['ANTHROPIC_API_KEY', 'Optional — AI-generated cover letters'],
-            ['GEMINI_API_KEY', 'Optional — cheaper AI alternative'],
-            ['SENDGRID_API_KEY', 'Optional — email delivery'],
+            ['ANTHROPIC_API_KEY', 'Optional · AI-generated cover letters'],
+            ['GEMINI_API_KEY', 'Optional · alternative AI provider'],
+            ['SENDGRID_API_KEY', 'Optional · email delivery'],
+            ['ANSWER_VAULT_KEY', 'Optional · dedicated answer encryption key'],
           ].map(([key, desc]) => (
             <div key={key} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-xl">
               <span className="text-gray-700 font-medium">{key}</span>
@@ -220,8 +226,8 @@ export default function Settings() {
 
       <Section title="Privacy" icon={Shield}>
         <div className="text-sm text-gray-600 space-y-2">
-          <p>Your data is stored locally in your own SQLite database. Nothing is sent to any third party.</p>
-          <p>Cover letters and resumes are only accessible to your authenticated account.</p>
+          <p>Profile data and encrypted answer policies are stored in your configured JobTomatik database.</p>
+          <p>External AI or email providers receive data only when you configure and use those integrations.</p>
         </div>
       </Section>
 
