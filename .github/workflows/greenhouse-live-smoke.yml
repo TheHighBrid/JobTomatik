@@ -1,0 +1,100 @@
+name: Greenhouse live smoke certification
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/scripts/certify_greenhouse_live.py"
+      - ".github/workflows/greenhouse-live-smoke.yml"
+  schedule:
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-public-form-inspection:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: sqlite:///./greenhouse-live-smoke.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: greenhouse-live-smoke-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Select current public Greenhouse jobs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import httpx
+
+          response = httpx.get(
+              'https://boards-api.greenhouse.io/v1/boards/gitlab/jobs',
+              timeout=20,
+              follow_redirects=True,
+          )
+          response.raise_for_status()
+          jobs = response.json().get('jobs') or []
+          urls = [job.get('absolute_url') for job in jobs if job.get('absolute_url')][:3]
+          if not urls:
+              raise SystemExit('No current GitLab Greenhouse jobs were returned.')
+          open('greenhouse-live-urls.txt', 'w').write('\n'.join(urls))
+          print('\n'.join(urls))
+          PY
+
+      - name: Inspect current live forms and official schemas
+        shell: bash
+        run: |
+          python scripts/certify_greenhouse_live.py \
+            --urls "$(cat greenhouse-live-urls.txt)" \
+            --report greenhouse-live-smoke.json
+
+      - name: Assert live run never submitted
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open('greenhouse-live-smoke.json'))
+          assert report['passed'] is True
+          assert report['final_submit_clicked'] is False
+          assert report['url_count'] >= 1
+          assert all(item.get('mode') == 'inspect' for item in report['reports'])
+          PY
+
+      - name: Upload live smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: greenhouse-live-smoke-report
+          path: |
+            backend/greenhouse-live-smoke.json
+            backend/greenhouse-live-urls.txt
+          if-no-files-found: error
+          retention-days: 30
