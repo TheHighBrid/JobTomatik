@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 
 import pytest
 
@@ -11,7 +10,7 @@ from app.models.application import (
     ManualReviewStatus,
     ManualReviewTask,
 )
-from app.models.handoff import HandoffSessionStatus, ManualHandoffSession
+from app.models.handoff import HandoffSessionStatus
 from app.models.job import Job
 from app.models.user import User
 from app.services.handoff_session import (
@@ -26,7 +25,7 @@ from app.services.handoff_session import (
     issue_handoff_session,
     mark_handoff_ready,
 )
-from tests.conftest import TestingSessionLocal
+from conftest import TestingSessionLocal
 
 
 def make_records(reason=ManualReviewReason.captcha_detected.value):
