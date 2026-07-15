@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -51,7 +51,24 @@ class HandoffLeaseRequest(BaseModel):
 
 
 class HandoffReadyRequest(HandoffLeaseRequest):
-    provider_verification: Dict[str, Any] = Field(default_factory=dict)
+    pass
+
+
+class HandoffBrowserActionRequest(HandoffLeaseRequest):
+    action: Literal["click", "type", "key", "scroll"]
+    x: Optional[float] = None
+    y: Optional[float] = None
+    text: Optional[str] = Field(default=None, max_length=4096)
+    key: Optional[str] = Field(default=None, max_length=50)
+    delta_x: float = 0
+    delta_y: float = 0
+
+
+class HandoffBrowserActionOut(BaseModel):
+    action: str
+    current_url: str
+    current_fingerprint: str
+    sensitive_value_logged: bool = False
 
 
 class HandoffCancelRequest(BaseModel):
