@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./jobtomatik.db"
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str = "supersecretkey-change-in-production"
+    answer_vault_key: str = ""
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 10080
 
