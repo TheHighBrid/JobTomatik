@@ -151,7 +151,9 @@ jobs:
           assert len(exercises) == 1
           exercise = exercises[0]
           assert exercise['passed'] is True
-          assert exercise['ready_to_submit'] is True
+          assert exercise['certification_outcome'] in {
+              'ready_to_submit', 'manual_challenge_handoff'
+          }
           assert exercise['final_submit_clicked'] is False
           assert exercise['fields_filled'] > 0
           assert exercise['certification_metadata']['synthetic_profile'] is True
@@ -160,6 +162,15 @@ jobs:
               item.get('verification') == 'passed'
               for item in exercise.get('upload_evidence') or []
           )
+          if exercise['certification_outcome'] == 'manual_challenge_handoff':
+              assert exercise['manual_challenge_ready'] is True
+              assert exercise['requires_manual_review'] is True
+              assert any(
+                  item.get('reason_code') == 'captcha_detected'
+                  and (item.get('details') or {}).get('handoff_stage') == 'post_fill_pre_action'
+                  and (item.get('details') or {}).get('submit_clicked') is False
+                  for item in exercise.get('review_items') or []
+              )
           PY
 
       - name: Upload synthetic live certification evidence
