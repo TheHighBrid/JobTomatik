@@ -1,0 +1,99 @@
+name: Resumable handoff certification
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/api/handoffs.py"
+      - "backend/app/models/handoff.py"
+      - "backend/app/models/application.py"
+      - "backend/app/schemas/handoff.py"
+      - "backend/app/services/browser_handoff.py"
+      - "backend/app/services/browser_runtime.py"
+      - "backend/app/services/form_filler.py"
+      - "backend/app/services/form_filler_handoff.py"
+      - "backend/app/services/handoff_*.py"
+      - "backend/app/tasks/handoffs.py"
+      - "backend/tests/test_handoff_*.py"
+      - "backend/tests/test_browser_handoff_runtime.py"
+      - ".github/workflows/handoff-session-certification.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/api/handoffs.py"
+      - "backend/app/models/handoff.py"
+      - "backend/app/models/application.py"
+      - "backend/app/schemas/handoff.py"
+      - "backend/app/services/browser_handoff.py"
+      - "backend/app/services/browser_runtime.py"
+      - "backend/app/services/form_filler.py"
+      - "backend/app/services/form_filler_handoff.py"
+      - "backend/app/services/handoff_*.py"
+      - "backend/app/tasks/handoffs.py"
+      - "backend/tests/test_handoff_*.py"
+      - "backend/tests/test_browser_handoff_runtime.py"
+      - ".github/workflows/handoff-session-certification.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  secure-resume-matrix:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: sqlite:///./handoff-certification.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: handoff-certification-only
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "true"
+      REQUIRE_BROWSER_TESTS: "1"
+      HANDOFF_STORAGE_DIR: ./handoff-certification-sessions
+      JOBTOMATIK_BROWSER_NODE_ID: certification-node
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run secure handoff certification
+        shell: bash
+        run: |
+          set +e
+          pytest -q --tb=short -ra \
+            tests/test_handoff_sessions.py \
+            tests/test_handoff_integration.py \
+            tests/test_handoff_api.py \
+            tests/test_browser_handoff_runtime.py \
+            > handoff-certification.txt 2>&1
+          status=$?
+          cat handoff-certification.txt
+          exit $status
+
+      - name: Upload handoff certification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resumable-handoff-certification-report
+          path: backend/handoff-certification.txt
+          if-no-files-found: error
+          retention-days: 30
