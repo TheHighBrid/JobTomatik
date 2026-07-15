@@ -23,9 +23,11 @@ from app.services.control_primitives import (
     parse_policy_answers,
 )
 
-# Both handler modules use an injected specificity-aware resolver. This keeps the
-# answer-vault contract intact while preventing generic words from outranking a
-# more precise question phrase.
+# Every handler uses the same precise descriptor and specificity-aware resolver.
+# Keeping these dependencies identical prevents one control type from classifying
+# a question differently from another.
+native_controls.element_descriptor = element_descriptor
+aria_controls.element_descriptor = element_descriptor
 native_controls.resolve_runtime_policy = resolve_control_policy
 aria_controls.resolve_runtime_policy = resolve_control_policy
 
