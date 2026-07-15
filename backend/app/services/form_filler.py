@@ -1,14 +1,14 @@
 """
-Playwright-based form filler and application submitter.
+Playwright-based application form filler.
 
-Flow:
-1. Navigate to the stored job URL (may be a listing page or direct apply URL).
-2. If we land on a job-board listing page, look for an Apply button and click it.
-   Some sites navigate in the same tab; others open a new tab — both are handled.
-3. Fill all recognised text/textarea fields with profile data.
-4. Answer common select/dropdown fields (work auth, education, etc.).
-5. Upload the resume to any file input found.
-6. Click the submit button if any meaningful application fields were filled.
+The browser may fill only:
+1. Non-sensitive profile fields with a direct, deterministic mapping.
+2. Application questions covered by an active, confirmed answer policy that
+   explicitly allows autofill.
+
+Unknown required questions, legal declarations, demographics, and consent
+controls are never guessed. They are returned as structured manual-review
+items before any submit action occurs.
 """
 
 import asyncio
@@ -18,14 +18,17 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 
-# ── domain sets ──────────────────────────────────────────────────────────────
+from app.services.answer_policy import (
+    classify_question,
+    resolve_runtime_policy,
+    review_reason_for_question,
+)
 
-# These are job-board listing domains; we need to click Apply before filling.
+
 JOB_BOARD_DOMAINS = frozenset([
     "indeed.com", "ca.indeed.com", "www.indeed.com",
     "glassdoor.com", "www.glassdoor.com",
     "linkedin.com", "www.linkedin.com",
-    # Job Bank Canada (English and French versions)
     "jobbank.gc.ca", "www.jobbank.gc.ca",
     "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
     "monster.com", "www.monster.com",
@@ -36,44 +39,36 @@ JOB_BOARD_DOMAINS = frozenset([
     "workopolis.com", "www.workopolis.com",
 ])
 
-# URLs that look like fake/placeholder job URLs (old mock-generator artefact).
-_FAKE_URL_RE = re.compile(r"/jobs/[0-9a-f]{12,20}/?$", re.IGNORECASE)
+JOB_BOARD_HOSTS = {
+    "jobbank.gc.ca", "www.jobbank.gc.ca",
+    "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
+}
 
-# Field names used by job-board search bars — skip these even if the regex matches.
+JOB_BANK_LISTING_PATHS = (
+    "/jobsearch/jobposting/",
+    "/rechercheemplois/offredemploi/",
+)
+
+_FAKE_URL_RE = re.compile(r"/jobs/[0-9a-f]{12,20}/?$", re.IGNORECASE)
 _SEARCH_FIELD_NAMES = frozenset([
     "q", "l", "what", "where", "keywords", "location",
-    # Job Bank Canada search bar field names (English + French)
     "searchstring", "locationstring", "recherchestring", "localisationstring",
 ])
 
-# ── selector lists ────────────────────────────────────────────────────────────
+APPLY_LINK_HINTS = (
+    "apply", "application", "career", "careers", "recruit", "mailto:",
+)
 
-APPLY_BUTTON_SELECTORS = [
-    # Indeed
-    'button[data-testid="apply-button"]',
-    '.indeed-apply-button',
-    '.icl-Button--primary',
-    # LinkedIn
-    '.jobs-apply-button',
-    '[data-control-name*="apply" i]',
-    # Generic
-    'a[href*="/apply" i]:not([href*="applied" i])',
-    '[data-testid*="apply" i]:not([data-testid*="applied" i])',
-    '[aria-label*="apply" i]:not([aria-label*="applied" i])',
-]
-
-APPLY_BUTTON_TEXT_PATTERNS = [
-    r"easy\s+apply",
-    r"apply\s+now",
-    r"apply\s+for\s+this\s+job",
-    r"apply\s+on\s+company\s+website",
-    r"apply\s+with",
-    r"apply\s+to\s+this",
-    r"postuler\s+maintenant",
-    r"postuler",
-    r"how\s+to\s+apply",
-    r"comment\s+postuler",
-    r"^apply$",
+REVEAL_APPLY_SELECTORS = [
+    'button:has-text("Show how to apply")',
+    'a:has-text("Show how to apply")',
+    'button:has-text("How to apply")',
+    'a:has-text("How to apply")',
+    'button:has-text("Apply now")',
+    'a:has-text("Apply now")',
+    '[aria-controls*="apply" i]',
+    '[data-cy*="apply" i]',
+    '[id*="apply" i]',
 ]
 
 SUBMIT_SELECTORS = [
@@ -89,7 +84,7 @@ SUBMIT_SELECTORS = [
     '[aria-label*="submit" i]',
 ]
 
-COMMON_FIELDS: List[Tuple[str, str]] = [
+SAFE_PROFILE_FIELDS: List[Tuple[str, str]] = [
     (r"\bfirst\s*[_\-]?name\b|\bfname\b|given[\s_]name|prenom", "first_name"),
     (r"\blast\s*[_\-]?name\b|\blname\b|surname|family[\s_]name|nom\b", "last_name"),
     (r"\bfull[\s_]name\b|\byour[\s_]name\b|candidate[\s_]name|complete[\s_]name", "full_name"),
@@ -102,38 +97,18 @@ COMMON_FIELDS: List[Tuple[str, str]] = [
     (r"\blinkedin\b", "linkedin_url"),
     (r"\bgithub\b", "github_url"),
     (r"\bportfolio\b|\bwebsite\b|\bpersonal[\s_](?:url|site|web)\b", "portfolio_url"),
-    (r"cover\s*letter|lettre\s+de\s+motivation|motivation|introduction|why\s+are\s+you|tell\s+us\s+about\s+yourself|message\s+to\s+(?:us|employer)", "cover_letter"),
-    (r"\bcurrent[\s_](?:role|title|position|employer)\b|\bjob[\s_]title\b|\bposition[\s_]title\b|\btitle\b(?!.*\bname)", "current_role"),
+    (r"cover\s*letter|lettre\s+de\s+motivation|message\s+to\s+(?:us|employer)", "cover_letter"),
+    (r"\bcurrent[\s_](?:role|title|position|employer)\b|\bjob[\s_]title\b|\bposition[\s_]title\b", "current_role"),
     (r"\byears[\s_](?:of[\s_])?experience\b|\bexperience[\s_]years\b", "years_experience"),
-    (r"\bsalary[\s_](?:expectation|expected|desired|requirement)\b|\bexpected[\s_]salary\b", "salary_expectation"),
-    (r"\bstart\s*date\b|\bavailable\s*(?:from|date)\b|\bdisponible\b", "availability"),
 ]
 
-# Select/dropdown answers keyed by lowercased question text (partial match).
-COMMON_SELECT_ANSWERS: Dict[str, str] = {
-    "work authorization": "yes",
-    "authorized to work": "yes",
-    "legally authorized": "yes",
-    "require sponsorship": "no",
-    "visa sponsorship": "no",
-    "currently employed": "yes",
-    "how did you hear": "job board",
-    "highest education": "bachelor",
-    "highest degree": "bachelor",
-    "willing to relocate": "no",
-    "gender": "prefer not",
-    "ethnicity": "prefer not",
-    "veteran": "no",
-    "disability": "no",
-    "disability status": "no",
-    "protected veteran": "no",
-}
-
-
-# ── helpers ──────────────────────────────────────────────────────────────────
 
 def _now() -> str:
     return datetime.utcnow().isoformat()
+
+
+def _normalize_text(value: Optional[str]) -> str:
+    return re.sub(r"\s+", " ", value or "").strip().lower()
 
 
 def _first_name(profile: Dict[str, Any]) -> str:
@@ -168,13 +143,9 @@ def _extract_postal_code(address: str) -> str:
     return match.group().upper() if match else ""
 
 
-def _normalize_text(value: Optional[str]) -> str:
-    return re.sub(r"\s+", " ", value or "").strip().lower()
-
-
 def _profile_values(profile: Dict[str, Any], cover_letter: str) -> Dict[str, str]:
     address = profile.get("address") or ""
-    prefs = profile.get("profile_data") or {}
+    profile_data = profile.get("profile_data") or {}
     return {
         "first_name": profile.get("first_name") or _first_name(profile),
         "last_name": profile.get("last_name") or _last_name(profile),
@@ -189,10 +160,8 @@ def _profile_values(profile: Dict[str, Any], cover_letter: str) -> Dict[str, str
         "github_url": profile.get("github_url") or "",
         "portfolio_url": profile.get("portfolio_url") or "",
         "cover_letter": cover_letter or "",
-        "current_role": prefs.get("current_role") or profile.get("current_role") or "",
-        "years_experience": str(prefs.get("years_experience") or profile.get("years_experience") or ""),
-        "salary_expectation": str(profile.get("min_salary") or ""),
-        "availability": "Immediately",
+        "current_role": profile_data.get("current_role") or profile.get("current_role") or "",
+        "years_experience": str(profile_data.get("years_experience") or profile.get("years_experience") or ""),
     }
 
 
@@ -203,55 +172,16 @@ def _get_domain(url: str) -> str:
         return ""
 
 
-def _is_job_board(url: str) -> bool:
-    domain = _get_domain(url)
-    return any(domain == bd or domain.endswith("." + bd) for bd in JOB_BOARD_DOMAINS)
-
-
 def _is_fake_url(url: str) -> bool:
-    """Detect old hex-hash placeholder URLs that don't point to real job pages."""
     domain = _get_domain(url)
     if domain in {"example.com", "localhost", "127.0.0.1"}:
         return True
     return bool(_FAKE_URL_RE.search(urlparse(url).path))
 
 
-JOB_BOARD_HOSTS = {
-    "jobbank.gc.ca", "www.jobbank.gc.ca",
-    "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
-}
-
-# URL path fragments that mark Job Bank listing pages (English + French)
-JOB_BANK_LISTING_PATHS = (
-    "/jobsearch/jobposting/",
-    "/rechercheemplois/offredemploi/",
-)
-
-APPLY_LINK_HINTS = (
-    "apply",
-    "application",
-    "career",
-    "careers",
-    "recruit",
-    "mailto:",
-)
-
-REVEAL_APPLY_SELECTORS = [
-    'button:has-text("Show how to apply")',
-    'a:has-text("Show how to apply")',
-    'button:has-text("How to apply")',
-    'a:has-text("How to apply")',
-    'button:has-text("Apply now")',
-    'a:has-text("Apply now")',
-    '[aria-controls*="apply" i]',
-    '[data-cy*="apply" i]',
-    '[id*="apply" i]',
-]
-
-
 def _is_job_board_listing(url: str) -> bool:
     parsed = urlparse(url)
-    return parsed.hostname in JOB_BOARD_HOSTS and any(frag in parsed.path for frag in JOB_BANK_LISTING_PATHS)
+    return parsed.hostname in JOB_BOARD_HOSTS and any(fragment in parsed.path for fragment in JOB_BANK_LISTING_PATHS)
 
 
 def _is_probable_apply_href(href: str, current_url: str) -> bool:
@@ -265,12 +195,6 @@ def _is_probable_apply_href(href: str, current_url: str) -> bool:
 
 
 async def _navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Move from an aggregator listing, such as Job Bank, to the real apply target.
-
-    Job Bank search results store the employer's instructions behind a
-    "Show how to apply" section. Treating that page itself as the application
-    form leaves the automation stuck on the listing.
-    """
     current_url = page.url
     if not _is_job_board_listing(current_url):
         return {}
@@ -286,10 +210,14 @@ async def _navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[s
                 log.append({"action": "apply_instructions_revealed", "selector": selector, "ts": _now()})
                 break
         except Exception as exc:
-            log.append({"action": "apply_reveal_skipped", "selector": selector, "detail": str(exc)[:160], "ts": _now()})
+            log.append({
+                "action": "apply_reveal_skipped",
+                "selector": selector,
+                "detail": str(exc)[:160],
+                "ts": _now(),
+            })
 
     await page.wait_for_timeout(1000)
-
     anchors = await page.query_selector_all("a[href]")
     for anchor in anchors:
         href = await anchor.get_attribute("href") or ""
@@ -313,11 +241,19 @@ async def _navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[s
         log.append({"action": "external_apply_link_found", "url": target, "text": text[:120], "ts": _now()})
         try:
             await page.goto(target, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_load_state("networkidle", timeout=10000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
             log.append({"action": "external_apply_navigated", "url": page.url, "ts": _now()})
             return {"application_url": page.url}
         except Exception as exc:
-            log.append({"action": "external_apply_navigation_failed", "url": target, "detail": str(exc)[:200], "ts": _now()})
+            log.append({
+                "action": "external_apply_navigation_failed",
+                "url": target,
+                "detail": str(exc)[:200],
+                "ts": _now(),
+            })
             return {"application_url": target}
 
     page_text = await page.inner_text("body")
@@ -335,130 +271,321 @@ async def _navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[s
     return {}
 
 
-JOB_BOARD_HOSTS = {"jobbank.gc.ca", "www.jobbank.gc.ca"}
-
-APPLY_LINK_HINTS = (
-    "apply",
-    "application",
-    "career",
-    "careers",
-    "recruit",
-    "mailto:",
-)
-
-REVEAL_APPLY_SELECTORS = [
-    'button:has-text("Show how to apply")',
-    'a:has-text("Show how to apply")',
-    'button:has-text("How to apply")',
-    'a:has-text("How to apply")',
-    'button:has-text("Apply now")',
-    'a:has-text("Apply now")',
-    '[aria-controls*="apply" i]',
-    '[data-cy*="apply" i]',
-    '[id*="apply" i]',
-]
+def _match_safe_field(descriptor: str) -> Optional[str]:
+    for pattern, key in SAFE_PROFILE_FIELDS:
+        if re.search(pattern, descriptor, flags=re.IGNORECASE):
+            return key
+    return None
 
 
-def _is_job_board_listing(url: str) -> bool:
-    parsed = urlparse(url)
-    return parsed.hostname in JOB_BOARD_HOSTS and "/jobsearch/jobposting/" in parsed.path
+async def _is_required(element) -> bool:
+    required = await element.get_attribute("required")
+    aria_required = _normalize_text(await element.get_attribute("aria-required"))
+    return required is not None or aria_required == "true"
 
 
-def _is_probable_apply_href(href: str, current_url: str) -> bool:
-    lowered = href.lower()
-    if lowered.startswith("mailto:"):
-        return True
-    if not any(hint in lowered for hint in APPLY_LINK_HINTS):
+async def _element_descriptor(page, element) -> str:
+    attrs = []
+    for attr in ("name", "id", "placeholder", "aria-label", "autocomplete"):
+        value = await element.get_attribute(attr)
+        if value:
+            attrs.append(value)
+
+    element_id = await element.get_attribute("id")
+    if element_id:
+        label = await page.query_selector(f'label[for="{element_id}"]')
+        if label:
+            attrs.append(await label.inner_text())
+
+    return _normalize_text(" ".join(attrs))
+
+
+def _add_review_item(
+    review_items: List[Dict[str, Any]],
+    *,
+    descriptor: str,
+    policy_result: Dict[str, Any],
+    control_type: str,
+    reason_code: Optional[str] = None,
+    summary: Optional[str] = None,
+) -> None:
+    canonical_key = policy_result.get("canonical_key", "custom.unclassified")
+    resolved_reason = reason_code or review_reason_for_question(policy_result)
+    for item in review_items:
+        details = item.get("details", {})
+        if (
+            item.get("reason_code") == resolved_reason
+            and details.get("descriptor") == descriptor
+            and details.get("control_type") == control_type
+        ):
+            return
+
+    review_items.append({
+        "reason_code": resolved_reason,
+        "summary": summary or f"Approved answer required for: {descriptor or canonical_key}",
+        "details": {
+            "canonical_key": canonical_key,
+            "category": policy_result.get("category"),
+            "sensitivity": policy_result.get("sensitivity"),
+            "descriptor": descriptor,
+            "control_type": control_type,
+            "policy_reason": policy_result.get("reason"),
+        },
+    })
+
+
+def _option_matches(answer: str, label: str, value: str) -> bool:
+    normalized_answer = _normalize_text(answer)
+    normalized_label = _normalize_text(label)
+    normalized_value = _normalize_text(value)
+    if not normalized_answer:
         return False
-    parsed = urlparse(urljoin(current_url, href))
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+    return (
+        normalized_answer == normalized_label
+        or normalized_answer == normalized_value
+        or normalized_answer in normalized_label
+        or normalized_label in normalized_answer
+    )
 
 
-async def _navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Move from an aggregator listing, such as Job Bank, to the real apply target.
-
-    Job Bank search results store the employer's instructions behind a
-    "Show how to apply" section. Treating that page itself as the application
-    form leaves the automation stuck on the listing.
-    """
-    current_url = page.url
-    if not _is_job_board_listing(current_url):
-        return {}
-
-    log.append({"action": "listing_page_detected", "url": current_url, "ts": _now()})
-
-    for selector in REVEAL_APPLY_SELECTORS:
+async def _fill_select_fields(
+    page,
+    policies: List[Dict[str, Any]],
+    log: List[Dict[str, Any]],
+    review_items: List[Dict[str, Any]],
+) -> int:
+    filled = 0
+    for select in await page.query_selector_all("select"):
         try:
-            control = await page.query_selector(selector)
-            if control:
-                await control.click(timeout=5000)
-                await page.wait_for_load_state("networkidle", timeout=5000)
-                log.append({"action": "apply_instructions_revealed", "selector": selector, "ts": _now()})
-                break
+            descriptor = await _element_descriptor(page, select)
+            policy_result = resolve_runtime_policy(descriptor, policies)
+            required = await _is_required(select)
+
+            if not policy_result.get("can_autofill"):
+                if required:
+                    _add_review_item(
+                        review_items,
+                        descriptor=descriptor,
+                        policy_result=policy_result,
+                        control_type="select",
+                    )
+                log.append({
+                    "action": "select_policy_missing",
+                    "descriptor": descriptor[:160],
+                    "required": required,
+                    "canonical_key": policy_result.get("canonical_key"),
+                    "ts": _now(),
+                })
+                continue
+
+            answer = str(policy_result.get("answer") or "")
+            selected_value = None
+            for option in await select.query_selector_all("option"):
+                value = await option.get_attribute("value") or ""
+                label = await option.inner_text()
+                disabled = await option.get_attribute("disabled")
+                if disabled is not None or not value:
+                    continue
+                if _option_matches(answer, label, value):
+                    selected_value = value
+                    break
+
+            if not selected_value:
+                _add_review_item(
+                    review_items,
+                    descriptor=descriptor,
+                    policy_result=policy_result,
+                    control_type="select",
+                    reason_code="unsupported_control",
+                    summary=f"Approved answer does not match any available option: {descriptor}",
+                )
+                log.append({
+                    "action": "select_answer_not_found",
+                    "descriptor": descriptor[:160],
+                    "canonical_key": policy_result.get("canonical_key"),
+                    "ts": _now(),
+                })
+                continue
+
+            await select.select_option(value=selected_value)
+            filled += 1
+            log.append({
+                "action": "select",
+                "descriptor": descriptor[:160],
+                "canonical_key": policy_result.get("canonical_key"),
+                "ts": _now(),
+            })
         except Exception as exc:
-            log.append({"action": "apply_reveal_skipped", "selector": selector, "detail": str(exc)[:160], "ts": _now()})
-
-    await page.wait_for_timeout(1000)
-
-    anchors = await page.query_selector_all("a[href]")
-    for anchor in anchors:
-        href = await anchor.get_attribute("href") or ""
-        text = _normalize_text(await anchor.inner_text())
-        if not _is_probable_apply_href(href, current_url) and not any(hint in text for hint in APPLY_LINK_HINTS):
-            continue
-
-        target = urljoin(current_url, href)
-        if target.startswith("mailto:"):
-            email = target.removeprefix("mailto:").split("?", 1)[0]
-            log.append({"action": "email_apply_detected", "email": email, "ts": _now()})
-            return {
-                "manual_review_only": True,
-                "contact_email": email,
-                "reason": "Employer accepts applications by email; review and send manually.",
-            }
-
-        if urlparse(target).netloc in JOB_BOARD_HOSTS:
-            continue
-
-        log.append({"action": "external_apply_link_found", "url": target, "text": text[:120], "ts": _now()})
-        return await _open_external_apply_target(page, anchor, target, log)
-
-    page_text = await page.inner_text("body")
-    email_match = re.search(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", page_text, flags=re.IGNORECASE)
-    if email_match:
-        email = email_match.group(0)
-        log.append({"action": "email_apply_detected", "email": email, "ts": _now()})
-        return {
-            "manual_review_only": True,
-            "contact_email": email,
-            "reason": "Employer accepts applications by email; review and send manually.",
-        }
-
-    log.append({"action": "apply_target_not_found", "url": current_url, "ts": _now()})
-    return {}
+            log.append({"action": "select_skipped", "detail": str(exc)[:200], "ts": _now()})
+    return filled
 
 
-async def _open_external_apply_target(page, anchor, target: str, log: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Open the employer apply target without double-clicking aggregator links.
-
-    Job-board pages often render regular links with fully resolved hrefs. A
-    prior version clicked while waiting for popups and then clicked/goto'd again
-    on timeout, which could leave the browser on a half-navigated page. Prefer a
-    single direct navigation to the discovered target; this is deterministic and
-    still handles links that would normally open in a new tab.
-    """
-
-    try:
-        await page.goto(target, wait_until="domcontentloaded", timeout=30000)
+async def _fill_choice_fields(
+    page,
+    policies: List[Dict[str, Any]],
+    log: List[Dict[str, Any]],
+    review_items: List[Dict[str, Any]],
+) -> int:
+    filled = 0
+    groups = await page.query_selector_all("fieldset, [role='radiogroup']")
+    for group in groups:
         try:
-            await page.wait_for_load_state("networkidle", timeout=10000)
+            descriptor = _normalize_text(await group.inner_text())
+            choices = await group.query_selector_all("input[type='radio'], input[type='checkbox']")
+            required = any([await _is_required(choice) for choice in choices]) if choices else False
+            policy_result = resolve_runtime_policy(descriptor, policies)
+
+            if not policy_result.get("can_autofill"):
+                if required:
+                    _add_review_item(
+                        review_items,
+                        descriptor=descriptor,
+                        policy_result=policy_result,
+                        control_type="choice_group",
+                    )
+                log.append({
+                    "action": "choice_policy_missing",
+                    "descriptor": descriptor[:160],
+                    "required": required,
+                    "canonical_key": policy_result.get("canonical_key"),
+                    "ts": _now(),
+                })
+                continue
+
+            answer = str(policy_result.get("answer") or "")
+            matched = False
+            for choice in choices:
+                choice_descriptor = await _element_descriptor(page, choice)
+                if not choice_descriptor:
+                    choice_descriptor = _normalize_text(
+                        await choice.evaluate("el => el.closest('label')?.innerText || ''")
+                    )
+                value = await choice.get_attribute("value") or ""
+                if not _option_matches(answer, choice_descriptor, value):
+                    continue
+                if not await choice.is_checked():
+                    await choice.check()
+                filled += 1
+                matched = True
+                log.append({
+                    "action": "choice",
+                    "descriptor": descriptor[:160],
+                    "canonical_key": policy_result.get("canonical_key"),
+                    "ts": _now(),
+                })
+                break
+
+            if not matched:
+                _add_review_item(
+                    review_items,
+                    descriptor=descriptor,
+                    policy_result=policy_result,
+                    control_type="choice_group",
+                    reason_code="unsupported_control",
+                    summary=f"Approved answer does not match any available choice: {descriptor}",
+                )
+        except Exception as exc:
+            log.append({"action": "choice_skipped", "detail": str(exc)[:200], "ts": _now()})
+    return filled
+
+
+async def _fill_common_fields(
+    page,
+    profile: Dict[str, Any],
+    cover_letter: str,
+    resume_path: str,
+    log: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    values = _profile_values(profile, cover_letter)
+    policies = list(profile.get("answer_policies") or [])
+    review_items: List[Dict[str, Any]] = []
+    filled = 0
+
+    elements = await page.query_selector_all("input:not([type=hidden]), textarea")
+    for element in elements:
+        try:
+            input_type = _normalize_text(await element.get_attribute("type"))
+            if input_type in {"hidden", "submit", "button", "reset", "checkbox", "radio", "file"}:
+                continue
+
+            descriptor = await _element_descriptor(page, element)
+            name = _normalize_text(await element.get_attribute("name"))
+            if name in _SEARCH_FIELD_NAMES:
+                continue
+
+            safe_field = _match_safe_field(descriptor)
+            if safe_field:
+                value = values.get(safe_field, "")
+                if value:
+                    await element.fill(str(value))
+                    filled += 1
+                    log.append({
+                        "action": "fill",
+                        "field": safe_field,
+                        "descriptor": descriptor[:160],
+                        "source": "profile",
+                        "ts": _now(),
+                    })
+                elif await _is_required(element):
+                    policy_result = classify_question(descriptor)
+                    _add_review_item(
+                        review_items,
+                        descriptor=descriptor,
+                        policy_result=policy_result,
+                        control_type="text",
+                        reason_code="ambiguous_question",
+                        summary=f"Required profile value is missing: {descriptor or safe_field}",
+                    )
+                continue
+
+            policy_result = resolve_runtime_policy(descriptor, policies)
+            if policy_result.get("can_autofill"):
+                await element.fill(str(policy_result.get("answer") or ""))
+                filled += 1
+                log.append({
+                    "action": "fill",
+                    "descriptor": descriptor[:160],
+                    "canonical_key": policy_result.get("canonical_key"),
+                    "source": "answer_policy",
+                    "ts": _now(),
+                })
+            elif await _is_required(element):
+                _add_review_item(
+                    review_items,
+                    descriptor=descriptor,
+                    policy_result=policy_result,
+                    control_type="text",
+                )
+        except Exception as exc:
+            log.append({"action": "fill_skipped", "detail": str(exc)[:200], "ts": _now()})
+
+    filled += await _fill_select_fields(page, policies, log, review_items)
+    filled += await _fill_choice_fields(page, policies, log, review_items)
+
+    if resume_path and os.path.exists(resume_path):
+        for file_input in await page.query_selector_all('input[type="file"]'):
+            try:
+                await file_input.set_input_files(resume_path)
+                filled += 1
+                log.append({"action": "upload_resume", "ts": _now()})
+                break
+            except Exception as exc:
+                log.append({"action": "upload_resume_skipped", "detail": str(exc)[:200], "ts": _now()})
+    elif resume_path:
+        log.append({"action": "upload_resume_skipped", "detail": "resume path not found", "ts": _now()})
+
+    return {"filled_count": filled, "review_items": review_items}
+
+
+async def _find_submit_button(page):
+    for selector in SUBMIT_SELECTORS:
+        try:
+            button = await page.query_selector(selector)
+            if button:
+                return button
         except Exception:
             pass
-        log.append({"action": "external_apply_navigated", "url": page.url, "ts": _now()})
-        return {"application_url": page.url}
-    except Exception as exc:
-        log.append({"action": "external_apply_navigation_failed", "url": target, "detail": str(exc)[:200], "ts": _now()})
-        return {"application_url": target}
+    return None
 
 
 async def fill_and_submit_application(
@@ -466,7 +593,7 @@ async def fill_and_submit_application(
     user_profile: Dict[str, Any],
     cover_letter: str,
     resume_path: str,
-    dry_run: bool = False,
+    dry_run: bool = True,
 ) -> Dict[str, Any]:
     log: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {
@@ -478,16 +605,17 @@ async def fill_and_submit_application(
         "error": None,
         "fields_filled": 0,
         "requires_manual_review": False,
+        "review_items": [],
     }
 
     if not _is_allowed_url(job_url):
         result["error"] = "Invalid or unsupported job URL"
+        result["requires_manual_review"] = True
         log.append({"action": "error", "detail": result["error"], "ts": _now()})
         return result
 
-    # Old hex-hash placeholder URLs can't be applied to — mark for manual review.
     if _is_fake_url(job_url):
-        result["error"] = "Placeholder URL — manual application required"
+        result["error"] = "Placeholder URL; manual application required"
         result["requires_manual_review"] = True
         log.append({"action": "fake_url_skipped", "url": job_url, "ts": _now()})
         return result
@@ -496,8 +624,8 @@ async def fill_and_submit_application(
         from playwright.async_api import TimeoutError as PlaywrightTimeoutError
         from playwright.async_api import async_playwright
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
                 headless=True,
                 args=[
                     "--no-sandbox",
@@ -520,7 +648,6 @@ async def fill_and_submit_application(
 
             page = await context.new_page()
             log.append({"action": "navigate", "url": job_url, "ts": _now()})
-
             try:
                 await page.goto(job_url, wait_until="domcontentloaded", timeout=30000)
                 await page.wait_for_load_state("networkidle", timeout=10000)
@@ -533,41 +660,52 @@ async def fill_and_submit_application(
                 result["application_url"] = handoff["application_url"]
             if handoff.get("contact_email"):
                 result["contact_email"] = handoff["contact_email"]
-
             if handoff.get("manual_review_only"):
                 result["requires_manual_review"] = True
-                if dry_run:
-                    result["success"] = True
-                    result["error"] = handoff.get("reason")
-                    log.append({"action": "dry_run_complete", "fields_filled": 0, "ts": _now()})
-                else:
-                    result["error"] = handoff.get("reason")
+                result["success"] = bool(dry_run)
+                result["error"] = handoff.get("reason")
                 await browser.close()
                 return result
 
-            filled_count = await _fill_common_fields(page, user_profile, cover_letter, resume_path, log)
-            result["fields_filled"] = filled_count
-            result["requires_manual_review"] = filled_count == 0
+            outcome = await _fill_common_fields(page, user_profile, cover_letter, resume_path, log)
+            result["fields_filled"] = outcome["filled_count"]
+            result["review_items"] = outcome["review_items"]
 
-            if dry_run:
+            if outcome["review_items"]:
+                result["requires_manual_review"] = True
+                result["error"] = "Required application questions need approved answer policies."
+                result["success"] = bool(dry_run)
+                log.append({
+                    "action": "answer_policy_review_required",
+                    "count": len(outcome["review_items"]),
+                    "ts": _now(),
+                })
+            elif dry_run:
                 result["success"] = True
-                log.append({"action": "dry_run_complete", "fields_filled": filled_count, "ts": _now()})
-            elif filled_count >= 1:
-                submit_btn = await _find_submit_button(page)
-                if submit_btn:
+                log.append({
+                    "action": "dry_run_complete",
+                    "fields_filled": result["fields_filled"],
+                    "ts": _now(),
+                })
+            elif result["fields_filled"] >= 1:
+                submit_button = await _find_submit_button(page)
+                if submit_button:
                     log.append({"action": "submit_click", "ts": _now()})
-                    await submit_btn.click()
+                    await submit_button.click()
                     await asyncio.sleep(3)
                     result["submitted_at"] = _now()
                     result["success"] = True
-                    result["requires_manual_review"] = False
-                    log.append({"action": "submitted", "status": "ok", "ts": _now()})
+                    log.append({"action": "submit_clicked", "status": "unconfirmed", "ts": _now()})
                 else:
-                    result["error"] = "Form filled but no submit button found — manual submit required"
+                    result["error"] = "Form filled but no submit button found; manual submit required."
                     result["requires_manual_review"] = True
-                    log.append({"action": "no_submit_button", "fields_filled": filled_count, "ts": _now()})
+                    log.append({
+                        "action": "no_submit_button",
+                        "fields_filled": result["fields_filled"],
+                        "ts": _now(),
+                    })
             else:
-                result["error"] = "No application form fields found — manual apply required"
+                result["error"] = "No application form fields found; manual apply required."
                 result["requires_manual_review"] = True
                 log.append({"action": "no_fields_found", "url": page.url, "ts": _now()})
 
@@ -575,168 +713,14 @@ async def fill_and_submit_application(
 
     except ImportError:
         result["error"] = "Playwright not installed"
+        result["requires_manual_review"] = True
         log.append({"action": "playwright_unavailable", "ts": _now()})
-        result["success"] = True
     except Exception as exc:
         result["error"] = str(exc)
+        result["requires_manual_review"] = True
         log.append({"action": "error", "detail": str(exc)[:300], "ts": _now()})
 
     return result
-
-
-async def _fill_common_fields(
-    page,
-    profile: Dict[str, Any],
-    cover_letter: str,
-    resume_path: str,
-    log: List[Dict[str, Any]],
-) -> int:
-    values = _profile_values(profile, cover_letter)
-    elements = await page.query_selector_all("input:not([type=hidden]), textarea")
-    filled = 0
-
-    for element in elements:
-        try:
-            input_type = _normalize_text(await element.get_attribute("type"))
-            if input_type in {"hidden", "submit", "button", "reset", "checkbox", "radio", "file"}:
-                continue
-
-            descriptor = await _element_descriptor(page, element)
-            field_key = _match_field_key(descriptor)
-            value = values.get(field_key or "", "")
-            if not value:
-                continue
-
-            await element.fill(str(value))
-            filled += 1
-            log.append({"action": "fill", "field": field_key, "descriptor": descriptor[:120], "ts": _now()})
-        except Exception as exc:
-            log.append({"action": "fill_skipped", "detail": str(exc), "ts": _now()})
-
-    filled += await _fill_select_fields(page, log)
-    filled += await _fill_choice_fields(page, log)
-
-    if resume_path and os.path.exists(resume_path):
-        file_inputs = await page.query_selector_all('input[type="file"]')
-        for file_input in file_inputs:
-            try:
-                await file_input.set_input_files(resume_path)
-                filled += 1
-                log.append({"action": "upload_resume", "path": resume_path, "ts": _now()})
-                break
-            except Exception as exc:
-                log.append({"action": "upload_resume_skipped", "detail": str(exc), "ts": _now()})
-    elif resume_path:
-        log.append({"action": "upload_resume_skipped", "detail": "resume path not found", "ts": _now()})
-
-    return filled
-
-
-async def _fill_select_fields(page, log: List[Dict[str, Any]]) -> int:
-    filled = 0
-    selects = await page.query_selector_all("select")
-    for select in selects:
-        try:
-            descriptor = await _element_descriptor(page, select)
-            answer_hint = _select_answer_hint(descriptor)
-            options = await select.query_selector_all("option")
-            selected_value = None
-            fallback_value = None
-
-            for option in options:
-                value = await option.get_attribute("value")
-                label = _normalize_text(await option.inner_text())
-                disabled = await option.get_attribute("disabled")
-                if disabled is not None or not value:
-                    continue
-                if not fallback_value and not _is_placeholder_option(label):
-                    fallback_value = value
-                if answer_hint and answer_hint in label:
-                    selected_value = value
-                    break
-
-            selected_value = selected_value or fallback_value
-            if not selected_value:
-                continue
-
-            await select.select_option(value=selected_value)
-            filled += 1
-            log.append({"action": "select", "descriptor": descriptor[:120], "value": selected_value, "ts": _now()})
-        except Exception as exc:
-            log.append({"action": "select_skipped", "detail": str(exc), "ts": _now()})
-    return filled
-
-
-def _select_answer_hint(descriptor: str) -> Optional[str]:
-    for pattern, answer in COMMON_SELECT_ANSWERS.items():
-        if re.search(pattern, descriptor, flags=re.IGNORECASE):
-            return answer
-    return None
-
-
-def _is_placeholder_option(label: str) -> bool:
-    return not label or any(token in label for token in ("select", "choose", "please", "--"))
-
-
-async def _fill_choice_fields(page, log: List[Dict[str, Any]]) -> int:
-    filled = 0
-    groups = await page.query_selector_all("fieldset, [role='radiogroup']")
-    for group in groups:
-        try:
-            descriptor = _normalize_text(await group.inner_text())
-            answer_hint = _select_answer_hint(descriptor)
-            if not answer_hint:
-                continue
-
-            choices = await group.query_selector_all("input[type='radio'], input[type='checkbox']")
-            for choice in choices:
-                choice_descriptor = await _element_descriptor(page, choice)
-                choice_text = choice_descriptor or _normalize_text(await choice.evaluate("el => el.closest('label')?.innerText || ''"))
-                if answer_hint not in choice_text:
-                    continue
-                checked = await choice.is_checked()
-                if not checked:
-                    await choice.check()
-                filled += 1
-                log.append({"action": "choice", "descriptor": descriptor[:120], "value": answer_hint, "ts": _now()})
-                break
-        except Exception as exc:
-            log.append({"action": "choice_skipped", "detail": str(exc), "ts": _now()})
-    return filled
-
-
-async def _element_descriptor(page, element) -> str:
-    attrs = []
-    for attr in ("name", "id", "placeholder", "aria-label", "autocomplete"):
-        value = await element.get_attribute(attr)
-        if value:
-            attrs.append(value)
-
-    element_id = await element.get_attribute("id")
-    if element_id:
-        label = await page.query_selector(f'label[for="{element_id}"]')
-        if label:
-            attrs.append(await label.inner_text())
-
-    return _normalize_text(" ".join(attrs))
-
-
-def _match_field_key(descriptor: str) -> Optional[str]:
-    for pattern, key in COMMON_FIELDS:
-        if re.search(pattern, descriptor, flags=re.IGNORECASE):
-            return key
-    return None
-
-
-async def _find_submit_button(page):
-    for selector in SUBMIT_SELECTORS:
-        try:
-            button = await page.query_selector(selector)
-            if button:
-                return button
-        except Exception:
-            pass
-    return None
 
 
 def _is_allowed_url(url: str) -> bool:
