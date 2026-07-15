@@ -64,6 +64,7 @@ jobs:
             tests/test_control_engine_unit.py \
             tests/test_control_engine_playwright.py \
             tests/test_control_engine_combobox_overlay.py \
+            tests/test_control_engine_searchable_combobox.py \
             > control-certification.txt 2>&1
           status=$?
           cat control-certification.txt
