@@ -34,6 +34,8 @@ def ats_certification_manifest() -> Dict[str, Any]:
             "captcha_and_mfa_are_manual": True,
             "unknown_required_controls_fail_closed": True,
             "confirmation_evidence_required_for_submitted_state": True,
+            "step_navigation_verified_after_field_mutation": True,
+            "step_evidence_persisted_in_automation_log": True,
         },
         "universal_boundary": (
             "Each ATS adapter must pass local fixtures and supervised live dry-runs. "
