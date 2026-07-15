@@ -71,7 +71,7 @@ async def _close_visible_listboxes(page, combobox) -> bool:
         try:
             await combobox.evaluate("(el) => el.focus()")
             await combobox.press(key)
-            await page.wait_for_timeout(100)
+            await page.wait_for_timeout(120)
         except Exception:
             pass
         if not await _visible_listboxes(page):
@@ -110,6 +110,82 @@ async def _combobox_options(page, combobox):
     return listbox, handles, options
 
 
+async def _is_searchable_combobox(combobox) -> bool:
+    try:
+        metadata = await combobox.evaluate(
+            """(el) => ({
+              tag: el.tagName.toLowerCase(),
+              editable: el.isContentEditable,
+              autocomplete: el.getAttribute('aria-autocomplete') || ''
+            })"""
+        )
+        return bool(
+            metadata.get("tag") in {"input", "textarea"}
+            or metadata.get("editable")
+            or metadata.get("autocomplete") in {"list", "both", "inline"}
+        )
+    except Exception:
+        return False
+
+
+async def _type_search_answer(page, combobox, answer: str) -> bool:
+    if not answer or not await _is_searchable_combobox(combobox):
+        return False
+    try:
+        tag = await combobox.evaluate("(el) => el.tagName.toLowerCase()")
+        if tag in {"input", "textarea"}:
+            await combobox.fill(answer)
+        else:
+            await combobox.evaluate("(el) => el.focus()")
+            await combobox.press("Control+A")
+            await combobox.type(answer, delay=15)
+        await page.wait_for_timeout(500)
+        return True
+    except Exception:
+        return False
+
+
+async def _combobox_display_state(combobox) -> str:
+    """Read React-style selected labels from the control and its nearest field shell."""
+    try:
+        state = await combobox.evaluate(
+            """(el) => {
+              const root = el.closest(
+                '[data-field],.field-wrapper,.select__container,.select-container,' +
+                '[class*="select__control"],[class*="select-container"],' +
+                '[class*="field-wrapper"],[class*="application-field"]'
+              ) || el.parentElement;
+              const hiddenValues = Array.from(
+                root?.querySelectorAll('input[type="hidden"]') || []
+              ).map((input) => input.value || '').filter(Boolean).join(' ');
+              return {
+                input: ('value' in el ? el.value : '') || '',
+                ownText: el.innerText || el.textContent || '',
+                ariaLabel: el.getAttribute('aria-label') || '',
+                contextText: root?.innerText || root?.textContent || '',
+                hiddenValues
+              };
+            }"""
+        )
+        return " ".join(str(value or "") for value in state.values())
+    except Exception:
+        try:
+            return await element_text(combobox)
+        except Exception:
+            return ""
+
+
+def _display_matches_option(displayed: str, option: OptionRecord) -> bool:
+    normalized_displayed = normalize_text(displayed)
+    if not normalized_displayed:
+        return False
+    return bool(
+        normalized_displayed in {option.normalized_label, option.normalized_value}
+        or option.normalized_label in normalized_displayed
+        or option.normalized_value in normalized_displayed
+    )
+
+
 async def handle_combobox(
     page, combobox, policies: Iterable[Dict[str, Any]], outcome: ControlEngineOutcome,
     processed: set[str], pass_number: int,
@@ -130,6 +206,19 @@ async def handle_combobox(
                     descriptor=descriptor, control_type="aria_combobox",
                     policy_result=policy, required=required,
                 ))
+        return 0
+
+    answers = parse_policy_answers(policy.get("answer"))
+    if len(answers) != 1:
+        signature = f"{control_id}:combobox:invalid-answer-count"
+        if signature not in processed:
+            processed.add(signature)
+            append_review(outcome.review_items, make_review(
+                descriptor=descriptor, control_type="aria_combobox",
+                policy_result=policy, required=required,
+                reason_code="unsupported_control",
+                summary=f"Custom dropdown requires exactly one approved answer: {descriptor}",
+            ))
         return 0
 
     if not await _close_visible_listboxes(page, combobox):
@@ -163,17 +252,24 @@ async def handle_combobox(
             ))
             return 0
 
-    await page.wait_for_timeout(100)
+    await page.wait_for_timeout(120)
     listbox, handles, options = await _combobox_options(page, combobox)
-    signature = f"{control_id}:aria-combobox:{options_fingerprint(options)}"
+    searched = False
+    if not options:
+        searched = await _type_search_answer(page, combobox, answers[0])
+        if searched:
+            listbox, handles, options = await _combobox_options(page, combobox)
+
+    signature = (
+        f"{control_id}:aria-combobox:{options_fingerprint(options)}:"
+        f"searched={searched}"
+    )
     if signature in processed:
         await _close_visible_listboxes(page, combobox)
         return 0
     processed.add(signature)
 
-    match = match_answers_to_options(
-        parse_policy_answers(policy.get("answer")), options, allow_multiple=False
-    )
+    match = match_answers_to_options(answers, options, allow_multiple=False)
     if not match.ok:
         append_review(outcome.review_items, make_review(
             descriptor=descriptor, control_type="aria_combobox",
@@ -183,6 +279,8 @@ async def handle_combobox(
             details={
                 "missing_answers": match.missing_answers,
                 "ambiguous_answers": match.ambiguous_answers,
+                "search_attempted": searched,
+                "option_count": len(options),
             },
         ))
         await _close_visible_listboxes(page, combobox)
@@ -201,32 +299,34 @@ async def handle_combobox(
         ))
         await _close_visible_listboxes(page, combobox)
         return 0
-    await page.wait_for_timeout(100)
+    await page.wait_for_timeout(120)
 
-    selected = normalize_text(await option.get_attribute("aria-selected")) == "true"
+    selected = False
     try:
-        displayed = await combobox.input_value()
+        selected = normalize_text(await option.get_attribute("aria-selected")) == "true"
     except Exception:
-        displayed = await element_text(combobox)
+        # React-style widgets frequently replace the option node after selection.
+        selected = False
 
+    overlay_closed = await _close_visible_listboxes(page, combobox)
+    displayed = await _combobox_display_state(combobox)
     expected = match.matched[0]
-    normalized_displayed = normalize_text(displayed)
-    displayed_matches = (
-        normalized_displayed in {expected.normalized_label, expected.normalized_value}
-        or expected.normalized_label in normalized_displayed
-        or expected.normalized_value in normalized_displayed
-    )
+    displayed_matches = _display_matches_option(displayed, expected)
+
     if not selected and not displayed_matches:
         append_review(outcome.review_items, make_review(
             descriptor=descriptor, control_type="aria_combobox",
             policy_result=policy, required=required, options=options,
             reason_code="unsupported_control",
             summary=f"Custom dropdown selection could not be verified: {descriptor}",
+            details={
+                "search_attempted": searched,
+                "display_state": displayed[:500],
+            },
         ))
-        await _close_visible_listboxes(page, combobox)
         return 0
 
-    if not await _close_visible_listboxes(page, combobox):
+    if not overlay_closed:
         append_review(outcome.review_items, make_review(
             descriptor=descriptor, control_type="aria_combobox",
             policy_result=policy, required=required, options=options,
