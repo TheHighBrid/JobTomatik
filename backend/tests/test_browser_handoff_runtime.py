@@ -35,7 +35,7 @@ async def test_retained_browser_survives_disconnect_and_resumes_same_form(tmp_pa
             <form id="application_form">
               <label for="first_name">First Name</label>
               <input id="first_name" name="first_name" required>
-              <iframe id="human-check" src="https://www.google.com/recaptcha/api2/anchor"></iframe>
+              <iframe id="human-check" src="about:blank?recaptcha"></iframe>
               <textarea name="g-recaptcha-response" hidden></textarea>
               <button id="solve" type="button">Complete human verification</button>
               <button id="submit_app" type="submit">Submit Application</button>
