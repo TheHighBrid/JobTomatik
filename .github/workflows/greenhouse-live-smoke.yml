@@ -70,22 +70,30 @@ jobs:
           PY
 
       - name: Inspect current live forms and official schemas
+        id: live_inspection
         shell: bash
         run: |
-          python scripts/certify_greenhouse_live.py \
+          set +e
+          python -u scripts/certify_greenhouse_live.py \
             --urls "$(cat greenhouse-live-urls.txt)" \
-            --report greenhouse-live-smoke.json
+            --report greenhouse-live-smoke.json \
+            > greenhouse-live-output.txt 2>&1
+          status=$?
+          cat greenhouse-live-output.txt
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Assert live run never submitted
+        if: always()
         shell: bash
         run: |
           python - <<'PY'
           import json
           report = json.load(open('greenhouse-live-smoke.json'))
-          assert report['passed'] is True
           assert report['final_submit_clicked'] is False
           assert report['url_count'] >= 1
           assert all(item.get('mode') == 'inspect' for item in report['reports'])
+          assert report['passed'] is True
           PY
 
       - name: Upload live smoke report
@@ -95,6 +103,11 @@ jobs:
           name: greenhouse-live-smoke-report
           path: |
             backend/greenhouse-live-smoke.json
+            backend/greenhouse-live-output.txt
             backend/greenhouse-live-urls.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
+
+      - name: Fail when live inspection failed
+        if: steps.live_inspection.outputs.exit_code != '0'
+        run: exit 1
