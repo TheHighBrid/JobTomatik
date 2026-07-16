@@ -1,0 +1,89 @@
+name: SmartRecruiters adapter certification
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/smartrecruiters_certification.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/tests/test_smartrecruiters_*.py"
+      - "backend/tests/test_ats_flow_safety.py"
+      - "backend/tests/test_ats_captcha_handoff.py"
+      - "backend/tests/test_form_filler_anonymous_controls.py"
+      - ".github/workflows/smartrecruiters-adapter-certification.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/smartrecruiters_certification.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/tests/test_smartrecruiters_*.py"
+      - "backend/tests/test_ats_flow_safety.py"
+      - "backend/tests/test_ats_captcha_handoff.py"
+      - "backend/tests/test_form_filler_anonymous_controls.py"
+      - ".github/workflows/smartrecruiters-adapter-certification.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smartrecruiters-fixture-matrix:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: sqlite:///./smartrecruiters-certification.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: smartrecruiters-certification-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      REQUIRE_BROWSER_TESTS: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run SmartRecruiters adapter certification
+        shell: bash
+        run: |
+          set +e
+          pytest -q --tb=short -ra \
+            tests/test_smartrecruiters_adapter.py \
+            tests/test_smartrecruiters_manifest.py \
+            tests/test_ats_flow_safety.py \
+            tests/test_ats_captcha_handoff.py \
+            tests/test_form_filler_anonymous_controls.py \
+            > smartrecruiters-certification.txt 2>&1
+          status=$?
+          cat smartrecruiters-certification.txt
+          exit $status
+
+      - name: Upload SmartRecruiters certification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smartrecruiters-adapter-certification-report
+          path: backend/smartrecruiters-certification.txt
+          if-no-files-found: error
+          retention-days: 30
