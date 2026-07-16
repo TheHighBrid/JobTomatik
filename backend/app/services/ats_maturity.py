@@ -40,6 +40,8 @@ AUTONOMY_RELEASE_GATES: Tuple[str, ...] = (
 def normalize_adapter_maturity(value: Any) -> AdapterMaturity | None:
     """Return a known maturity or ``None`` for missing/unknown values."""
 
+    if isinstance(value, AdapterMaturity):
+        return value
     try:
         return AdapterMaturity(str(value))
     except (TypeError, ValueError):
@@ -181,11 +183,17 @@ def annotate_adapter_manifest(manifest: Mapping[str, Any]) -> Dict[str, Any]:
         AUTONOMY_RELEASE_GATES,
     )
 
+    human_allowed = maturity in {
+        AdapterMaturity.HUMAN_REVIEWED_SUBMIT,
+        AdapterMaturity.CERTIFIED_AUTONOMOUS,
+    }
+    autonomy_allowed = maturity is AdapterMaturity.CERTIFIED_AUTONOMOUS
+
     value["maturity"] = maturity.value
     value["maturity_model"] = "roadmap_issue_13_v1"
     value["certification_level_semantics"] = "descriptive_evidence_label_only"
-    value["human_reviewed_submission_allowed"] = human_ready
-    value["autonomous_submission_allowed"] = autonomy_ready
+    value["human_reviewed_submission_allowed"] = human_allowed
+    value["autonomous_submission_allowed"] = autonomy_allowed
     value["release_gate_status"] = {
         "human_reviewed_submit": {
             "passed": human_ready,
