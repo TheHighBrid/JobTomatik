@@ -10,7 +10,7 @@ from sqlalchemy import inspect as sa_inspect, text
 from app.api import answer_policies, applications, auth, export, handoffs, jobs, notifications, profile, settings as settings_api
 from app.config import get_settings
 from app.database import Base, engine
-from app.services.ats_registry import ats_certification_manifest
+from app.services.ats_manifest import ats_certification_manifest
 from app.services.control_engine import certification_manifest
 from app.services.handoff_integration import install_handoff_task_integration
 from app.services.operations_policy import operations_readiness_manifest
@@ -116,4 +116,16 @@ async def ats_certification():
 
 @app.get("/api/system/operations-readiness")
 async def operations_readiness():
-    return operations_readiness_manifest()
+    readiness = operations_readiness_manifest()
+    ats = ats_certification_manifest()
+    maturities = {
+        item["name"]: item.get("maturity")
+        for item in ats.get("adapters", [])
+    }
+    readiness["adapter_maturities"] = maturities
+    readiness["autonomous_adapters"] = list(ats.get("autonomous_adapters", []))
+    readiness["invariants"]["canonical_adapter_maturity_required"] = True
+    readiness["invariants"]["no_autonomous_adapter_currently_enabled"] = not bool(
+        readiness["autonomous_adapters"]
+    )
+    return readiness
