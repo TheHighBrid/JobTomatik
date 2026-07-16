@@ -4,10 +4,11 @@ on:
   pull_request:
     paths:
       - "backend/app/services/ats_*.py"
-      - "backend/app/services/smartrecruiters_certification.py"
+      - "backend/app/services/smartrecruiters_*.py"
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/scripts/certify_smartrecruiters_live.py"
+      - "backend/scripts/select_smartrecruiters_candidates.py"
       - ".github/workflows/smartrecruiters-synthetic-live.yml"
   schedule:
     - cron: "29 15 * * 1"
@@ -19,7 +20,7 @@ permissions:
 jobs:
   synthetic-full-form-dry-run:
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 75
 
     defaults:
       run:
@@ -52,50 +53,15 @@ jobs:
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
 
-      - name: Select current certification candidates
+      - name: Select current certification candidates across tenants
         shell: bash
         run: |
-          python - <<'PY'
-          import httpx
-
-          company = 'smartrecruiters'
-          listing = httpx.get(
-              f'https://api.smartrecruiters.com/v1/companies/{company}/postings',
-              params={'limit': 100, 'offset': 0},
-              timeout=25,
-              follow_redirects=True,
-          )
-          listing.raise_for_status()
-          jobs = list(listing.json().get('content') or [])
-          jobs.sort(key=lambda job: job.get('releasedDate') or '', reverse=True)
-          preferred_terms = ('operations', 'consultant', 'support', 'sales', 'data')
-          preferred = [
-              job for job in jobs
-              if any(term in str(job.get('name') or '').lower() for term in preferred_terms)
-          ]
-          ordered = preferred + [job for job in jobs if job not in preferred]
-          urls = []
-          for job in ordered:
-              identifier = str(job.get('id') or job.get('uuid') or '')
-              if not identifier:
-                  continue
-              details = httpx.get(
-                  f'https://api.smartrecruiters.com/v1/companies/{company}/postings/{identifier}',
-                  timeout=25,
-                  follow_redirects=True,
-              )
-              if details.status_code != 200:
-                  continue
-              payload = details.json()
-              if payload.get('active') and payload.get('applyUrl'):
-                  urls.append(payload['applyUrl'])
-              if len(urls) >= 6:
-                  break
-          if not urls:
-              raise SystemExit('No current SmartRecruiters application URLs were returned.')
-          open('smartrecruiters-synthetic-candidates.txt', 'w').write('\n'.join(urls))
-          print('\n'.join(urls))
-          PY
+          python scripts/select_smartrecruiters_candidates.py \
+            --output smartrecruiters-synthetic-selection.json \
+            --urls-output smartrecruiters-synthetic-candidates.txt \
+            --limit 18 \
+            --per-company 1 \
+            --prefer-roles
 
       - name: Exercise a current real form without submission
         id: live_exercise
@@ -162,6 +128,7 @@ jobs:
             backend/smartrecruiters-synthetic-attempt-*.json
             backend/smartrecruiters-synthetic-attempts.txt
             backend/smartrecruiters-synthetic-candidates.txt
+            backend/smartrecruiters-synthetic-selection.json
             backend/smartrecruiters-synthetic-resume.pdf
           if-no-files-found: warn
           retention-days: 30
