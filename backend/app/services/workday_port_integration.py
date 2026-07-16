@@ -93,13 +93,18 @@ def _owner_page(surface: Any) -> Optional[Any]:
 
 
 async def _visible_application_boundary(page: Any) -> bool:
+    """Recognize only application, login, or account controls.
+
+    Generic dialogs are deliberately excluded because Workday job pages commonly show
+    cookie, accessibility, or informational dialogs before the application begins.
+    """
+
     for selector in (
         '[data-automation-id="bottom-navigation-next-button"]',
         '[data-automation-id*="submit" i]',
         'input[type="file"]',
         'input[type="password"]',
         '[data-automation-id*="createAccount" i]',
-        '[role="dialog"]',
     ):
         try:
             control = await page.query_selector(selector)
