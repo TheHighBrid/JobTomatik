@@ -10,9 +10,13 @@ from app.services.ats_base import ATSAdapter
 from app.services.ats_greenhouse import GreenhouseAdapter
 from app.services.ats_lever import LeverAdapter
 from app.services.ats_smartrecruiters import SmartRecruitersAdapter
+from app.services.smartrecruiters_contract import (
+    install_smartrecruiters_contract_normalization,
+)
 
 
 install_ashby_profile_aliases()
+install_smartrecruiters_contract_normalization()
 
 
 class RegisteredLeverAdapter(LeverAdapter):
@@ -111,6 +115,7 @@ def ats_certification_manifest() -> Dict[str, Any]:
             "private_api_credentials_not_required_for_public_form_ci": True,
             "exact_ashby_name_alias_only": True,
             "smartrecruiters_application_api_requires_explicit_token": True,
+            "smartrecruiters_reference_url_optional": True,
         },
         "universal_boundary": (
             "Each ATS adapter must pass local fixtures and supervised live dry-runs. "
