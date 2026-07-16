@@ -115,11 +115,16 @@ def refresh_all_scores():
 def daily_auto_search_all():
     """
     Safe autopilot:
-    1. Search Job Bank only by default.
+    1. Search the configured default discovery sources.
     2. Auto-approve high-score jobs.
     3. Queue dry runs unless ALLOW_REAL_APPLICATION_SUBMIT=true.
     """
-    from app.models.application import Application, ApplicationStatus
+    from app.models.application import (
+        Application,
+        ApplicationAutomationState,
+        ApplicationEvent,
+        ApplicationStatus,
+    )
     from app.tasks.applications import generate_cover_letter_task, submit_application_task
 
     db = SessionLocal()
@@ -169,21 +174,38 @@ def daily_auto_search_all():
                 approved = db.query(Job).filter(Job.status == JobStatus.approved).limit(daily_limit).all()
                 countdown = 120
                 for job in approved:
+                    idempotency_key = f"application:{user.id}:job:{job.id}"
                     existing = (
                         db.query(Application)
-                        .filter(Application.user_id == user.id, Application.job_id == job.id)
+                        .filter(
+                            Application.user_id == user.id,
+                            Application.job_id == job.id,
+                        )
                         .first()
                     )
                     if existing:
                         continue
-                    app_obj = Application(user_id=user.id, job_id=job.id, status=ApplicationStatus.pending)
+                    app_obj = Application(
+                        user_id=user.id,
+                        job_id=job.id,
+                        status=ApplicationStatus.pending,
+                        automation_state=ApplicationAutomationState.preparing.value,
+                        submission_idempotency_key=idempotency_key,
+                    )
                     db.add(app_obj)
                     job.status = JobStatus.applied
                     db.flush()
+                    db.add(ApplicationEvent(
+                        application_id=app_obj.id,
+                        event_type="application_created",
+                        from_state=None,
+                        to_state=ApplicationAutomationState.preparing.value,
+                        payload={"job_id": job.id, "source": "scheduled_autopilot"},
+                    ))
                     generate_cover_letter_task.delay(app_obj.id)
                     submit_application_task.apply_async(
                         args=[app_obj.id],
-                        kwargs={"dry_run": False},
+                        kwargs={"dry_run": not settings.allow_real_application_submit},
                         countdown=countdown,
                     )
                     countdown += 30

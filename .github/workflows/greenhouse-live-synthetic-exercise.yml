@@ -1,0 +1,190 @@
+name: Greenhouse synthetic live exercise
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/control_*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/app/services/greenhouse_certification.py"
+      - "backend/scripts/certify_greenhouse_live.py"
+      - ".github/workflows/greenhouse-live-synthetic-exercise.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-full-form-dry-run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./greenhouse-synthetic-live.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: greenhouse-synthetic-live-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Select a current certification-compatible Greenhouse job
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import httpx
+
+          allowed_types = {
+              'input_file', 'input_text', 'input_hidden', 'textarea',
+              'multi_value_single_select', 'multi_value_multi_select',
+          }
+          profile_labels = {
+              'first name', 'last name', 'full name', 'email', 'email address',
+              'phone', 'phone number', 'resume', 'resume cv', 'cv',
+              'cover letter', 'linkedin profile', 'linkedin url',
+              'portfolio', 'portfolio url', 'website',
+          }
+
+          def normalize(value):
+              return re.sub(r'[^a-z0-9]+', ' ', str(value or '').lower()).strip()
+
+          client = httpx.Client(timeout=20, follow_redirects=True)
+          jobs_response = client.get('https://boards-api.greenhouse.io/v1/boards/gitlab/jobs')
+          jobs_response.raise_for_status()
+          candidates = []
+          for job in (jobs_response.json().get('jobs') or [])[:30]:
+              job_id = job.get('id')
+              url = job.get('absolute_url')
+              if not job_id or not url:
+                  continue
+              try:
+                  response = client.get(
+                      f'https://boards-api.greenhouse.io/v1/boards/gitlab/jobs/{job_id}',
+                      params={'questions': 'true'},
+                  )
+                  response.raise_for_status()
+                  schema = response.json()
+              except Exception:
+                  continue
+
+              unsupported = []
+              required_custom = 0
+              required_upload = False
+              for question in schema.get('questions') or []:
+                  label = normalize(question.get('label'))
+                  fields = question.get('fields') or []
+                  field_types = {str(field.get('type') or '') for field in fields}
+                  unsupported.extend(field_types - allowed_types)
+                  if question.get('required') and 'input_file' in field_types:
+                      required_upload = True
+                  if question.get('required') and label not in profile_labels and 'input_file' not in field_types:
+                      required_custom += 1
+              if unsupported or not required_upload:
+                  continue
+              candidates.append((required_custom, len(schema.get('questions') or []), url, job_id))
+
+          if not candidates:
+              raise SystemExit('No current certification-compatible GitLab Greenhouse job was found.')
+          selected = min(candidates)
+          open('greenhouse-synthetic-live-url.txt', 'w').write(selected[2])
+          print({
+              'url': selected[2],
+              'job_id': selected[3],
+              'required_custom_questions': selected[0],
+              'question_count': selected[1],
+          })
+          PY
+
+      - name: Exercise the real form with a synthetic candidate
+        id: synthetic_exercise
+        shell: bash
+        run: |
+          set +e
+          python -u scripts/certify_greenhouse_live.py \
+            --urls "$(cat greenhouse-synthetic-live-url.txt)" \
+            --exercise \
+            --synthetic-profile \
+            --synthetic-resume-path greenhouse-synthetic-resume.pdf \
+            --report greenhouse-synthetic-live-report.json \
+            > greenhouse-synthetic-live-output.txt 2>&1
+          status=$?
+          cat greenhouse-synthetic-live-output.txt
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Assert full-form readiness without submission
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+
+          report = json.load(open('greenhouse-synthetic-live-report.json'))
+          exercises = [item for item in report['reports'] if item.get('mode') == 'exercise']
+          assert report['passed'] is True
+          assert report['exercise_enabled'] is True
+          assert report['synthetic_profile'] is True
+          assert report['final_submit_clicked'] is False
+          assert len(exercises) == 1
+          exercise = exercises[0]
+          assert exercise['passed'] is True
+          assert exercise['certification_outcome'] in {
+              'ready_to_submit', 'manual_challenge_handoff'
+          }
+          assert exercise['final_submit_clicked'] is False
+          assert exercise['fields_filled'] > 0
+          assert exercise['certification_metadata']['synthetic_profile'] is True
+          assert exercise['certification_metadata']['policy_count'] > 0
+          assert any(
+              item.get('verification') == 'passed'
+              for item in exercise.get('upload_evidence') or []
+          )
+          if exercise['certification_outcome'] == 'manual_challenge_handoff':
+              assert exercise['manual_challenge_ready'] is True
+              assert exercise['requires_manual_review'] is True
+              assert any(
+                  item.get('reason_code') == 'captcha_detected'
+                  and (item.get('details') or {}).get('handoff_stage') == 'post_fill_pre_action'
+                  and (item.get('details') or {}).get('submit_clicked') is False
+                  for item in exercise.get('review_items') or []
+              )
+          PY
+
+      - name: Upload synthetic live certification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: greenhouse-synthetic-live-exercise-report
+          path: |
+            backend/greenhouse-synthetic-live-report.json
+            backend/greenhouse-synthetic-live-output.txt
+            backend/greenhouse-synthetic-live-url.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail when the synthetic exercise failed
+        if: steps.synthetic_exercise.outputs.exit_code != '0'
+        run: exit 1

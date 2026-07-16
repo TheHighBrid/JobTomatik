@@ -116,6 +116,14 @@ export const uploadResume = (file) => {
 }
 export const deleteResume = () => api.delete('/profile/resume')
 
+// Answer policy vault
+export const getAnswerPolicyCatalog = () => api.get('/profile/answer-policies/catalog')
+export const listAnswerPolicies = () => api.get('/profile/answer-policies')
+export const createAnswerPolicy = (data) => api.post('/profile/answer-policies', data)
+export const updateAnswerPolicy = (id, data) => api.patch(`/profile/answer-policies/${id}`, data)
+export const confirmAnswerPolicy = (id) => api.post(`/profile/answer-policies/${id}/confirm`)
+export const deleteAnswerPolicy = (id) => api.delete(`/profile/answer-policies/${id}`)
+
 // Jobs
 export const searchJobs = (params) => api.post('/jobs/search', params)
 export const getJobQueue = (params) => api.get('/jobs/queue', { params })
@@ -132,7 +140,7 @@ export const getApplicationStats = () => api.get('/applications/stats')
 export const getApplication = (id) => api.get(`/applications/${id}`)
 export const updateApplication = (id, data) => api.patch(`/applications/${id}`, data)
 export const generateCoverLetter = (id) => api.post(`/applications/${id}/generate-cover-letter`)
-export const submitApplication = (id, dryRun = false) =>
+export const submitApplication = (id, dryRun = true) =>
   api.post(`/applications/${id}/submit?dry_run=${dryRun}`)
 export const bulkSubmitApplications = (params) => api.post('/applications/bulk-submit', null, { params })
 export const createFollowup = (appId, data) => api.post(`/applications/${appId}/followups`, data)
@@ -149,9 +157,9 @@ export const getSettings = () => api.get('/settings')
 export const updateSettings = (data) => api.patch('/settings', data)
 
 // Bulk / Auto-pilot
-export const bulkApply = (dryRun = false, limit = 20) =>
+export const bulkApply = (dryRun = true, limit = 20) =>
   api.post(`/jobs/bulk-apply?dry_run=${dryRun}&limit=${limit}`)
 export const runAutoPilot = (options = {}) =>
-  api.post('/jobs/autopilot', null, { params: { dry_run: false, min_score: 0.55, daily_limit: 15, ...options } })
+  api.post('/jobs/autopilot', null, { params: { dry_run: true, min_score: 0.55, daily_limit: 15, ...options } })
 
 export default api

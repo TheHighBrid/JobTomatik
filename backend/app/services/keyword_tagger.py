@@ -18,28 +18,42 @@ SKILLS_PATTERNS = {
     "Banking": r"\bbanking\b|\bbank\b|\bcredit\b|\bloans?\b|\bfinancial services\b",
     "Customer Service": r"\bcustomer service\b|\bclient service\b|\bclient support\b",
     "Bilingual English/French": r"\bbilingual\b|\bfrench\b|\benglish/french\b|\bfrançais\b",
+    "Python": r"\bpython\b",
+    "PostgreSQL": r"\bpostgres(?:ql)?\b",
+    "AWS": r"\baws\b|\bamazon web services\b",
+    "React": r"\breact(?:\.js|js)?\b",
+    "TypeScript": r"\btypescript\b",
+    "Tailwind": r"\btailwind(?:\s+css)?\b",
+    "Django": r"\bdjango\b",
+    "Docker": r"\bdocker\b",
+    "Kubernetes": r"\bkubernetes\b|\bk8s\b",
     "SQL": r"\bsql\b",
     "Excel": r"\bexcel\b|\bspreadsheet\b",
     "Microsoft Office": r"\bmicrosoft office\b|\bms office\b|\boffice 365\b",
 }
 
+# Order matters. More specific leadership labels must precede broader levels.
 SENIORITY_PATTERNS = [
     ("Intern", r"\bintern\b|\binternship\b"),
     ("Junior", r"\bjunior\b|\bjr\.?\b|\bentry[- ]?level\b|\b0[- ]?[12]\s+years?\b"),
-    ("Mid-Level", r"\bmid[- ]?level\b|\bintermediate\b|\b[23][- ][45]\s+years?\b"),
-    ("Senior", r"\bsenior\b|\bsr\.?\b|\b5\+?\s+years?\b|\b[4-9]\+?\s+years?\b"),
+    ("Staff", r"\bstaff\b"),
     ("Principal", r"\bprincipal\b"),
     ("Lead", r"\blead\b"),
     ("Manager", r"\bmanager\b|\bmanagement\b"),
     ("Director", r"\bdirector\b"),
+    ("Senior", r"\bsenior\b|\bsr\.?\b|\b5\+?\s+years?\b|\b[4-9]\+?\s+years?\b"),
+    ("Mid-Level", r"\bmid[- ]?level\b|\bintermediate\b|\b[23][- ][45]\s+years?\b"),
 ]
 
+# Specific business models precede broad sectors so payments and banking
+# software resolves to FinTech rather than the generic Banking category.
 INDUSTRY_PATTERNS = [
     ("Financial Crime", r"\bfinancial crime\b|\bfraud\b|\baml\b|\bkyc\b"),
+    ("SaaS", r"\bsaas\b|\bsoftware[- ]as[- ]a[- ]service\b"),
+    ("FinTech", r"\bfintech\b|\bpayments?\b|\bdigital banking\b"),
     ("Banking", r"\bbanking\b|\bbank\b|\bcredit\b|\bloans?\b|\bfinancial services\b"),
     ("Government", r"\bgovernment\b|\bcra\b|\bcanada revenue\b|\bpublic service\b|\bfederal\b"),
     ("Compliance", r"\bcompliance\b|\bregulatory\b|\brisk\b"),
-    ("FinTech", r"\bfintech\b|\bpayments?\b|\bdigital banking\b"),
     ("Customer Operations", r"\bcustomer service\b|\bclient service\b|\boperations\b"),
     ("Technology", r"\bsoftware\b|\bdeveloper\b|\bengineer\b|\bcloud\b|\bapi\b|\bpython\b"),
 ]
@@ -93,14 +107,20 @@ def compute_relevance(job: Dict, user_preferences: Dict) -> float:
         job.get("requirements") or "",
     ]).lower()
 
+    matching_skills = pref_skills & job_skills
+    skill_match = False
     if pref_skills and job_skills:
-        overlap = len(pref_skills & job_skills) / max(len(pref_skills), 1)
+        overlap = len(matching_skills) / max(len(pref_skills), 1)
         score += 0.25 * min(overlap, 1.0)
+        skill_match = bool(matching_skills)
     elif pref_skills and any(skill in combined_text for skill in pref_skills):
         score += 0.15
+        skill_match = True
 
+    title_match = False
     if pref_titles:
-        if any(title in job_title for title in pref_titles):
+        title_match = any(title in job_title for title in pref_titles)
+        if title_match:
             score += 0.2
     elif _text_has_any(job_title, ["fraud", "aml", "kyc", "financial crime", "compliance", "risk", "banking"]):
         score += 0.18
@@ -114,9 +134,16 @@ def compute_relevance(job: Dict, user_preferences: Dict) -> float:
     if pref_min_salary and job_salary_min:
         score += 0.1 if job_salary_min >= pref_min_salary else -0.1
 
-    if _text_has_any(job_title, ["software engineer", "developer", "devops", "frontend", "backend"]):
-        if not _text_has_any(combined_text, ["fraud", "aml", "kyc", "compliance", "banking", "risk"]):
-            score -= 0.25
+    is_software_role = _text_has_any(
+        job_title,
+        ["software engineer", "developer", "devops", "frontend", "backend"],
+    )
+    has_banking_context = _text_has_any(
+        combined_text,
+        ["fraud", "aml", "kyc", "compliance", "banking", "risk"],
+    )
+    if is_software_role and not has_banking_context and not skill_match and not title_match:
+        score -= 0.25
 
     return round(min(max(score, 0.0), 1.0), 3)
 

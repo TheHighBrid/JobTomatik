@@ -1,0 +1,94 @@
+name: Greenhouse adapter certification
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/app/services/greenhouse_certification.py"
+      - "backend/tests/test_greenhouse_adapter.py"
+      - "backend/tests/test_ats_flow_safety.py"
+      - "backend/tests/test_ats_captcha_handoff.py"
+      - "backend/tests/test_form_filler_anonymous_controls.py"
+      - "backend/tests/test_greenhouse_manifest.py"
+      - "backend/tests/test_greenhouse_synthetic_certification.py"
+      - ".github/workflows/greenhouse-adapter-certification.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/app/services/greenhouse_certification.py"
+      - "backend/tests/test_greenhouse_adapter.py"
+      - "backend/tests/test_ats_flow_safety.py"
+      - "backend/tests/test_ats_captcha_handoff.py"
+      - "backend/tests/test_form_filler_anonymous_controls.py"
+      - "backend/tests/test_greenhouse_manifest.py"
+      - "backend/tests/test_greenhouse_synthetic_certification.py"
+      - ".github/workflows/greenhouse-adapter-certification.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  greenhouse-fixture-matrix:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: sqlite:///./greenhouse-certification.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: greenhouse-certification-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      REQUIRE_BROWSER_TESTS: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run Greenhouse adapter certification
+        shell: bash
+        run: |
+          set +e
+          pytest -q --tb=short -ra \
+            tests/test_greenhouse_adapter.py \
+            tests/test_ats_flow_safety.py \
+            tests/test_ats_captcha_handoff.py \
+            tests/test_form_filler_anonymous_controls.py \
+            tests/test_greenhouse_manifest.py \
+            tests/test_greenhouse_synthetic_certification.py \
+            > greenhouse-certification.txt 2>&1
+          status=$?
+          cat greenhouse-certification.txt
+          exit $status
+
+      - name: Upload Greenhouse certification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: greenhouse-adapter-certification-report
+          path: backend/greenhouse-certification.txt
+          if-no-files-found: error
+          retention-days: 30

@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./jobtomatik.db"
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str = "supersecretkey-change-in-production"
+    answer_vault_key: str = ""
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 10080
 
@@ -23,6 +24,10 @@ class Settings(BaseSettings):
     rapidapi_key: str = ""
     upload_dir: str = "uploads"
     dev_mock_jobs: bool = False
+
+    # Defense-in-depth gate for any non-dry-run application attempt.
+    # Keep disabled until the active adapter has passed supervised certification.
+    allow_real_application_submit: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

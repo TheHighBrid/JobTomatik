@@ -1,0 +1,80 @@
+name: Control engine certification
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/control_*.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/browser_navigation.py"
+      - "backend/tests/test_control_engine_*.py"
+      - ".github/workflows/control-engine-certification.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/services/control_*.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/browser_navigation.py"
+      - "backend/tests/test_control_engine_*.py"
+      - ".github/workflows/control-engine-certification.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  chromium-control-matrix:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: sqlite:///./control-certification.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: control-certification-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      REQUIRE_BROWSER_TESTS: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run standards control certification
+        shell: bash
+        run: |
+          set +e
+          pytest -q --tb=short -ra \
+            tests/test_control_engine_unit.py \
+            tests/test_control_engine_playwright.py \
+            tests/test_control_engine_combobox_overlay.py \
+            tests/test_control_engine_searchable_combobox.py \
+            > control-certification.txt 2>&1
+          status=$?
+          cat control-certification.txt
+          exit $status
+
+      - name: Upload certification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-engine-certification-report
+          path: backend/control-certification.txt
+          if-no-files-found: error
+          retention-days: 30
