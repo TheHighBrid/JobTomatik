@@ -1,8 +1,4 @@
-"""Bounded unattended-operation policies for JobTomatik.
-
-These controls deliberately govern scheduled automation separately from human-reviewed
-application work. Live submission remains protected by the existing submission safety gate.
-"""
+"""Bounded unattended-operation policies for JobTomatik."""
 
 from __future__ import annotations
 
@@ -15,6 +11,7 @@ from sqlalchemy import func
 
 from app.config import get_settings
 from app.models.application import Application, ManualReviewReason, ManualReviewTask
+from app.services.operations_settings import get_operations_settings
 
 
 @dataclass(frozen=True)
@@ -46,11 +43,8 @@ def _positive_int(value: Any, default: int, *, minimum: int = 1) -> int:
 
 def disabled_platforms(value: str | Iterable[str] | None = None) -> set[str]:
     if value is None:
-        value = get_settings().autopilot_disabled_platforms
-    if isinstance(value, str):
-        items = value.split(",")
-    else:
-        items = value
+        value = get_operations_settings().disabled_platforms
+    items = value.split(",") if isinstance(value, str) else value
     return {str(item).strip().lower() for item in items if str(item).strip()}
 
 
@@ -70,12 +64,6 @@ def platform_key_for_url(url: str) -> str:
 
 
 def is_quiet_hour(now: datetime, start_hour: int, end_hour: int) -> bool:
-    """Return whether ``now`` falls inside a UTC quiet-hours window.
-
-    Equal start and end values disable quiet hours. Wraparound windows such as 22 -> 6
-    are supported.
-    """
-
     start = _bounded_hour(start_hour, 0)
     end = _bounded_hour(end_hour, 0)
     if start == end:
@@ -88,7 +76,6 @@ def is_quiet_hour(now: datetime, start_hour: int, end_hour: int) -> bool:
 def _period_counts(db, user_id: int, now: datetime) -> tuple[int, int]:
     day_start = datetime(now.year, now.month, now.day)
     week_start = day_start - timedelta(days=day_start.weekday())
-
     daily = (
         db.query(func.count(Application.id))
         .filter(Application.user_id == user_id, Application.created_at >= day_start)
@@ -138,13 +125,11 @@ def _circuit_breaker_state(
     timestamps = _failure_timestamps(db, user_id, now, breaker_minutes)
     if len(timestamps) < threshold:
         return None
-
     window = timedelta(minutes=failure_window_minutes)
     breaker = timedelta(minutes=breaker_minutes)
     for index in range(0, len(timestamps) - threshold + 1):
         cluster = timestamps[index : index + threshold]
-        newest = cluster[0]
-        oldest = cluster[-1]
+        newest, oldest = cluster[0], cluster[-1]
         if newest - oldest <= window and now < newest + breaker:
             return {
                 "failure_count": len(timestamps),
@@ -169,11 +154,11 @@ def evaluate_platform_policy(url: str) -> AutomationDecision:
 
 
 def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> AutomationDecision:
-    settings = get_settings()
+    operations = get_operations_settings()
     now = now or datetime.utcnow()
-    automation_settings = dict(user.automation_settings or {})
+    user_settings = dict(user.automation_settings or {})
 
-    if not settings.autopilot_enabled:
+    if not operations.autopilot_enabled:
         return AutomationDecision(
             False,
             "global_autopilot_disabled",
@@ -181,12 +166,10 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
         )
 
     start_hour = _bounded_hour(
-        automation_settings.get("quiet_hours_start_utc"),
-        settings.autopilot_quiet_hours_start_utc,
+        user_settings.get("quiet_hours_start_utc"), operations.quiet_hours_start_utc
     )
     end_hour = _bounded_hour(
-        automation_settings.get("quiet_hours_end_utc"),
-        settings.autopilot_quiet_hours_end_utc,
+        user_settings.get("quiet_hours_end_utc"), operations.quiet_hours_end_utc
     )
     if is_quiet_hour(now, start_hour, end_hour):
         return AutomationDecision(
@@ -196,13 +179,14 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
             {"start_hour_utc": start_hour, "end_hour_utc": end_hour, "current_hour_utc": now.hour},
         )
 
-    global_daily = _positive_int(settings.autopilot_default_daily_cap, 5)
-    global_weekly = _positive_int(settings.autopilot_default_weekly_cap, 20)
-    requested_daily = _positive_int(automation_settings.get("auto_apply_daily_limit"), global_daily)
-    requested_weekly = _positive_int(automation_settings.get("auto_apply_weekly_limit"), global_weekly)
-    effective_daily = min(global_daily, requested_daily)
-    effective_weekly = min(global_weekly, requested_weekly)
-
+    requested_daily = _positive_int(
+        user_settings.get("auto_apply_daily_limit"), operations.default_daily_cap
+    )
+    requested_weekly = _positive_int(
+        user_settings.get("auto_apply_weekly_limit"), operations.default_weekly_cap
+    )
+    effective_daily = min(operations.default_daily_cap, requested_daily)
+    effective_weekly = min(operations.default_weekly_cap, requested_weekly)
     daily_count, weekly_count = _period_counts(db, user.id, now)
     remaining_daily = max(0, effective_daily - daily_count)
     remaining_weekly = max(0, effective_weekly - weekly_count)
@@ -221,16 +205,13 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
             },
         )
 
-    threshold = _positive_int(settings.autopilot_failure_threshold, 3)
-    failure_window = _positive_int(settings.autopilot_failure_window_minutes, 60)
-    breaker_minutes = _positive_int(settings.autopilot_circuit_breaker_minutes, 120)
     circuit = _circuit_breaker_state(
         db,
         user.id,
         now,
-        threshold=threshold,
-        failure_window_minutes=failure_window,
-        breaker_minutes=breaker_minutes,
+        threshold=operations.failure_threshold,
+        failure_window_minutes=operations.failure_window_minutes,
+        breaker_minutes=operations.circuit_breaker_minutes,
     )
     if circuit:
         return AutomationDecision(
@@ -258,26 +239,24 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
 
 
 def operations_readiness_manifest() -> Dict[str, Any]:
-    settings = get_settings()
+    core = get_settings()
+    operations = get_operations_settings()
     return {
         "version": "1.0.0",
-        "autopilot_enabled": settings.autopilot_enabled,
-        "real_submission_enabled": settings.allow_real_application_submit,
+        "autopilot_enabled": operations.autopilot_enabled,
+        "real_submission_enabled": core.allow_real_application_submit,
         "defaults": {
-            "daily_cap": settings.autopilot_default_daily_cap,
-            "weekly_cap": settings.autopilot_default_weekly_cap,
-            "quiet_hours_utc": [
-                settings.autopilot_quiet_hours_start_utc,
-                settings.autopilot_quiet_hours_end_utc,
-            ],
-            "failure_threshold": settings.autopilot_failure_threshold,
-            "failure_window_minutes": settings.autopilot_failure_window_minutes,
-            "circuit_breaker_minutes": settings.autopilot_circuit_breaker_minutes,
+            "daily_cap": operations.default_daily_cap,
+            "weekly_cap": operations.default_weekly_cap,
+            "quiet_hours_utc": [operations.quiet_hours_start_utc, operations.quiet_hours_end_utc],
+            "failure_threshold": operations.failure_threshold,
+            "failure_window_minutes": operations.failure_window_minutes,
+            "circuit_breaker_minutes": operations.circuit_breaker_minutes,
         },
         "disabled_platforms": sorted(disabled_platforms()),
         "invariants": {
-            "autopilot_defaults_off": settings.autopilot_enabled is False,
-            "real_submission_defaults_off": settings.allow_real_application_submit is False,
+            "autopilot_defaults_off": operations.autopilot_enabled is False,
+            "real_submission_defaults_off": core.allow_real_application_submit is False,
             "user_auto_search_requires_explicit_opt_in": True,
             "user_auto_apply_requires_explicit_opt_in": True,
             "quiet_hours_enforced_before_search_or_apply": True,
