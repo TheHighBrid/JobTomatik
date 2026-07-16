@@ -174,10 +174,17 @@ export const markAllRead = () => api.post('/notifications/mark-all-read')
 export const getSettings = () => api.get('/settings')
 export const updateSettings = (data) => api.patch('/settings', data)
 
-// Bulk / Auto-pilot
-export const bulkApply = (dryRun = true, limit = 20) =>
-  api.post(`/jobs/bulk-apply?dry_run=${dryRun}&limit=${limit}`)
+// Runtime readiness and adapter evidence
+export const getOperationsReadiness = () => api.get('/system/operations-readiness')
+export const getAtsCertification = () => api.get('/system/ats-certification')
+
+// The existing controller uses dedicated preparation-only endpoints. Neither accepts a
+// live-submit argument, so old callers cannot turn a dashboard action into a real submission.
+export const bulkApply = (_dryRun = true, limit = 20) =>
+  api.post(`/controller/bulk-prepare?limit=${limit}`)
 export const runAutoPilot = (options = {}) =>
-  api.post('/jobs/autopilot', null, { params: { dry_run: true, min_score: 0.55, daily_limit: 15, ...options } })
+  api.post('/controller/safe-dry-run', null, {
+    params: { min_score: 0.55, daily_limit: 15, ...options },
+  })
 
 export default api

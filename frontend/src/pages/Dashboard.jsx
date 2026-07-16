@@ -1,14 +1,23 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { getApplicationStats, getJobQueue, listApplications, runAutoPilot, bulkApply } from '../api/client'
+import {
+  getApplicationStats,
+  getJobQueue,
+  listApplications,
+  runAutoPilot,
+  bulkApply,
+  getOperationsReadiness,
+  getAtsCertification,
+} from '../api/client'
 import { useAuthStore } from '../store'
 import StatusBadge from '../components/StatusBadge'
 import { StatCardSkeleton } from '../components/Skeleton'
 import {
   TrendingUp, Briefcase, Clock, Award, ChevronRight,
   Search, Zap, ListTodo, Bot, Play, Send, Loader2,
-  CheckCircle2, Activity, Rocket
+  CheckCircle2, Activity, Rocket, ShieldCheck, ShieldOff,
+  PauseCircle, Gauge, AlertTriangle,
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
@@ -22,84 +31,151 @@ const CHART_COLORS = {
   withdrawn: '#d1d5db',
 }
 
-function AutoPilotPanel() {
+function ControllerMetric({ icon: Icon, label, value, detail }) {
+  return (
+    <div className="rounded-xl bg-white/10 border border-white/10 p-3">
+      <div className="flex items-center gap-1.5 text-white/70 text-[11px] uppercase tracking-wide">
+        <Icon className="w-3.5 h-3.5" />
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold text-white">{value}</div>
+      {detail && <div className="mt-0.5 text-[11px] text-white/60">{detail}</div>}
+    </div>
+  )
+}
+
+function AutoPilotPanel({ readiness, atsManifest, isLoading }) {
   const qc = useQueryClient()
   const [msg, setMsg] = useState(null)
   const [msgType, setMsgType] = useState('info')
 
+  const adapters = atsManifest?.adapters || []
+  const autonomousAdapters = adapters.filter((adapter) =>
+    adapter?.maturity === 'certified_autonomous' ||
+    adapter?.certification_level === 'certified_autonomous'
+  )
+  const dailyCap = readiness?.defaults?.daily_cap ?? '—'
+  const weeklyCap = readiness?.defaults?.weekly_cap ?? '—'
+  const disabledPlatforms = readiness?.disabled_platforms || []
+
   const pilotMut = useMutation({
-    mutationFn: () => runAutoPilot({ dry_run: false, min_score: 0.55, daily_limit: 15 }),
+    mutationFn: () => runAutoPilot({ min_score: 0.55, daily_limit: 15 }),
     onSuccess: (res) => {
       const d = res.data
       setMsgType('success')
       setMsg(
-        `Pipeline launched: ${d.auto_approved} jobs auto-approved, ` +
-        `${d.applications_queued ?? 0} applications queued for submission.`
+        `Safe dry run launched: ${d.auto_approved} jobs approved and ` +
+        `${d.applications_queued ?? 0} applications queued for preparation.`
       )
-      qc.invalidateQueries(['jobQueue'])
-      qc.invalidateQueries(['appStats'])
-      qc.invalidateQueries(['recentApps'])
+      qc.invalidateQueries({ queryKey: ['jobQueue'] })
+      qc.invalidateQueries({ queryKey: ['appStats'] })
+      qc.invalidateQueries({ queryKey: ['recentApps'] })
     },
     onError: (e) => {
       setMsgType('error')
-      setMsg('Auto-pilot error: ' + (e.response?.data?.detail || e.message))
+      setMsg('Controller error: ' + (e.response?.data?.detail || e.message))
     },
   })
 
   const bulkMut = useMutation({
-    mutationFn: () => bulkApply(false, 20),
+    mutationFn: () => bulkApply(true, 20),
     onSuccess: (res) => {
       const d = res.data
       setMsgType('success')
-      setMsg(`Bulk apply: ${d.applied} applications queued, ${d.skipped} already submitted.`)
-      qc.invalidateQueries(['appStats'])
-      qc.invalidateQueries(['recentApps'])
+      setMsg(`Dry-run preparation: ${d.applied} applications queued, ${d.skipped} already existed.`)
+      qc.invalidateQueries({ queryKey: ['appStats'] })
+      qc.invalidateQueries({ queryKey: ['recentApps'] })
     },
     onError: (e) => {
       setMsgType('error')
-      setMsg('Bulk apply error: ' + (e.response?.data?.detail || e.message))
+      setMsg('Controller error: ' + (e.response?.data?.detail || e.message))
     },
   })
 
   const running = pilotMut.isPending || bulkMut.isPending
 
   return (
-    <div className="rounded-2xl p-5 bg-gradient-to-br from-tomato-600 to-rose-700 text-white shadow-lg">
-      <div className="flex items-center gap-2 mb-1">
-        <Rocket className="w-5 h-5" />
-        <h2 className="font-bold text-lg">Auto-Pilot</h2>
-        <span className="ml-auto text-xs bg-white/20 px-2 py-0.5 rounded-full">Fully Autonomous</span>
+    <div className="rounded-2xl p-5 bg-gradient-to-br from-slate-900 via-slate-800 to-rose-950 text-white shadow-lg">
+      <div className="flex items-start gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0">
+          <Rocket className="w-5 h-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="font-bold text-lg">Automation Controller</h2>
+            <span className="text-[11px] bg-amber-400/15 text-amber-200 border border-amber-300/20 px-2 py-0.5 rounded-full">
+              Dry-run only
+            </span>
+          </div>
+          <p className="text-white/65 text-xs mt-0.5">
+            Search, score, prepare, validate, and hand off safely. Live submission remains backend-gated.
+          </p>
+        </div>
       </div>
-      <p className="text-white/75 text-xs mb-4">
-        Search → approve → generate cover letter → submit. All automatic.
-      </p>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-4">
+        <ControllerMetric
+          icon={readiness?.autopilot_enabled ? ShieldCheck : PauseCircle}
+          label="Scheduled autopilot"
+          value={isLoading ? 'Checking…' : readiness?.autopilot_enabled ? 'Enabled' : 'Paused'}
+          detail="Global environment gate"
+        />
+        <ControllerMetric
+          icon={readiness?.real_submission_enabled ? ShieldCheck : ShieldOff}
+          label="Live submission"
+          value={isLoading ? 'Checking…' : readiness?.real_submission_enabled ? 'Enabled' : 'Blocked'}
+          detail="Controller never changes this gate"
+        />
+        <ControllerMetric
+          icon={Gauge}
+          label="Application caps"
+          value={`${dailyCap} daily / ${weeklyCap} weekly`}
+          detail="Global maximums"
+        />
+        <ControllerMetric
+          icon={autonomousAdapters.length ? ShieldCheck : AlertTriangle}
+          label="Autonomous adapters"
+          value={`${autonomousAdapters.length} / ${adapters.length || 5}`}
+          detail="Requires certified_autonomous"
+        />
+      </div>
+
+      {disabledPlatforms.length > 0 && (
+        <div className="mb-4 text-xs px-3 py-2 rounded-lg bg-white/10 border border-white/10">
+          Disabled platforms: <span className="font-semibold">{disabledPlatforms.join(', ')}</span>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2.5">
         <button
           onClick={() => pilotMut.mutate()}
           disabled={running}
-          className="flex items-center gap-2 bg-white text-tomato-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-tomato-50 transition-all disabled:opacity-60 shadow-sm"
+          className="flex items-center gap-2 bg-white text-slate-900 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-slate-100 transition-all disabled:opacity-60 shadow-sm"
         >
           {pilotMut.isPending
             ? <Loader2 className="w-4 h-4 animate-spin" />
             : <Play className="w-4 h-4" />}
-          Full Auto-Pilot
+          Run Safe Dry Run
         </button>
         <button
           onClick={() => bulkMut.mutate()}
           disabled={running}
-          className="flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-all disabled:opacity-60 border border-white/20"
+          className="flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-all disabled:opacity-60 border border-white/15"
         >
           {bulkMut.isPending
             ? <Loader2 className="w-4 h-4 animate-spin" />
             : <Send className="w-4 h-4" />}
-          Bulk Apply Approved
+          Prepare Approved Jobs
         </button>
       </div>
 
+      <p className="mt-3 text-[11px] text-white/55">
+        No action on this panel can enable real submission, bypass a challenge, or promote adapter maturity.
+      </p>
+
       {msg && (
         <div className={`mt-3 text-xs px-3 py-2 rounded-lg ${
-          msgType === 'success' ? 'bg-white/20' : 'bg-red-900/40'
+          msgType === 'success' ? 'bg-emerald-400/15 text-emerald-100' : 'bg-red-500/20 text-red-100'
         }`}>
           {msgType === 'success' && <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />}
           {msg}
@@ -130,6 +206,20 @@ export default function Dashboard() {
     select: (r) => r.data,
   })
 
+  const { data: readiness, isLoading: readinessLoading } = useQuery({
+    queryKey: ['operationsReadiness'],
+    queryFn: () => getOperationsReadiness(),
+    select: (r) => r.data,
+    refetchInterval: 60000,
+  })
+
+  const { data: atsManifest, isLoading: atsLoading } = useQuery({
+    queryKey: ['atsCertification'],
+    queryFn: () => getAtsCertification(),
+    select: (r) => r.data,
+    staleTime: 60000,
+  })
+
   const chartData = stats
     ? Object.entries(stats)
         .filter(([k]) => k !== 'total' && stats[k] > 0)
@@ -147,13 +237,14 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">
             {user?.full_name ? `Hey ${user.full_name.split(' ')[0]}!` : 'Dashboard'}
           </h1>
-          <p className="text-gray-500 mt-0.5 text-sm">Your autonomous job search is active.</p>
+          <p className="text-gray-500 mt-0.5 text-sm">
+            Controller connected in safe preparation mode.
+          </p>
         </div>
         {queueCount > 0 && (
           <Link
@@ -166,10 +257,12 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Auto-Pilot (hero position) */}
-      <AutoPilotPanel />
+      <AutoPilotPanel
+        readiness={readiness}
+        atsManifest={atsManifest}
+        isLoading={readinessLoading || atsLoading}
+      />
 
-      {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {statsLoading
           ? Array(4).fill(0).map((_, i) => <StatCardSkeleton key={i} />)
@@ -182,7 +275,6 @@ export default function Dashboard() {
           ))}
       </div>
 
-      {/* Quick actions */}
       <div className="grid grid-cols-3 gap-3">
         {[
           { to: '/search', icon: Search, label: 'New Search', color: 'text-blue-500' },
@@ -201,7 +293,6 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Pipeline chart */}
         <div className="card p-5">
           <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Activity className="w-4 h-4 text-tomato-600" /> Pipeline
@@ -239,7 +330,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Job queue preview */}
         <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-900 flex items-center gap-2">
@@ -264,9 +354,9 @@ export default function Dashboard() {
           ) : !queueData?.jobs?.length ? (
             <div className="py-8 text-center text-gray-400 text-sm">
               <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="mb-2">Queue empty — auto-pilot will fill it.</p>
+              <p className="mb-2">Queue empty. Run a safe dry run or manual search.</p>
               <Link to="/search" className="text-tomato-600 hover:underline text-sm">
-                Or run a manual search
+                Run a manual search
               </Link>
             </div>
           ) : (
@@ -294,7 +384,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent applications */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-gray-900 flex items-center gap-2">
@@ -319,7 +408,7 @@ export default function Dashboard() {
           </div>
         ) : !recentApps?.length ? (
           <div className="py-6 text-center text-gray-400 text-sm">
-            No applications yet. Hit <span className="text-tomato-600 font-medium">Full Auto-Pilot</span> above to start.
+            No applications yet. Run a <span className="text-tomato-600 font-medium">safe dry run</span> above to prepare the pipeline.
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
