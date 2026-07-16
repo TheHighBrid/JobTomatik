@@ -1,0 +1,75 @@
+name: Workday adapter certification
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_workday.py"
+      - "backend/app/services/workday_challenge.py"
+      - "backend/app/services/workday_certification.py"
+      - "backend/app/services/ats_registry.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/control_*.py"
+      - "backend/tests/test_workday_adapter.py"
+      - "backend/tests/test_workday_manifest.py"
+      - ".github/workflows/workday-adapter-certification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workday-fixture-matrix:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./workday-adapter-certification.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: workday-adapter-certification-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      REQUIRE_BROWSER_TESTS: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run Workday adapter certification
+        shell: bash
+        run: |
+          set +e
+          pytest -q --tb=short -ra \
+            tests/test_workday_adapter.py \
+            tests/test_workday_manifest.py \
+            > workday-adapter-certification.txt 2>&1
+          status=$?
+          cat workday-adapter-certification.txt
+          exit $status
+
+      - name: Upload Workday certification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workday-adapter-certification-report
+          path: backend/workday-adapter-certification.txt
+          if-no-files-found: error
+          retention-days: 30
