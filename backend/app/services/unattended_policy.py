@@ -9,7 +9,8 @@ from sqlalchemy import func
 
 from app.models.application import Application
 from app.models.job import Job
-from app.services.ats_registry import ats_certification_manifest
+from app.services.ats_manifest import ats_certification_manifest
+from app.services.ats_maturity import AdapterMaturity, normalize_adapter_maturity
 from app.services.operations_policy import (
     AutomationDecision,
     disabled_platforms,
@@ -28,6 +29,7 @@ KNOWN_PLATFORMS = {
     "workday",
     "generic",
 }
+REQUIRED_AUTONOMOUS_MATURITY = AdapterMaturity.CERTIFIED_AUTONOMOUS.value
 
 
 def _values(value: str | Iterable[str] | None) -> set[str]:
@@ -57,7 +59,13 @@ def _optional_bool(value: Any) -> bool | None:
 
 
 def live_platform_maturities() -> Dict[str, str | None]:
-    """Read current registry values every time, never a cached status report."""
+    """Read canonical runtime maturity every time and fail closed if absent.
+
+    Descriptive ``certification_level`` text is deliberately ignored. A missing,
+    malformed, or unknown canonical maturity remains ``None`` and cannot pass
+    the unattended policy gate.
+    """
+
     try:
         adapters = {
             str(item.get("name") or "").lower(): item
@@ -65,12 +73,12 @@ def live_platform_maturities() -> Dict[str, str | None]:
         }
     except Exception:
         adapters = {}
+
     result: Dict[str, str | None] = {}
     for platform in sorted(KNOWN_PLATFORMS):
         manifest = adapters.get(platform) or {}
-        result[platform] = manifest.get("maturity") or manifest.get(
-            "certification_level"
-        )
+        maturity = normalize_adapter_maturity(manifest.get("maturity"))
+        result[platform] = maturity.value if maturity else None
     return result
 
 
@@ -215,7 +223,7 @@ def evaluate_unattended_job_policy(
         platform_maturity={
             ctx.adapter_platform: maturities.get(ctx.adapter_platform)
         },
-        required_platform_maturity="certified_autonomous",
+        required_platform_maturity=REQUIRED_AUTONOMOUS_MATURITY,
         daily_cap_global=int(user_decision.metadata.get("daily_cap", 0)),
         weekly_cap_global=int(user_decision.metadata.get("weekly_cap", 0)),
         daily_cap_per_employer=per_employer_cap,
@@ -256,7 +264,7 @@ def evaluate_unattended_job_policy(
             "job_id": ctx.job_id,
             "platform": ctx.adapter_platform,
             "platform_maturity": maturities.get(ctx.adapter_platform),
-            "required_platform_maturity": "certified_autonomous",
+            "required_platform_maturity": REQUIRED_AUTONOMOUS_MATURITY,
             "policy_detail": result.detail,
         },
     )
