@@ -9,6 +9,7 @@ from app.services.ats_ashby import AshbyAdapter
 from app.services.ats_base import ATSAdapter
 from app.services.ats_greenhouse import GreenhouseAdapter
 from app.services.ats_lever import LeverAdapter
+from app.services.ats_smartrecruiters import SmartRecruitersAdapter
 
 
 install_ashby_profile_aliases()
@@ -73,7 +74,12 @@ class RegisteredAshbyAdapter(AshbyAdapter):
         return value
 
 
-_ADAPTERS = [GreenhouseAdapter(), RegisteredLeverAdapter(), RegisteredAshbyAdapter()]
+_ADAPTERS = [
+    GreenhouseAdapter(),
+    RegisteredLeverAdapter(),
+    RegisteredAshbyAdapter(),
+    SmartRecruitersAdapter(),
+]
 _GENERIC = ATSAdapter()
 
 
@@ -90,7 +96,7 @@ async def detect_ats_adapter(page: Any, url: str) -> ATSAdapter:
 def ats_certification_manifest() -> Dict[str, Any]:
     adapters: List[Dict[str, Any]] = [adapter.manifest() for adapter in _ADAPTERS]
     return {
-        "framework_version": "1.2.0",
+        "framework_version": "1.3.0",
         "certification_model": "standards fixtures plus supervised live dry-runs",
         "adapters": adapters,
         "safety_invariants": {
@@ -104,6 +110,7 @@ def ats_certification_manifest() -> Dict[str, Any]:
             "official_api_gaps_are_reported_not_guessed": True,
             "private_api_credentials_not_required_for_public_form_ci": True,
             "exact_ashby_name_alias_only": True,
+            "smartrecruiters_application_api_requires_explicit_token": True,
         },
         "universal_boundary": (
             "Each ATS adapter must pass local fixtures and supervised live dry-runs. "
