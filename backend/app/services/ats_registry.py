@@ -129,12 +129,70 @@ class RegisteredSmartRecruitersAdapter(SmartRecruitersAdapter):
         return value
 
 
+class RegisteredWorkdayAdapter(WorkdayAdapter):
+    """JobSniffing Workday doorway after JobTomatik boundary certification."""
+
+    version = "1.1.0"
+    certification_level = "fixture_live_metadata_apply_adventure_and_handoff_certified"
+
+    def manifest(self) -> Dict[str, Any]:
+        value = super().manifest()
+        value["version"] = self.version
+        value["certification_level"] = self.certification_level
+        value["source_provenance"] = {
+            "repository": "TheHighBrid/JobSniffing",
+            "pull_request": 12,
+            "branch": "autonomy/workday-v1",
+            "port_model": "donor_doorway_plus_jobtomatik_certification_glue",
+        }
+        value["live_certification"] = {
+            "mode": "public_cxs_metadata_apply_adventure_manual_account_handoff",
+            "public_cxs_metadata": "certified",
+            "current_live_sample": {
+                "posting_count": 3,
+                "tenant_count": 3,
+                "tenants": ["workday", "nvidia", "salesforce"],
+                "postings": [
+                    "Principal Enterprise Architect",
+                    "Senior Deep Learning Systems Architect",
+                    "Director, Sales Compensation",
+                ],
+                "boundaries": {
+                    "account_creation_required": 2,
+                    "login_required": 1,
+                },
+            },
+            "bounded_job_page_apply": "certified",
+            "same_origin_public_apply_route": "certified",
+            "nonessential_cookie_decline": "certified",
+            "apply_adventure_manual_path": "certified",
+            "autofill_with_resume_selected": False,
+            "last_application_reused": False,
+            "external_provider_selected": False,
+            "credentials_entered": False,
+            "account_created": False,
+            "live_authenticated_form_controls": "not_reached_due_to_account_boundary",
+            "synthetic_live_full_form_exercise": "not_reached_due_to_account_boundary",
+            "synthetic_live_outcome": "pre_form_manual_handoff",
+            "synthetic_live_fields_filled": 0,
+            "synthetic_live_upload_attempted": False,
+            "fixture_full_form_behavior": "certified",
+            "fixture_verified_resume_upload": True,
+            "fixture_confirmation_evidence": "certified",
+            "resumable_handoff": "fixture_certified",
+            "live_full_form_certified": False,
+            "bypass_attempted": False,
+            "final_submit_clicked": False,
+        }
+        return value
+
+
 _ADAPTERS = [
     GreenhouseAdapter(),
     RegisteredLeverAdapter(),
     RegisteredAshbyAdapter(),
     RegisteredSmartRecruitersAdapter(),
-    WorkdayAdapter(),
+    RegisteredWorkdayAdapter(),
 ]
 _GENERIC = ATSAdapter()
 
@@ -174,6 +232,10 @@ def ats_certification_manifest() -> Dict[str, Any]:
             "workday_target_evidence_excludes_query_and_fragment": True,
             "workday_cxs_metadata_uses_full_external_path": True,
             "workday_apply_popup_is_bounded_and_retained": True,
+            "workday_apply_adventure_uses_manual_path_only": True,
+            "workday_prior_application_is_never_reused": True,
+            "workday_credentials_are_never_entered_automatically": True,
+            "workday_live_full_form_not_claimed": True,
         },
         "universal_boundary": (
             "Each ATS adapter must pass local fixtures and supervised live dry-runs. "
