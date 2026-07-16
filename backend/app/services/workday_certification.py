@@ -19,11 +19,66 @@ SYNTHETIC_TEXT_RESPONSE = (
 )
 
 
+async def _workday_shell_diagnostics(surface: Any) -> Dict[str, Any]:
+    """Inventory current public controls without retaining URL queries or fragments."""
+
+    try:
+        return await surface.evaluate(
+            """() => {
+              const visible = (el) => {
+                const style = getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden' &&
+                  rect.width > 0 && rect.height > 0;
+              };
+              const safeHref = (value) => {
+                if (!value) return '';
+                try {
+                  const url = new URL(value, location.href);
+                  return `${url.origin}${url.pathname}`;
+                } catch (_) {
+                  return '';
+                }
+              };
+              const records = Array.from(document.querySelectorAll(
+                'a[href],button,[role="button"],[data-automation-id],input'
+              )).filter(visible).slice(0, 80).map((el) => ({
+                tag: el.tagName.toLowerCase(),
+                text: (el.innerText || el.value || el.getAttribute('aria-label') || '')
+                  .replace(/\\s+/g, ' ').trim().slice(0, 180),
+                automation_id: el.getAttribute('data-automation-id') || '',
+                role: el.getAttribute('role') || '',
+                type: el.getAttribute('type') || '',
+                href: safeHref(el.getAttribute('href') || ''),
+                target: el.getAttribute('target') || '',
+                aria_controls: el.getAttribute('aria-controls') || '',
+                aria_expanded: el.getAttribute('aria-expanded') || '',
+              }));
+              const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'))
+                .filter(visible).slice(0, 10).map((el) =>
+                  (el.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 500)
+                );
+              return {
+                safe_url: `${location.origin}${location.pathname}`,
+                title: document.title || '',
+                body_excerpt: (document.body?.innerText || '')
+                  .replace(/\\s+/g, ' ').trim().slice(0, 3000),
+                visible_action_count: records.length,
+                visible_actions: records,
+                visible_dialogs: dialogs,
+              };
+            }"""
+        )
+    except Exception as exc:
+        return {"diagnostic_error": f"{type(exc).__name__}: {str(exc)[:300]}"}
+
+
 async def inspect_workday_application_dom(surface: Any) -> Dict[str, Any]:
     inventory = await _inspect_application_dom(surface)
     inventory["platform"] = "workday"
     inventory["custom_questions_source"] = "hosted_dom"
     inventory["final_submit_clicked"] = False
+    inventory["workday_shell"] = await _workday_shell_diagnostics(surface)
     return inventory
 
 
@@ -67,6 +122,7 @@ async def build_synthetic_profile_for_page(
         "public_cxs_metadata_exposes_application_questions": False,
         "account_creation_automated": False,
         "credentials_entered": False,
+        "workday_shell": inventory.get("workday_shell") or {},
     }
     return profile, metadata
 
