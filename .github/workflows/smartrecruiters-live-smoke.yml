@@ -4,10 +4,11 @@ on:
   pull_request:
     paths:
       - "backend/app/services/ats_*.py"
-      - "backend/app/services/smartrecruiters_certification.py"
+      - "backend/app/services/smartrecruiters_*.py"
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/scripts/certify_smartrecruiters_live.py"
+      - "backend/scripts/select_smartrecruiters_candidates.py"
       - ".github/workflows/smartrecruiters-live-smoke.yml"
   schedule:
     - cron: "7 15 * * 1"
@@ -19,7 +20,7 @@ permissions:
 jobs:
   live-public-form-inspection:
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     defaults:
       run:
@@ -51,54 +52,83 @@ jobs:
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
 
-      - name: Select current public SmartRecruiters jobs
+      - name: Select current public SmartRecruiters jobs across tenants
         shell: bash
         run: |
-          python - <<'PY'
-          import httpx
-
-          company = 'smartrecruiters'
-          listing = httpx.get(
-              f'https://api.smartrecruiters.com/v1/companies/{company}/postings',
-              params={'limit': 100, 'offset': 0},
-              timeout=25,
-              follow_redirects=True,
-          )
-          listing.raise_for_status()
-          jobs = list(listing.json().get('content') or [])
-          jobs.sort(key=lambda job: job.get('releasedDate') or '', reverse=True)
-          urls = []
-          for job in jobs:
-              identifier = str(job.get('id') or job.get('uuid') or '')
-              if not identifier:
-                  continue
-              details = httpx.get(
-                  f'https://api.smartrecruiters.com/v1/companies/{company}/postings/{identifier}',
-                  timeout=25,
-                  follow_redirects=True,
-              )
-              if details.status_code != 200:
-                  continue
-              payload = details.json()
-              if payload.get('active') and payload.get('applyUrl'):
-                  urls.append(payload['applyUrl'])
-              if len(urls) >= 3:
-                  break
-          if not urls:
-              raise SystemExit('No current SmartRecruiters application URLs were returned.')
-          open('smartrecruiters-live-urls.txt', 'w').write('\n'.join(urls))
-          print('\n'.join(urls))
-          PY
+          python scripts/select_smartrecruiters_candidates.py \
+            --output smartrecruiters-live-candidates.json \
+            --urls-output smartrecruiters-live-urls.txt \
+            --limit 30 \
+            --per-company 2
 
       - name: Inspect current live forms and official public metadata
         id: live_inspection
         shell: bash
         run: |
           set +e
-          python -u scripts/certify_smartrecruiters_live.py \
-            --urls "$(cat smartrecruiters-live-urls.txt)" \
-            --report smartrecruiters-live-smoke.json \
-            > smartrecruiters-live-output.txt 2>&1
+          : > smartrecruiters-live-output.txt
+          rm -f smartrecruiters-live-attempt-*.json smartrecruiters-live-smoke.json
+          index=0
+          success_count=0
+          while IFS= read -r url; do
+            [ -z "$url" ] && continue
+            index=$((index + 1))
+            report="smartrecruiters-live-attempt-${index}.json"
+            echo "=== Attempt ${index}: ${url} ===" | tee -a smartrecruiters-live-output.txt
+            python -u scripts/certify_smartrecruiters_live.py \
+              --urls "$url" \
+              --report "$report" \
+              >> smartrecruiters-live-output.txt 2>&1
+            status=$?
+            if [ "$status" -eq 0 ]; then
+              success_count=$((success_count + 1))
+            fi
+            if [ "$success_count" -ge 3 ]; then
+              break
+            fi
+          done < smartrecruiters-live-urls.txt
+
+          python - <<'PY'
+          import glob
+          import json
+
+          attempts = []
+          reports = []
+          for path in sorted(glob.glob('smartrecruiters-live-attempt-*.json')):
+              payload = json.load(open(path))
+              attempts.append({
+                  'path': path,
+                  'passed': bool(payload.get('passed')),
+                  'final_submit_clicked': bool(payload.get('final_submit_clicked')),
+              })
+              reports.extend(payload.get('reports') or [])
+          passed_reports = [item for item in reports if item.get('passed')]
+          summary = {
+              'certification': 'smartrecruiters_multi_tenant_live_smoke',
+              'attempt_count': len(attempts),
+              'passed_form_count': len(passed_reports),
+              'minimum_required': 3,
+              'final_submit_clicked': any(
+                  item.get('final_submit_clicked', False) for item in reports
+              ),
+              'attempts': attempts,
+              'reports': reports,
+          }
+          summary['passed'] = bool(
+              len(passed_reports) >= summary['minimum_required']
+              and summary['final_submit_clicked'] is False
+          )
+          open('smartrecruiters-live-smoke.json', 'w').write(
+              json.dumps(summary, indent=2, default=str)
+          )
+          print(json.dumps(summary, indent=2, default=str))
+          PY
+
+          python - <<'PY'
+          import json
+          report = json.load(open('smartrecruiters-live-smoke.json'))
+          raise SystemExit(0 if report['passed'] else 1)
+          PY
           status=$?
           cat smartrecruiters-live-output.txt
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
@@ -112,14 +142,16 @@ jobs:
           import json
           report = json.load(open('smartrecruiters-live-smoke.json'))
           assert report['final_submit_clicked'] is False
-          assert report['url_count'] >= 1
-          assert all(item.get('mode') == 'inspect' for item in report['reports'])
           assert report['passed'] is True
-          assert all(item.get('adapter') == 'smartrecruiters' for item in report['reports'])
+          assert report['passed_form_count'] >= 3
+          passed = [item for item in report['reports'] if item.get('passed')]
+          assert all(item.get('mode') == 'inspect' for item in passed)
+          assert all(item.get('adapter') == 'smartrecruiters' for item in passed)
           assert all(
               (item.get('public_metadata') or {}).get('posting_metadata_certified')
-              for item in report['reports']
+              for item in passed
           )
+          assert all(item.get('submit_control_present') for item in passed)
           PY
 
       - name: Upload live smoke report
@@ -129,8 +161,10 @@ jobs:
           name: smartrecruiters-live-smoke-report
           path: |
             backend/smartrecruiters-live-smoke.json
+            backend/smartrecruiters-live-attempt-*.json
             backend/smartrecruiters-live-output.txt
             backend/smartrecruiters-live-urls.txt
+            backend/smartrecruiters-live-candidates.json
           if-no-files-found: warn
           retention-days: 30
 
