@@ -188,9 +188,8 @@ async def test_workday_multistep_dynamic_combobox_upload_and_dry_run(browser_pag
     resume = tmp_path / "resume.pdf"
     resume.write_bytes(b"%PDF-1.4\nJobTomatik Workday donor-port certification")
 
-    await browser_page.set_content(
-        f"""
-        <form id="workday-application" action="{SAFE_WORKDAY_URL}">
+    html = """
+        <form id="workday-application" action="__WORKDAY_ACTION__">
           <section id="step-1">
             <label for="first">First Name</label><input id="first" required>
             <label for="last">Last Name</label><input id="last" required>
@@ -270,8 +269,8 @@ async def test_workday_multistep_dynamic_combobox_upload_and_dry_run(browser_pag
             window.submitAttempts = (window.submitAttempts || 0) + 1;
           };
         </script>
-        """
-    )
+    """.replace("__WORKDAY_ACTION__", SAFE_WORKDAY_URL)
+    await browser_page.set_content(html)
 
     profile = {
         "full_name": "Avery Certification",
@@ -385,9 +384,8 @@ async def test_workday_unknown_required_question_fails_closed(browser_page):
 
 @pytest.mark.asyncio
 async def test_workday_validation_errors_block_progress(browser_page):
-    await browser_page.set_content(
-        f"""
-        <form action="{SAFE_WORKDAY_URL}">
+    html = """
+        <form action="__WORKDAY_ACTION__">
           <button id="next" type="button"
                   data-automation-id="bottom-navigation-next-button">Next</button>
         </form>
@@ -400,8 +398,8 @@ async def test_workday_validation_errors_block_progress(browser_page):
             );
           };
         </script>
-        """
-    )
+    """.replace("__WORKDAY_ACTION__", SAFE_WORKDAY_URL)
+    await browser_page.set_content(html)
 
     async def fill_step(surface, step_number):
         return {
@@ -461,7 +459,7 @@ async def test_workday_confirmation_requires_explicit_evidence(browser_page):
     )
     evidence = await WorkdayAdapter().detect_confirmation(
         browser_page,
-        before_url="https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/Ottawa/R-123",
+        before_url=SAFE_WORKDAY_URL,
         before_fingerprint="before",
     )
     assert evidence
