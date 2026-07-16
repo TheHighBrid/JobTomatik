@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping
 
 from app.services.greenhouse_pilot import (
     PilotEvidenceError,
@@ -32,6 +32,55 @@ def _load_report(path: Path) -> Dict[str, Any]:
     if not isinstance(value, dict):
         raise PilotEvidenceError(f"report must be a JSON object: {path}")
     return value
+
+
+def _enrich_report_identity(summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Join exercise entries to matching inspection/schema identity evidence.
+
+    The existing certification runner emits employer and role in synthetic mode,
+    but configured-profile exercises may only contain that identity on the matching
+    inspection entry. This join prevents valid employer coverage from being counted
+    as blank while still relying only on retained, verified report evidence.
+    """
+
+    reports = summary.get("reports")
+    if not isinstance(reports, list):
+        return summary
+
+    inspections: Dict[str, Dict[str, Any]] = {}
+    for item in reports:
+        if not isinstance(item, Mapping) or item.get("mode") != "inspect":
+            continue
+        schema = item.get("schema") if isinstance(item.get("schema"), Mapping) else {}
+        identity = {
+            "company_name": schema.get("company_name"),
+            "job_title": schema.get("title"),
+            "board_token": item.get("board_token"),
+            "job_id": item.get("job_id") or schema.get("job_id"),
+        }
+        for raw_url in (item.get("url"), item.get("loaded_url"), item.get("surface_url")):
+            url = str(raw_url or "").strip()
+            if url:
+                inspections[url] = identity
+
+    enriched_reports: List[Any] = []
+    for item in reports:
+        if not isinstance(item, Mapping) or item.get("mode") != "exercise":
+            enriched_reports.append(item)
+            continue
+        value = dict(item)
+        metadata = value.get("certification_metadata")
+        metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
+        inspection = inspections.get(str(value.get("url") or "").strip(), {})
+        for key in ("company_name", "job_title", "board_token", "job_id"):
+            if not metadata.get(key) and inspection.get(key):
+                metadata[key] = inspection[key]
+        value["certification_metadata"] = metadata
+        enriched_reports.append(value)
+
+    result = dict(summary)
+    result["reports"] = enriched_reports
+    return result
 
 
 def main() -> None:
@@ -70,7 +119,7 @@ def main() -> None:
             source_reference = f"{source_reference}:input-{index}"
         incoming.extend(
             normalize_dry_run_report(
-                _load_report(report_path),
+                _enrich_report_identity(_load_report(report_path)),
                 operator=args.operator,
                 source_reference=source_reference,
             )
