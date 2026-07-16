@@ -96,9 +96,10 @@ async def test_workday_apply_popup_is_retained_as_manual_login_boundary(browser_
 
 
 @pytest.mark.asyncio
-async def test_workday_noop_apply_uses_one_same_origin_public_route(browser_page):
+async def test_workday_noop_apply_uses_manual_adventure_path(browser_page):
     async def route_handler(route):
-        if route.request.url.endswith("/apply"):
+        url = route.request.url
+        if url.endswith("/apply/applyManually"):
             await route.fulfill(
                 status=200,
                 content_type="text/html",
@@ -106,6 +107,24 @@ async def test_workday_noop_apply_uses_one_same_origin_public_route(browser_page
                   <main>
                     <label for="password">Password</label>
                     <input id="password" type="password" data-automation-id="password">
+                  </main>
+                """,
+            )
+            return
+        if url.endswith("/apply"):
+            await route.fulfill(
+                status=200,
+                content_type="text/html",
+                body=f"""
+                  <main data-automation-id="applyAdventurePage">
+                    <div data-automation-id="legalNotice">Cookie settings</div>
+                    <button data-automation-id="legalNoticeDeclineButton">Decline</button>
+                    <a role="button" data-automation-id="autofillWithResume"
+                       href="{WORKDAY_URL}/apply/autofillWithResume">Autofill with Resume</a>
+                    <a role="button" data-automation-id="applyManually"
+                       href="{WORKDAY_URL}/apply/applyManually">Apply Manually</a>
+                    <a role="button" data-automation-id="useMyLastApplication"
+                       href="{WORKDAY_URL}/apply/useMyLastApplication">Use My Last Application</a>
                   </main>
                 """,
             )
@@ -134,14 +153,23 @@ async def test_workday_noop_apply_uses_one_same_origin_public_route(browser_page
     log = []
     await adapter.prepare(browser_page, log)
 
-    assert browser_page.url == f"{WORKDAY_URL}/apply"
+    assert browser_page.url == f"{WORKDAY_URL}/apply/applyManually"
     fallback = next(
         item for item in log if item.get("action") == "workday_public_apply_route_fallback"
     )
+    manual = next(
+        item for item in log if item.get("action") == "workday_apply_manually_selected"
+    )
     assert fallback["same_origin"] is True
-    assert fallback["credentials_entered"] is False
-    assert fallback["account_created"] is False
-    assert fallback["bypass_attempted"] is False
+    assert manual["same_origin"] is True
+    assert manual["autofill_with_resume_selected"] is False
+    assert manual["last_application_reused"] is False
+    assert manual["credentials_entered"] is False
+    assert manual["account_created"] is False
+    assert manual["bypass_attempted"] is False
+    assert any(
+        item.get("action") == "workday_nonessential_cookies_declined" for item in log
+    )
 
     boundary = await detect_blocking_challenge(browser_page)
     assert boundary is not None
