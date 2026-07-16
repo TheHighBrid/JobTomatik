@@ -1,4 +1,4 @@
-name: SmartRecruiters synthetic live exercise
+name: SmartRecruiters live handoff exercise
 
 on:
   pull_request:
@@ -8,6 +8,7 @@ on:
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/scripts/certify_smartrecruiters_live.py"
+      - "backend/scripts/classify_smartrecruiters_live_boundary.py"
       - "backend/scripts/select_smartrecruiters_candidates.py"
       - ".github/workflows/smartrecruiters-synthetic-live.yml"
   schedule:
@@ -18,7 +19,7 @@ permissions:
   contents: read
 
 jobs:
-  synthetic-full-form-dry-run:
+  live-handoff-dry-run:
     runs-on: ubuntu-22.04
     timeout-minutes: 75
 
@@ -63,19 +64,21 @@ jobs:
             --per-company 1 \
             --prefer-roles
 
-      - name: Exercise a current real form without submission
+      - name: Exercise a current live boundary without submission
         id: live_exercise
         shell: bash
         run: |
           set +e
           : > smartrecruiters-synthetic-attempts.txt
-          rm -f smartrecruiters-synthetic-live.json
+          rm -f smartrecruiters-synthetic-live.json \
+            smartrecruiters-synthetic-classification.json
           index=0
           success=1
           while IFS= read -r url; do
             [ -z "$url" ] && continue
             index=$((index + 1))
             report="smartrecruiters-synthetic-attempt-${index}.json"
+            classification="smartrecruiters-synthetic-classification-${index}.json"
             echo "=== Attempt ${index}: ${url} ===" | tee -a smartrecruiters-synthetic-attempts.txt
             python -u scripts/certify_smartrecruiters_live.py \
               --urls "$url" \
@@ -83,9 +86,15 @@ jobs:
               --synthetic-resume-path smartrecruiters-synthetic-resume.pdf \
               --report "$report" \
               >> smartrecruiters-synthetic-attempts.txt 2>&1
-            status=$?
-            if [ "$status" -eq 0 ]; then
+            python scripts/classify_smartrecruiters_live_boundary.py \
+              --report "$report" \
+              --output "$classification" \
+              --require-exercise \
+              >> smartrecruiters-synthetic-attempts.txt 2>&1
+            classification_status=$?
+            if [ "$classification_status" -eq 0 ]; then
               cp "$report" smartrecruiters-synthetic-live.json
+              cp "$classification" smartrecruiters-synthetic-classification.json
               success=0
               break
             fi
@@ -94,37 +103,52 @@ jobs:
           echo "exit_code=$success" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Assert full-form readiness without submission
+      - name: Assert certified live boundary without submission
         if: always()
         shell: bash
         run: |
           python - <<'PY'
           import json
-          report = json.load(open('smartrecruiters-synthetic-live.json'))
-          assert report['final_submit_clicked'] is False
-          assert report['passed'] is True
-          exercises = [item for item in report['reports'] if item.get('mode') == 'exercise']
+          classification = json.load(open('smartrecruiters-synthetic-classification.json'))
+          source = classification['source_report']
+          assert classification['passed'] is True
+          assert classification['official_metadata_verified'] is True
+          assert classification['final_submit_clicked'] is False
+          assert classification['certified_boundary'] in {
+              'hosted_form_ready', 'pre_form_anti_bot_handoff'
+          }
+          exercises = [item for item in source['reports'] if item.get('mode') == 'exercise']
           assert len(exercises) == 1
           exercise = exercises[0]
           assert exercise['adapter'] == 'smartrecruiters'
-          assert exercise['certification_outcome'] in {
-              'ready_to_submit', 'manual_challenge_handoff'
-          }
-          assert exercise['fields_filled'] > 0
-          assert any(
-              item.get('verification') == 'passed'
-              for item in exercise.get('upload_evidence') or []
-          )
           assert exercise['final_submit_clicked'] is False
+          if classification['certified_boundary'] == 'hosted_form_ready':
+              assert exercise['fields_filled'] > 0
+              assert any(
+                  item.get('verification') == 'passed'
+                  for item in exercise.get('upload_evidence') or []
+              )
+          else:
+              assert exercise['fields_filled'] == 0
+              assert not (exercise.get('upload_evidence') or [])
+              assert any(
+                  item.get('reason_code') in {'anti_bot_challenge', 'captcha_detected'}
+                  and (
+                      (item.get('details') or {}).get('provider') == 'datadome'
+                      or (item.get('details') or {}).get('handoff_boundary') == 'pre_form'
+                  )
+                  for item in exercise.get('review_items') or []
+              )
           PY
 
-      - name: Upload synthetic live certification evidence
+      - name: Upload live handoff certification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smartrecruiters-synthetic-live-report
+          name: smartrecruiters-live-handoff-report
           path: |
             backend/smartrecruiters-synthetic-live.json
+            backend/smartrecruiters-synthetic-classification*.json
             backend/smartrecruiters-synthetic-attempt-*.json
             backend/smartrecruiters-synthetic-attempts.txt
             backend/smartrecruiters-synthetic-candidates.txt
@@ -133,6 +157,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Fail when the synthetic exercise failed
+      - name: Fail when live handoff exercise failed
         if: steps.live_exercise.outputs.exit_code != '0'
         run: exit 1
