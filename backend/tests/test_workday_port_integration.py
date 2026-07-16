@@ -116,6 +116,7 @@ async def test_workday_noop_apply_uses_one_same_origin_public_route(browser_page
             body="""
               <main>
                 <h1>Principal Enterprise Architect</h1>
+                <div role="dialog">Cookie settings</div>
                 <a id="apply">Apply</a>
                 <script>
                   document.querySelector('#apply').onclick = (event) => {
