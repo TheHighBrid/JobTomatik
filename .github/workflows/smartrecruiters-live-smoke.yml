@@ -1,4 +1,4 @@
-name: SmartRecruiters live smoke certification
+name: SmartRecruiters live boundary certification
 
 on:
   pull_request:
@@ -8,6 +8,7 @@ on:
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/scripts/certify_smartrecruiters_live.py"
+      - "backend/scripts/classify_smartrecruiters_live_boundary.py"
       - "backend/scripts/select_smartrecruiters_candidates.py"
       - ".github/workflows/smartrecruiters-live-smoke.yml"
   schedule:
@@ -18,7 +19,7 @@ permissions:
   contents: read
 
 jobs:
-  live-public-form-inspection:
+  live-public-boundary-inspection:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
 
@@ -61,29 +62,36 @@ jobs:
             --limit 30 \
             --per-company 2
 
-      - name: Inspect current live forms and official public metadata
+      - name: Inspect and classify current live boundaries
         id: live_inspection
         shell: bash
         run: |
           set +e
           : > smartrecruiters-live-output.txt
-          rm -f smartrecruiters-live-attempt-*.json smartrecruiters-live-smoke.json
+          rm -f smartrecruiters-live-attempt-*.json \
+            smartrecruiters-live-classification-*.json \
+            smartrecruiters-live-smoke.json
           index=0
-          success_count=0
+          certified_count=0
           while IFS= read -r url; do
             [ -z "$url" ] && continue
             index=$((index + 1))
             report="smartrecruiters-live-attempt-${index}.json"
+            classification="smartrecruiters-live-classification-${index}.json"
             echo "=== Attempt ${index}: ${url} ===" | tee -a smartrecruiters-live-output.txt
             python -u scripts/certify_smartrecruiters_live.py \
               --urls "$url" \
               --report "$report" \
               >> smartrecruiters-live-output.txt 2>&1
-            status=$?
-            if [ "$status" -eq 0 ]; then
-              success_count=$((success_count + 1))
+            python scripts/classify_smartrecruiters_live_boundary.py \
+              --report "$report" \
+              --output "$classification" \
+              >> smartrecruiters-live-output.txt 2>&1
+            classification_status=$?
+            if [ "$classification_status" -eq 0 ]; then
+              certified_count=$((certified_count + 1))
             fi
-            if [ "$success_count" -ge 3 ]; then
+            if [ "$certified_count" -ge 3 ]; then
               break
             fi
           done < smartrecruiters-live-urls.txt
@@ -92,49 +100,45 @@ jobs:
           import glob
           import json
 
-          attempts = []
-          reports = []
-          for path in sorted(glob.glob('smartrecruiters-live-attempt-*.json')):
-              payload = json.load(open(path))
-              attempts.append({
-                  'path': path,
-                  'passed': bool(payload.get('passed')),
-                  'final_submit_clicked': bool(payload.get('final_submit_clicked')),
-              })
-              reports.extend(payload.get('reports') or [])
-          passed_reports = [item for item in reports if item.get('passed')]
+          classifications = [
+              json.load(open(path))
+              for path in sorted(glob.glob('smartrecruiters-live-classification-*.json'))
+          ]
+          certified = [item for item in classifications if item.get('passed')]
           summary = {
-              'certification': 'smartrecruiters_multi_tenant_live_smoke',
-              'attempt_count': len(attempts),
-              'passed_form_count': len(passed_reports),
+              'certification': 'smartrecruiters_multi_tenant_live_boundary',
+              'attempt_count': len(classifications),
+              'certified_boundary_count': len(certified),
               'minimum_required': 3,
-              'final_submit_clicked': any(
-                  item.get('final_submit_clicked', False) for item in reports
+              'hosted_form_ready_count': sum(
+                  item.get('certified_boundary') == 'hosted_form_ready'
+                  for item in certified
               ),
-              'attempts': attempts,
-              'reports': reports,
+              'pre_form_handoff_count': sum(
+                  item.get('certified_boundary') == 'pre_form_anti_bot_handoff'
+                  for item in certified
+              ),
+              'final_submit_clicked': any(
+                  item.get('final_submit_clicked', False) for item in classifications
+              ),
+              'classifications': classifications,
           }
           summary['passed'] = bool(
-              len(passed_reports) >= summary['minimum_required']
+              len(certified) >= summary['minimum_required']
               and summary['final_submit_clicked'] is False
           )
           open('smartrecruiters-live-smoke.json', 'w').write(
               json.dumps(summary, indent=2, default=str)
           )
           print(json.dumps(summary, indent=2, default=str))
-          PY
-
-          python - <<'PY'
-          import json
-          report = json.load(open('smartrecruiters-live-smoke.json'))
-          raise SystemExit(0 if report['passed'] else 1)
+          raise SystemExit(0 if summary['passed'] else 1)
           PY
           status=$?
           cat smartrecruiters-live-output.txt
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Assert live run never submitted
+      - name: Assert live boundary and zero submission
         if: always()
         shell: bash
         run: |
@@ -143,31 +147,30 @@ jobs:
           report = json.load(open('smartrecruiters-live-smoke.json'))
           assert report['final_submit_clicked'] is False
           assert report['passed'] is True
-          assert report['passed_form_count'] >= 3
-          passed = [item for item in report['reports'] if item.get('passed')]
-          assert all(item.get('mode') == 'inspect' for item in passed)
-          assert all(item.get('adapter') == 'smartrecruiters' for item in passed)
-          assert all(
-              (item.get('public_metadata') or {}).get('posting_metadata_certified')
-              for item in passed
-          )
-          assert all(item.get('submit_control_present') for item in passed)
+          assert report['certified_boundary_count'] >= 3
+          certified = [item for item in report['classifications'] if item.get('passed')]
+          assert all(item.get('official_metadata_verified') for item in certified)
+          assert all(item.get('certified_boundary') in {
+              'hosted_form_ready', 'pre_form_anti_bot_handoff'
+          } for item in certified)
+          assert all(item.get('final_submit_clicked') is False for item in certified)
           PY
 
-      - name: Upload live smoke report
+      - name: Upload live boundary report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smartrecruiters-live-smoke-report
+          name: smartrecruiters-live-boundary-report
           path: |
             backend/smartrecruiters-live-smoke.json
             backend/smartrecruiters-live-attempt-*.json
+            backend/smartrecruiters-live-classification-*.json
             backend/smartrecruiters-live-output.txt
             backend/smartrecruiters-live-urls.txt
             backend/smartrecruiters-live-candidates.json
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Fail when live inspection failed
+      - name: Fail when live boundary certification failed
         if: steps.live_inspection.outputs.exit_code != '0'
         run: exit 1
