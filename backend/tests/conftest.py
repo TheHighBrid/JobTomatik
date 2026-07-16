@@ -31,6 +31,15 @@ def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 
 
+@pytest.fixture
+def db_session():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 @pytest.fixture(autouse=True)
 def mock_celery(monkeypatch):
     """Stub API-triggered Celery calls so tests do not need Redis."""
@@ -41,6 +50,7 @@ def mock_celery(monkeypatch):
 
     monkeypatch.setattr("app.api.applications.generate_cover_letter_task", mock_task)
     monkeypatch.setattr("app.api.applications.submit_application_task", mock_task)
+    monkeypatch.setattr("app.api.handoffs.resume_handoff_session_task", mock_task)
     monkeypatch.setattr("app.api.jobs.run_job_search", mock_task)
 
 

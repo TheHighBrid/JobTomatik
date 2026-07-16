@@ -8,6 +8,7 @@ from app.models.application import (
     ManualReviewTask,
     SubmissionEvidence,
 )
+from app.models.handoff import HandoffSessionEvent, ManualHandoffSession
 from app.models.notification import Notification
 
 __all__ = [
@@ -19,5 +20,7 @@ __all__ = [
     "FollowUp",
     "ManualReviewTask",
     "SubmissionEvidence",
+    "ManualHandoffSession",
+    "HandoffSessionEvent",
     "Notification",
 ]
