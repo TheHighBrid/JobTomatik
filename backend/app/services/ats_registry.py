@@ -9,9 +9,18 @@ from app.services.ats_ashby import AshbyAdapter
 from app.services.ats_base import ATSAdapter
 from app.services.ats_greenhouse import GreenhouseAdapter
 from app.services.ats_lever import LeverAdapter
+from app.services.ats_smartrecruiters import SmartRecruitersAdapter
+from app.services.smartrecruiters_challenge import (
+    install_smartrecruiters_challenge_detection,
+)
+from app.services.smartrecruiters_contract import (
+    install_smartrecruiters_contract_normalization,
+)
 
 
 install_ashby_profile_aliases()
+install_smartrecruiters_contract_normalization()
+install_smartrecruiters_challenge_detection()
 
 
 class RegisteredLeverAdapter(LeverAdapter):
@@ -73,7 +82,50 @@ class RegisteredAshbyAdapter(AshbyAdapter):
         return value
 
 
-_ADAPTERS = [GreenhouseAdapter(), RegisteredLeverAdapter(), RegisteredAshbyAdapter()]
+class RegisteredSmartRecruitersAdapter(SmartRecruitersAdapter):
+    """SmartRecruiters after fixture and current pre-form boundary validation."""
+
+    version = "1.1.0"
+    certification_level = "fixture_live_metadata_preform_handoff_and_resume_certified"
+
+    def manifest(self) -> Dict[str, Any]:
+        value = super().manifest()
+        value["version"] = self.version
+        value["certification_level"] = self.certification_level
+        value["live_certification"] = {
+            "mode": "public_metadata_preform_antibot_handoff_and_fixture_full_form",
+            "public_posting_metadata": "certified",
+            "current_live_sample": {
+                "posting_count": 3,
+                "company_count": 2,
+                "companies": ["Visa", "NielsenIQ"],
+                "certified_boundary": "pre_form_anti_bot_handoff",
+            },
+            "live_hosted_form_controls": "not_reached_due_to_pre_form_datadome",
+            "synthetic_live_full_form_exercise": "not_reached_due_to_pre_form_datadome",
+            "pre_form_anti_bot_handoff": "certified",
+            "datadome_provider_detection": "certified",
+            "fixture_full_form_behavior": "certified",
+            "fixture_verified_resume_upload": True,
+            "fixture_confirmation_evidence": "certified",
+            "resumable_handoff": "fixture_certified",
+            "official_screening_configuration_support": (
+                "fixture_certified_optional_x_smarttoken_validation"
+            ),
+            "application_api_submission": "not_used",
+            "live_full_form_certified": False,
+            "bypass_attempted": False,
+            "final_submit_clicked": False,
+        }
+        return value
+
+
+_ADAPTERS = [
+    GreenhouseAdapter(),
+    RegisteredLeverAdapter(),
+    RegisteredAshbyAdapter(),
+    RegisteredSmartRecruitersAdapter(),
+]
 _GENERIC = ATSAdapter()
 
 
@@ -90,7 +142,7 @@ async def detect_ats_adapter(page: Any, url: str) -> ATSAdapter:
 def ats_certification_manifest() -> Dict[str, Any]:
     adapters: List[Dict[str, Any]] = [adapter.manifest() for adapter in _ADAPTERS]
     return {
-        "framework_version": "1.2.0",
+        "framework_version": "1.3.0",
         "certification_model": "standards fixtures plus supervised live dry-runs",
         "adapters": adapters,
         "safety_invariants": {
@@ -104,6 +156,10 @@ def ats_certification_manifest() -> Dict[str, Any]:
             "official_api_gaps_are_reported_not_guessed": True,
             "private_api_credentials_not_required_for_public_form_ci": True,
             "exact_ashby_name_alias_only": True,
+            "smartrecruiters_application_api_requires_explicit_token": True,
+            "smartrecruiters_reference_url_optional": True,
+            "smartrecruiters_datadome_is_manual_handoff_only": True,
+            "smartrecruiters_live_full_form_not_claimed": True,
         },
         "universal_boundary": (
             "Each ATS adapter must pass local fixtures and supervised live dry-runs. "

@@ -18,6 +18,7 @@ on:
       - "backend/tests/test_browser_handoff_runtime.py"
       - "backend/tests/test_lever_handoff_runtime.py"
       - "backend/tests/test_ashby_handoff_runtime.py"
+      - "backend/tests/test_smartrecruiters_handoff_runtime.py"
       - ".github/workflows/handoff-session-certification.yml"
   push:
     branches:
@@ -38,6 +39,7 @@ on:
       - "backend/tests/test_browser_handoff_runtime.py"
       - "backend/tests/test_lever_handoff_runtime.py"
       - "backend/tests/test_ashby_handoff_runtime.py"
+      - "backend/tests/test_smartrecruiters_handoff_runtime.py"
       - ".github/workflows/handoff-session-certification.yml"
 
 permissions:
@@ -46,7 +48,7 @@ permissions:
 jobs:
   secure-resume-matrix:
     runs-on: ubuntu-22.04
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     defaults:
       run:
@@ -92,6 +94,7 @@ jobs:
             tests/test_browser_handoff_runtime.py \
             tests/test_lever_handoff_runtime.py \
             tests/test_ashby_handoff_runtime.py \
+            tests/test_smartrecruiters_handoff_runtime.py \
             > handoff-certification.txt 2>&1
           status=$?
           cat handoff-certification.txt

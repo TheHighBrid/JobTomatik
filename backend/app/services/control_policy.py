@@ -15,6 +15,14 @@ _EXTRA_PATTERNS = {
     ],
 }
 
+# ``privacy_consent`` existed in early policy payloads before consent was split into
+# application terms and applicant-data processing. It remains an explicit user-approved
+# yes/no decision, so map it only to those two consent classifications rather than
+# treating it as a fuzzy custom-question fallback.
+_CANONICAL_POLICY_ALIASES = {
+    "privacy_consent": {"terms_consent", "data_processing_consent"},
+}
+
 
 def classify_control_question(question_text: str) -> Dict[str, str]:
     normalized = normalize_question_text(question_text)
@@ -52,7 +60,11 @@ def resolve_control_policy(
 
     for policy in policies:
         canonical_key = policy.get("canonical_key", "")
-        if canonical_key == classification["canonical_key"]:
+        classified_key = classification["canonical_key"]
+        if (
+            canonical_key == classified_key
+            or classified_key in _CANONICAL_POLICY_ALIASES.get(canonical_key, set())
+        ):
             candidates.append(policy)
             continue
         if canonical_key.startswith("custom.") and any(
