@@ -11,6 +11,7 @@ celery_app = Celery(
     include=[
         "app.tasks.scraping",
         "app.tasks.applications",
+        "app.tasks.unattended",
         "app.tasks.followup",
     ],
 )
@@ -24,20 +25,21 @@ celery_app.conf.update(
     task_routes={
         "app.tasks.scraping.*": {"queue": "scraping"},
         "app.tasks.applications.*": {"queue": "applications"},
+        "app.tasks.unattended.*": {"queue": "applications"},
         "app.tasks.followup.*": {"queue": "followup"},
     },
     beat_schedule={
         "check-followups-every-hour": {
             "task": "app.tasks.followup.send_pending_followups",
-            "schedule": crontab(minute=0),  # top of every hour
+            "schedule": crontab(minute=0),
         },
         "refresh-job-scores-daily": {
             "task": "app.tasks.scraping.refresh_all_scores",
-            "schedule": crontab(hour=3, minute=0),  # 3am UTC
+            "schedule": crontab(hour=3, minute=0),
         },
         "daily-auto-search": {
             "task": "app.tasks.scraping.daily_auto_search_all",
-            "schedule": crontab(hour="*/6", minute=0),  # every 6 hours
+            "schedule": crontab(hour="*/6", minute=0),
         },
     },
 )
