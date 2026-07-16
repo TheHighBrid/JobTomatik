@@ -18,11 +18,13 @@ from app.services.smartrecruiters_contract import (
     install_smartrecruiters_contract_normalization,
 )
 from app.services.workday_challenge import install_workday_challenge_detection
+from app.services.workday_port_integration import install_workday_port_integration
 
 
 install_ashby_profile_aliases()
 install_smartrecruiters_contract_normalization()
 install_smartrecruiters_challenge_detection()
+install_workday_port_integration()
 install_workday_challenge_detection()
 
 
@@ -166,6 +168,8 @@ def ats_certification_manifest() -> Dict[str, Any]:
             "smartrecruiters_live_full_form_not_claimed": True,
             "workday_login_and_account_creation_are_manual": True,
             "workday_target_evidence_excludes_query_and_fragment": True,
+            "workday_cxs_metadata_uses_full_external_path": True,
+            "workday_apply_popup_is_bounded_and_retained": True,
         },
         "universal_boundary": (
             "Each ATS adapter must pass local fixtures and supervised live dry-runs. "
