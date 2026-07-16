@@ -178,13 +178,13 @@ export const updateSettings = (data) => api.patch('/settings', data)
 export const getOperationsReadiness = () => api.get('/system/operations-readiness')
 export const getAtsCertification = () => api.get('/system/ats-certification')
 
-// Controller actions are deliberately dry-run only. Live submission is handled by the
-// backend safety gate and must never be enabled by a frontend argument.
+// The existing controller uses dedicated preparation-only endpoints. Neither accepts a
+// live-submit argument, so old callers cannot turn a dashboard action into a real submission.
 export const bulkApply = (_dryRun = true, limit = 20) =>
-  api.post(`/jobs/bulk-apply?dry_run=true&limit=${limit}`)
+  api.post(`/controller/bulk-prepare?limit=${limit}`)
 export const runAutoPilot = (options = {}) =>
-  api.post('/jobs/autopilot', null, {
-    params: { min_score: 0.55, daily_limit: 15, ...options, dry_run: true },
+  api.post('/controller/safe-dry-run', null, {
+    params: { min_score: 0.55, daily_limit: 15, ...options },
   })
 
 export default api
