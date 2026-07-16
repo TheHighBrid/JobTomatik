@@ -10,17 +10,20 @@ from app.services.ats_base import ATSAdapter
 from app.services.ats_greenhouse import GreenhouseAdapter
 from app.services.ats_lever import LeverAdapter
 from app.services.ats_smartrecruiters import SmartRecruitersAdapter
+from app.services.ats_workday import WorkdayAdapter
 from app.services.smartrecruiters_challenge import (
     install_smartrecruiters_challenge_detection,
 )
 from app.services.smartrecruiters_contract import (
     install_smartrecruiters_contract_normalization,
 )
+from app.services.workday_challenge import install_workday_challenge_detection
 
 
 install_ashby_profile_aliases()
 install_smartrecruiters_contract_normalization()
 install_smartrecruiters_challenge_detection()
+install_workday_challenge_detection()
 
 
 class RegisteredLeverAdapter(LeverAdapter):
@@ -125,6 +128,7 @@ _ADAPTERS = [
     RegisteredLeverAdapter(),
     RegisteredAshbyAdapter(),
     RegisteredSmartRecruitersAdapter(),
+    WorkdayAdapter(),
 ]
 _GENERIC = ATSAdapter()
 
@@ -142,7 +146,7 @@ async def detect_ats_adapter(page: Any, url: str) -> ATSAdapter:
 def ats_certification_manifest() -> Dict[str, Any]:
     adapters: List[Dict[str, Any]] = [adapter.manifest() for adapter in _ADAPTERS]
     return {
-        "framework_version": "1.3.0",
+        "framework_version": "1.4.0",
         "certification_model": "standards fixtures plus supervised live dry-runs",
         "adapters": adapters,
         "safety_invariants": {
@@ -160,6 +164,8 @@ def ats_certification_manifest() -> Dict[str, Any]:
             "smartrecruiters_reference_url_optional": True,
             "smartrecruiters_datadome_is_manual_handoff_only": True,
             "smartrecruiters_live_full_form_not_claimed": True,
+            "workday_login_and_account_creation_are_manual": True,
+            "workday_target_evidence_excludes_query_and_fragment": True,
         },
         "universal_boundary": (
             "Each ATS adapter must pass local fixtures and supervised live dry-runs. "
