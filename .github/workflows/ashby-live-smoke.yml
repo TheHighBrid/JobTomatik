@@ -1,0 +1,120 @@
+name: Ashby live smoke certification
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/ashby_certification.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/scripts/certify_ashby_live.py"
+      - ".github/workflows/ashby-live-smoke.yml"
+  schedule:
+    - cron: "23 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-public-form-inspection:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./ashby-live-smoke.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ashby-live-smoke-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Select current public Ashby jobs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import httpx
+
+          response = httpx.get(
+              'https://api.ashbyhq.com/posting-api/job-board/ashby',
+              timeout=25,
+              follow_redirects=True,
+          )
+          response.raise_for_status()
+          jobs = [
+              job for job in (response.json().get('jobs') or [])
+              if job.get('isListed') and job.get('applyUrl')
+          ]
+          jobs.sort(key=lambda job: job.get('publishedAt') or '', reverse=True)
+          urls = [job['applyUrl'] for job in jobs[:3]]
+          if not urls:
+              raise SystemExit('No current Ashby application URLs were returned.')
+          open('ashby-live-urls.txt', 'w').write('\n'.join(urls))
+          print('\n'.join(urls))
+          PY
+
+      - name: Inspect current live forms and public metadata
+        id: live_inspection
+        shell: bash
+        run: |
+          set +e
+          python -u scripts/certify_ashby_live.py \
+            --urls "$(cat ashby-live-urls.txt)" \
+            --report ashby-live-smoke.json \
+            > ashby-live-output.txt 2>&1
+          status=$?
+          cat ashby-live-output.txt
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Assert live run never submitted
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open('ashby-live-smoke.json'))
+          assert report['final_submit_clicked'] is False
+          assert report['url_count'] >= 1
+          assert all(item.get('mode') == 'inspect' for item in report['reports'])
+          assert report['passed'] is True
+          assert all(item.get('adapter') == 'ashby' for item in report['reports'])
+          PY
+
+      - name: Upload live smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ashby-live-smoke-report
+          path: |
+            backend/ashby-live-smoke.json
+            backend/ashby-live-output.txt
+            backend/ashby-live-urls.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail when live inspection failed
+        if: steps.live_inspection.outputs.exit_code != '0'
+        run: exit 1
