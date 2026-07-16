@@ -10,7 +10,8 @@ from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.job_scraper import search_jobs
 from app.services.keyword_tagger import tag_job
-from app.services.operations_policy import evaluate_autopilot_policy, evaluate_platform_policy
+from app.services.operations_policy import evaluate_autopilot_policy
+from app.services.unattended_policy import evaluate_unattended_job_policy
 from app.services.operations_settings import get_operations_settings
 
 logger = logging.getLogger(__name__)
@@ -115,14 +116,15 @@ def refresh_all_scores():
 
 @celery_app.task(name="app.tasks.scraping.daily_auto_search_all", queue="scraping")
 def daily_auto_search_all():
-    """Run explicitly enabled, policy-bounded scheduled discovery and dry-run preparation."""
+    """Run explicitly enabled, policy-bounded scheduled discovery and preparation."""
     from app.models.application import (
         Application,
         ApplicationAutomationState,
         ApplicationEvent,
         ApplicationStatus,
     )
-    from app.tasks.applications import generate_cover_letter_task, submit_application_task
+    from app.tasks.applications import generate_cover_letter_task
+    from app.tasks.unattended import submit_unattended_application_task
 
     operations = get_operations_settings()
     if not operations.autopilot_enabled:
@@ -141,6 +143,7 @@ def daily_auto_search_all():
         applications_queued = 0
         blocked_users = []
         disabled_platform_jobs = 0
+        blocked_job_reasons: dict[str, int] = {}
 
         for user in users:
             auto_settings = dict(user.automation_settings or {})
@@ -195,15 +198,30 @@ def daily_auto_search_all():
             )
 
             approved_jobs = []
+            approved_employers: set[str] = set()
             for job in candidates:
-                raw = dict(job.raw_data or {})
-                candidate_url = raw.get("selected_apply_url") or job.url or ""
-                platform_decision = evaluate_platform_policy(candidate_url)
-                if not platform_decision.allowed:
+                job_decision = evaluate_unattended_job_policy(db, user, job)
+                if not job_decision.allowed:
                     disabled_platform_jobs += 1
+                    blocked_job_reasons[job_decision.code] = (
+                        blocked_job_reasons.get(job_decision.code, 0) + 1
+                    )
+                    logger.info(
+                        "Autopilot job blocked for user %s, job %s: %s",
+                        user.id,
+                        job.id,
+                        job_decision.code,
+                    )
+                    continue
+                employer_key = str(job.company or "").strip().lower()
+                if employer_key in approved_employers:
+                    blocked_job_reasons["same_run_employer_cap"] = (
+                        blocked_job_reasons.get("same_run_employer_cap", 0) + 1
+                    )
                     continue
                 job.status = JobStatus.approved
                 approved_jobs.append(job)
+                approved_employers.add(employer_key)
                 if len(approved_jobs) >= run_limit:
                     break
             db.commit()
@@ -235,7 +253,7 @@ def daily_auto_search_all():
                     payload={"job_id": job.id, "source": "scheduled_autopilot"},
                 ))
                 generate_cover_letter_task.delay(app_obj.id)
-                submit_application_task.apply_async(
+                submit_unattended_application_task.apply_async(
                     args=[app_obj.id],
                     kwargs={"dry_run": not settings.allow_real_application_submit},
                     countdown=countdown,
@@ -250,6 +268,7 @@ def daily_auto_search_all():
             "applications_queued": applications_queued,
             "blocked_users": blocked_users,
             "disabled_platform_jobs": disabled_platform_jobs,
+            "blocked_job_reasons": blocked_job_reasons,
             "real_submission_enabled": settings.allow_real_application_submit,
         }
     except Exception as e:
