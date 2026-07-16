@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List
+from urllib.parse import urlparse
 
 from app.services.ashby_profile_aliases import install_ashby_profile_aliases
 from app.services.ats_ashby import AshbyAdapter
@@ -10,7 +11,7 @@ from app.services.ats_base import ATSAdapter
 from app.services.ats_greenhouse import GreenhouseAdapter
 from app.services.ats_lever import LeverAdapter
 from app.services.ats_smartrecruiters import SmartRecruitersAdapter
-from app.services.ats_workday import WorkdayAdapter
+from app.services.ats_workday import WorkdayAdapter, is_workday_host
 from app.services.smartrecruiters_challenge import (
     install_smartrecruiters_challenge_detection,
 )
@@ -200,8 +201,16 @@ _GENERIC = ATSAdapter()
 async def detect_ats_adapter(page: Any, url: str) -> ATSAdapter:
     for adapter in _ADAPTERS:
         try:
-            if await adapter.matches(page, url):
-                return adapter
+            if not await adapter.matches(page, url):
+                continue
+            if isinstance(adapter, RegisteredWorkdayAdapter):
+                actual_host = urlparse(str(getattr(page, "url", "") or "")).hostname or ""
+                if not is_workday_host(actual_host):
+                    # The deployed certification covers hosted Candidate Experience
+                    # pages. Embedded/off-host Workday surfaces retain the donor base
+                    # adapter's fixture-only status until separately live-certified.
+                    return WorkdayAdapter()
+            return adapter
         except Exception:
             continue
     return _GENERIC
@@ -235,6 +244,7 @@ def ats_certification_manifest() -> Dict[str, Any]:
             "workday_apply_adventure_uses_manual_path_only": True,
             "workday_prior_application_is_never_reused": True,
             "workday_credentials_are_never_entered_automatically": True,
+            "workday_embedded_surfaces_remain_fixture_only": True,
             "workday_live_full_form_not_claimed": True,
         },
         "universal_boundary": (
