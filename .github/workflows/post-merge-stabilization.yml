@@ -72,24 +72,29 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Verify safety and certification manifests
+      - name: Verify safety and canonical maturity manifests
         run: |
           python - <<'PY'
           from app.config import get_settings
-          from app.services.ats_registry import ats_certification_manifest
+          from app.services.ats_manifest import ats_certification_manifest
           from app.services.operations_policy import operations_readiness_manifest
 
           settings = get_settings()
           operations = operations_readiness_manifest()
-          adapters = {item["name"] for item in ats_certification_manifest()["adapters"]}
+          ats = ats_certification_manifest()
+          adapters = {item["name"]: item for item in ats["adapters"]}
 
           assert settings.allow_real_application_submit is False
           assert operations["autopilot_enabled"] is False
           assert operations["real_submission_enabled"] is False
           assert operations["invariants"]["autopilot_defaults_off"] is True
           assert operations["invariants"]["user_auto_apply_requires_explicit_opt_in"] is True
-          assert {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"} <= adapters
-          print("Integrated safety and adapter manifests verified")
+          assert {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"} <= set(adapters)
+          assert ats["autonomous_adapters"] == []
+          assert all(item.get("maturity") != "certified_autonomous" for item in adapters.values())
+          assert all(item.get("autonomous_submission_allowed") is False for item in adapters.values())
+          assert ats["safety_invariants"]["certification_level_is_descriptive_only"] is True
+          print("Integrated safety and canonical adapter maturity verified")
           PY
 
       - name: Run Alembic migration smoke test
