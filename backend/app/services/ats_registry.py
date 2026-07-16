@@ -18,6 +18,9 @@ from app.services.smartrecruiters_contract import (
     install_smartrecruiters_contract_normalization,
 )
 from app.services.workday_challenge import install_workday_challenge_detection
+from app.services.workday_popup_boundaries import (
+    install_workday_popup_boundary_detection,
+)
 from app.services.workday_port_integration import install_workday_port_integration
 
 
@@ -25,6 +28,7 @@ install_ashby_profile_aliases()
 install_smartrecruiters_contract_normalization()
 install_smartrecruiters_challenge_detection()
 install_workday_port_integration()
+install_workday_popup_boundary_detection()
 install_workday_challenge_detection()
 
 
