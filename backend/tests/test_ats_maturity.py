@@ -85,6 +85,21 @@ def test_autonomous_promotion_requires_approval_and_every_release_gate():
     assert derive_adapter_maturity(manifest) is AdapterMaturity.CERTIFIED_AUTONOMOUS
 
 
+def test_generic_adapter_never_becomes_submission_capable():
+    release = {gate: True for gate in AUTONOMY_RELEASE_GATES}
+    release.update({"approved": True, "approval_reference": "invalid-generic-release"})
+    annotated = annotate_adapter_manifest(
+        {
+            "name": "generic",
+            "supported_hosts": [],
+            "autonomy_release": release,
+        }
+    )
+
+    assert annotated["maturity"] == AdapterMaturity.UNSUPPORTED.value
+    assert annotated["autonomous_submission_allowed"] is False
+
+
 def test_live_maturity_reader_never_falls_back_to_certification_level(monkeypatch):
     monkeypatch.setattr(
         unattended_policy,
@@ -113,3 +128,20 @@ def test_ats_certification_endpoint_exposes_canonical_maturity(client):
     assert payload["maturity_model"] == "roadmap_issue_13_v1"
     assert payload["autonomous_adapters"] == []
     assert all("maturity" in item for item in payload["adapters"])
+
+
+def test_operations_readiness_exposes_adapter_maturity(client):
+    response = client.get("/api/system/operations-readiness")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["adapter_maturities"] == {
+        "greenhouse": AdapterMaturity.DRY_RUN.value,
+        "lever": AdapterMaturity.DRY_RUN.value,
+        "ashby": AdapterMaturity.DRY_RUN.value,
+        "smartrecruiters": AdapterMaturity.DETECT_ONLY.value,
+        "workday": AdapterMaturity.DETECT_ONLY.value,
+    }
+    assert payload["autonomous_adapters"] == []
+    assert payload["invariants"]["canonical_adapter_maturity_required"] is True
+    assert payload["invariants"]["no_autonomous_adapter_currently_enabled"] is True
