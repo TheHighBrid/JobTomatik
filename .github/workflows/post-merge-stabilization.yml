@@ -58,7 +58,19 @@ jobs:
         run: python -m compileall -q app tests
 
       - name: Run integrated backend and browser suite
-        run: pytest -q --tb=short --maxfail=5 -ra
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest -q --tb=short --maxfail=5 -ra | tee integrated-pytest-output.txt
+
+      - name: Upload integrated backend report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-merge-integrated-pytest-output
+          path: backend/integrated-pytest-output.txt
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Verify safety and certification manifests
         run: |
