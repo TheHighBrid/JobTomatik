@@ -13,6 +13,7 @@ from app.database import Base, engine
 from app.services.ats_registry import ats_certification_manifest
 from app.services.control_engine import certification_manifest
 from app.services.handoff_integration import install_handoff_task_integration
+from app.services.operations_policy import operations_readiness_manifest
 
 settings = get_settings()
 install_handoff_task_integration()
@@ -111,3 +112,8 @@ async def control_certification():
 @app.get("/api/system/ats-certification")
 async def ats_certification():
     return ats_certification_manifest()
+
+
+@app.get("/api/system/operations-readiness")
+async def operations_readiness():
+    return operations_readiness_manifest()
