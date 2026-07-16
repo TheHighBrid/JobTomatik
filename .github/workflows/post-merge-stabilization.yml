@@ -1,0 +1,152 @@
+name: Post-merge stabilization
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - ".github/workflows/**"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-merge-stabilization-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrated-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: sqlite:///./post-merge-test.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: post-merge-ci-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+      REQUIRE_BROWSER_TESTS: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Compile backend
+        run: python -m compileall -q app tests
+
+      - name: Run integrated backend and browser suite
+        run: pytest -q --tb=short --maxfail=5 -ra
+
+      - name: Verify safety and certification manifests
+        run: |
+          python - <<'PY'
+          from app.config import get_settings
+          from app.services.ats_registry import ats_certification_manifest
+          from app.services.operations_policy import operations_readiness_manifest
+
+          settings = get_settings()
+          operations = operations_readiness_manifest()
+          adapters = {item["name"] for item in ats_certification_manifest()["adapters"]}
+
+          assert settings.allow_real_application_submit is False
+          assert operations["autopilot_enabled"] is False
+          assert operations["real_submission_enabled"] is False
+          assert operations["invariants"]["autopilot_defaults_off"] is True
+          assert operations["invariants"]["user_auto_apply_requires_explicit_opt_in"] is True
+          assert {"greenhouse", "lever", "ashby", "smartrecruiters", "workday"} <= adapters
+          print("Integrated safety and adapter manifests verified")
+          PY
+
+      - name: Run Alembic migration smoke test
+        run: |
+          cp alembic.ini alembic-ci.ini
+          sed -i 's#sqlalchemy.url = .*#sqlalchemy.url = sqlite:///./migration-smoke.db#' alembic-ci.ini
+          alembic -c alembic-ci.ini upgrade head
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+  deployment-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SECRET_KEY: post-merge-compose-secret
+      ANTHROPIC_API_KEY: ""
+      SENDGRID_API_KEY: ""
+      FROM_EMAIL: noreply@example.test
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      AUTOPILOT_ENABLED: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config --quiet
+
+      - name: Verify fail-safe Compose defaults
+        run: |
+          rendered="$(docker compose config)"
+          echo "$rendered" | grep -q 'ALLOW_REAL_APPLICATION_SUBMIT: "false"'
+          echo "$rendered" | grep -q 'AUTOPILOT_ENABLED: "false"'
+
+  release-gate:
+    if: always()
+    needs:
+      - integrated-backend
+      - frontend-build
+      - deployment-config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert all stabilization jobs passed
+        env:
+          BACKEND_RESULT: ${{ needs.integrated-backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend-build.result }}
+          DEPLOYMENT_RESULT: ${{ needs.deployment-config.result }}
+        run: |
+          test "$BACKEND_RESULT" = "success"
+          test "$FRONTEND_RESULT" = "success"
+          test "$DEPLOYMENT_RESULT" = "success"
+          echo "Post-merge stabilization gate passed"
