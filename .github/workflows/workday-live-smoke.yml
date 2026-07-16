@@ -19,7 +19,7 @@ permissions:
 jobs:
   live-public-boundary-inspection:
     runs-on: ubuntu-22.04
-    timeout-minutes: 75
+    timeout-minutes: 45
 
     defaults:
       run:
@@ -56,8 +56,8 @@ jobs:
           python scripts/select_workday_candidates.py \
             --output workday-live-candidates.json \
             --urls-output workday-live-urls.txt \
-            --limit 20 \
-            --per-tenant 3
+            --limit 3 \
+            --per-tenant 1
 
       - name: Inspect current CXS metadata and UI boundaries
         id: live_inspection
@@ -80,9 +80,6 @@ jobs:
             status=$?
             if [ "$status" -eq 0 ]; then
               success_count=$((success_count + 1))
-            fi
-            if [ "$success_count" -ge 3 ]; then
-              break
             fi
           done < workday-live-urls.txt
 
