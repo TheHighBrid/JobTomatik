@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   integrated-backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     defaults:
       run:
