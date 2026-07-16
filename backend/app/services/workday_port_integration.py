@@ -1,21 +1,24 @@
 """Runtime integration for the Workday doorway ported from JobSniffing.
 
-The donor adapter deliberately owns only strict target recognition and the bounded
-Apply transition. This module connects that doorway to JobTomatik's async runtime
-without changing the donor contract:
+The donor adapter deliberately owns strict target recognition and the bounded Apply
+transition. This module connects that doorway to JobTomatik's async runtime without
+changing its safety model:
 
 * public CXS metadata uses the complete external job path rather than requisition ID
 * a Workday Apply popup or new tab becomes the active ATS surface
 * a no-op SPA Apply click may fall back once to the public same-origin ``/apply`` route
+* Workday's application-adventure screen advances only through ``applyManually``
+* nonessential cookies are declined when their notice blocks the application controls
 * retained evidence continues to exclude query strings and fragments
 
-No credentials are entered, no account is created, and no challenge is bypassed.
+No credentials are entered, no account is created, no prior application is reused, and
+no challenge is bypassed.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 
@@ -40,6 +43,13 @@ def _candidate_job_path(target: ats_workday.WorkdayTarget) -> str:
     except ValueError:
         return ""
     return "/".join(segments[job_index:])
+
+
+def _safe_path_url(value: str) -> str:
+    parsed = urlparse(value or "")
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
 
 def workday_cxs_full_job_url(target: ats_workday.WorkdayTarget) -> str:
@@ -115,6 +125,100 @@ async def _visible_application_boundary(page: Any) -> bool:
     return False
 
 
+async def _decline_nonessential_cookies(page: Any, log: list[Dict[str, Any]]) -> bool:
+    selector = '[data-automation-id="legalNoticeDeclineButton"]'
+    try:
+        control = await page.query_selector(selector)
+        if not control or not await control.is_visible():
+            return False
+        await control.click(timeout=5000)
+        await page.wait_for_timeout(350)
+        log.append({
+            "action": "workday_nonessential_cookies_declined",
+            "selector": selector,
+            "essential_cookies_unchanged": True,
+            "application_answer_changed": False,
+        })
+        return True
+    except Exception as exc:
+        log.append({
+            "action": "workday_cookie_notice_decline_failed",
+            "selector": selector,
+            "detail": f"{type(exc).__name__}: {str(exc)[:240]}",
+            "application_answer_changed": False,
+        })
+        return False
+
+
+async def _advance_apply_adventure(page: Any, log: list[Dict[str, Any]]) -> bool:
+    """Choose only Workday's explicit same-origin manual-application path."""
+
+    await _decline_nonessential_cookies(page, log)
+    selector = '[data-automation-id="applyManually"]'
+    try:
+        control = await page.query_selector(selector)
+        if not control or not await control.is_visible():
+            return False
+        href = str(await control.get_attribute("href") or "")
+        target_url = urljoin(str(getattr(page, "url", "") or ""), href)
+        current_url = str(getattr(page, "url", "") or "")
+        same_origin = urlparse(target_url).netloc == urlparse(current_url).netloc
+        if not same_origin:
+            log.append({
+                "action": "workday_apply_manual_external_target_blocked",
+                "selector": selector,
+                "target_url": _safe_path_url(target_url),
+                "bypass_attempted": False,
+            })
+            return False
+
+        before_url = current_url
+        try:
+            await control.click(timeout=8000)
+        except Exception:
+            if not target_url:
+                raise
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=10000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(500)
+
+        after_url = str(getattr(page, "url", "") or "")
+        if after_url == before_url and target_url:
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:
+                pass
+            after_url = str(getattr(page, "url", "") or "")
+
+        log.append({
+            "action": "workday_apply_manually_selected",
+            "selector": selector,
+            "source_url": _safe_path_url(before_url),
+            "active_url": _safe_path_url(after_url),
+            "same_origin": True,
+            "bounded_apply_transition": True,
+            "autofill_with_resume_selected": False,
+            "last_application_reused": False,
+            "credentials_entered": False,
+            "account_created": False,
+            "bypass_attempted": False,
+        })
+        return True
+    except Exception as exc:
+        log.append({
+            "action": "workday_apply_manually_transition_failed",
+            "selector": selector,
+            "detail": f"{type(exc).__name__}: {str(exc)[:300]}",
+            "credentials_entered": False,
+            "account_created": False,
+            "bypass_attempted": False,
+        })
+        return False
+
+
 async def _prepare_with_popup_capture(
     self: ats_workday.WorkdayAdapter,
     surface: Any,
@@ -143,11 +247,12 @@ async def _prepare_with_popup_capture(
                 await active.wait_for_load_state("domcontentloaded", timeout=12000)
             except Exception:
                 pass
+            await _advance_apply_adventure(active, log)
             self._jobtomatik_workday_active_page = active
             log.append({
                 "action": "workday_application_popup_captured",
-                "source_url": before_url,
-                "active_url": str(getattr(active, "url", "") or ""),
+                "source_url": _safe_path_url(before_url),
+                "active_url": _safe_path_url(str(getattr(active, "url", "") or "")),
                 "popup_count": len(new_pages),
                 "bounded_apply_transition": True,
                 "credentials_entered": False,
@@ -158,12 +263,14 @@ async def _prepare_with_popup_capture(
 
     after_url = str(getattr(page, "url", "") or "")
     if after_url and after_url != before_url:
+        await _advance_apply_adventure(page, log)
         log.append({
             "action": "workday_application_navigation_captured",
-            "source_url": before_url,
-            "active_url": after_url,
+            "source_url": _safe_path_url(before_url),
+            "active_url": _safe_path_url(str(getattr(page, "url", "") or "")),
             "bounded_apply_transition": True,
         })
+        self._jobtomatik_workday_active_page = page
         return
 
     apply_clicked = any(
@@ -181,12 +288,13 @@ async def _prepare_with_popup_capture(
             await page.wait_for_load_state("networkidle", timeout=12000)
         except Exception:
             pass
+        await _advance_apply_adventure(page, log)
         self._jobtomatik_workday_active_page = page
         log.append({
             "action": "workday_public_apply_route_fallback",
-            "source_url": before_url,
-            "active_url": str(getattr(page, "url", "") or ""),
-            "requested_url": apply_url,
+            "source_url": _safe_path_url(before_url),
+            "active_url": _safe_path_url(str(getattr(page, "url", "") or "")),
+            "requested_url": _safe_path_url(apply_url),
             "same_origin": urlparse(apply_url).netloc == urlparse(before_url).netloc,
             "bounded_apply_transition": True,
             "credentials_entered": False,
@@ -196,8 +304,8 @@ async def _prepare_with_popup_capture(
     except Exception as exc:
         log.append({
             "action": "workday_public_apply_route_fallback_failed",
-            "source_url": before_url,
-            "requested_url": apply_url,
+            "source_url": _safe_path_url(before_url),
+            "requested_url": _safe_path_url(apply_url),
             "detail": f"{type(exc).__name__}: {str(exc)[:300]}",
             "credentials_entered": False,
             "account_created": False,
