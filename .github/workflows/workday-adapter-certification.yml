@@ -6,10 +6,13 @@ on:
       - "backend/app/services/ats_workday.py"
       - "backend/app/services/workday_challenge.py"
       - "backend/app/services/workday_certification.py"
+      - "backend/app/services/workday_port_integration.py"
+      - "backend/app/services/workday_popup_boundaries.py"
       - "backend/app/services/ats_registry.py"
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/control_*.py"
       - "backend/tests/test_workday_adapter.py"
+      - "backend/tests/test_workday_port_integration.py"
       - "backend/tests/test_workday_manifest.py"
       - ".github/workflows/workday-adapter-certification.yml"
   workflow_dispatch:
@@ -59,6 +62,7 @@ jobs:
           set +e
           pytest -q --tb=short -ra \
             tests/test_workday_adapter.py \
+            tests/test_workday_port_integration.py \
             tests/test_workday_manifest.py \
             > workday-adapter-certification.txt 2>&1
           status=$?
