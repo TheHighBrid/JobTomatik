@@ -1,0 +1,148 @@
+name: Workday synthetic live exercise
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_workday.py"
+      - "backend/app/services/workday_*.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/scripts/certify_workday_live.py"
+      - "backend/scripts/select_workday_candidates.py"
+      - ".github/workflows/workday-synthetic-live.yml"
+  schedule:
+    - cron: "53 15 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-current-job-dry-run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./workday-synthetic-live.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: workday-synthetic-live-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Select current certification candidates
+        run: |
+          python scripts/select_workday_candidates.py \
+            --output workday-synthetic-selection.json \
+            --urls-output workday-synthetic-candidates.txt \
+            --limit 3 \
+            --per-tenant 1
+
+      - name: Exercise a current Workday boundary without submission
+        id: live_exercise
+        shell: bash
+        run: |
+          set +e
+          : > workday-synthetic-attempts.txt
+          rm -f workday-synthetic-live.json workday-synthetic-attempt-*.json
+          index=0
+          success=1
+          while IFS= read -r url; do
+            [ -z "$url" ] && continue
+            index=$((index + 1))
+            report="workday-synthetic-attempt-${index}.json"
+            echo "=== Attempt ${index}: ${url} ===" | tee -a workday-synthetic-attempts.txt
+            python -u scripts/certify_workday_live.py \
+              --urls "$url" \
+              --exercise \
+              --synthetic-resume-path workday-synthetic-resume.pdf \
+              --report "$report" \
+              >> workday-synthetic-attempts.txt 2>&1
+            status=$?
+            if [ "$status" -eq 0 ]; then
+              cp "$report" workday-synthetic-live.json
+              success=0
+              break
+            fi
+          done < workday-synthetic-candidates.txt
+          cat workday-synthetic-attempts.txt
+          echo "exit_code=$success" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Assert certified current boundary without submission
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open('workday-synthetic-live.json'))
+          assert report['final_submit_clicked'] is False
+          assert report['passed'] is True
+          exercises = [item for item in report['reports'] if item.get('mode') == 'exercise']
+          assert len(exercises) == 1
+          exercise = exercises[0]
+          assert exercise['adapter'] == 'workday'
+          assert (exercise.get('public_metadata') or {}).get('public_metadata_certified')
+          assert exercise['certification_outcome'] in {
+              'ready_to_submit',
+              'post_fill_manual_challenge_handoff',
+              'pre_form_manual_handoff',
+          }
+          assert exercise['final_submit_clicked'] is False
+          if exercise['certification_outcome'] == 'ready_to_submit':
+              assert exercise['fields_filled'] > 0
+              assert any(
+                  item.get('verification') == 'passed'
+                  for item in exercise.get('upload_evidence') or []
+              )
+          elif exercise['certification_outcome'] == 'post_fill_manual_challenge_handoff':
+              assert exercise['fields_filled'] > 0
+              assert any(
+                  item.get('verification') == 'passed'
+                  for item in exercise.get('upload_evidence') or []
+              )
+          else:
+              assert int(exercise.get('fields_filled') or 0) == 0
+              assert not exercise.get('upload_evidence')
+          PY
+
+      - name: Upload Workday synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workday-synthetic-live-report
+          path: |
+            backend/workday-synthetic-live.json
+            backend/workday-synthetic-attempt-*.json
+            backend/workday-synthetic-attempts.txt
+            backend/workday-synthetic-candidates.txt
+            backend/workday-synthetic-selection.json
+            backend/workday-synthetic-resume.pdf
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail when the synthetic exercise failed
+        if: steps.live_exercise.outputs.exit_code != '0'
+        run: exit 1
