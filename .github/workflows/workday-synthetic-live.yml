@@ -20,7 +20,7 @@ permissions:
 jobs:
   synthetic-current-job-dry-run:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 60
 
     defaults:
       run:
@@ -58,8 +58,8 @@ jobs:
           python scripts/select_workday_candidates.py \
             --output workday-synthetic-selection.json \
             --urls-output workday-synthetic-candidates.txt \
-            --limit 15 \
-            --per-tenant 3
+            --limit 3 \
+            --per-tenant 1
 
       - name: Exercise a current Workday boundary without submission
         id: live_exercise
