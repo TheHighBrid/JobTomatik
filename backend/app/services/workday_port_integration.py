@@ -6,6 +6,7 @@ without changing the donor contract:
 
 * public CXS metadata uses the complete external job path rather than requisition ID
 * a Workday Apply popup or new tab becomes the active ATS surface
+* a no-op SPA Apply click may fall back once to the public same-origin ``/apply`` route
 * retained evidence continues to exclude query strings and fragments
 
 No credentials are entered, no account is created, and no challenge is bypassed.
@@ -52,6 +53,10 @@ def workday_cxs_full_job_url(target: ats_workday.WorkdayTarget) -> str:
     )
 
 
+def workday_public_apply_url(target: ats_workday.WorkdayTarget) -> str:
+    return f"{target.safe_url.rstrip('/')}/apply"
+
+
 async def _fetch_full_path_metadata(
     target: ats_workday.WorkdayTarget,
     *,
@@ -74,6 +79,7 @@ def _inspect_with_actual_cxs_url(
     value = _ORIGINAL_INSPECT(payload, target)
     value["cxs_url"] = workday_cxs_full_job_url(target)
     value["cxs_uses_full_external_path"] = bool(_candidate_job_path(target))
+    value["public_apply_url"] = workday_public_apply_url(target)
     return value
 
 
@@ -86,6 +92,24 @@ def _owner_page(surface: Any) -> Optional[Any]:
         return None
 
 
+async def _visible_application_boundary(page: Any) -> bool:
+    for selector in (
+        '[data-automation-id="bottom-navigation-next-button"]',
+        '[data-automation-id*="submit" i]',
+        'input[type="file"]',
+        'input[type="password"]',
+        '[data-automation-id*="createAccount" i]',
+        '[role="dialog"]',
+    ):
+        try:
+            control = await page.query_selector(selector)
+            if control and await control.is_visible():
+                return True
+        except Exception:
+            continue
+    return False
+
+
 async def _prepare_with_popup_capture(
     self: ats_workday.WorkdayAdapter,
     surface: Any,
@@ -95,6 +119,7 @@ async def _prepare_with_popup_capture(
     context = getattr(page, "context", None) if page is not None else None
     before_pages = list(context.pages) if context is not None else []
     before_url = str(getattr(page, "url", "") or "") if page is not None else ""
+    before_log_count = len(log)
 
     await _ORIGINAL_PREPARE(self, surface, log)
 
@@ -134,6 +159,45 @@ async def _prepare_with_popup_capture(
             "active_url": after_url,
             "bounded_apply_transition": True,
         })
+        return
+
+    apply_clicked = any(
+        item.get("action") == "workday_application_revealed"
+        for item in log[before_log_count:]
+    )
+    target = ats_workday.parse_workday_target(before_url)
+    if not apply_clicked or target is None or await _visible_application_boundary(page):
+        return
+
+    apply_url = workday_public_apply_url(target)
+    try:
+        await page.goto(apply_url, wait_until="domcontentloaded", timeout=30000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=12000)
+        except Exception:
+            pass
+        self._jobtomatik_workday_active_page = page
+        log.append({
+            "action": "workday_public_apply_route_fallback",
+            "source_url": before_url,
+            "active_url": str(getattr(page, "url", "") or ""),
+            "requested_url": apply_url,
+            "same_origin": urlparse(apply_url).netloc == urlparse(before_url).netloc,
+            "bounded_apply_transition": True,
+            "credentials_entered": False,
+            "account_created": False,
+            "bypass_attempted": False,
+        })
+    except Exception as exc:
+        log.append({
+            "action": "workday_public_apply_route_fallback_failed",
+            "source_url": before_url,
+            "requested_url": apply_url,
+            "detail": f"{type(exc).__name__}: {str(exc)[:300]}",
+            "credentials_entered": False,
+            "account_created": False,
+            "bypass_attempted": False,
+        })
 
 
 async def _resolve_with_active_page(
@@ -165,4 +229,8 @@ def install_workday_port_integration() -> None:
     ats_workday.WorkdayAdapter.resolve_surface = _resolve_with_active_page
 
 
-__all__ = ["install_workday_port_integration", "workday_cxs_full_job_url"]
+__all__ = [
+    "install_workday_port_integration",
+    "workday_cxs_full_job_url",
+    "workday_public_apply_url",
+]
