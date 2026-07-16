@@ -12,6 +12,7 @@ from app.services.greenhouse_pilot import (
     render_readiness_markdown,
     write_ledger,
 )
+from scripts.update_greenhouse_pilot_ledger import _enrich_report_identity
 
 
 def _summary(*, submit_clicked=False, employer="Example Inc", outcome="ready_to_submit"):
@@ -25,6 +26,13 @@ def _summary(*, submit_clicked=False, employer="Example Inc", outcome="ready_to_
                 "mode": "inspect",
                 "passed": True,
                 "final_submit_clicked": False,
+                "board_token": "example",
+                "job_id": "123",
+                "schema": {
+                    "company_name": employer,
+                    "title": "Fraud Analyst",
+                    "job_id": "123",
+                },
             },
             {
                 "url": "https://boards.greenhouse.io/example/jobs/123",
@@ -68,6 +76,27 @@ def test_normalizes_only_exercise_records_and_never_counts_inspection():
     assert record["uploads_verified"] == 1
     assert record["qualifies_for_dry_run_matrix"] is True
     assert record["final_submit_clicked"] is False
+
+
+def test_cli_enriches_configured_profile_identity_from_inspection_schema():
+    summary = _summary(employer="Verified Employer")
+    summary["reports"][1]["certification_metadata"] = {
+        "synthetic_profile": False,
+        "policy_count": 4,
+    }
+
+    enriched = _enrich_report_identity(summary)
+    records = normalize_dry_run_report(
+        enriched,
+        operator="github-actions",
+        source_reference="github:configured-profile:1",
+    )
+
+    assert records[0]["employer"] == "Verified Employer"
+    assert records[0]["role"] == "Fraud Analyst"
+    assert records[0]["board_token"] == "example"
+    assert records[0]["job_id"] == "123"
+    assert records[0]["synthetic_profile"] is False
 
 
 def test_rejects_any_final_submit_activity():
