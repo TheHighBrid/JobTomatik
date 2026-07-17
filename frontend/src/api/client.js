@@ -146,6 +146,18 @@ export const bulkSubmitApplications = (params) => api.post('/applications/bulk-s
 export const createFollowup = (appId, data) => api.post(`/applications/${appId}/followups`, data)
 export const listFollowups = (appId) => api.get(`/applications/${appId}/followups`)
 
+// Greenhouse supervised-submission approvals
+export const getSupervisedSubmissionPreflight = (appId) =>
+  api.get(`/supervised-submissions/applications/${appId}/preflight`)
+export const listSupervisedSubmissionApprovals = (appId) =>
+  api.get(`/supervised-submissions/applications/${appId}/approvals`)
+export const createSupervisedSubmissionApproval = (appId, data) =>
+  api.post(`/supervised-submissions/applications/${appId}/approvals`, data)
+export const revokeSupervisedSubmissionApproval = (appId, reference, data) =>
+  api.post(`/supervised-submissions/applications/${appId}/approvals/${reference}/revoke`, data)
+export const queueSupervisedSubmission = (appId, reference) =>
+  api.post(`/supervised-submissions/applications/${appId}/approvals/${reference}/submit`)
+
 // Resumable manual handoffs
 export const listApplicationHandoffs = (appId) => api.get(`/handoffs/application/${appId}/sessions`)
 export const getHandoffSession = (publicId) => api.get(`/handoffs/${publicId}`)
