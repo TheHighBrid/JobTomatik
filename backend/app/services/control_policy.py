@@ -24,6 +24,14 @@ _CANONICAL_POLICY_ALIASES = {
 }
 
 
+def _custom_phrase_matches(phrase: str, normalized_question: str) -> bool:
+    """Match normalized phrases on token boundaries, never inside another word."""
+    target = normalize_question_text(phrase)
+    if not target:
+        return False
+    return target == normalized_question or f" {target} " in f" {normalized_question} "
+
+
 def classify_control_question(question_text: str) -> Dict[str, str]:
     normalized = normalize_question_text(question_text)
     matches = []
@@ -68,7 +76,7 @@ def resolve_control_policy(
             candidates.append(policy)
             continue
         if canonical_key.startswith("custom.") and any(
-            normalize_question_text(phrase) in normalized
+            _custom_phrase_matches(phrase, normalized)
             for phrase in policy.get("match_phrases", [])
             if phrase
         ):
