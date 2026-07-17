@@ -9,7 +9,7 @@ without weakening option matching or allowing fallback selection.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from app.services import control_aria
 from app.services.control_engine import element_descriptor
@@ -60,6 +60,115 @@ def dial_code_option_equivalent(displayed: str, option: OptionRecord) -> bool:
     return bool(re.search(r"[A-Za-z]", expected_text))
 
 
+def _phone_fill_candidates(profile: Dict[str, Any], expected: str) -> List[str]:
+    """Return explicit representations that preserve the configured phone value."""
+    values = [str(expected or "").strip()]
+    digits = _digits(expected)
+    country = " ".join(
+        str(profile.get(key) or "")
+        for key in ("country", "country_code", "phone_country")
+    ).lower()
+
+    north_american = any(
+        token in country
+        for token in ("canada", "united states", "usa", "u.s.a", " us ")
+    )
+    if north_american and len(digits) == 10:
+        values.append(f"+1{digits}")
+    elif north_american and len(digits) == 11 and digits.startswith("1"):
+        values.append(digits[1:])
+
+    return list(dict.fromkeys(value for value in values if value))
+
+
+async def _observed_phone_values(element: Any) -> List[str]:
+    values: List[str] = []
+    try:
+        values.append(str(await element.input_value()))
+    except Exception:
+        pass
+    for attribute in ("value", "aria-valuetext", "data-value"):
+        try:
+            values.append(str(await element.get_attribute(attribute) or ""))
+        except Exception:
+            continue
+    try:
+        evaluated = await element.evaluate(
+            """(el) => [
+              el.value || '',
+              el.defaultValue || '',
+              el.getAttribute('value') || '',
+              el.getAttribute('aria-valuetext') || '',
+              el.dataset?.value || ''
+            ]"""
+        )
+        if isinstance(evaluated, list):
+            values.extend(str(value or "") for value in evaluated)
+    except Exception:
+        pass
+    return list(dict.fromkeys(value for value in values if value))
+
+
+async def _try_phone_candidate(
+    surface: Any,
+    element: Any,
+    candidate: str,
+    expected: str,
+) -> Tuple[str, str]:
+    methods = ("fill", "type", "native_setter")
+    for method in methods:
+        try:
+            if method == "fill":
+                await element.fill(candidate)
+            elif method == "type":
+                await element.click()
+                await element.press("Control+A")
+                await element.type(candidate, delay=15)
+            else:
+                await element.evaluate(
+                    """(el, value) => {
+                      const prototype = Object.getPrototypeOf(el);
+                      const setter = Object.getOwnPropertyDescriptor(
+                        prototype, 'value'
+                      )?.set;
+                      if (setter) setter.call(el, value);
+                      else el.value = value;
+                      el.dispatchEvent(new Event('input', {bubbles: true}));
+                      el.dispatchEvent(new Event('change', {bubbles: true}));
+                    }""",
+                    candidate,
+                )
+            try:
+                await element.press("Tab")
+            except Exception:
+                pass
+            await surface.wait_for_timeout(150)
+            observed = await _observed_phone_values(element)
+            match = next(
+                (
+                    value
+                    for value in observed
+                    if phone_values_equivalent(value, expected)
+                ),
+                "",
+            )
+            if match:
+                return match, method
+        except Exception:
+            continue
+    return "", ""
+
+
+def _phone_review_items(review_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        item
+        for item in review_items
+        if item.get("reason_code") == "unsupported_control"
+        and (item.get("details") or {}).get("canonical_key") == "profile.phone"
+        and (item.get("details") or {}).get("control_type") == "text"
+    ]
+
+
 async def _reconcile_phone_review(
     surface: Any,
     *,
@@ -88,23 +197,50 @@ async def _reconcile_phone_review(
             descriptor = await element_descriptor(surface, element)
             if _safe_field(descriptor) != "phone":
                 continue
-            actual = str(await element.input_value())
-            if not phone_values_equivalent(actual, expected):
+
+            matching_reviews = _phone_review_items(review_items)
+            if not matching_reviews:
                 continue
 
-            removed = []
-            for item in list(review_items):
-                details = item.get("details") or {}
-                if (
-                    item.get("reason_code") == "unsupported_control"
-                    and details.get("canonical_key") == "profile.phone"
-                    and details.get("descriptor") == descriptor
-                    and details.get("control_type") == "text"
-                ):
-                    review_items.remove(item)
-                    removed.append(item)
-            if not removed:
+            observed = await _observed_phone_values(element)
+            actual = next(
+                (
+                    value
+                    for value in observed
+                    if phone_values_equivalent(value, expected)
+                ),
+                "",
+            )
+            fill_method = "existing_value"
+            candidate_used = ""
+            if not actual:
+                for candidate in _phone_fill_candidates(profile, expected):
+                    actual, fill_method = await _try_phone_candidate(
+                        surface,
+                        element,
+                        candidate,
+                        expected,
+                    )
+                    if actual:
+                        candidate_used = candidate
+                        break
+
+            if not actual:
+                log.append({
+                    "action": "phone_widget_retry_failed",
+                    "field": "phone",
+                    "descriptor": descriptor[:200],
+                    "expected_digit_count": len(_digits(expected)),
+                    "observed_digit_counts": sorted({
+                        len(_digits(value)) for value in observed if _digits(value)
+                    }),
+                    "verified": False,
+                })
                 continue
+
+            for item in matching_reviews:
+                if item in review_items:
+                    review_items.remove(item)
 
             already_verified = (
                 await element.get_attribute("data-jt-phone-format-verified") == "true"
@@ -117,6 +253,8 @@ async def _reconcile_phone_review(
                 "field": "phone",
                 "descriptor": descriptor[:200],
                 "verification": "significant_digits",
+                "fill_method": fill_method,
+                "candidate_digit_count": len(_digits(candidate_used)),
                 "actual_digit_count": len(_digits(actual)),
                 "expected_digit_count": len(_digits(expected)),
                 "counted": not already_verified,
