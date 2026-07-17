@@ -19,6 +19,7 @@ from app.api import (
     notifications,
     profile,
     settings as settings_api,
+    supervised_submissions,
 )
 from app.config import get_settings
 from app.database import Base, engine
@@ -26,9 +27,13 @@ from app.services.ats_manifest import ats_certification_manifest
 from app.services.control_engine import certification_manifest
 from app.services.handoff_integration import install_handoff_task_integration
 from app.services.operations_policy import operations_readiness_manifest
+from app.services.supervised_submission_integration import (
+    install_supervised_submission_task_gate,
+)
 
 settings = get_settings()
 install_handoff_task_integration()
+install_supervised_submission_task_gate()
 
 
 def _safe_migrate(eng):
@@ -103,6 +108,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(controller.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
+app.include_router(supervised_submissions.router, prefix="/api")
 app.include_router(adapter_health.router, prefix="/api")
 app.include_router(handoffs.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")

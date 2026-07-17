@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     # Keep disabled until the active adapter has passed supervised certification.
     allow_real_application_submit: bool = False
 
+    # Additional scoped gate for the Greenhouse supervised real-submission pilot.
+    # Both this and ALLOW_REAL_APPLICATION_SUBMIT must be true, and every live
+    # attempt still requires a one-time exact-payload approval.
+    greenhouse_supervised_pilot_enabled: bool = False
+    supervised_approval_ttl_minutes: int = 20
+    supervised_approval_max_ttl_minutes: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
