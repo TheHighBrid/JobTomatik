@@ -72,7 +72,7 @@ https://job-boards.greenhouse.io/fns/jobs/4656153006
 https://job-boards.greenhouse.io/bloomreach/jobs/8064322
 https://job-boards.greenhouse.io/roofr/jobs/4708653005"
             exercise_mode="true"
-            echo "Running disposable five-employer pilot batch."
+            echo "Running disposable Greenhouse pilot batch 02 across five employers."
           fi
 
           args=(--report greenhouse-live-certification.json)
