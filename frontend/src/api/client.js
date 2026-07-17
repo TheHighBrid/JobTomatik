@@ -145,6 +145,7 @@ export const submitApplication = (id, dryRun = true) =>
 export const bulkSubmitApplications = (params) => api.post('/applications/bulk-submit', null, { params })
 export const createFollowup = (appId, data) => api.post(`/applications/${appId}/followups`, data)
 export const listFollowups = (appId) => api.get(`/applications/${appId}/followups`)
+export const listSubmissionEvidence = (appId) => api.get(`/applications/${appId}/evidence`)
 
 // Greenhouse supervised-submission approvals
 export const getSupervisedSubmissionPreflight = (appId) =>
@@ -157,6 +158,16 @@ export const revokeSupervisedSubmissionApproval = (appId, reference, data) =>
   api.post(`/supervised-submissions/applications/${appId}/approvals/${reference}/revoke`, data)
 export const queueSupervisedSubmission = (appId, reference) =>
   api.post(`/supervised-submissions/applications/${appId}/approvals/${reference}/submit`)
+
+// Independent submission-evidence review and pilot export
+export const getSubmissionEvidenceReviewPreflight = (appId, evidenceId) =>
+  api.get(`/applications/${appId}/evidence/${evidenceId}/review-preflight`)
+export const createSubmissionEvidenceReview = (appId, evidenceId, data) =>
+  api.post(`/applications/${appId}/evidence/${evidenceId}/review`, data)
+export const listSubmissionEvidenceReviews = (appId) =>
+  api.get(`/applications/${appId}/evidence-reviews`)
+export const exportSupervisedPilotRecord = (appId) =>
+  api.get(`/applications/${appId}/supervised-pilot-record`)
 
 // Resumable manual handoffs
 export const listApplicationHandoffs = (appId) => api.get(`/handoffs/application/${appId}/sessions`)
