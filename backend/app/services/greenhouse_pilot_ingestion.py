@@ -166,6 +166,7 @@ def load_phase_a_baseline(
                     "adapter_version": "1.1.1",
                     "operator": "github-actions:TheHighBrid",
                     "source_reference": str(row.get("source_reference") or "").strip(),
+                    "approval_reference": None,
                     "controls_discovered": _optional_int(row.get("controls_discovered")),
                     "controls_filled": _optional_int(row.get("controls_filled")),
                     "controls_skipped": None,
