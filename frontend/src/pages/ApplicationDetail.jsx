@@ -8,6 +8,7 @@ import {
 } from '../api/client'
 import ManualHandoffPanel from '../components/ManualHandoffPanel'
 import SupervisedSubmissionPanel from '../components/SupervisedSubmissionPanel'
+import SubmissionEvidenceReviewPanel from '../components/SubmissionEvidenceReviewPanel'
 import StatusBadge from '../components/StatusBadge'
 import {
   ArrowLeft, Loader2, RefreshCw, Send, Calendar,
@@ -135,6 +136,7 @@ export default function ApplicationDetail() {
 
       <ManualHandoffPanel applicationId={Number(id)} />
       <SupervisedSubmissionPanel application={app} />
+      <SubmissionEvidenceReviewPanel application={app} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Status & Notes */}
