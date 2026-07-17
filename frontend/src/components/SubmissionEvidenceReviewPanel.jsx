@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   AlertTriangle,
+  BarChart3,
   CheckCircle2,
   ClipboardCheck,
+  Database,
   Download,
   ExternalLink,
   FileCheck2,
@@ -16,7 +18,9 @@ import {
 import {
   createSubmissionEvidenceReview,
   exportSupervisedPilotRecord,
+  getGreenhousePilotLedgerReadiness,
   getSubmissionEvidenceReviewPreflight,
+  ingestSupervisedPilotRecord,
   listSubmissionEvidence,
   listSubmissionEvidenceReviews,
 } from '../api/client'
@@ -34,6 +38,22 @@ function formatDate(value) {
 
 function blockerLabel(value) {
   return String(value || '').replaceAll('_', ' ')
+}
+
+function ProgressMeter({ label, value, target }) {
+  const bounded = Math.min(target, Math.max(0, Number(value || 0)))
+  const percentage = target > 0 ? Math.round((bounded / target) * 100) : 0
+  return (
+    <div className="rounded-lg border border-indigo-200 bg-white p-3">
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="font-medium text-slate-700">{label}</span>
+        <strong className="text-indigo-950">{value || 0} / {target}</strong>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-indigo-100">
+        <div className="h-full rounded-full bg-indigo-600" style={{ width: `${percentage}%` }} />
+      </div>
+    </div>
+  )
 }
 
 function EvidenceSummary({ evidence }) {
@@ -98,6 +118,14 @@ export default function SubmissionEvidenceReviewPanel({ application }) {
     () => evidence.find((item) => item.id === selectedEvidenceId) || null,
     [evidence, selectedEvidenceId],
   )
+
+  const readinessQuery = useQuery({
+    queryKey: ['greenhouse-pilot-ledger-readiness'],
+    queryFn: getGreenhousePilotLedgerReadiness,
+    select: (response) => response.data,
+    enabled: Boolean(applicationId && evidence.length),
+    retry: false,
+  })
 
   useEffect(() => {
     if (!selectedEvidenceId && evidence.length) setSelectedEvidenceId(evidence[0].id)
@@ -170,11 +198,30 @@ export default function SubmissionEvidenceReviewPanel({ application }) {
     onError: (error) => toast.error(error.response?.data?.detail || 'Pilot export is not ready'),
   })
 
+  const ingestMutation = useMutation({
+    mutationFn: () => ingestSupervisedPilotRecord(applicationId),
+    onSuccess: (response) => {
+      toast.success(response.data?.added ? 'Confirmed record added to the canonical pilot ledger.' : 'This exact record is already in the canonical ledger.')
+      qc.invalidateQueries({ queryKey: ['greenhouse-pilot-ledger-readiness'] })
+      qc.invalidateQueries({ queryKey: ['application', String(applicationId)] })
+      qc.invalidateQueries({ queryKey: ['application', applicationId] })
+    },
+    onError: (error) => toast.error(error.response?.data?.detail || 'Pilot ledger ingestion failed'),
+  })
+
   if (!evidenceQuery.isLoading && evidence.length === 0) return null
 
   const reviews = reviewsQuery.data || []
   const acceptedValidReview = reviews.find(
     (review) => review.decision === 'accepted' && review.valid_for_current_evidence,
+  )
+  const summary = readinessQuery.data?.summary || {}
+  const gates = summary.gates || {}
+  const alreadyIngested = Boolean(
+    application?.events?.some((event) => event.event_type === 'supervised_pilot_record_ingested'),
+  )
+  const canIngest = Boolean(
+    acceptedValidReview && application.automation_state === 'confirmed',
   )
 
   return (
@@ -339,20 +386,61 @@ export default function SubmissionEvidenceReviewPanel({ application }) {
 
         <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
           <div className="flex items-center gap-2 font-semibold text-indigo-950">
-            <Download className="h-4 w-4" /> Supervised pilot ledger export
+            <Database className="h-4 w-4" /> Canonical supervised pilot ledger
           </div>
           <p className="mt-1 text-xs leading-relaxed text-indigo-800">
-            Export is available only after a currently valid accepted review confirms the application. The JSON contains hashes and references, not raw answers.
+            A confirmed record can be written only from server-side approval, evidence, review, and idempotency state. Exact replay is safe and conflicting evidence is rejected.
           </p>
-          <button
-            type="button"
-            onClick={() => exportMutation.mutate()}
-            disabled={!acceptedValidReview || application.automation_state !== 'confirmed' || exportMutation.isPending}
-            className="btn-secondary mt-3 flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {exportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Export canonical supervised pilot record
-          </button>
+
+          {readinessQuery.isLoading ? (
+            <div className="mt-3 flex items-center gap-2 text-xs text-indigo-800">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading pilot readiness…
+            </div>
+          ) : readinessQuery.data ? (
+            <div className="mt-3 space-y-3">
+              <div className="grid gap-2 md:grid-cols-2">
+                <ProgressMeter label="Representative dry runs" value={summary.qualifying_dry_run_count} target={30} />
+                <ProgressMeter label="Distinct employers" value={summary.distinct_dry_run_employer_count} target={30} />
+                <ProgressMeter label="Confirmed supervised submissions" value={summary.supervised_confirmed_count} target={10} />
+                <div className="rounded-lg border border-indigo-200 bg-white p-3 text-xs text-slate-700">
+                  <div className="flex items-center gap-2 font-medium text-slate-900"><BarChart3 className="h-4 w-4" /> Ledger state</div>
+                  <div className="mt-2 space-y-1">
+                    <div>Records: <strong>{readinessQuery.data.ledger_record_count || 0}</strong></div>
+                    <div>SHA-256: <strong title={readinessQuery.data.ledger_sha256}>{compactHash(readinessQuery.data.ledger_sha256)}</strong></div>
+                    <div>Final release approval: <strong>{gates.explicit_release_approval_reference ? 'Recorded' : 'Not recorded'}</strong></div>
+                  </div>
+                </div>
+              </div>
+              <div className={`rounded-lg px-3 py-2 text-xs font-medium ${summary.human_reviewed_submit_ready ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-900'}`}>
+                {summary.human_reviewed_submit_ready
+                  ? 'All human-reviewed submit promotion gates are satisfied.'
+                  : 'Promotion remains blocked until every evidence count and the separate final release approval gate pass.'}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 text-xs text-rose-700">Pilot readiness could not be loaded.</div>
+          )}
+
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => ingestMutation.mutate()}
+              disabled={!canIngest || ingestMutation.isPending}
+              className="btn-primary flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {ingestMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+              {alreadyIngested ? 'Verify canonical ledger record' : 'Add confirmed record to ledger'}
+            </button>
+            <button
+              type="button"
+              onClick={() => exportMutation.mutate()}
+              disabled={!canIngest || exportMutation.isPending}
+              className="btn-secondary flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {exportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Download supervised pilot JSON
+            </button>
+          </div>
         </div>
       </div>
     </section>
