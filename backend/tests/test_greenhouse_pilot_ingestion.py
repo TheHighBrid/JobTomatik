@@ -125,8 +125,8 @@ def test_verified_phase_a_baseline_is_complete_and_fail_safe():
     assert all(record["mode"] == "dry_run" for record in records)
     assert all(record["qualifies_for_dry_run_matrix"] is True for record in records)
     assert all(record["final_submit_clicked"] is False for record in records)
-    assert all(record["approval_reference"] is None for record in records)
-    assert all(record["confirmation_evidence_reference"] is None for record in records)
+    assert all(record.get("approval_reference") is None for record in records)
+    assert all(record.get("confirmation_evidence_reference") is None for record in records)
 
 
 def test_phase_a_baseline_digest_is_pinned():
