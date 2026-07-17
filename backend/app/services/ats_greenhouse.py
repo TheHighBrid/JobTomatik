@@ -30,7 +30,7 @@ GREENHOUSE_FIELD_TYPES = {
     "multi_value_single_select",
     "multi_value_multi_select",
 }
-GREENHOUSE_ADAPTER_VERSION = "1.1.0"
+GREENHOUSE_ADAPTER_VERSION = "1.1.1"
 
 
 def is_greenhouse_host(host: str) -> bool:
@@ -189,6 +189,24 @@ class GreenhouseAdapter(ATSAdapter):
         return False
 
     async def resolve_surface(self, page: Any) -> Any:
+        """Resolve the actual Greenhouse form without selecting unrelated helper frames."""
+        page_url = str(getattr(page, "url", "") or "")
+        page_host = urlparse(page_url).hostname or ""
+        if is_greenhouse_host(page_host):
+            return page
+
+        for selector in (
+            '#application_form',
+            'form[action*="greenhouse" i]',
+            '[data-greenhouse-job-id]',
+            '[data-qa="job-application"]',
+        ):
+            try:
+                if await page.query_selector(selector):
+                    return page
+            except Exception:
+                continue
+
         for frame in getattr(page, "frames", []):
             try:
                 if frame is not page.main_frame and is_greenhouse_host(
@@ -197,16 +215,18 @@ class GreenhouseAdapter(ATSAdapter):
                     return frame
             except Exception:
                 continue
+
         for selector in (
-            'iframe[src*="greenhouse" i]',
-            'iframe[title*="application" i]',
-            'iframe[id*="greenhouse" i]',
+            'iframe[src*="greenhouse.io" i]',
+            'iframe[src*="greenhouse.com" i]',
         ):
             try:
                 iframe = await page.query_selector(selector)
                 if iframe:
                     frame = await iframe.content_frame()
-                    if frame:
+                    if frame and is_greenhouse_host(
+                        urlparse(frame.url or "").hostname or ""
+                    ):
                         return frame
             except Exception:
                 continue
