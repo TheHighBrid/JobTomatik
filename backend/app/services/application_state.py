@@ -44,11 +44,13 @@ _ALLOWED_TRANSITIONS = {
     },
     ApplicationAutomationState.submission_uncertain.value: {
         ApplicationAutomationState.submitted.value,
+        ApplicationAutomationState.confirmed.value,
         ApplicationAutomationState.needs_review.value,
         ApplicationAutomationState.failed.value,
     },
     ApplicationAutomationState.submitted.value: {
         ApplicationAutomationState.confirmed.value,
+        ApplicationAutomationState.submission_uncertain.value,
         ApplicationAutomationState.needs_review.value,
     },
     ApplicationAutomationState.confirmed.value: set(),
