@@ -105,7 +105,7 @@ def test_build_synthetic_profile_uses_exact_schema_question_phrases():
     assert profile["synthetic_certification_only"] is True
     assert profile["email"].endswith("@example.test")
     policies = profile["answer_policies"]
-    assert len(policies) == 4
+    assert len(policies) == 5
     assert all(policy["confirmed_at"] for policy in policies)
     assert all(policy["allow_autofill"] is True for policy in policies)
 
@@ -114,6 +114,7 @@ def test_build_synthetic_profile_uses_exact_schema_question_phrases():
     assert by_phrase["Location (City)"]["answer_label"] == SYNTHETIC_LOCATION
     assert by_phrase["Why are you interested in this role?"]["answer_label"] == SYNTHETIC_TEXT_RESPONSE
     assert by_phrase["Gender identity"]["answer_label"] == "Prefer not to say"
+    assert by_phrase["country | off | Country* | Phone"]["answer_label"] == "Canada +1"
     assert "Longitude" not in by_phrase
     assert "Latitude" not in by_phrase
 
