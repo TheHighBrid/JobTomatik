@@ -1,0 +1,91 @@
+name: Recovery incident drill
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/app/services/application_recovery.py"
+      - "backend/app/services/recovery_drill.py"
+      - "backend/app/services/operations_settings.py"
+      - "backend/app/tasks/operations.py"
+      - "backend/scripts/run_recovery_incident_drill.py"
+      - "backend/tests/test_recovery_incident_drill.py"
+      - "docs/operations/recovery-incident-response.md"
+      - ".github/workflows/recovery-incident-drill.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/services/application_recovery.py"
+      - "backend/app/services/recovery_drill.py"
+      - "backend/app/services/operations_settings.py"
+      - "backend/app/tasks/operations.py"
+      - "backend/scripts/run_recovery_incident_drill.py"
+      - "backend/tests/test_recovery_incident_drill.py"
+      - "docs/operations/recovery-incident-response.md"
+      - ".github/workflows/recovery-incident-drill.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-drill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: sqlite:///./recovery-drill-bootstrap.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: recovery-drill-ci-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Run recovery incident drill
+        run: python scripts/run_recovery_incident_drill.py --output recovery-incident-drill.json
+
+      - name: Assert drill safety and recovery gates
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("recovery-incident-drill.json").read_text())
+          assert report["passed"] is True
+          assert report["safety"]["browser_opened"] is False
+          assert report["safety"]["network_contacted"] is False
+          assert report["safety"]["final_submit_clicked"] is False
+          assert report["safety"]["real_submission_enabled"] is False
+          assert report["safety"]["autopilot_enabled"] is False
+          assert report["counts"]["submitted_or_confirmed"] == 0
+          assert report["first_recovery"]["recovered"] == 3
+          assert report["replay_recovery"]["recovered"] == 0
+          assert len(report["report_sha256"]) == 64
+          print("Recovery incident drill gates passed")
+          PY
+
+      - name: Upload recovery drill report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: recovery-incident-drill-report
+          path: backend/recovery-incident-drill.json
+          if-no-files-found: error
+          retention-days: 90
