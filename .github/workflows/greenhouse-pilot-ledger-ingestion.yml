@@ -8,7 +8,12 @@ on:
       - "backend/app/services/greenhouse_pilot_ingestion.py"
       - "backend/app/api/greenhouse_pilot_ledger.py"
       - "backend/app/main.py"
+      - "backend/evidence/greenhouse-phase-a-baseline.csv"
+      - "backend/evidence/greenhouse-phase-a-sources.csv"
+      - "backend/evidence/greenhouse-phase-a-readiness.json"
+      - "backend/evidence/greenhouse-phase-a-readiness.md"
       - "backend/tests/test_greenhouse_pilot_ingestion.py"
+      - "docs/operations/greenhouse-phase-a-baseline.md"
       - "docs/operations/greenhouse-pilot-ledger-ingestion.md"
       - ".env.example"
       - ".github/workflows/greenhouse-pilot-ledger-ingestion.yml"
@@ -20,7 +25,12 @@ on:
       - "backend/app/services/greenhouse_pilot_ingestion.py"
       - "backend/app/api/greenhouse_pilot_ledger.py"
       - "backend/app/main.py"
+      - "backend/evidence/greenhouse-phase-a-baseline.csv"
+      - "backend/evidence/greenhouse-phase-a-sources.csv"
+      - "backend/evidence/greenhouse-phase-a-readiness.json"
+      - "backend/evidence/greenhouse-phase-a-readiness.md"
       - "backend/tests/test_greenhouse_pilot_ingestion.py"
+      - "docs/operations/greenhouse-phase-a-baseline.md"
       - "docs/operations/greenhouse-pilot-ledger-ingestion.md"
       - ".env.example"
       - ".github/workflows/greenhouse-pilot-ledger-ingestion.yml"
@@ -45,6 +55,7 @@ jobs:
       GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
       AUTOPILOT_ENABLED: "false"
       ENABLE_RESUMABLE_HANDOFFS: "false"
+      GREENHOUSE_PILOT_BASELINE_PATH: evidence/greenhouse-phase-a-baseline.csv
       GREENHOUSE_PILOT_LEDGER_PATH: evidence-ci/greenhouse-pilot-ledger.jsonl
       GREENHOUSE_PILOT_READINESS_JSON_PATH: evidence-ci/greenhouse-pilot-readiness.json
       GREENHOUSE_PILOT_READINESS_MARKDOWN_PATH: evidence-ci/greenhouse-pilot-readiness.md
@@ -67,6 +78,26 @@ jobs:
           python -m py_compile \
             app/services/greenhouse_pilot_ingestion.py \
             app/api/greenhouse_pilot_ledger.py
+
+      - name: Verify Phase A artifact baseline
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from app.services.greenhouse_pilot_ingestion import (
+              PHASE_A_BASELINE_SHA256,
+              load_phase_a_baseline,
+          )
+          import hashlib
+
+          path = Path("evidence/greenhouse-phase-a-baseline.csv")
+          records = load_phase_a_baseline(path)
+          employers = {record["employer"].strip().lower() for record in records}
+          assert len(records) == 30
+          assert len(employers) == 30
+          assert hashlib.sha256(path.read_bytes()).hexdigest() == PHASE_A_BASELINE_SHA256
+          assert all(record["final_submit_clicked"] is False for record in records)
+          print("Verified 30 artifact-backed Phase A records across 30 employers")
+          PY
 
       - name: Run locked ingestion regression suite
         run: pytest -q --tb=short -ra tests/test_greenhouse_pilot_ingestion.py
