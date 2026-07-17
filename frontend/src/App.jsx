@@ -6,6 +6,7 @@ import JobSearch from './pages/JobSearch'
 import Queue from './pages/Queue'
 import Applications from './pages/Applications'
 import ApplicationDetail from './pages/ApplicationDetail'
+import AdapterHealth from './pages/AdapterHealth'
 import Profile from './pages/Profile'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="queue" element={<Queue />} />
           <Route path="applications" element={<Applications />} />
           <Route path="applications/:id" element={<ApplicationDetail />} />
+          <Route path="adapter-health" element={<AdapterHealth />} />
           <Route path="profile" element={<Profile />} />
           <Route path="settings" element={<Settings />} />
         </Route>
