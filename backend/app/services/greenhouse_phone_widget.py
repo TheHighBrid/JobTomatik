@@ -105,7 +105,9 @@ async def _reconcile_phone_review(
             already_verified = (
                 await element.get_attribute("data-jt-phone-format-verified") == "true"
             )
-            await element.set_attribute("data-jt-phone-format-verified", "true")
+            await element.evaluate(
+                "(el) => el.setAttribute('data-jt-phone-format-verified', 'true')"
+            )
             log.append({
                 "action": "phone_format_verified",
                 "field": "phone",
