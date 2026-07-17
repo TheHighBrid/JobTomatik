@@ -38,6 +38,7 @@ class OperationsSettings:
     failure_threshold: int
     failure_window_minutes: int
     circuit_breaker_minutes: int
+    stale_attempt_minutes: int
     disabled_platforms: str
 
 
@@ -52,5 +53,6 @@ def get_operations_settings() -> OperationsSettings:
         failure_threshold=_env_int("AUTOPILOT_FAILURE_THRESHOLD", 3, 1),
         failure_window_minutes=_env_int("AUTOPILOT_FAILURE_WINDOW_MINUTES", 60, 1),
         circuit_breaker_minutes=_env_int("AUTOPILOT_CIRCUIT_BREAKER_MINUTES", 120, 1),
+        stale_attempt_minutes=_env_int("AUTOPILOT_STALE_ATTEMPT_MINUTES", 30, 5),
         disabled_platforms=os.getenv("AUTOPILOT_DISABLED_PLATFORMS", ""),
     )
