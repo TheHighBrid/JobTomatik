@@ -1,0 +1,100 @@
+name: Greenhouse supervised approval certification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/app/api/supervised_submissions.py"
+      - "backend/app/config.py"
+      - "backend/app/main.py"
+      - "backend/app/models/submission_approval.py"
+      - "backend/app/schemas/supervised_submission.py"
+      - "backend/app/services/supervised_submission.py"
+      - "backend/app/services/supervised_submission_integration.py"
+      - "backend/tests/test_supervised_submission_approval.py"
+      - "docs/greenhouse-supervised-approval-runbook.md"
+      - ".github/workflows/greenhouse-supervised-approval.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/api/supervised_submissions.py"
+      - "backend/app/config.py"
+      - "backend/app/main.py"
+      - "backend/app/models/submission_approval.py"
+      - "backend/app/schemas/supervised_submission.py"
+      - "backend/app/services/supervised_submission.py"
+      - "backend/app/services/supervised_submission_integration.py"
+      - "backend/tests/test_supervised_submission_approval.py"
+      - "docs/greenhouse-supervised-approval-runbook.md"
+      - ".github/workflows/greenhouse-supervised-approval.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  exact-approval-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: sqlite:///./supervised-approval-ci.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: supervised-approval-ci-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Compile supervised approval modules
+        run: |
+          python -m py_compile \
+            app/api/supervised_submissions.py \
+            app/models/submission_approval.py \
+            app/schemas/supervised_submission.py \
+            app/services/supervised_submission.py \
+            app/services/supervised_submission_integration.py
+
+      - name: Run exact approval regression suite
+        run: |
+          pytest -q tests/test_supervised_submission_approval.py \
+            --junitxml=supervised-approval-report.xml
+
+      - name: Assert default safety flags
+        run: |
+          python - <<'PY'
+          from app.config import get_settings
+
+          settings = get_settings()
+          assert settings.allow_real_application_submit is False
+          assert settings.greenhouse_supervised_pilot_enabled is False
+          assert settings.supervised_approval_ttl_minutes <= 20
+          assert settings.supervised_approval_max_ttl_minutes <= 60
+          print("Supervised approval defaults remain fail closed")
+          PY
+
+      - name: Upload supervised approval report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: greenhouse-supervised-approval-report
+          path: backend/supervised-approval-report.xml
+          if-no-files-found: error
+          retention-days: 90
