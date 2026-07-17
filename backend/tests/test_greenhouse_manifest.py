@@ -4,7 +4,7 @@ from app.services.ats_greenhouse import GreenhouseAdapter
 def test_greenhouse_manifest_reports_completed_synthetic_live_exercise():
     manifest = GreenhouseAdapter().manifest()
 
-    assert manifest["version"] == "1.1.0"
+    assert manifest["version"] == "1.1.1"
     assert manifest["certification_level"] == (
         "fixture_live_inspection_and_synthetic_exercise_certified"
     )
