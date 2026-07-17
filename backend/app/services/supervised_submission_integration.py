@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from app.database import SessionLocal
 from app.models.application import Application, ApplicationEvent
 from app.models.job import Job
 from app.models.notification import Notification, NotificationType
@@ -104,7 +103,9 @@ def install_supervised_submission_task_gate() -> None:
         if dry_run:
             return _ORIGINAL_RUN(application_id, dry_run=True)
 
-        db = SessionLocal()
+        # Use the exact same session factory as the wrapped worker. This keeps
+        # test overrides, local SQLite, and deployed database routing aligned.
+        db = application_tasks.SessionLocal()
         try:
             application = (
                 db.query(Application)
