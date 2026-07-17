@@ -150,7 +150,7 @@ def test_data_compliance_adds_explicit_synthetic_only_consent_policy():
     assert consent["scope_value"] == "greenhouse"
 
     resolved = resolve_runtime_policy(
-        "By checking this box, I agree to allow Example to store and process my data.",
+        "Allow Example to store and process my data for recruiting purposes.",
         policies,
     )
     assert resolved["matched"] is True
