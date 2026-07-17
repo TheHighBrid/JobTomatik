@@ -27,7 +27,6 @@ def _digits(value: Any) -> str:
 
 
 def phone_values_equivalent(actual: Any, expected: Any) -> bool:
-    """Verify equivalent national/international phone representations."""
     actual_digits = _digits(actual)
     expected_digits = _digits(expected)
     if not actual_digits or not expected_digits:
@@ -36,10 +35,7 @@ def phone_values_equivalent(actual: Any, expected: Any) -> bool:
         return True
     if min(len(actual_digits), len(expected_digits)) < 8:
         return False
-    return (
-        actual_digits.endswith(expected_digits)
-        or expected_digits.endswith(actual_digits)
-    )
+    return actual_digits.endswith(expected_digits) or expected_digits.endswith(actual_digits)
 
 
 def _dial_code(value: Any) -> str:
@@ -48,23 +44,18 @@ def _dial_code(value: Any) -> str:
 
 
 def dial_code_option_equivalent(displayed: str, option: OptionRecord) -> bool:
-    """Confirm that an exact matched phone-country option changed to its dial code."""
     expected_code = _dial_code(option.label) or _dial_code(option.value)
     displayed_code = _dial_code(displayed)
     if not expected_code or displayed_code != expected_code:
         return False
-
-    expected_text = str(option.label or option.value or "")
-    return bool(re.search(r"[A-Za-z]", expected_text))
+    return bool(re.search(r"[A-Za-z]", str(option.label or option.value or "")))
 
 
 def _matching_phone_reviews(
-    review_items: List[Dict[str, Any]],
-    descriptor: str,
+    review_items: List[Dict[str, Any]], descriptor: str,
 ) -> List[Dict[str, Any]]:
     return [
-        item
-        for item in review_items
+        item for item in review_items
         if (
             item.get("reason_code") == "unsupported_control"
             and (item.get("details") or {}).get("canonical_key") == "profile.phone"
@@ -74,15 +65,26 @@ def _matching_phone_reviews(
     ]
 
 
+def _phone_attempts(profile: Dict[str, Any], expected: str) -> List[Tuple[str, str]]:
+    attempts = [("profile", expected)]
+    country = str(profile.get("country") or "").strip().casefold()
+    digits = _digits(expected)
+    if (
+        profile.get("synthetic_certification_only") is True
+        and country == "canada"
+        and not str(expected).strip().startswith("+")
+        and len(digits) == 10
+    ):
+        attempts.append(("canada_e164", f"+1{digits}"))
+    return attempts
+
+
 async def _retry_phone_with_keyboard(
-    surface: Any,
-    element: Any,
-    expected: str,
+    surface: Any, element: Any, candidate: str,
 ) -> Tuple[str, Dict[str, Any]]:
-    """Use normal keyboard events and return non-sensitive pilot diagnostics."""
     diagnostics: Dict[str, Any] = {
         "attempted": True,
-        "expected_digit_count": len(_digits(expected)),
+        "candidate_digit_count": len(_digits(candidate)),
     }
     try:
         diagnostics.update({
@@ -95,12 +97,11 @@ async def _retry_phone_with_keyboard(
         })
         await element.evaluate("(el) => el.focus()")
         await element.press("Control+A")
-        await element.type(expected, delay=25)
+        await element.type(candidate, delay=25)
         await element.press("Tab")
         await surface.wait_for_timeout(150)
         actual = str(await element.input_value())
         diagnostics["after_digit_count"] = len(_digits(actual))
-        diagnostics["equivalent"] = phone_values_equivalent(actual, expected)
         return actual, diagnostics
     except Exception as exc:
         diagnostics.update({
@@ -134,30 +135,36 @@ async def _reconcile_phone_review(
             descriptor = await element_descriptor(surface, element)
             if _safe_field(descriptor) != "phone":
                 continue
-
             matching_reviews = _matching_phone_reviews(review_items, descriptor)
             if not matching_reviews:
                 continue
 
             actual = str(await element.input_value())
             keyboard_retry = False
-            diagnostics: Dict[str, Any] = {
-                "attempted": False,
-                "before_digit_count": len(_digits(actual)),
-                "expected_digit_count": len(_digits(expected)),
-            }
+            attempt_diagnostics: List[Dict[str, Any]] = []
             if not phone_values_equivalent(actual, expected):
-                actual, diagnostics = await _retry_phone_with_keyboard(
-                    surface,
-                    element,
-                    expected,
-                )
                 keyboard_retry = True
+                for attempt_name, candidate in _phone_attempts(profile, expected):
+                    actual, diagnostics = await _retry_phone_with_keyboard(
+                        surface, element, candidate,
+                    )
+                    diagnostics["attempt_format"] = attempt_name
+                    diagnostics["equivalent_to_profile"] = phone_values_equivalent(
+                        actual, expected,
+                    )
+                    attempt_diagnostics.append(diagnostics)
+                    if phone_values_equivalent(actual, expected):
+                        break
+
             if not phone_values_equivalent(actual, expected):
-                diagnostics["final_digit_count"] = len(_digits(actual))
-                diagnostics["equivalent"] = False
+                safe_diagnostics = {
+                    "attempts": attempt_diagnostics,
+                    "expected_digit_count": len(_digits(expected)),
+                    "final_digit_count": len(_digits(actual)),
+                    "equivalent": False,
+                }
                 for item in matching_reviews:
-                    item.setdefault("details", {})["phone_retry_diagnostics"] = diagnostics
+                    item.setdefault("details", {})["phone_retry_diagnostics"] = safe_diagnostics
                 continue
 
             for item in matching_reviews:
@@ -175,9 +182,7 @@ async def _reconcile_phone_review(
                 "field": "phone",
                 "descriptor": descriptor[:200],
                 "verification": (
-                    "keyboard_significant_digits"
-                    if keyboard_retry
-                    else "significant_digits"
+                    "keyboard_significant_digits" if keyboard_retry else "significant_digits"
                 ),
                 "actual_digit_count": len(_digits(actual)),
                 "expected_digit_count": len(_digits(expected)),
@@ -189,16 +194,13 @@ async def _reconcile_phone_review(
         except Exception as exc:
             log.append({
                 "action": "phone_reconciliation_skipped",
-                "descriptor": descriptor[:200] if "descriptor" in locals() else "",
                 "error_type": type(exc).__name__,
                 "error": str(exc)[:200],
             })
-            continue
     return reconciled
 
 
 def install_greenhouse_phone_widget_compat() -> None:
-    """Install idempotent phone verification wrappers after form_filler_v3 loads."""
     global _INSTALLED, _ORIGINAL_FILL_TEXT_FIELDS, _ORIGINAL_DISPLAY_MATCHES_OPTION
     if _INSTALLED:
         return
@@ -235,8 +237,7 @@ def install_greenhouse_phone_widget_compat() -> None:
         return filled
 
     def display_matches_option_with_dial_code(
-        displayed: str,
-        option: OptionRecord,
+        displayed: str, option: OptionRecord,
     ) -> bool:
         return bool(
             _ORIGINAL_DISPLAY_MATCHES_OPTION(displayed, option)
