@@ -8,8 +8,13 @@ from app.models.application import (
 )
 from app.models.handoff import ManualHandoffSession
 from app.models.job import Job
+from app.models.notification import Notification
 from app.models.user import User
 from app.services.handoff_integration import _attach_handoff_session
+from app.services.handoff_notifications import (
+    HANDOFF_REQUIRED_KIND,
+    create_handoff_required_notification,
+)
 from app.services.handoff_session import decrypt_handoff_secret
 
 
@@ -75,12 +80,38 @@ def test_review_integration_extracts_browser_secrets_from_result(db_session):
     db_session.commit()
 
     session = db_session.query(ManualHandoffSession).one()
+    notification = db_session.query(Notification).one()
     assert result["handoff_public_id"] == session.public_id
+    assert result["handoff_notification_id"] == notification.id
     assert "handoff_snapshot" not in result
     assert "browser_endpoint" not in str(result)
     assert "resume_token" not in str(result)
     assert review.details["handoff_public_id"] == session.public_id
+    assert review.details["handoff_notification_id"] == notification.id
     assert "browser_endpoint" not in str(review.details)
     assert decrypt_handoff_secret(session.encrypted_browser_endpoint) == "http://127.0.0.1:9777"
     assert session.browser_session_id == "browser-session-123"
     assert session.handoff_metadata["html_snapshot_path"] == "/tmp/handoff/page.html"
+
+    assert notification.user_id == user.id
+    assert notification.data["kind"] == HANDOFF_REQUIRED_KIND
+    assert notification.data["application_id"] == application.id
+    assert notification.data["manual_review_id"] == review.id
+    assert notification.data["handoff_public_id"] == session.public_id
+    assert notification.data["challenge_type"] == "captcha"
+    assert notification.data["blocking_url"] == job.url
+    assert notification.data["screenshot_available"] is True
+    assert "browser_endpoint" not in str(notification.data)
+    assert "resume_token" not in str(notification.data)
+    assert "lease_token" not in str(notification.data)
+    assert "storage_state" not in str(notification.data)
+
+    repeated = create_handoff_required_notification(
+        db_session,
+        application,
+        review,
+        session,
+    )
+    db_session.commit()
+    assert repeated.id == notification.id
+    assert db_session.query(Notification).count() == 1
