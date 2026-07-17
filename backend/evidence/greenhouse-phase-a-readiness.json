@@ -1,0 +1,26 @@
+{
+  "baseline_sha256": "14634de4146eb828e394137d351f69270773d957a17899656ccc7577257c3729",
+  "distinct_dry_run_employer_count": 30,
+  "duplicate_submission_count": 0,
+  "false_submitted_count": 0,
+  "gates": {
+    "all_success_evidence_independently_reviewed": false,
+    "all_uncertain_outcomes_remain_uncertain": true,
+    "explicit_release_approval_reference": false,
+    "ten_supervised_confirmed_submissions": false,
+    "thirty_distinct_employers": true,
+    "thirty_qualifying_dry_runs": true,
+    "zero_duplicate_submissions": true,
+    "zero_false_submitted_records": true
+  },
+  "generated_at": "2026-07-17T18:30:00Z",
+  "human_reviewed_submit_ready": false,
+  "qualifying_dry_run_count": 30,
+  "record_count": 30,
+  "release_approval_reference": null,
+  "schema_version": "1.0",
+  "supervised_confirmed_count": 0,
+  "supervised_record_count": 0,
+  "uncertain_status_violation_count": 0,
+  "unreviewed_success_count": 0
+}
