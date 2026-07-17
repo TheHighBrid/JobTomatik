@@ -73,8 +73,13 @@ async def _reconcile_phone_review(
         return 0
 
     reconciled = 0
+    # Some Greenhouse forms expose the phone control as an opaque text input.
+    # Candidate enumeration is intentionally broad, but descriptor classification
+    # below must still identify the field as profile.phone before any review is
+    # reconciled.
     candidates = await surface.query_selector_all(
-        'input[type="tel"],input[name*="phone" i],input[id*="phone" i]'
+        'input[type="tel"],input[name*="phone" i],input[id*="phone" i],'
+        'input:not([type]),input[type="text"]'
     )
     for element in candidates:
         try:
@@ -98,7 +103,6 @@ async def _reconcile_phone_review(
                 ):
                     review_items.remove(item)
                     removed.append(item)
-
             if not removed:
                 continue
 
