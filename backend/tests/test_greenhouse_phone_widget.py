@@ -7,8 +7,8 @@ import pytest_asyncio
 from app.services import form_filler as _form_filler  # noqa: F401
 from app.services.control_engine import fill_policy_controls
 from app.services.control_primitives import OptionRecord
-from app.services.form_filler_v3 import _fill_step_fields
 from app.services.greenhouse_phone_widget import (
+    _reconcile_phone_review,
     dial_code_option_equivalent,
     phone_values_equivalent,
 )
@@ -82,60 +82,76 @@ def test_dial_code_verification_requires_matching_code_and_country_label():
 
 
 @pytest.mark.asyncio
-async def test_formatted_phone_value_clears_only_phone_verification_review(page):
+async def test_formatted_phone_value_reconciles_exact_phone_review_once(page):
     await page.set_content(
         """
         <label for="phone">Phone</label>
-        <input id="phone" name="phone" type="tel" required>
-        <script>
-          document.querySelector('#phone').addEventListener('input', (event) => {
-            const digits = event.target.value.replace(/\D/g, '').replace(/^1/, '');
-            if (digits.length === 10) {
-              event.target.value = `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-            }
-          });
-        </script>
+        <input id="phone" name="phone" type="tel" required
+               value="+1 (613) 555-0199">
         """
     )
-    log = []
-
-    result = await _fill_step_fields(
-        page,
-        profile={
-            "full_name": "Avery Certification",
-            "first_name": "Avery",
-            "last_name": "Certification",
-            "email": "avery.certification@example.test",
-            "phone": "6135550199",
-            "answer_policies": [],
+    descriptor = "phone | Phone | off"
+    review = {
+        "reason_code": "unsupported_control",
+        "summary": f"Profile field could not be verified: {descriptor}",
+        "details": {
+            "canonical_key": "profile.phone",
+            "category": "profile",
+            "descriptor": descriptor,
+            "control_type": "text",
+            "required": True,
         },
+    }
+    review_items = [review]
+    log = []
+    profile = {
+        "full_name": "Avery Certification",
+        "first_name": "Avery",
+        "last_name": "Certification",
+        "email": "avery.certification@example.test",
+        "phone": "6135550199",
+        "answer_policies": [],
+    }
+
+    first_count = await _reconcile_phone_review(
+        page,
+        profile=profile,
         cover_letter="",
-        resume_path="",
         log=log,
-        step_number=1,
+        review_items=review_items,
     )
 
-    assert await page.locator("#phone").input_value() == "+1 (613) 555-0199"
-    assert result["filled_count"] == 1
-    assert not any(
-        (item.get("details") or {}).get("canonical_key") == "profile.phone"
-        for item in result["review_items"]
-    )
+    assert first_count == 1
+    assert review_items == []
     assert any(item.get("action") == "phone_format_verified" for item in log)
+
+    duplicate_review_items = [review]
+    second_count = await _reconcile_phone_review(
+        page,
+        profile=profile,
+        cover_letter="",
+        log=log,
+        review_items=duplicate_review_items,
+    )
+
+    assert second_count == 0
+    assert duplicate_review_items == []
 
 
 @pytest.mark.asyncio
 async def test_phone_country_selection_can_collapse_to_verified_dial_code(page):
     await page.set_content(
         """
-        <label id="phone-country-label">Country Phone</label>
-        <button id="phone-country" type="button" role="combobox"
-                aria-labelledby="phone-country-label"
-                aria-controls="phone-country-list" aria-expanded="false"
-                aria-required="true">Choose country</button>
-        <div id="phone-country-list" role="listbox" hidden>
-          <div id="canada" role="option" aria-selected="false">Canada +1</div>
-          <div id="uk" role="option" aria-selected="false">United Kingdom +44</div>
+        <div class="combo-wrap">
+          <label id="phone-country-label">Country Phone</label>
+          <button id="phone-country" type="button" role="combobox"
+                  aria-labelledby="phone-country-label"
+                  aria-controls="phone-country-list" aria-expanded="false"
+                  aria-required="true">Choose country</button>
+          <div id="phone-country-list" role="listbox" hidden>
+            <div id="canada" role="option" aria-selected="false">Canada +1</div>
+            <div id="uk" role="option" aria-selected="false">United Kingdom +44</div>
+          </div>
         </div>
         <script>
           const button = document.querySelector('#phone-country');
@@ -144,10 +160,18 @@ async def test_phone_country_selection_can_collapse_to_verified_dial_code(page):
             list.hidden = false;
             button.setAttribute('aria-expanded', 'true');
           });
-          document.querySelector('#canada').addEventListener('click', () => {
-            button.textContent = '+1';
-            button.setAttribute('aria-expanded', 'false');
-            list.remove();
+          list.querySelectorAll('[role=option]').forEach((option) => {
+            option.addEventListener('click', () => {
+              button.textContent = option.id === 'canada' ? '+1' : '+44';
+              button.setAttribute('aria-expanded', 'false');
+              list.hidden = true;
+            });
+          });
+          document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+              list.hidden = true;
+              button.setAttribute('aria-expanded', 'false');
+            }
           });
         </script>
         """
