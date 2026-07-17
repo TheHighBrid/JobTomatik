@@ -12,9 +12,17 @@ from typing import Any, Dict, Mapping, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.application import Application, ApplicationAutomationState, ApplicationEvent
+from app.config import get_settings
+from app.models.application import (
+    Application,
+    ApplicationAutomationState,
+    ApplicationEvent,
+)
 from app.models.job import Job
-from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
+from app.models.submission_approval import (
+    SubmissionApproval,
+    SubmissionApprovalStatus,
+)
 from app.models.user import User
 from app.services.operations_policy import platform_key_for_url
 from app.services.supervised_submission import build_supervised_preflight
@@ -25,6 +33,7 @@ EXECUTION_FLAG_BLOCKERS = {
     "global_live_submit_disabled",
     "greenhouse_supervised_pilot_disabled",
 }
+settings = get_settings()
 
 
 def _target_url(job: Job) -> str:
@@ -128,7 +137,9 @@ def build_supervised_pilot_roster(
                 "policy_count": preflight["policy_count"],
                 "active_approval_reference": approval.reference if approval else None,
                 "active_approval_expires_at": (
-                    approval.expires_at.isoformat() if approval and approval.expires_at else None
+                    approval.expires_at.isoformat()
+                    if approval and approval.expires_at
+                    else None
                 ),
                 "created_at": (
                     application.created_at.isoformat()
@@ -156,20 +167,11 @@ def build_supervised_pilot_roster(
         },
         "execution_flags": {
             "global_live_submit_enabled": bool(
-                candidates[0]["execution_ready"]
-                or any(
-                    "global_live_submit_disabled" not in item["execution_blockers"]
-                    for item in candidates
-                )
-            ) if candidates else False,
+                settings.allow_real_application_submit
+            ),
             "greenhouse_supervised_pilot_enabled": bool(
-                candidates[0]["execution_ready"]
-                or any(
-                    "greenhouse_supervised_pilot_disabled"
-                    not in item["execution_blockers"]
-                    for item in candidates
-                )
-            ) if candidates else False,
+                getattr(settings, "greenhouse_supervised_pilot_enabled", False)
+            ),
         },
         "candidate_count": len(candidates),
         "technically_ready_count": sum(
