@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       exercise:
-        description: "Traverse and fill every step in dry-run mode using certification secrets"
+        description: "Traverse and fill every step with a generated synthetic profile in dry-run mode"
         required: true
         default: false
         type: boolean
@@ -33,10 +33,7 @@ jobs:
       AI_PROVIDER: template
       DEV_MOCK_JOBS: "false"
       ALLOW_REAL_APPLICATION_SUBMIT: "false"
-      GREENHOUSE_CERT_PROFILE_JSON: ${{ secrets.GREENHOUSE_CERT_PROFILE_JSON }}
-      GREENHOUSE_CERT_RESUME_B64: ${{ secrets.GREENHOUSE_CERT_RESUME_B64 }}
-      GREENHOUSE_CERT_RESUME_PATH: ./greenhouse-cert-resume.pdf
-      GREENHOUSE_CERT_COVER_LETTER: ${{ secrets.GREENHOUSE_CERT_COVER_LETTER }}
+      GREENHOUSE_CERT_RESUME_PATH: ./greenhouse-synthetic-resume.pdf
 
     steps:
       - name: Check out repository
@@ -55,16 +52,6 @@ jobs:
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
 
-      - name: Prepare synthetic certification resume
-        if: ${{ inputs.exercise }}
-        shell: bash
-        run: |
-          test -n "$GREENHOUSE_CERT_RESUME_B64" || {
-            echo "GREENHOUSE_CERT_RESUME_B64 secret is required for exercise mode."
-            exit 1
-          }
-          printf '%s' "$GREENHOUSE_CERT_RESUME_B64" | base64 --decode > "$GREENHOUSE_CERT_RESUME_PATH"
-          test -s "$GREENHOUSE_CERT_RESUME_PATH"
       - name: Run supervised live dry-run
         id: live_certification
         shell: bash
@@ -74,7 +61,11 @@ jobs:
           set +e
           args=(--report greenhouse-live-certification.json)
           if [[ "${{ inputs.exercise }}" == "true" ]]; then
-            args+=(--exercise)
+            args+=(
+              --exercise
+              --synthetic-profile
+              --synthetic-resume-path "$GREENHOUSE_CERT_RESUME_PATH"
+            )
           fi
           python -u scripts/certify_greenhouse_live.py "${args[@]}" \
             > greenhouse-live-certification-output.txt 2>&1
@@ -82,21 +73,43 @@ jobs:
           cat greenhouse-live-certification-output.txt
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
+
+      - name: Assert certification report exists
+        if: always()
+        shell: bash
+        run: |
+          test -s greenhouse-live-certification.json || {
+            echo "greenhouse-live-certification.json was not created."
+            exit 1
+          }
+
       - name: Assert no final submit action occurred
         if: always()
         shell: bash
         run: |
           python - <<'PY'
           import json
-          report = json.load(open('greenhouse-live-certification.json'))
-          assert report['final_submit_clicked'] is False
-          for item in report['reports']:
-              assert item.get('final_submit_clicked', False) is False
+          from pathlib import Path
+
+          path = Path("greenhouse-live-certification.json")
+          if not path.exists():
+              raise SystemExit("greenhouse-live-certification.json was not created")
+
+          report = json.loads(path.read_text(encoding="utf-8"))
+          assert report.get("final_submit_clicked") is False
+          for index, item in enumerate(report.get("reports", [])):
+              assert item.get("final_submit_clicked", False) is False, index
+          print("Safety assertion passed: no final submit action occurred.")
           PY
+
       - name: Build pilot evidence ledger and readiness report
-        if: ${{ inputs.exercise }}
+        if: ${{ inputs.exercise && always() }}
         shell: bash
         run: |
+          if [[ ! -s greenhouse-live-certification.json ]]; then
+            echo "Skipping ledger generation because the source report is missing."
+            exit 0
+          fi
           python scripts/update_greenhouse_pilot_ledger.py \
             --input greenhouse-live-certification.json \
             --operator "github-actions:${{ github.actor }}" \
@@ -104,6 +117,7 @@ jobs:
             --ledger greenhouse-pilot-ledger.jsonl \
             --summary-json greenhouse-pilot-readiness.json \
             --summary-markdown greenhouse-pilot-readiness.md
+
       - name: Upload live certification report
         if: always()
         uses: actions/upload-artifact@v4
@@ -115,9 +129,14 @@ jobs:
             backend/greenhouse-pilot-ledger.jsonl
             backend/greenhouse-pilot-readiness.json
             backend/greenhouse-pilot-readiness.md
+            backend/greenhouse-synthetic-resume.pdf
           if-no-files-found: warn
           retention-days: 30
 
       - name: Fail when live certification failed
         if: steps.live_certification.outputs.exit_code != '0'
-        run: exit 1
+        shell: bash
+        run: |
+          echo "Greenhouse certification did not pass."
+          echo "Download the workflow artifact and inspect the JSON and output log."
+          exit 1
