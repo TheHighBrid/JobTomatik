@@ -6,6 +6,9 @@ from app.services.form_filler_v3 import (
     _navigate_job_board_listing,
     fill_and_submit_application as fill_and_submit_application_standard,
 )
+from app.services.greenhouse_aria_id_widget import (
+    install_greenhouse_aria_id_compat,
+)
 from app.services.greenhouse_location_widget import (
     install_greenhouse_location_widget_compat,
 )
@@ -14,6 +17,7 @@ from app.services.greenhouse_phone_widget import (
 )
 
 
+install_greenhouse_aria_id_compat()
 install_greenhouse_phone_widget_compat()
 install_greenhouse_location_widget_compat()
 
