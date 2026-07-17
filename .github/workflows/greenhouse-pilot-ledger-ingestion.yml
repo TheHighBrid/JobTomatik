@@ -1,0 +1,86 @@
+name: Greenhouse pilot ledger ingestion certification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/app/config.py"
+      - "backend/app/services/greenhouse_pilot_ingestion.py"
+      - "backend/app/api/greenhouse_pilot_ledger.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_greenhouse_pilot_ingestion.py"
+      - "docs/operations/greenhouse-pilot-ledger-ingestion.md"
+      - ".env.example"
+      - ".github/workflows/greenhouse-pilot-ledger-ingestion.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/config.py"
+      - "backend/app/services/greenhouse_pilot_ingestion.py"
+      - "backend/app/api/greenhouse_pilot_ledger.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_greenhouse_pilot_ingestion.py"
+      - "docs/operations/greenhouse-pilot-ledger-ingestion.md"
+      - ".env.example"
+      - ".github/workflows/greenhouse-pilot-ledger-ingestion.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  locked-ledger-ingestion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: sqlite:///./pilot-ledger-ingestion-ci.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: pilot-ledger-ingestion-ci-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+      GREENHOUSE_PILOT_LEDGER_PATH: evidence-ci/greenhouse-pilot-ledger.jsonl
+      GREENHOUSE_PILOT_READINESS_JSON_PATH: evidence-ci/greenhouse-pilot-readiness.json
+      GREENHOUSE_PILOT_READINESS_MARKDOWN_PATH: evidence-ci/greenhouse-pilot-readiness.md
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Compile pilot ledger ingestion modules
+        run: |
+          python -m py_compile \
+            app/services/greenhouse_pilot_ingestion.py \
+            app/api/greenhouse_pilot_ledger.py
+
+      - name: Run locked ingestion regression suite
+        run: pytest -q --tb=short -ra tests/test_greenhouse_pilot_ingestion.py
+
+      - name: Assert runtime remains evidence only
+        run: |
+          python - <<'PY'
+          from app.config import get_settings
+          from app.services.operations_policy import operations_readiness_manifest
+
+          settings = get_settings()
+          readiness = operations_readiness_manifest()
+          assert settings.allow_real_application_submit is False
+          assert settings.greenhouse_supervised_pilot_enabled is False
+          assert readiness["autopilot_enabled"] is False
+          print("Pilot ledger ingestion safety defaults passed")
+          PY
