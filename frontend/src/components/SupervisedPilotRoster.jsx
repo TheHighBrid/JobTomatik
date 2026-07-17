@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
@@ -5,12 +6,15 @@ import {
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
+  FileKey2,
   Flag,
   Loader2,
   LockKeyhole,
   ShieldCheck,
+  X,
 } from 'lucide-react'
 import api from '../api/client'
+import SupervisedPilotDossierPanel from './SupervisedPilotDossierPanel'
 
 function label(value) {
   return String(value || '').replaceAll('_', ' ')
@@ -40,6 +44,7 @@ function StatusIcon({ status }) {
 }
 
 export default function SupervisedPilotRoster() {
+  const [selectedDossierId, setSelectedDossierId] = useState(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['supervised-pilot-roster'],
     queryFn: () => api.get('/supervised-pilot/roster'),
@@ -73,7 +78,7 @@ export default function SupervisedPilotRoster() {
           <h2 className="font-semibold">Greenhouse supervised pilot roster</h2>
         </div>
         <p className="mt-1 text-xs leading-relaxed text-indigo-200">
-          Technical readiness only. Applications are shown in creation order, never ranked or selected automatically. Open an exact application to review and approve it.
+          Technical readiness only. Applications are shown in creation order, never ranked or selected automatically. Open an exact dossier before using the separate approval panel.
         </p>
       </div>
 
@@ -111,46 +116,70 @@ export default function SupervisedPilotRoster() {
         ) : (
           <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
             {data.candidates.map((candidate) => (
-              <Link
-                key={candidate.application_id}
-                to={`/applications/${candidate.application_id}`}
-                className="flex items-start gap-3 p-4 transition-colors hover:bg-slate-50"
-              >
-                <StatusIcon status={candidate.roster_status} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <strong className="text-sm text-slate-900">{candidate.role}</strong>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium capitalize text-slate-600">
-                      {label(candidate.roster_status)}
-                    </span>
+              <div key={candidate.application_id} className="p-4">
+                <div className="flex items-start gap-3">
+                  <StatusIcon status={candidate.roster_status} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="text-sm text-slate-900">{candidate.role}</strong>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium capitalize text-slate-600">
+                        {label(candidate.roster_status)}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-500">{candidate.employer}</div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {candidate.technical_blockers.map((blocker) => (
+                        <span key={blocker} className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                          {label(blocker)}
+                        </span>
+                      ))}
+                      {candidate.technical_ready && (
+                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800">
+                          technical preflight clear
+                        </span>
+                      )}
+                      {candidate.active_approval_reference && (
+                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-800">
+                          active one-time approval
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="mt-0.5 text-xs text-slate-500">{candidate.employer}</div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {candidate.technical_blockers.map((blocker) => (
-                      <span key={blocker} className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                        {label(blocker)}
-                      </span>
-                    ))}
-                    {candidate.technical_ready && (
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800">
-                        technical preflight clear
-                      </span>
-                    )}
-                    {candidate.active_approval_reference && (
-                      <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-800">
-                        active one-time approval
-                      </span>
-                    )}
+                  <div className="flex flex-shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDossierId((current) => (
+                        current === candidate.application_id ? null : candidate.application_id
+                      ))}
+                      className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50"
+                    >
+                      {selectedDossierId === candidate.application_id
+                        ? <X className="h-3.5 w-3.5" />
+                        : <FileKey2 className="h-3.5 w-3.5" />}
+                      {selectedDossierId === candidate.application_id ? 'Close dossier' : 'Review dossier'}
+                    </button>
+                    <Link
+                      to={`/applications/${candidate.application_id}`}
+                      className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+                      aria-label={`Open ${candidate.role} application`}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
                   </div>
                 </div>
-                <ChevronRight className="mt-1 h-4 w-4 flex-shrink-0 text-slate-300" />
-              </Link>
+
+                {selectedDossierId === candidate.application_id && (
+                  <div className="mt-4">
+                    <SupervisedPilotDossierPanel applicationId={candidate.application_id} />
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
 
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-          The roster does not judge job suitability. Sensitive answers are not shown, and each application still requires exact employer, role, URL, payload, and final-action confirmation in its supervised panel.
+          The roster and dossier do not judge job suitability. Sensitive answers are not shown, and each application still requires exact employer, role, URL, payload, and final-action confirmation in its supervised panel.
         </div>
       </div>
     </section>
