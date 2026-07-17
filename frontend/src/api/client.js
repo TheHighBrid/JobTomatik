@@ -169,6 +169,12 @@ export const listSubmissionEvidenceReviews = (appId) =>
 export const exportSupervisedPilotRecord = (appId) =>
   api.get(`/applications/${appId}/supervised-pilot-record`)
 
+// Canonical Greenhouse pilot ledger
+export const ingestSupervisedPilotRecord = (appId) =>
+  api.post(`/greenhouse-pilot-ledger/applications/${appId}/ingest`)
+export const getGreenhousePilotLedgerReadiness = () =>
+  api.get('/greenhouse-pilot-ledger/readiness')
+
 // Resumable manual handoffs
 export const listApplicationHandoffs = (appId) => api.get(`/handoffs/application/${appId}/sessions`)
 export const getHandoffSession = (publicId) => api.get(`/handoffs/${publicId}`)
