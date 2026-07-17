@@ -53,6 +53,7 @@ def load_profile() -> Dict[str, Any]:
 
 
 def resolve_greenhouse_job_target(*urls: str) -> tuple[Optional[str], Optional[str]]:
+    """Return the first usable Greenhouse board token and job id across URL candidates."""
     board_token: Optional[str] = None
     job_id: Optional[str] = None
     for candidate in urls:
