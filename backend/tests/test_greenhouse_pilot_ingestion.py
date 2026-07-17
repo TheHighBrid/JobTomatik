@@ -211,5 +211,4 @@ def test_readiness_reader_uses_shared_lock_and_returns_digest(db_session, tmp_pa
     assert readiness["ledger_record_count"] == 1
     assert len(readiness["ledger_sha256"]) == 64
     assert readiness["summary"]["supervised_confirmed_count"] == 1
-    assert readiness["summary"]["explicit_release_approval_reference"] if False else True
     assert readiness["summary"]["gates"]["explicit_release_approval_reference"] is False
