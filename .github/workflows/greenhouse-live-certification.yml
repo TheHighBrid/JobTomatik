@@ -65,7 +65,6 @@ jobs:
           }
           printf '%s' "$GREENHOUSE_CERT_RESUME_B64" | base64 --decode > "$GREENHOUSE_CERT_RESUME_PATH"
           test -s "$GREENHOUSE_CERT_RESUME_PATH"
-
       - name: Run supervised live dry-run
         id: live_certification
         shell: bash
@@ -83,7 +82,6 @@ jobs:
           cat greenhouse-live-certification-output.txt
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
-
       - name: Assert no final submit action occurred
         if: always()
         shell: bash
@@ -95,7 +93,6 @@ jobs:
           for item in report['reports']:
               assert item.get('final_submit_clicked', False) is False
           PY
-
       - name: Build pilot evidence ledger and readiness report
         if: ${{ inputs.exercise }}
         shell: bash
@@ -107,7 +104,6 @@ jobs:
             --ledger greenhouse-pilot-ledger.jsonl \
             --summary-json greenhouse-pilot-readiness.json \
             --summary-markdown greenhouse-pilot-readiness.md
-
       - name: Upload live certification report
         if: always()
         uses: actions/upload-artifact@v4
