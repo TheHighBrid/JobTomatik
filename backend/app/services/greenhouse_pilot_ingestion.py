@@ -170,10 +170,10 @@ def ingest_confirmed_supervised_application(
             _atomic_write_ledger(paths["ledger"], merged)
             summary = build_readiness_summary(merged)
             _write_readiness(paths, summary)
+            digest = _ledger_digest(paths["ledger"])
         except PilotEvidenceError as exc:
             raise GreenhousePilotIngestionError(str(exc)) from exc
 
-    digest = _ledger_digest(paths["ledger"])
     if added:
         db.add(
             ApplicationEvent(
