@@ -79,6 +79,64 @@ def _phone_attempts(profile: Dict[str, Any], expected: str) -> List[Tuple[str, s
     return attempts
 
 
+async def _phone_surface_diagnostics(element: Any) -> Dict[str, Any]:
+    """Return structural metadata only, never raw control values."""
+    try:
+        return await element.evaluate(
+            """(el) => {
+              const root = el.closest(
+                '[data-field],.field-wrapper,.application-field,' +
+                '[class*="field-wrapper"],[class*="application-field"],fieldset'
+              ) || el.parentElement;
+              const controls = Array.from(root?.querySelectorAll(
+                'input,textarea,[contenteditable="true"],[role="textbox"],' +
+                'button,[role="combobox"]'
+              ) || []).slice(0, 16);
+              const describe = (node) => {
+                const rect = node.getBoundingClientRect();
+                const style = getComputedStyle(node);
+                const value = ('value' in node ? node.value : '') || '';
+                return {
+                  target: node === el,
+                  active: document.activeElement === node,
+                  tag: node.tagName.toLowerCase(),
+                  id: (node.id || '').slice(0, 120),
+                  name: (node.getAttribute('name') || '').slice(0, 120),
+                  type: node.getAttribute('type') || '',
+                  role: node.getAttribute('role') || '',
+                  inputmode: node.getAttribute('inputmode') || '',
+                  autocomplete: node.getAttribute('autocomplete') || '',
+                  contenteditable: node.getAttribute('contenteditable') || '',
+                  ariaHidden: node.getAttribute('aria-hidden') || '',
+                  ariaControls: (node.getAttribute('aria-controls') || '').slice(0, 120),
+                  disabled: Boolean(node.disabled || node.getAttribute('disabled') !== null),
+                  readonly: Boolean(node.readOnly || node.getAttribute('readonly') !== null),
+                  visible: style.display !== 'none' && style.visibility !== 'hidden'
+                    && rect.width > 0 && rect.height > 0,
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                  maxLength: typeof node.maxLength === 'number' ? node.maxLength : null,
+                  digitCount: String(value).replace(/\D/g, '').length,
+                  className: String(node.className || '').slice(0, 180)
+                };
+              };
+              return {
+                activeIsTarget: document.activeElement === el,
+                rootTag: root?.tagName?.toLowerCase() || '',
+                rootId: (root?.id || '').slice(0, 120),
+                rootClassName: String(root?.className || '').slice(0, 180),
+                controlCount: controls.length,
+                controls: controls.map(describe)
+              };
+            }"""
+        )
+    except Exception as exc:
+        return {
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:200],
+        }
+
+
 async def _retry_phone_with_keyboard(
     surface: Any, element: Any, candidate: str,
 ) -> Tuple[str, Dict[str, Any]]:
@@ -94,14 +152,24 @@ async def _retry_phone_with_keyboard(
             "autocomplete": await element.get_attribute("autocomplete") or "",
             "role": await element.get_attribute("role") or "",
             "before_digit_count": len(_digits(await element.input_value())),
+            "active_before_focus": await element.evaluate(
+                "(el) => document.activeElement === el"
+            ),
         })
         await element.evaluate("(el) => el.focus()")
+        diagnostics["active_after_focus"] = await element.evaluate(
+            "(el) => document.activeElement === el"
+        )
         await element.press("Control+A")
         await element.type(candidate, delay=25)
+        diagnostics["active_after_type"] = await element.evaluate(
+            "(el) => document.activeElement === el"
+        )
+        diagnostics["immediate_digit_count"] = len(_digits(await element.input_value()))
         await element.press("Tab")
         await surface.wait_for_timeout(150)
         actual = str(await element.input_value())
-        diagnostics["after_digit_count"] = len(_digits(actual))
+        diagnostics["after_blur_digit_count"] = len(_digits(actual))
         return actual, diagnostics
     except Exception as exc:
         diagnostics.update({
@@ -129,6 +197,7 @@ async def _reconcile_phone_review(
         'input:not([type]),input[type="text"]'
     )
     for element in candidates:
+        descriptor = ""
         try:
             if not await element.is_visible() or not await element.is_enabled():
                 continue
@@ -139,6 +208,7 @@ async def _reconcile_phone_review(
             if not matching_reviews:
                 continue
 
+            surface_before = await _phone_surface_diagnostics(element)
             actual = str(await element.input_value())
             keyboard_retry = False
             attempt_diagnostics: List[Dict[str, Any]] = []
@@ -158,13 +228,17 @@ async def _reconcile_phone_review(
 
             if not phone_values_equivalent(actual, expected):
                 safe_diagnostics = {
+                    "surface_before": surface_before,
+                    "surface_after": await _phone_surface_diagnostics(element),
                     "attempts": attempt_diagnostics,
                     "expected_digit_count": len(_digits(expected)),
                     "final_digit_count": len(_digits(actual)),
                     "equivalent": False,
                 }
                 for item in matching_reviews:
-                    item.setdefault("details", {})["phone_retry_diagnostics"] = safe_diagnostics
+                    item.setdefault("details", {})["phone_surface_diagnostics"] = (
+                        safe_diagnostics
+                    )
                 continue
 
             for item in matching_reviews:
@@ -194,6 +268,7 @@ async def _reconcile_phone_review(
         except Exception as exc:
             log.append({
                 "action": "phone_reconciliation_skipped",
+                "descriptor": descriptor[:200],
                 "error_type": type(exc).__name__,
                 "error": str(exc)[:200],
             })
