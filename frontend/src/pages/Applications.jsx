@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { listApplications, getApplicationStats } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
+import SupervisedPilotRoster from '../components/SupervisedPilotRoster'
 import { ApplicationRowSkeleton } from '../components/Skeleton'
 import { ChevronRight, CalendarDays, Download } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -73,6 +74,8 @@ export default function Applications() {
           Export CSV
         </button>
       </div>
+
+      <SupervisedPilotRoster />
 
       {/* Status filter pills */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0">
