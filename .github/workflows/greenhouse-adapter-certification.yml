@@ -7,6 +7,8 @@ on:
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/app/services/greenhouse_certification.py"
+      - "backend/app/services/answer_policy.py"
+      - "backend/app/services/control_policy.py"
       - "backend/tests/test_greenhouse_adapter.py"
       - "backend/tests/test_ats_flow_safety.py"
       - "backend/tests/test_ats_captcha_handoff.py"
@@ -22,6 +24,8 @@ on:
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/app/services/greenhouse_certification.py"
+      - "backend/app/services/answer_policy.py"
+      - "backend/app/services/control_policy.py"
       - "backend/tests/test_greenhouse_adapter.py"
       - "backend/tests/test_ats_flow_safety.py"
       - "backend/tests/test_ats_captcha_handoff.py"
@@ -53,10 +57,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -86,7 +90,7 @@ jobs:
 
       - name: Upload Greenhouse certification report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: greenhouse-adapter-certification-report
           path: backend/greenhouse-certification.txt
