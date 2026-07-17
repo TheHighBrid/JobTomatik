@@ -131,8 +131,8 @@ def choose_synthetic_answer(label: str, options: List[str], *, multiple: bool) -
     selected: Optional[str] = None
 
     if any(term in question for term in (
-        "gender", "race", "ethnicity", "veteran", "disability", "demographic",
-        "sexual orientation", "gender identity",
+        "gender", "race", "ethnicity", "hispanic", "latino", "veteran",
+        "disability", "demographic", "sexual orientation", "gender identity",
     )):
         selected = _find_option(options, (
             "prefer not to say", "decline to self identify", "decline", "do not wish",
@@ -185,6 +185,30 @@ def _is_profile_or_upload_question(label: str, field_types: List[str]) -> bool:
     )
 
 
+def _synthetic_policy(
+    policy_id: int,
+    *,
+    canonical_key: str,
+    answer: str,
+    match_phrases: List[str],
+) -> Dict[str, Any]:
+    return {
+        "id": policy_id,
+        "canonical_key": canonical_key,
+        "category": "synthetic_certification",
+        "sensitivity": "synthetic",
+        "mode": "answer",
+        "answer_value": answer,
+        "answer_label": answer,
+        "match_phrases": match_phrases,
+        "scope": "platform",
+        "scope_value": "greenhouse",
+        "allow_autofill": True,
+        "is_active": True,
+        "confirmed_at": SYNTHETIC_CONFIRMATION_TIMESTAMP,
+    }
+
+
 def build_synthetic_profile(schema: Dict[str, Any]) -> Dict[str, Any]:
     policies: List[Dict[str, Any]] = []
     policy_id = 1
@@ -201,29 +225,28 @@ def build_synthetic_profile(schema: Dict[str, Any]) -> Dict[str, Any]:
         multiple = "multi_value_multi_select" in field_types
         options = _option_labels(source, question)
         answer = choose_synthetic_answer(label, options, multiple=multiple)
-        policies.append({
-            "id": policy_id,
-            "canonical_key": f"custom.synthetic_{policy_id}",
-            "category": "synthetic_certification",
-            "sensitivity": "synthetic",
-            "mode": "answer",
-            "answer_value": answer,
-            "answer_label": answer,
-            "match_phrases": [label],
-            "scope": "platform",
-            "scope_value": "greenhouse",
-            "allow_autofill": True,
-            "is_active": True,
-            "confirmed_at": SYNTHETIC_CONFIRMATION_TIMESTAMP,
-        })
+        policies.append(_synthetic_policy(
+            policy_id,
+            canonical_key=f"custom.synthetic_{policy_id}",
+            answer=answer,
+            match_phrases=[label],
+        ))
         policy_id += 1
+
+    policies.append(_synthetic_policy(
+        policy_id,
+        canonical_key="custom.synthetic_phone_country",
+        answer="Canada +1",
+        match_phrases=["country | off | Country* | Phone"],
+    ))
 
     return {
         "full_name": "Avery Certification",
         "first_name": "Avery",
         "last_name": "Certification",
         "email": "avery.certification@example.test",
-        "phone": "+1 613 555 0199",
+        "phone": "6135550199",
+        "country": "Canada",
         "address": "123 Test Street, Ottawa, ON K1A 0B1",
         "city": "Ottawa",
         "state": "Ontario",
