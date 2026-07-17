@@ -1,0 +1,118 @@
+name: Greenhouse Phase B dossier certification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/app/api/supervised_pilot_roster.py"
+      - "backend/app/schemas/supervised_pilot_dossier.py"
+      - "backend/app/services/supervised_pilot_dossier.py"
+      - "backend/tests/test_supervised_pilot_dossier.py"
+      - "frontend/src/components/SupervisedPilotDossierPanel.jsx"
+      - "frontend/src/components/SupervisedPilotRoster.jsx"
+      - "docs/operations/greenhouse-phase-b-dossier.md"
+      - ".github/workflows/greenhouse-phase-b-dossier.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/api/supervised_pilot_roster.py"
+      - "backend/app/schemas/supervised_pilot_dossier.py"
+      - "backend/app/services/supervised_pilot_dossier.py"
+      - "backend/tests/test_supervised_pilot_dossier.py"
+      - "frontend/src/components/SupervisedPilotDossierPanel.jsx"
+      - "frontend/src/components/SupervisedPilotRoster.jsx"
+      - "docs/operations/greenhouse-phase-b-dossier.md"
+      - ".github/workflows/greenhouse-phase-b-dossier.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-dossier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: sqlite:///./phase-b-dossier-ci.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: phase-b-dossier-ci-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+      GREENHOUSE_PILOT_BASELINE_PATH: evidence/greenhouse-phase-a-baseline.csv
+      GREENHOUSE_PILOT_LEDGER_PATH: evidence-ci/greenhouse-pilot-ledger.jsonl
+      GREENHOUSE_PILOT_READINESS_JSON_PATH: evidence-ci/greenhouse-pilot-readiness.json
+      GREENHOUSE_PILOT_READINESS_MARKDOWN_PATH: evidence-ci/greenhouse-pilot-readiness.md
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Compile dossier modules
+        working-directory: backend
+        run: |
+          python -m py_compile \
+            app/services/supervised_pilot_dossier.py \
+            app/schemas/supervised_pilot_dossier.py \
+            app/api/supervised_pilot_roster.py
+
+      - name: Run dossier regression suite
+        working-directory: backend
+        run: pytest -q --tb=short -ra tests/test_supervised_pilot_dossier.py --junitxml=phase-b-dossier-pytest.xml
+
+      - name: Upload dossier regression report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: greenhouse-phase-b-dossier-pytest
+          path: backend/phase-b-dossier-pytest.xml
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Assert fail-safe dossier boundary
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.config import get_settings
+          from app.services.supervised_pilot_dossier import MANDATORY_STOP_REASONS
+
+          settings = get_settings()
+          assert settings.allow_real_application_submit is False
+          assert settings.greenhouse_supervised_pilot_enabled is False
+          assert "captcha_detected" in MANDATORY_STOP_REASONS
+          assert "identity_verification_required" in MANDATORY_STOP_REASONS
+          print("Phase B dossier remains read-only and fail closed")
+          PY
+
+      - name: Assert dossier UI has no approval or submit action
+        run: |
+          ! grep -E "queueSupervisedSubmission|createSupervisedSubmissionApproval|submitApplication" frontend/src/components/SupervisedPilotDossierPanel.jsx
+          grep -q "Download JSON" frontend/src/components/SupervisedPilotDossierPanel.jsx
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build dossier interface
+        working-directory: frontend
+        run: npm run build
