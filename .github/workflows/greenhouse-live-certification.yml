@@ -12,6 +12,11 @@ on:
         required: true
         default: false
         type: boolean
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/greenhouse-live-certification.yml"
 
 permissions:
   contents: read
@@ -59,8 +64,19 @@ jobs:
           GREENHOUSE_CERT_URLS: ${{ inputs.urls }}
         run: |
           set +e
+          exercise_mode="${{ inputs.exercise }}"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            export GREENHOUSE_CERT_URLS="https://job-boards.greenhouse.io/versaterm/jobs/5233634008
+https://job-boards.greenhouse.io/clutch/jobs/6112527004
+https://job-boards.greenhouse.io/fns/jobs/4656153006
+https://job-boards.greenhouse.io/bloomreach/jobs/8064322
+https://job-boards.greenhouse.io/roofr/jobs/4708653005"
+            exercise_mode="true"
+            echo "Running disposable five-employer pilot batch."
+          fi
+
           args=(--report greenhouse-live-certification.json)
-          if [[ "${{ inputs.exercise }}" == "true" ]]; then
+          if [[ "$exercise_mode" == "true" ]]; then
             args+=(
               --exercise
               --synthetic-profile
@@ -103,7 +119,7 @@ jobs:
           PY
 
       - name: Build pilot evidence ledger and readiness report
-        if: ${{ inputs.exercise && always() }}
+        if: ${{ always() && (inputs.exercise || github.event_name == 'pull_request') }}
         shell: bash
         run: |
           if [[ ! -s greenhouse-live-certification.json ]]; then
