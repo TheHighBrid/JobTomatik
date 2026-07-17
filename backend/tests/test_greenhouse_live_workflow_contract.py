@@ -47,8 +47,19 @@ def test_pilot_push_trigger_is_narrow_manifest_driven_and_synthetic():
     assert '      - "agent/greenhouse-pilot-*"' in workflow
     assert '      - "backend/greenhouse-pilot-urls.txt"' in workflow
     assert "GREENHOUSE_PILOT_URL_MANIFEST: ./greenhouse-pilot-urls.txt" in workflow
-    assert 'if [[ "$GITHUB_EVENT_NAME" == "push" ]]' in workflow
+    assert '"$GITHUB_EVENT_NAME" == "push"' in workflow
     assert 'export GREENHOUSE_CERT_URLS="$(cat "$GREENHOUSE_PILOT_URL_MANIFEST")"' in workflow
     assert 'exercise_mode="true"' in workflow
     assert "Pilot URL manifest is missing or empty" in workflow
     assert "github.event_name == 'push'" in workflow
+
+
+def test_pilot_pull_request_trigger_is_head_scoped_and_manifest_driven():
+    workflow = _workflow_text()
+
+    assert "pull_request:" in workflow
+    assert "startsWith(github.head_ref, 'agent/greenhouse-pilot-')" in workflow
+    assert '"$GITHUB_EVENT_NAME" == "pull_request"' in workflow
+    assert "github.event_name == 'pull_request'" in workflow
+    assert '      - "backend/greenhouse-pilot-urls.txt"' in workflow
+    assert "Running synthetic pilot certification" in workflow
