@@ -69,6 +69,27 @@ def _demographic_questions(payload: Any) -> List[Dict[str, Any]]:
     return []
 
 
+def _data_compliance_items(payload: Any) -> List[Dict[str, Any]]:
+    if isinstance(payload, dict):
+        return [payload]
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    return []
+
+
+def _requires_synthetic_data_processing_consent(schema: Dict[str, Any]) -> bool:
+    """Detect Greenhouse compliance gates without creating a runtime applicant policy."""
+    consent_keys = (
+        "requires_consent",
+        "requires_processing_consent",
+        "requires_retention_consent",
+    )
+    return any(
+        any(item.get(key) is True for key in consent_keys)
+        for item in _data_compliance_items(schema.get("data_compliance"))
+    )
+
+
 def iter_schema_questions(schema: Dict[str, Any]) -> Iterable[Tuple[str, Dict[str, Any]]]:
     groups = (
         ("questions", schema.get("questions") or []),
@@ -230,6 +251,20 @@ def build_synthetic_profile(schema: Dict[str, Any]) -> Dict[str, Any]:
             canonical_key=f"custom.synthetic_{policy_id}",
             answer=answer,
             match_phrases=[label],
+        ))
+        policy_id += 1
+
+    if _requires_synthetic_data_processing_consent(schema):
+        policies.append(_synthetic_policy(
+            policy_id,
+            canonical_key="data_processing_consent",
+            answer="true",
+            match_phrases=[
+                "process my data",
+                "store and process my data",
+                "retain my data",
+                "data processing",
+            ],
         ))
         policy_id += 1
 
