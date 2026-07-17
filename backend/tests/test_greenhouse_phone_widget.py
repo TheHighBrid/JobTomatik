@@ -5,7 +5,7 @@ import pytest_asyncio
 
 # Importing the public form-filler entrypoint installs the compatibility wrappers.
 from app.services import form_filler as _form_filler  # noqa: F401
-from app.services.control_engine import fill_policy_controls
+from app.services.control_engine import element_descriptor, fill_policy_controls
 from app.services.control_primitives import OptionRecord
 from app.services.greenhouse_phone_widget import (
     _reconcile_phone_review,
@@ -90,7 +90,8 @@ async def test_formatted_phone_value_reconciles_exact_phone_review_once(page):
                value="+1 (613) 555-0199">
         """
     )
-    descriptor = "phone | Phone | off"
+    element = await page.query_selector("#phone")
+    descriptor = await element_descriptor(page, element)
     review = {
         "reason_code": "unsupported_control",
         "summary": f"Profile field could not be verified: {descriptor}",
