@@ -52,6 +52,21 @@ def load_profile() -> Dict[str, Any]:
     return profile
 
 
+def resolve_greenhouse_job_target(*urls: str) -> tuple[Optional[str], Optional[str]]:
+    """Return the first usable Greenhouse board token and job id across URL candidates."""
+    board_token: Optional[str] = None
+    job_id: Optional[str] = None
+    for candidate in urls:
+        parsed_board_token, parsed_job_id = parse_greenhouse_job_url(candidate)
+        if not board_token and parsed_board_token:
+            board_token = parsed_board_token
+        if not job_id and parsed_job_id:
+            job_id = parsed_job_id
+        if board_token and job_id:
+            break
+    return board_token, job_id
+
+
 async def _visible_control_count(surface: Any) -> int:
     return int(await surface.locator(
         'input:not([type="hidden"]),textarea,select,button,[role="combobox"],'
@@ -96,11 +111,11 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
         report["next_control_present"] = bool(await adapter.find_next_button(surface))
         report["submit_control_present"] = bool(await adapter.find_submit_button(surface))
 
-        board_token, job_id = parse_greenhouse_job_url(report["surface_url"])
-        if not job_id:
-            board_token2, job_id2 = parse_greenhouse_job_url(page.url or url)
-            board_token = board_token or board_token2
-            job_id = job_id or job_id2
+        board_token, job_id = resolve_greenhouse_job_target(
+            report["surface_url"],
+            page.url or "",
+            url,
+        )
         report["board_token"] = board_token
         report["board_token_detected"] = bool(board_token)
         report["job_id"] = job_id
