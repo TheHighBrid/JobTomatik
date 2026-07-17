@@ -1,5 +1,3 @@
-https://job-boards.greenhouse.io/versaterm/jobs/5233634008
-https://job-boards.greenhouse.io/canonical/jobs/7548330
-https://job-boards.greenhouse.io/cloudflare/jobs/8025650
-https://job-boards.greenhouse.io/reddit/jobs/7922994
-https://job-boards.greenhouse.io/mongodb/jobs/7836059
+https://job-boards.greenhouse.io/anthropic/jobs/5174755008
+https://job-boards.greenhouse.io/scaleai/jobs/4713608005
+https://job-boards.greenhouse.io/discord/jobs/8396927002
