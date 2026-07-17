@@ -1,5 +1,7 @@
 import json
 
+from app.services.answer_policy import resolve_runtime_policy
+from app.services.control_primitives import OptionRecord, match_answers_to_options
 from app.services.greenhouse_certification import (
     SYNTHETIC_LOCATION,
     SYNTHETIC_TEXT_RESPONSE,
@@ -117,6 +119,67 @@ def test_build_synthetic_profile_uses_exact_schema_question_phrases():
     assert by_phrase["country | off | Country* | Phone"]["answer_label"] == "Canada +1"
     assert "Longitude" not in by_phrase
     assert "Latitude" not in by_phrase
+    assert not any(
+        policy["canonical_key"] == "data_processing_consent"
+        for policy in policies
+    )
+
+
+def test_data_compliance_adds_explicit_synthetic_only_consent_policy():
+    profile = build_synthetic_profile({
+        "questions": [],
+        "data_compliance": [{
+            "type": "gdpr",
+            "requires_processing_consent": True,
+            "requires_retention_consent": True,
+            "retention_period": 365,
+        }],
+    })
+
+    policies = profile["answer_policies"]
+    consent = next(
+        policy
+        for policy in policies
+        if policy["canonical_key"] == "data_processing_consent"
+    )
+
+    assert profile["synthetic_certification_only"] is True
+    assert consent["answer_label"] == "true"
+    assert consent["allow_autofill"] is True
+    assert consent["confirmed_at"]
+    assert consent["scope_value"] == "greenhouse"
+
+    resolved = resolve_runtime_policy(
+        "By checking this box, I agree to allow Example to store and process my data.",
+        policies,
+    )
+    assert resolved["matched"] is True
+    assert resolved["can_autofill"] is True
+    assert resolved["answer"] == "true"
+
+    match = match_answers_to_options(
+        [resolved["answer"]],
+        [OptionRecord(key="consent", label="I agree", value="1")],
+        allow_multiple=False,
+    )
+    assert match.ok is True
+    assert [item.key for item in match.matched] == ["consent"]
+
+
+def test_data_compliance_without_required_consent_adds_no_policy():
+    profile = build_synthetic_profile({
+        "questions": [],
+        "data_compliance": [{
+            "type": "gdpr",
+            "requires_processing_consent": False,
+            "requires_retention_consent": False,
+        }],
+    })
+
+    assert not any(
+        policy["canonical_key"] == "data_processing_consent"
+        for policy in profile["answer_policies"]
+    )
 
 
 def test_write_synthetic_resume_creates_valid_pdf(tmp_path):
