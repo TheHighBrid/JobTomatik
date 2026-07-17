@@ -12,6 +12,12 @@ on:
         required: true
         default: false
         type: boolean
+  push:
+    branches:
+      - "agent/greenhouse-pilot-*"
+    paths:
+      - "backend/greenhouse-pilot-urls.txt"
+      - ".github/workflows/greenhouse-live-certification.yml"
 
 permissions:
   contents: read
@@ -34,6 +40,7 @@ jobs:
       DEV_MOCK_JOBS: "false"
       ALLOW_REAL_APPLICATION_SUBMIT: "false"
       GREENHOUSE_CERT_RESUME_PATH: ./greenhouse-synthetic-resume.pdf
+      GREENHOUSE_PILOT_URL_MANIFEST: ./greenhouse-pilot-urls.txt
 
     steps:
       - name: Check out repository
@@ -59,8 +66,27 @@ jobs:
           GREENHOUSE_CERT_URLS: ${{ inputs.urls }}
         run: |
           set +e
+          exercise_mode="${{ inputs.exercise }}"
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if [[ ! -s "$GREENHOUSE_PILOT_URL_MANIFEST" ]]; then
+              echo "Pilot URL manifest is missing or empty: $GREENHOUSE_PILOT_URL_MANIFEST"
+              echo "exit_code=1" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            export GREENHOUSE_CERT_URLS="$(cat "$GREENHOUSE_PILOT_URL_MANIFEST")"
+            exercise_mode="true"
+            echo "Running synthetic pilot branch certification from $GREENHOUSE_PILOT_URL_MANIFEST"
+          fi
+
+          if [[ -z "${GREENHOUSE_CERT_URLS//[[:space:],]/}" ]]; then
+            echo "No public Greenhouse URLs were provided."
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           args=(--report greenhouse-live-certification.json)
-          if [[ "${{ inputs.exercise }}" == "true" ]]; then
+          if [[ "$exercise_mode" == "true" ]]; then
             args+=(
               --exercise
               --synthetic-profile
@@ -103,7 +129,7 @@ jobs:
           PY
 
       - name: Build pilot evidence ledger and readiness report
-        if: ${{ inputs.exercise && always() }}
+        if: ${{ always() && (inputs.exercise || github.event_name == 'push') }}
         shell: bash
         run: |
           if [[ ! -s greenhouse-live-certification.json ]]; then

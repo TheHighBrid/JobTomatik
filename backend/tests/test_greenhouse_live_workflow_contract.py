@@ -39,3 +39,16 @@ def test_workflow_keeps_real_submission_disabled_and_asserts_safety():
     assert "Assert no final submit action occurred" in workflow
     assert 'report.get("final_submit_clicked") is False' in workflow
     assert "backend/greenhouse-synthetic-resume.pdf" in workflow
+
+
+def test_pilot_push_trigger_is_narrow_manifest_driven_and_synthetic():
+    workflow = _workflow_text()
+
+    assert '      - "agent/greenhouse-pilot-*"' in workflow
+    assert '      - "backend/greenhouse-pilot-urls.txt"' in workflow
+    assert "GREENHOUSE_PILOT_URL_MANIFEST: ./greenhouse-pilot-urls.txt" in workflow
+    assert 'if [[ "$GITHUB_EVENT_NAME" == "push" ]]' in workflow
+    assert 'export GREENHOUSE_CERT_URLS="$(cat "$GREENHOUSE_PILOT_URL_MANIFEST")"' in workflow
+    assert 'exercise_mode="true"' in workflow
+    assert "Pilot URL manifest is missing or empty" in workflow
+    assert "github.event_name == 'push'" in workflow
