@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from app.models.application import ManualReviewStatus, ManualReviewTask
+from app.services.handoff_notifications import create_handoff_required_notification
 from app.services.handoff_session import HandoffSessionError, issue_handoff_session
 
 _INSTALLED = False
@@ -60,17 +61,25 @@ def _attach_handoff_session(
         screenshot_path=snapshot.get("screenshot_path"),
         metadata=metadata,
     )
+    notification = create_handoff_required_notification(
+        db,
+        app,
+        review,
+        issued.session,
+    )
     review.details = {
         **dict(review.details or {}),
         "handoff_public_id": issued.session.public_id,
         "handoff_status": issued.session.status,
         "handoff_expires_at": issued.session.expires_at.isoformat(),
         "browser_provider": issued.session.browser_provider,
+        "handoff_notification_id": notification.id,
     }
     # Safe metadata may be returned by the Celery result. Secrets remain encrypted
     # and are disclosed only once through the authenticated bootstrap endpoint.
     result["handoff_public_id"] = issued.session.public_id
     result["handoff_expires_at"] = issued.session.expires_at.isoformat()
+    result["handoff_notification_id"] = notification.id
     result.pop("handoff_snapshot", None)
 
 
