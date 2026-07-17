@@ -34,7 +34,7 @@ def phone_values_equivalent(actual: Any, expected: Any) -> bool:
         return False
     if actual_digits == expected_digits:
         return True
-    if min(len(actual_digits), len(expected_digits)) < 7:
+    if min(len(actual_digits), len(expected_digits)) < 8:
         return False
     return (
         actual_digits.endswith(expected_digits)
