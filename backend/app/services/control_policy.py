@@ -24,12 +24,17 @@ _CANONICAL_POLICY_ALIASES = {
 }
 
 
-def _custom_phrase_matches(phrase: str, normalized_question: str) -> bool:
-    """Match normalized phrases on token boundaries, never inside another word."""
-    target = normalize_question_text(phrase)
+def _custom_phrase_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _custom_phrase_matches(phrase: str, question_text: str) -> bool:
+    """Ignore punctuation while matching whole normalized phrase tokens."""
+    target = _custom_phrase_text(phrase)
+    question = _custom_phrase_text(question_text)
     if not target:
         return False
-    return target == normalized_question or f" {target} " in f" {normalized_question} "
+    return target == question or f" {target} " in f" {question} "
 
 
 def classify_control_question(question_text: str) -> Dict[str, str]:
@@ -63,7 +68,6 @@ def resolve_control_policy(
     policies: Iterable[Dict[str, Any]],
 ) -> Dict[str, Any]:
     classification = classify_control_question(question_text)
-    normalized = normalize_question_text(question_text)
     candidates: List[Dict[str, Any]] = []
 
     for policy in policies:
@@ -76,7 +80,7 @@ def resolve_control_policy(
             candidates.append(policy)
             continue
         if canonical_key.startswith("custom.") and any(
-            _custom_phrase_matches(phrase, normalized)
+            _custom_phrase_matches(phrase, question_text)
             for phrase in policy.get("match_phrases", [])
             if phrase
         ):
