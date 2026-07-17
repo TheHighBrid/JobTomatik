@@ -9,7 +9,7 @@ without weakening option matching or allowing fallback selection.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from app.services import control_aria
 from app.services.control_engine import element_descriptor
@@ -55,8 +55,6 @@ def dial_code_option_equivalent(displayed: str, option: OptionRecord) -> bool:
         return False
 
     expected_text = str(option.label or option.value or "")
-    # Country options contain a name plus a dial code. This avoids treating an
-    # unrelated numeric option as a phone-country selection.
     return bool(re.search(r"[A-Za-z]", expected_text))
 
 
@@ -80,17 +78,36 @@ async def _retry_phone_with_keyboard(
     surface: Any,
     element: Any,
     expected: str,
-) -> str:
-    """Use normal keyboard events when a masked phone input rejects bulk fill."""
+) -> Tuple[str, Dict[str, Any]]:
+    """Use normal keyboard events and return non-sensitive pilot diagnostics."""
+    diagnostics: Dict[str, Any] = {
+        "attempted": True,
+        "expected_digit_count": len(_digits(expected)),
+    }
     try:
+        diagnostics.update({
+            "tag": await element.evaluate("(el) => el.tagName.toLowerCase()"),
+            "type": await element.get_attribute("type") or "",
+            "inputmode": await element.get_attribute("inputmode") or "",
+            "autocomplete": await element.get_attribute("autocomplete") or "",
+            "role": await element.get_attribute("role") or "",
+            "before_digit_count": len(_digits(await element.input_value())),
+        })
         await element.evaluate("(el) => el.focus()")
         await element.press("Control+A")
         await element.type(expected, delay=25)
         await element.press("Tab")
         await surface.wait_for_timeout(150)
-        return str(await element.input_value())
-    except Exception:
-        return ""
+        actual = str(await element.input_value())
+        diagnostics["after_digit_count"] = len(_digits(actual))
+        diagnostics["equivalent"] = phone_values_equivalent(actual, expected)
+        return actual, diagnostics
+    except Exception as exc:
+        diagnostics.update({
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:200],
+        })
+        return "", diagnostics
 
 
 async def _reconcile_phone_review(
@@ -106,10 +123,6 @@ async def _reconcile_phone_review(
         return 0
 
     reconciled = 0
-    # Some Greenhouse forms expose the phone control as an opaque text input.
-    # Candidate enumeration is intentionally broad, but descriptor classification
-    # below must still identify the field as profile.phone before any review is
-    # reconciled.
     candidates = await surface.query_selector_all(
         'input[type="tel"],input[name*="phone" i],input[id*="phone" i],'
         'input:not([type]),input[type="text"]'
@@ -128,14 +141,23 @@ async def _reconcile_phone_review(
 
             actual = str(await element.input_value())
             keyboard_retry = False
+            diagnostics: Dict[str, Any] = {
+                "attempted": False,
+                "before_digit_count": len(_digits(actual)),
+                "expected_digit_count": len(_digits(expected)),
+            }
             if not phone_values_equivalent(actual, expected):
-                actual = await _retry_phone_with_keyboard(
+                actual, diagnostics = await _retry_phone_with_keyboard(
                     surface,
                     element,
                     expected,
                 )
                 keyboard_retry = True
             if not phone_values_equivalent(actual, expected):
+                diagnostics["final_digit_count"] = len(_digits(actual))
+                diagnostics["equivalent"] = False
+                for item in matching_reviews:
+                    item.setdefault("details", {})["phone_retry_diagnostics"] = diagnostics
                 continue
 
             for item in matching_reviews:
@@ -164,7 +186,13 @@ async def _reconcile_phone_review(
             })
             if not already_verified:
                 reconciled += 1
-        except Exception:
+        except Exception as exc:
+            log.append({
+                "action": "phone_reconciliation_skipped",
+                "descriptor": descriptor[:200] if "descriptor" in locals() else "",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:200],
+            })
             continue
     return reconciled
 
