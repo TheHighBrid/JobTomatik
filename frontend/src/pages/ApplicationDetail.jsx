@@ -7,14 +7,23 @@ import {
   submitApplication, createFollowup
 } from '../api/client'
 import ManualHandoffPanel from '../components/ManualHandoffPanel'
+import SupervisedSubmissionPanel from '../components/SupervisedSubmissionPanel'
 import StatusBadge from '../components/StatusBadge'
 import {
   ArrowLeft, Loader2, RefreshCw, Send, Calendar,
-  FileText, ExternalLink, AlertCircle, CheckCircle2
+  FileText, ExternalLink, AlertCircle, CheckCircle2, LockKeyhole
 } from 'lucide-react'
 import { format, addDays } from 'date-fns'
 
 const STATUSES = ['pending', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn']
+
+function isGreenhouseUrl(value) {
+  try {
+    return new URL(value || '').hostname.toLowerCase().includes('greenhouse.io')
+  } catch {
+    return /greenhouse\.io/i.test(String(value || ''))
+  }
+}
 
 export default function ApplicationDetail() {
   const { id } = useParams()
@@ -92,6 +101,7 @@ export default function ApplicationDetail() {
   if (!app) return <div className="text-center py-20 text-gray-500">Application not found.</div>
 
   const job = app.job
+  const greenhouseApplication = isGreenhouseUrl(job?.url)
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
@@ -124,6 +134,7 @@ export default function ApplicationDetail() {
       </div>
 
       <ManualHandoffPanel applicationId={Number(id)} />
+      <SupervisedSubmissionPanel application={app} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Status & Notes */}
@@ -175,14 +186,24 @@ export default function ApplicationDetail() {
             <AlertCircle className="w-4 h-4" />
             Dry Run (Preview)
           </button>
-          <button
-            onClick={() => handleSubmit(false)}
-            disabled={submitting || app.status === 'applied'}
-            className="btn-primary w-full flex items-center gap-2 justify-center"
-          >
-            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            Submit Application
-          </button>
+          {greenhouseApplication ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-relaxed text-slate-600">
+              <div className="flex items-center gap-2 font-semibold text-slate-800">
+                <LockKeyhole className="h-4 w-4" />
+                Direct Greenhouse live submit is locked
+              </div>
+              <p className="mt-1">Use the supervised panel above. It requires exact confirmations, payload hashes, two feature flags, and a one-time approval.</p>
+            </div>
+          ) : (
+            <button
+              onClick={() => handleSubmit(false)}
+              disabled={submitting || app.status === 'applied'}
+              className="btn-primary w-full flex items-center gap-2 justify-center"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Submit Application
+            </button>
+          )}
           {app.status === 'applied' && (
             <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 px-3 py-2 rounded-lg">
               <CheckCircle2 className="w-4 h-4" />
