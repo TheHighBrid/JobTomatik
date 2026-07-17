@@ -48,6 +48,31 @@ def _policy(answer: str, phrase: str):
     }
 
 
+def _phone_review(descriptor: str):
+    return {
+        "reason_code": "unsupported_control",
+        "summary": f"Profile field could not be verified: {descriptor}",
+        "details": {
+            "canonical_key": "profile.phone",
+            "category": "profile",
+            "descriptor": descriptor,
+            "control_type": "text",
+            "required": True,
+        },
+    }
+
+
+def _profile():
+    return {
+        "full_name": "Avery Certification",
+        "first_name": "Avery",
+        "last_name": "Certification",
+        "email": "avery.certification@example.test",
+        "phone": "6135550199",
+        "answer_policies": [],
+    }
+
+
 @pytest.mark.asyncio
 async def test_descriptor_only_text_phone_is_semantically_reconciled(page):
     await page.set_content(
@@ -59,30 +84,12 @@ async def test_descriptor_only_text_phone_is_semantically_reconciled(page):
     )
     element = await page.query_selector("#opaque-field")
     descriptor = await element_descriptor(page, element)
-    review_items = [{
-        "reason_code": "unsupported_control",
-        "summary": f"Profile field could not be verified: {descriptor}",
-        "details": {
-            "canonical_key": "profile.phone",
-            "category": "profile",
-            "descriptor": descriptor,
-            "control_type": "text",
-            "required": True,
-        },
-    }]
+    review_items = [_phone_review(descriptor)]
     log = []
-    profile = {
-        "full_name": "Avery Certification",
-        "first_name": "Avery",
-        "last_name": "Certification",
-        "email": "avery.certification@example.test",
-        "phone": "6135550199",
-        "answer_policies": [],
-    }
 
     count = await _reconcile_phone_review(
         page,
-        profile=profile,
+        profile=_profile(),
         cover_letter="",
         log=log,
         review_items=review_items,
@@ -92,6 +99,48 @@ async def test_descriptor_only_text_phone_is_semantically_reconciled(page):
     assert count == 1
     assert review_items == []
     assert log[-1]["action"] == "phone_format_verified"
+    assert log[-1]["verification"] == "significant_digits"
+    assert log[-1]["verified"] is True
+
+
+@pytest.mark.asyncio
+async def test_reviewed_phone_retries_with_keyboard_events_before_verification(page):
+    await page.set_content(
+        """
+        <label for="keyboard-phone">Phone</label>
+        <input id="keyboard-phone" name="question_456" type="text" required>
+        <script>
+          const input = document.getElementById('keyboard-phone');
+          let keyboardInput = false;
+          input.addEventListener('keydown', (event) => {
+            if (event.key.length === 1) keyboardInput = true;
+          });
+          input.addEventListener('input', () => {
+            if (!keyboardInput) input.value = '';
+          });
+          input.addEventListener('keyup', () => {
+            keyboardInput = false;
+          });
+        </script>
+        """
+    )
+    element = await page.query_selector("#keyboard-phone")
+    descriptor = await element_descriptor(page, element)
+    review_items = [_phone_review(descriptor)]
+    log = []
+
+    count = await _reconcile_phone_review(
+        page,
+        profile=_profile(),
+        cover_letter="",
+        log=log,
+        review_items=review_items,
+    )
+
+    assert await element.input_value() == "6135550199"
+    assert count == 1
+    assert review_items == []
+    assert log[-1]["verification"] == "keyboard_significant_digits"
     assert log[-1]["verified"] is True
 
 
