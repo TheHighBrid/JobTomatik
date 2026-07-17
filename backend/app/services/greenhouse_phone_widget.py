@@ -60,6 +60,39 @@ def dial_code_option_equivalent(displayed: str, option: OptionRecord) -> bool:
     return bool(re.search(r"[A-Za-z]", expected_text))
 
 
+def _matching_phone_reviews(
+    review_items: List[Dict[str, Any]],
+    descriptor: str,
+) -> List[Dict[str, Any]]:
+    return [
+        item
+        for item in review_items
+        if (
+            item.get("reason_code") == "unsupported_control"
+            and (item.get("details") or {}).get("canonical_key") == "profile.phone"
+            and (item.get("details") or {}).get("descriptor") == descriptor
+            and (item.get("details") or {}).get("control_type") == "text"
+        )
+    ]
+
+
+async def _retry_phone_with_keyboard(
+    surface: Any,
+    element: Any,
+    expected: str,
+) -> str:
+    """Use normal keyboard events when a masked phone input rejects bulk fill."""
+    try:
+        await element.evaluate("(el) => el.focus()")
+        await element.press("Control+A")
+        await element.type(expected, delay=25)
+        await element.press("Tab")
+        await surface.wait_for_timeout(150)
+        return str(await element.input_value())
+    except Exception:
+        return ""
+
+
 async def _reconcile_phone_review(
     surface: Any,
     *,
@@ -88,23 +121,26 @@ async def _reconcile_phone_review(
             descriptor = await element_descriptor(surface, element)
             if _safe_field(descriptor) != "phone":
                 continue
+
+            matching_reviews = _matching_phone_reviews(review_items, descriptor)
+            if not matching_reviews:
+                continue
+
             actual = str(await element.input_value())
+            keyboard_retry = False
+            if not phone_values_equivalent(actual, expected):
+                actual = await _retry_phone_with_keyboard(
+                    surface,
+                    element,
+                    expected,
+                )
+                keyboard_retry = True
             if not phone_values_equivalent(actual, expected):
                 continue
 
-            removed = []
-            for item in list(review_items):
-                details = item.get("details") or {}
-                if (
-                    item.get("reason_code") == "unsupported_control"
-                    and details.get("canonical_key") == "profile.phone"
-                    and details.get("descriptor") == descriptor
-                    and details.get("control_type") == "text"
-                ):
+            for item in matching_reviews:
+                if item in review_items:
                     review_items.remove(item)
-                    removed.append(item)
-            if not removed:
-                continue
 
             already_verified = (
                 await element.get_attribute("data-jt-phone-format-verified") == "true"
@@ -116,7 +152,11 @@ async def _reconcile_phone_review(
                 "action": "phone_format_verified",
                 "field": "phone",
                 "descriptor": descriptor[:200],
-                "verification": "significant_digits",
+                "verification": (
+                    "keyboard_significant_digits"
+                    if keyboard_retry
+                    else "significant_digits"
+                ),
                 "actual_digit_count": len(_digits(actual)),
                 "expected_digit_count": len(_digits(expected)),
                 "counted": not already_verified,
