@@ -13,6 +13,7 @@ celery_app = Celery(
         "app.tasks.applications",
         "app.tasks.unattended",
         "app.tasks.followup",
+        "app.tasks.operations",
     ],
 )
 
@@ -27,11 +28,16 @@ celery_app.conf.update(
         "app.tasks.applications.*": {"queue": "applications"},
         "app.tasks.unattended.*": {"queue": "applications"},
         "app.tasks.followup.*": {"queue": "followup"},
+        "app.tasks.operations.*": {"queue": "followup"},
     },
     beat_schedule={
         "check-followups-every-hour": {
             "task": "app.tasks.followup.send_pending_followups",
             "schedule": crontab(minute=0),
+        },
+        "refresh-adapter-health-alerts-hourly": {
+            "task": "app.tasks.operations.refresh_adapter_health_alerts",
+            "schedule": crontab(minute=15),
         },
         "refresh-job-scores-daily": {
             "task": "app.tasks.scraping.refresh_all_scores",
