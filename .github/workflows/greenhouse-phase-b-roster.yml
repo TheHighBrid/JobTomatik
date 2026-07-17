@@ -1,0 +1,102 @@
+name: Greenhouse Phase B roster certification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/app/services/supervised_pilot_roster.py"
+      - "backend/app/api/supervised_pilot_roster.py"
+      - "backend/app/schemas/supervised_pilot_roster.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_supervised_pilot_roster.py"
+      - "frontend/src/components/SupervisedPilotRoster.jsx"
+      - "frontend/src/pages/Applications.jsx"
+      - "docs/operations/greenhouse-phase-b-roster.md"
+      - ".github/workflows/greenhouse-phase-b-roster.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/services/supervised_pilot_roster.py"
+      - "backend/app/api/supervised_pilot_roster.py"
+      - "backend/app/schemas/supervised_pilot_roster.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_supervised_pilot_roster.py"
+      - "frontend/src/components/SupervisedPilotRoster.jsx"
+      - "frontend/src/pages/Applications.jsx"
+      - "docs/operations/greenhouse-phase-b-roster.md"
+      - ".github/workflows/greenhouse-phase-b-roster.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  technical-roster:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: sqlite:///./phase-b-roster-ci.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: phase-b-roster-ci-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Compile roster modules
+        working-directory: backend
+        run: |
+          python -m py_compile \
+            app/services/supervised_pilot_roster.py \
+            app/api/supervised_pilot_roster.py \
+            app/schemas/supervised_pilot_roster.py
+
+      - name: Run roster regression suite
+        working-directory: backend
+        run: pytest -q --tb=short -ra tests/test_supervised_pilot_roster.py
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build roster interface
+        working-directory: frontend
+        run: npm run build
+
+      - name: Assert preparation-only defaults
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.config import get_settings
+          from app.services.operations_policy import operations_readiness_manifest
+
+          settings = get_settings()
+          readiness = operations_readiness_manifest()
+          assert settings.allow_real_application_submit is False
+          assert settings.greenhouse_supervised_pilot_enabled is False
+          assert readiness["autopilot_enabled"] is False
+          print("Phase B roster remains preparation only")
+          PY

@@ -21,6 +21,7 @@ from app.api import (
     profile,
     settings as settings_api,
     submission_evidence_reviews,
+    supervised_pilot_roster,
     supervised_submissions,
 )
 from app.config import get_settings
@@ -111,6 +112,7 @@ app.include_router(jobs.router, prefix="/api")
 app.include_router(controller.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(supervised_submissions.router, prefix="/api")
+app.include_router(supervised_pilot_roster.router, prefix="/api")
 app.include_router(submission_evidence_reviews.router, prefix="/api")
 app.include_router(greenhouse_pilot_ledger.router, prefix="/api")
 app.include_router(adapter_health.router, prefix="/api")
