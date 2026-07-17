@@ -140,11 +140,13 @@ def recover_stale_application_attempt(
         target_state=target_state,
     )
     application.status = ApplicationStatus.pending
+    db.flush()
+    recovered_state = normalize_state(application.automation_state)
     db.add(ApplicationEvent(
         application_id=application.id,
         event_type="stale_application_attempt_recovered",
-        from_state=normalize_state(application.automation_state),
-        to_state=normalize_state(application.automation_state),
+        from_state=state,
+        to_state=recovered_state,
         payload={
             **details,
             "reason_code": reason_code.value,
@@ -170,7 +172,7 @@ def recover_stale_application_attempt(
         "recovered": True,
         "dry_run": dry_run,
         "reason_code": reason_code.value,
-        "target_state": normalize_state(application.automation_state),
+        "target_state": recovered_state,
         "review_id": review.id,
         "age_seconds": age_seconds,
         "timeout_minutes": timeout,
