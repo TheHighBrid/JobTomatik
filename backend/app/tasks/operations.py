@@ -4,6 +4,7 @@ from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.user import User
 from app.services.adapter_health_notifications import sync_adapter_health_notifications
+from app.services.application_recovery import recover_stale_application_attempts
 
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,31 @@ def refresh_adapter_health_alerts():
     except Exception:
         db.rollback()
         logger.exception("refresh_adapter_health_alerts failed")
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(
+    name="app.tasks.operations.recover_stale_application_attempts",
+    queue="followup",
+)
+def recover_stale_application_attempts_task():
+    """Move abandoned applying rows to explicit fail-closed review states."""
+
+    db = SessionLocal()
+    try:
+        result = recover_stale_application_attempts(db)
+        db.commit()
+        if result["recovered"]:
+            logger.warning(
+                "Recovered %s stale application attempt(s)",
+                result["recovered"],
+            )
+        return result
+    except Exception:
+        db.rollback()
+        logger.exception("recover_stale_application_attempts failed")
         raise
     finally:
         db.close()
