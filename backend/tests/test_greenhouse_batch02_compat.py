@@ -99,7 +99,7 @@ async def test_descriptor_only_text_phone_is_semantically_reconciled(page):
     assert count == 1
     assert review_items == []
     assert log[-1]["action"] == "phone_format_verified"
-    assert log[-1]["verification"] == "significant_digits"
+    assert log[-1]["verification"] == "same_shell_significant_digits"
     assert log[-1]["verified"] is True
 
 
@@ -140,8 +140,72 @@ async def test_reviewed_phone_retries_with_keyboard_events_before_verification(p
     assert await element.input_value() == "6135550199"
     assert count == 1
     assert review_items == []
-    assert log[-1]["verification"] == "keyboard_significant_digits"
+    assert log[-1]["verification"] == "same_shell_keyboard_significant_digits"
     assert log[-1]["verified"] is True
+
+
+@pytest.mark.asyncio
+async def test_hidden_required_marker_uses_one_visible_same_shell_phone_control(page):
+    await page.set_content(
+        """
+        <fieldset class="phone-input">
+          <legend>Phone</legend>
+          <input id="country" type="text" role="combobox" autocomplete="off">
+          <input class="requiredInput" aria-hidden="true" required>
+          <input id="phone" type="tel" autocomplete="off"
+                 class="input iti__tel-input" value="(613) 555-0199">
+        </fieldset>
+        """
+    )
+    marker = await page.query_selector(".requiredInput")
+    descriptor = await element_descriptor(page, marker)
+    review_items = [_phone_review(descriptor)]
+    log = []
+
+    count = await _reconcile_phone_review(
+        page,
+        profile=_profile(),
+        cover_letter="",
+        log=log,
+        review_items=review_items,
+    )
+
+    assert descriptor == "Phone"
+    assert count == 1
+    assert review_items == []
+    assert log[-1]["proxy_reconciled"] is True
+    assert log[-1]["verification"] == "same_shell_significant_digits"
+    assert log[-1]["actual_digit_count"] == 10
+
+
+@pytest.mark.asyncio
+async def test_hidden_phone_marker_stays_blocked_when_visible_controls_are_ambiguous(page):
+    await page.set_content(
+        """
+        <fieldset class="phone-input">
+          <legend>Phone</legend>
+          <input class="requiredInput" aria-hidden="true" required>
+          <input id="phone-primary" type="tel" value="6135550199">
+          <input id="phone-secondary" type="tel" value="6135550199">
+        </fieldset>
+        """
+    )
+    marker = await page.query_selector(".requiredInput")
+    descriptor = await element_descriptor(page, marker)
+    review_items = [_phone_review(descriptor)]
+    log = []
+
+    count = await _reconcile_phone_review(
+        page,
+        profile=_profile(),
+        cover_letter="",
+        log=log,
+        review_items=review_items,
+    )
+
+    assert count == 0
+    assert len(review_items) == 1
+    assert log == []
 
 
 @pytest.mark.asyncio
