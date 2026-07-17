@@ -100,7 +100,28 @@ jobs:
           PY
 
       - name: Run locked ingestion regression suite
-        run: pytest -q --tb=short -ra tests/test_greenhouse_pilot_ingestion.py
+        id: regression
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set +e
+          pytest -q --tb=short -ra tests/test_greenhouse_pilot_ingestion.py > pilot-ledger-pytest.txt 2>&1
+          status=$?
+          cat pilot-ledger-pytest.txt
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload locked ingestion regression report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: greenhouse-pilot-ledger-ingestion-pytest
+          path: backend/pilot-ledger-pytest.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Fail when locked ingestion regression failed
+        if: steps.regression.outputs.exit_code != '0'
+        run: exit 1
 
       - name: Assert runtime remains evidence only
         run: |
