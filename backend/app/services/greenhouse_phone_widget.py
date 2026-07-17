@@ -1,25 +1,33 @@
 """Conservative compatibility checks for Greenhouse international phone widgets.
 
-Greenhouse separates the country selector from the national phone input. The
-selected country button may collapse to a dial code, and the text input may
-format punctuation or prepend that code. These helpers verify semantic equality
-without weakening option matching or allowing fallback selection.
+Greenhouse can render a hidden required-marker input beside the real international
+phone control. These helpers reconcile an exact phone review only through one
+unambiguous visible phone input in the same field shell and only after semantic
+digit verification.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.services import control_aria
 from app.services.control_engine import element_descriptor
-from app.services.control_primitives import OptionRecord
+from app.services.control_primitives import OptionRecord, normalize_text
 from app.services.form_filler_v2 import _profile_values, _safe_field
 
 
 _INSTALLED = False
 _ORIGINAL_FILL_TEXT_FIELDS = None
 _ORIGINAL_DISPLAY_MATCHES_OPTION = None
+_PHONE_SHELL_SELECTOR = (
+    '[data-field],.field-wrapper,.application-field,'
+    '[class*="field-wrapper"],[class*="application-field"],fieldset'
+)
+_PHONE_INPUT_SELECTOR = (
+    'input[type="tel"],input[name*="phone" i],input[id*="phone" i],'
+    'input[class*="tel-input" i],input:not([type]),input[type="text"]'
+)
 
 
 def _digits(value: Any) -> str:
@@ -27,7 +35,7 @@ def _digits(value: Any) -> str:
 
 
 def phone_values_equivalent(actual: Any, expected: Any) -> bool:
-    """Verify equivalent national/international phone representations."""
+    """Verify equivalent national and international phone representations."""
     actual_digits = _digits(actual)
     expected_digits = _digits(expected)
     if not actual_digits or not expected_digits:
@@ -48,16 +56,12 @@ def _dial_code(value: Any) -> str:
 
 
 def dial_code_option_equivalent(displayed: str, option: OptionRecord) -> bool:
-    """Confirm that an exact matched phone-country option changed to its dial code."""
+    """Confirm that an exact matched country option collapsed to its dial code."""
     expected_code = _dial_code(option.label) or _dial_code(option.value)
     displayed_code = _dial_code(displayed)
     if not expected_code or displayed_code != expected_code:
         return False
-
-    expected_text = str(option.label or option.value or "")
-    # Country options contain a name plus a dial code. This avoids treating an
-    # unrelated numeric option as a phone-country selection.
-    return bool(re.search(r"[A-Za-z]", expected_text))
+    return bool(re.search(r"[A-Za-z]", str(option.label or option.value or "")))
 
 
 def _matching_phone_reviews(
@@ -93,6 +97,62 @@ async def _retry_phone_with_keyboard(
         return ""
 
 
+async def _phone_candidate_score(surface: Any, element: Any) -> Tuple[int, str]:
+    """Score only explicit phone signals; zero means the control is ineligible."""
+    descriptor = await element_descriptor(surface, element)
+    input_type = normalize_text(await element.get_attribute("type"))
+    element_id = normalize_text(await element.get_attribute("id"))
+    name = normalize_text(await element.get_attribute("name"))
+    class_name = normalize_text(await element.get_attribute("class"))
+
+    score = 0
+    if input_type == "tel":
+        score += 100
+    if re.search(r"\bphone\b", f"{element_id} {name}"):
+        score += 40
+    if "tel input" in class_name or "tel-input" in class_name:
+        score += 30
+    if _safe_field(descriptor) == "phone":
+        score += 20
+    return score, descriptor
+
+
+async def _same_shell_phone_control(
+    surface: Any,
+    marker: Any,
+) -> Tuple[Optional[Any], str]:
+    """Return one uniquely strongest visible phone input from the marker's shell."""
+    shell_handle = await marker.evaluate_handle(
+        f'(el) => el.closest({repr(_PHONE_SHELL_SELECTOR)}) || el.parentElement'
+    )
+    shell = shell_handle.as_element()
+    if shell is None:
+        return None, ""
+
+    scored: List[Tuple[int, Any, str]] = []
+    for candidate in await shell.query_selector_all(_PHONE_INPUT_SELECTOR):
+        try:
+            if not await candidate.is_visible() or not await candidate.is_enabled():
+                continue
+            if normalize_text(await candidate.get_attribute("aria-hidden")) == "true":
+                continue
+            if await candidate.get_attribute("readonly") is not None:
+                continue
+            score, descriptor = await _phone_candidate_score(surface, candidate)
+            if score > 0:
+                scored.append((score, candidate, descriptor))
+        except Exception:
+            continue
+
+    if not scored:
+        return None, ""
+    top_score = max(score for score, _, _ in scored)
+    strongest = [(candidate, descriptor) for score, candidate, descriptor in scored if score == top_score]
+    if len(strongest) != 1:
+        return None, ""
+    return strongest[0]
+
+
 async def _reconcile_phone_review(
     surface: Any,
     *,
@@ -106,32 +166,28 @@ async def _reconcile_phone_review(
         return 0
 
     reconciled = 0
-    # Some Greenhouse forms expose the phone control as an opaque text input.
-    # Candidate enumeration is intentionally broad, but descriptor classification
-    # below must still identify the field as profile.phone before any review is
-    # reconciled.
-    candidates = await surface.query_selector_all(
-        'input[type="tel"],input[name*="phone" i],input[id*="phone" i],'
-        'input:not([type]),input[type="text"]'
-    )
-    for element in candidates:
+    for marker in await surface.query_selector_all(_PHONE_INPUT_SELECTOR):
         try:
-            if not await element.is_visible() or not await element.is_enabled():
+            if not await marker.is_visible() or not await marker.is_enabled():
                 continue
-            descriptor = await element_descriptor(surface, element)
-            if _safe_field(descriptor) != "phone":
-                continue
-
-            matching_reviews = _matching_phone_reviews(review_items, descriptor)
+            marker_descriptor = await element_descriptor(surface, marker)
+            matching_reviews = _matching_phone_reviews(review_items, marker_descriptor)
             if not matching_reviews:
                 continue
 
-            actual = str(await element.input_value())
+            phone_control, control_descriptor = await _same_shell_phone_control(
+                surface,
+                marker,
+            )
+            if phone_control is None:
+                continue
+
+            actual = str(await phone_control.input_value())
             keyboard_retry = False
             if not phone_values_equivalent(actual, expected):
                 actual = await _retry_phone_with_keyboard(
                     surface,
-                    element,
+                    phone_control,
                     expected,
                 )
                 keyboard_retry = True
@@ -143,20 +199,22 @@ async def _reconcile_phone_review(
                     review_items.remove(item)
 
             already_verified = (
-                await element.get_attribute("data-jt-phone-format-verified") == "true"
+                await phone_control.get_attribute("data-jt-phone-format-verified") == "true"
             )
-            await element.evaluate(
+            await phone_control.evaluate(
                 "(el) => el.setAttribute('data-jt-phone-format-verified', 'true')"
             )
             log.append({
                 "action": "phone_format_verified",
                 "field": "phone",
-                "descriptor": descriptor[:200],
+                "descriptor": marker_descriptor[:200],
+                "control_descriptor": control_descriptor[:200],
                 "verification": (
-                    "keyboard_significant_digits"
+                    "same_shell_keyboard_significant_digits"
                     if keyboard_retry
-                    else "significant_digits"
+                    else "same_shell_significant_digits"
                 ),
+                "proxy_reconciled": phone_control is not marker,
                 "actual_digit_count": len(_digits(actual)),
                 "expected_digit_count": len(_digits(expected)),
                 "counted": not already_verified,
