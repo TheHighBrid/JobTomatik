@@ -14,6 +14,7 @@ from app.api import (
     auth,
     controller,
     export,
+    greenhouse_pilot_ledger,
     handoffs,
     jobs,
     notifications,
@@ -111,6 +112,7 @@ app.include_router(controller.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(supervised_submissions.router, prefix="/api")
 app.include_router(submission_evidence_reviews.router, prefix="/api")
+app.include_router(greenhouse_pilot_ledger.router, prefix="/api")
 app.include_router(adapter_health.router, prefix="/api")
 app.include_router(handoffs.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
