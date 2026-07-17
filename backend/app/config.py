@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     supervised_approval_ttl_minutes: int = 20
     supervised_approval_max_ttl_minutes: int = 60
 
+    # Canonical evidence-only pilot ledger. Runtime ingestion can append only a
+    # server-built, independently confirmed record. It cannot accept arbitrary
+    # client records or a release-approval reference.
+    greenhouse_pilot_ledger_path: str = "evidence/greenhouse-pilot-ledger.jsonl"
+    greenhouse_pilot_readiness_json_path: str = "evidence/greenhouse-pilot-readiness.json"
+    greenhouse_pilot_readiness_markdown_path: str = "evidence/greenhouse-pilot-readiness.md"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
