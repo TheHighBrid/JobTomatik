@@ -19,6 +19,7 @@ from app.api import (
     notifications,
     profile,
     settings as settings_api,
+    submission_evidence_reviews,
     supervised_submissions,
 )
 from app.config import get_settings
@@ -109,6 +110,7 @@ app.include_router(jobs.router, prefix="/api")
 app.include_router(controller.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(supervised_submissions.router, prefix="/api")
+app.include_router(submission_evidence_reviews.router, prefix="/api")
 app.include_router(adapter_health.router, prefix="/api")
 app.include_router(handoffs.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
