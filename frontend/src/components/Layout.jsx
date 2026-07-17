@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
-  LayoutDashboard, Search, ListTodo, ClipboardList,
+  LayoutDashboard, Search, ListTodo, ClipboardList, HeartPulse,
   User, Settings, LogOut, Menu, X
 } from 'lucide-react'
 import { useAuthStore, useNotificationStore } from '../store'
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/search', icon: Search, label: 'Job Search' },
   { to: '/queue', icon: ListTodo, label: 'Queue' },
   { to: '/applications', icon: ClipboardList, label: 'Applications' },
+  { to: '/adapter-health', icon: HeartPulse, label: 'Adapter Health' },
   { to: '/profile', icon: User, label: 'Profile' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
