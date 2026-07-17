@@ -18,12 +18,18 @@ on:
     paths:
       - "backend/greenhouse-pilot-urls.txt"
       - ".github/workflows/greenhouse-live-certification.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/greenhouse-pilot-urls.txt"
 
 permissions:
   contents: read
 
 jobs:
   supervised-live-dry-run:
+    if: ${{ github.event_name != 'pull_request' || startsWith(github.head_ref, 'agent/greenhouse-pilot-') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 35
 
@@ -68,7 +74,7 @@ jobs:
           set +e
           exercise_mode="${{ inputs.exercise }}"
 
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "push" || "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             if [[ ! -s "$GREENHOUSE_PILOT_URL_MANIFEST" ]]; then
               echo "Pilot URL manifest is missing or empty: $GREENHOUSE_PILOT_URL_MANIFEST"
               echo "exit_code=1" >> "$GITHUB_OUTPUT"
@@ -76,7 +82,7 @@ jobs:
             fi
             export GREENHOUSE_CERT_URLS="$(cat "$GREENHOUSE_PILOT_URL_MANIFEST")"
             exercise_mode="true"
-            echo "Running synthetic pilot branch certification from $GREENHOUSE_PILOT_URL_MANIFEST"
+            echo "Running synthetic pilot certification from $GREENHOUSE_PILOT_URL_MANIFEST"
           fi
 
           if [[ -z "${GREENHOUSE_CERT_URLS//[[:space:],]/}" ]]; then
@@ -129,7 +135,7 @@ jobs:
           PY
 
       - name: Build pilot evidence ledger and readiness report
-        if: ${{ always() && (inputs.exercise || github.event_name == 'push') }}
+        if: ${{ always() && (inputs.exercise || github.event_name == 'push' || github.event_name == 'pull_request') }}
         shell: bash
         run: |
           if [[ ! -s greenhouse-live-certification.json ]]; then
