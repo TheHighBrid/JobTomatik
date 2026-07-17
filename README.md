@@ -16,8 +16,25 @@ The project is intentionally conservative: real application submission is blocke
 | Job search queue | Working through FastAPI + Redis + Celery |
 | Cover letters | Free local banking/fraud template by default |
 | Browser automation | Dry-run supported through Playwright |
+| Manual handoffs | Resumable CAPTCHA, anti-bot, MFA, and login sessions with user notifications |
+| Adapter health | User-scoped metrics plus deduplicated operational alerts |
 | Real application submit | Blocked by default for safety |
 | Recommended production mode | Human approval before any submission |
+
+### Canonical ATS maturity
+
+The runtime uses the roadmap maturity field below. Descriptive certification labels, green tests, and fixture coverage do not authorize submission by themselves.
+
+| Adapter | Maturity | Current safe boundary |
+|---|---|---|
+| Greenhouse | `dry_run` | Live synthetic full-form exercise through pre-submit or manual challenge |
+| Lever | `dry_run` | Live synthetic full-form exercise through pre-submit or manual challenge |
+| Ashby | `dry_run` | Live synthetic full-form exercise through pre-submit or manual challenge |
+| SmartRecruiters | `detect_only` | Public metadata and pre-form anti-bot handoff |
+| Workday | `detect_only` | Public metadata and account/login handoff |
+| Generic sites | `unsupported` | Manual review |
+
+No adapter currently has `human_reviewed_submit` or `certified_autonomous` maturity. Real and unattended submission remain unavailable until explicit release-gate evidence is recorded.
 
 ---
 
@@ -31,10 +48,12 @@ The project is intentionally conservative: real application submission is blocke
 | **Form Filling** | Playwright automation fills recognized fields from the profile and resume. |
 | **Cover Letter Generator** | Free local template by default. Anthropic is optional with `AI_PROVIDER=anthropic`. |
 | **Resume Attaching** | PDF upload stored server-side and attached during Playwright form fill when possible. |
-| **Application Submitting** | Dry-run mode available. Real submit is blocked unless explicitly enabled. |
+| **Application Submitting** | Dry-run mode available. Real submit is blocked unless explicitly enabled and supported by adapter maturity and policy gates. |
+| **Manual Handoff** | Secure resumable sessions for CAPTCHA, anti-bot, MFA, and login boundaries. Secrets remain encrypted and are never placed in notifications. |
 | **Status Monitoring** | Kanban-style tracker: Pending → Applied → Interviewing → Offer / Rejected. |
+| **Adapter Health** | Per-platform attempt, failure, manual-review, uncertain, and confirmation metrics with operational alerts. |
 | **Follow-up Emails** | Schedule emails per application. SendGrid is optional. |
-| **Notifications** | In-app notifications for new matches and status changes. |
+| **Notifications** | In-app notifications for new matches, status changes, adapter-health alerts, and time-limited manual handoffs. |
 
 ---
 
@@ -118,7 +137,18 @@ Real application submission is blocked unless explicitly enabled:
 ALLOW_REAL_APPLICATION_SUBMIT=true
 ```
 
-Keep it `false` until dry-runs reliably fill enough fields and the user has reviewed the answers. Dry-run results include `fields_filled` and `requires_manual_review`.
+Keep it `false` until the relevant supervised release gates have passed. Dry-run results include `fields_filled`, `requires_manual_review`, an auditable action log, and retained handoff or confirmation evidence where available.
+
+Unattended execution additionally fails closed unless all of these conditions are satisfied:
+
+1. The adapter has canonical `certified_autonomous` maturity.
+2. Global and per-platform switches are enabled.
+3. The user has explicitly opted in for that platform.
+4. Required answer policies are resolved.
+5. Daily and weekly caps, per-employer caps, quiet hours, exclusions, and job constraints pass.
+6. Duplicate prevention and confirmation-evidence rules pass.
+
+CAPTCHAs, anti-bot challenges, MFA, login boundaries, assessments, identity checks, and ambiguous legal or sensitive questions always route to manual review.
 
 ---
 
@@ -135,7 +165,7 @@ Keep it `false` until dry-runs reliably fill enough fields and the user has revi
 | `SENDGRID_API_KEY` | Optional | Email delivery. Emails are logged/mocked if unset. |
 | `FROM_EMAIL` | Optional | Sender address for emails |
 | `DEV_MOCK_JOBS` | Optional | Keep `false` for real use. Set `true` only for UI demos. |
-| `ALLOW_REAL_APPLICATION_SUBMIT` | Optional | Keep `false` until the automation is ready for real submissions. |
+| `ALLOW_REAL_APPLICATION_SUBMIT` | Optional | Keep `false` until the relevant adapter release gates pass. |
 | `RAPIDAPI_KEY` | Optional | Reserved for future job-board integrations |
 
 ---
@@ -161,8 +191,14 @@ Full interactive docs at **/docs** on the backend server.
 | PATCH | `/api/applications/{id}` | Update status / notes |
 | POST | `/api/applications/{id}/generate-cover-letter` | Regenerate cover letter |
 | POST | `/api/applications/{id}/submit?dry_run=true` | Dry-run browser form fill |
-| POST | `/api/applications/{id}/submit?dry_run=false` | Real submit, blocked unless manually enabled |
+| POST | `/api/applications/{id}/submit?dry_run=false` | Real submit, blocked unless all gates permit it |
 | POST | `/api/applications/{id}/followups` | Schedule follow-up email |
+| GET | `/api/adapter-health` | Get user-scoped adapter health metrics and alerts |
+| GET | `/api/handoffs` | List resumable manual handoff sessions |
+| GET | `/api/handoffs/{public_id}` | Read one owned handoff and its event history |
+| POST | `/api/handoffs/{public_id}/bootstrap` | Disclose the encrypted resume token once to its owner |
+| POST | `/api/handoffs/{public_id}/claim` | Claim a handoff and receive a short-lived lease |
+| POST | `/api/handoffs/{public_id}/recover` | Recover an interrupted eligible handoff lease |
 | GET | `/api/notifications` | List notifications |
 | POST | `/api/notifications/mark-all-read` | Mark all read |
 
