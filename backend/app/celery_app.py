@@ -35,6 +35,10 @@ celery_app.conf.update(
             "task": "app.tasks.followup.send_pending_followups",
             "schedule": crontab(minute=0),
         },
+        "recover-stale-application-attempts": {
+            "task": "app.tasks.operations.recover_stale_application_attempts",
+            "schedule": crontab(minute="5,20,35,50"),
+        },
         "refresh-adapter-health-alerts-hourly": {
             "task": "app.tasks.operations.refresh_adapter_health_alerts",
             "schedule": crontab(minute=15),
