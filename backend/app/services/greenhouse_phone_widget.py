@@ -72,6 +72,7 @@ async def _reconcile_phone_review(
     if not expected:
         return 0
 
+    reconciled = 0
     candidates = await surface.query_selector_all(
         'input[type="tel"],input[name*="phone" i],input[id*="phone" i]'
     )
@@ -98,20 +99,28 @@ async def _reconcile_phone_review(
                     review_items.remove(item)
                     removed.append(item)
 
-            if removed:
-                log.append({
-                    "action": "phone_format_verified",
-                    "field": "phone",
-                    "descriptor": descriptor[:200],
-                    "verification": "significant_digits",
-                    "actual_digit_count": len(_digits(actual)),
-                    "expected_digit_count": len(_digits(expected)),
-                    "verified": True,
-                })
-                return 1
+            if not removed:
+                continue
+
+            already_verified = (
+                await element.get_attribute("data-jt-phone-format-verified") == "true"
+            )
+            await element.set_attribute("data-jt-phone-format-verified", "true")
+            log.append({
+                "action": "phone_format_verified",
+                "field": "phone",
+                "descriptor": descriptor[:200],
+                "verification": "significant_digits",
+                "actual_digit_count": len(_digits(actual)),
+                "expected_digit_count": len(_digits(expected)),
+                "counted": not already_verified,
+                "verified": True,
+            })
+            if not already_verified:
+                reconciled += 1
         except Exception:
             continue
-    return 0
+    return reconciled
 
 
 def install_greenhouse_phone_widget_compat() -> None:
