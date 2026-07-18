@@ -84,6 +84,31 @@ def test_intake_is_idempotent_for_same_user_and_exact_target(auth_client, db_ses
     )
 
 
+def test_intake_reuses_an_already_discovered_exact_job_url(auth_client, db_session):
+    existing_job = Job(
+        external_id="existing-search-result",
+        company="Existing Employer",
+        title="Existing Role",
+        location="Canada",
+        url=CANDIDATE["application_url"],
+        source=JobSource.linkedin,
+        status=JobStatus.queued,
+        raw_data={"application_method": "external_url"},
+    )
+    db_session.add(existing_job)
+    db_session.commit()
+
+    response = auth_client.post("/api/supervised-pilot/candidates", json=CANDIDATE)
+
+    assert response.status_code == 200
+    assert response.json()["created_job"] is False
+    assert response.json()["job_id"] == existing_job.id
+    assert db_session.query(Job).count() == 1
+    application = db_session.query(Application).one()
+    assert application.job_id == existing_job.id
+    assert application.automation_state == ApplicationAutomationState.preparing.value
+
+
 @pytest.mark.parametrize(
     "url",
     [
