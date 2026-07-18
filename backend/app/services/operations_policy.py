@@ -74,8 +74,10 @@ def is_quiet_hour(now: datetime, start_hour: int, end_hour: int) -> bool:
 
 
 def _period_counts(db, user_id: int, now: datetime) -> tuple[int, int]:
-    day_start = datetime(now.year, now.month, now.day)
-    week_start = day_start - timedelta(days=day_start.weekday())
+    # Caps are rolling safety windows. Calendar-day or calendar-week boundaries
+    # would allow a burst immediately after midnight or the start of a new week.
+    day_start = now - timedelta(days=1)
+    week_start = now - timedelta(days=7)
     daily = (
         db.query(func.count(Application.id))
         .filter(Application.user_id == user_id, Application.created_at >= day_start)
