@@ -91,6 +91,9 @@ def test_intake_is_idempotent_for_same_user_and_exact_target(auth_client, db_ses
         "https://user:pass@job-boards.greenhouse.io/example/jobs/123",
         "https://greenhouse.io.attacker.example/example/jobs/123",
         "https://job-boards.greenhouse.io/example",
+        "https://job-boards.greenhouse.io/example/jobs/",
+        "https://boards.greenhouse.io/embed/job_app?token=",
+        "https://job-boards.greenhouse.io/example?gh_jid=",
         "https://job-boards.greenhouse.io:8443/example/jobs/123",
     ],
 )
