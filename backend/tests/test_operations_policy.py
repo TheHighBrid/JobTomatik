@@ -108,7 +108,7 @@ def test_platform_detection_and_disable_list(monkeypatch):
     assert evaluate_platform_policy("https://jobs.lever.co/acme/abc").allowed is True
 
 
-def test_daily_cap_blocks_new_scheduled_applications(db_session, monkeypatch):
+def test_daily_cap_blocks_across_utc_midnight(db_session, monkeypatch):
     monkeypatch.setenv("AUTOPILOT_ENABLED", "true")
     monkeypatch.setenv("AUTOPILOT_DEFAULT_DAILY_CAP", "2")
     monkeypatch.setenv("AUTOPILOT_DEFAULT_WEEKLY_CAP", "10")
@@ -116,10 +116,7 @@ def test_daily_cap_blocks_new_scheduled_applications(db_session, monkeypatch):
     monkeypatch.setenv("AUTOPILOT_QUIET_HOURS_END_UTC", "0")
     _reset_operations_settings()
 
-    # Keep the fixture inside one UTC calendar day. The production policy uses
-    # UTC day boundaries, so wall-clock execution near midnight must not alter
-    # what this regression test is exercising.
-    now = datetime(2026, 7, 16, 12, 0, 0)
+    now = datetime(2026, 7, 16, 1, 0, 0)
     user = _user(db_session, "cap@example.test")
     _application(db_session, user, 1, now - timedelta(hours=2))
     _application(db_session, user, 2, now - timedelta(hours=1))
@@ -129,6 +126,26 @@ def test_daily_cap_blocks_new_scheduled_applications(db_session, monkeypatch):
     assert decision.code == "application_cap_reached"
     assert decision.metadata["daily_count"] == 2
     assert decision.metadata["remaining_daily"] == 0
+
+
+def test_weekly_cap_blocks_across_calendar_week_boundary(db_session, monkeypatch):
+    monkeypatch.setenv("AUTOPILOT_ENABLED", "true")
+    monkeypatch.setenv("AUTOPILOT_DEFAULT_DAILY_CAP", "10")
+    monkeypatch.setenv("AUTOPILOT_DEFAULT_WEEKLY_CAP", "2")
+    monkeypatch.setenv("AUTOPILOT_QUIET_HOURS_START_UTC", "0")
+    monkeypatch.setenv("AUTOPILOT_QUIET_HOURS_END_UTC", "0")
+    _reset_operations_settings()
+
+    now = datetime(2026, 7, 8, 12, 0, 0)
+    user = _user(db_session, "weekly-cap@example.test")
+    _application(db_session, user, 3, now - timedelta(days=6, hours=23))
+    _application(db_session, user, 4, now - timedelta(days=1))
+
+    decision = evaluate_autopilot_policy(db_session, user, now)
+    assert decision.allowed is False
+    assert decision.code == "application_cap_reached"
+    assert decision.metadata["weekly_count"] == 2
+    assert decision.metadata["remaining_weekly"] == 0
 
 
 def test_repeated_operational_failures_open_circuit_breaker(db_session, monkeypatch):
@@ -144,7 +161,7 @@ def test_repeated_operational_failures_open_circuit_breaker(db_session, monkeypa
 
     now = datetime.utcnow().replace(microsecond=0)
     user = _user(db_session, "breaker@example.test")
-    app = _application(db_session, user, 3, now - timedelta(hours=2))
+    app = _application(db_session, user, 5, now - timedelta(hours=2))
     for offset in (30, 20, 10):
         db_session.add(ManualReviewTask(
             application_id=app.id,
