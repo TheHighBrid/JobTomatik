@@ -116,7 +116,10 @@ def test_daily_cap_blocks_new_scheduled_applications(db_session, monkeypatch):
     monkeypatch.setenv("AUTOPILOT_QUIET_HOURS_END_UTC", "0")
     _reset_operations_settings()
 
-    now = datetime.utcnow().replace(microsecond=0)
+    # Keep the fixture inside one UTC calendar day. The production policy uses
+    # UTC day boundaries, so wall-clock execution near midnight must not alter
+    # what this regression test is exercising.
+    now = datetime(2026, 7, 16, 12, 0, 0)
     user = _user(db_session, "cap@example.test")
     _application(db_session, user, 1, now - timedelta(hours=2))
     _application(db_session, user, 2, now - timedelta(hours=1))
