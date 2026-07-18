@@ -63,3 +63,14 @@ def test_pilot_pull_request_trigger_is_head_scoped_and_manifest_driven():
     assert "github.event_name == 'pull_request'" in workflow
     assert '      - "backend/greenhouse-pilot-urls.txt"' in workflow
     assert "Running synthetic pilot certification" in workflow
+
+
+def test_manifest_batches_keep_safe_exclusions_but_manual_runs_remain_strict():
+    workflow = _workflow_text()
+
+    assert 'batch_mode="false"' in workflow
+    assert 'batch_mode="true"' in workflow
+    assert 'echo "batch_mode=$batch_mode" >> "$GITHUB_OUTPUT"' in workflow
+    assert "evaluate_greenhouse_pilot_batch.py" in workflow
+    assert 'if [[ "$BATCH_MODE" == "true" ]]' in workflow
+    assert "Manual Greenhouse certification did not pass." in workflow

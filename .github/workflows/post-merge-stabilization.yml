@@ -66,7 +66,10 @@ jobs:
             tests/test_operations_policy.py::test_weekly_cap_blocks_across_calendar_week_boundary \
             tests/test_greenhouse_pilot_ingestion.py::test_verified_phase_a_baseline_is_complete_and_fail_safe \
             tests/test_greenhouse_synthetic_certification.py::test_data_compliance_adds_explicit_synthetic_only_consent_policy \
-            tests/test_supervised_submission_approval.py::test_direct_greenhouse_live_worker_call_without_approval_is_blocked
+            tests/test_supervised_submission_approval.py::test_direct_greenhouse_live_worker_call_without_approval_is_blocked \
+            tests/test_greenhouse_pilot_batch_evaluator.py \
+            tests/test_greenhouse_live_workflow_contract.py::test_manifest_batches_keep_safe_exclusions_but_manual_runs_remain_strict \
+            tests/test_recovery_incident_drill.py::test_recovery_incident_workflow_contract
 
       - name: Run integrated backend and browser suite
         shell: bash

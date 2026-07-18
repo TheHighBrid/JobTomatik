@@ -67,7 +67,8 @@ def test_recovery_incident_workflow_contract():
     assert "actions/upload-artifact@v6" in text
     assert 'ALLOW_REAL_APPLICATION_SUBMIT: "false"' in text
     assert 'AUTOPILOT_ENABLED: "false"' in text
-    assert "run_recovery_incident_drill.py" in text
+    assert "working-directory: backend" in text
+    assert "python scripts/run_recovery_incident_drill.py" in text
     assert 'report["passed"] is True' in text
     assert 'report["counts"]["submitted_or_confirmed"] == 0' in text
     assert "recovery-incident-drill-report" in text
