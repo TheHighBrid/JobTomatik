@@ -18,6 +18,7 @@ on:
     paths:
       - "backend/greenhouse-pilot-urls.txt"
       - ".github/workflows/greenhouse-live-certification.yml"
+      - "backend/scripts/evaluate_greenhouse_pilot_batch.py"
   pull_request:
     branches:
       - main
@@ -73,10 +74,13 @@ jobs:
         run: |
           set +e
           exercise_mode="${{ inputs.exercise }}"
+          batch_mode="false"
 
           if [[ "$GITHUB_EVENT_NAME" == "push" || "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            batch_mode="true"
             if [[ ! -s "$GREENHOUSE_PILOT_URL_MANIFEST" ]]; then
               echo "Pilot URL manifest is missing or empty: $GREENHOUSE_PILOT_URL_MANIFEST"
+              echo "batch_mode=$batch_mode" >> "$GITHUB_OUTPUT"
               echo "exit_code=1" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -84,6 +88,8 @@ jobs:
             exercise_mode="true"
             echo "Running synthetic pilot certification from $GREENHOUSE_PILOT_URL_MANIFEST"
           fi
+
+          echo "batch_mode=$batch_mode" >> "$GITHUB_OUTPUT"
 
           if [[ -z "${GREENHOUSE_CERT_URLS//[[:space:],]/}" ]]; then
             echo "No public Greenhouse URLs were provided."
@@ -165,10 +171,18 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Fail when live certification failed
+      - name: Evaluate live certification result
         if: steps.live_certification.outputs.exit_code != '0'
         shell: bash
+        env:
+          BATCH_MODE: ${{ steps.live_certification.outputs.batch_mode }}
         run: |
-          echo "Greenhouse certification did not pass."
+          if [[ "$BATCH_MODE" == "true" ]]; then
+            python scripts/evaluate_greenhouse_pilot_batch.py \
+              --report greenhouse-live-certification.json
+            exit 0
+          fi
+
+          echo "Manual Greenhouse certification did not pass."
           echo "Download the workflow artifact and inspect the JSON and output log."
           exit 1
