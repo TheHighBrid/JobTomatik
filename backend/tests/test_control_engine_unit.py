@@ -5,6 +5,25 @@ from app.services.control_engine import (
     match_answers_to_options,
     parse_policy_answers,
 )
+from app.services.control_policy import resolve_control_policy
+
+
+def _policy(key, answer, *, phrases=None, policy_id=1):
+    return {
+        "id": policy_id,
+        "canonical_key": key,
+        "category": "custom",
+        "sensitivity": "standard",
+        "mode": "answer",
+        "answer_value": answer,
+        "answer_label": answer,
+        "match_phrases": phrases or [],
+        "scope": "global",
+        "scope_value": "",
+        "allow_autofill": True,
+        "is_active": True,
+        "confirmed_at": "2026-07-15T10:00:00",
+    }
 
 
 def test_parse_policy_answers_preserves_commas_but_supports_explicit_lists():
@@ -74,6 +93,41 @@ def test_ordered_fallback_never_selects_an_unlisted_option():
     )
     assert result.ok is False
     assert result.matched == []
+
+
+def test_exact_custom_phrase_overrides_broad_catalog_family():
+    result = resolve_control_policy(
+        "Preferred relocation city",
+        [
+            _policy("willing_to_relocate", "Yes", policy_id=1),
+            _policy(
+                "custom.relocation_city",
+                "Montreal",
+                phrases=["preferred relocation city"],
+                policy_id=2,
+            ),
+        ],
+    )
+
+    assert result["can_autofill"] is True
+    assert result["answer"] == "Montreal"
+    assert result["policy"]["canonical_key"] == "custom.relocation_city"
+
+
+def test_legacy_privacy_and_terms_consent_controls_remain_classified():
+    privacy = resolve_control_policy(
+        "I agree to the privacy policy",
+        [_policy("privacy_consent", "Yes")],
+    )
+    terms = resolve_control_policy(
+        "I agree to the application terms",
+        [_policy("terms_consent", "No")],
+    )
+
+    assert privacy["can_autofill"] is True
+    assert privacy["answer"] == "Yes"
+    assert terms["can_autofill"] is True
+    assert terms["answer"] == "No"
 
 
 def test_certification_manifest_never_overclaims_universal_coverage():

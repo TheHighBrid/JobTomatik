@@ -369,14 +369,22 @@ QUESTION_CATALOG: List[Dict[str, Any]] = [
     _item(
         "terms_consent", "Application declaration or terms", "consent", "legal",
         "Consent to application terms, declarations, accuracy statements, or attestations.",
-        [r"i certify", r"i acknowledge", r"terms and conditions", r"information.*(?:true|accurate|complete)", r"attest", r"j'accepte", r"je certifie"],
+        [
+            r"i certify", r"i acknowledge", r"terms and conditions",
+            r"(?:i )?agree to (?:the )?(?:application )?terms", r"application terms",
+            r"information.*(?:true|accurate|complete)", r"attest", r"j'accepte",
+            r"je certifie",
+        ],
         setup_group="Consent", suggested_answers=["Yes", "I agree"],
         fallback_suggestions=["Agree", "Accepted", "I certify"],
     ),
     _item(
         "data_processing_consent", "Applicant-data processing consent", "consent", "legal",
         "Consent to processing applicant data for the current application.",
-        [r"process my data", r"processing.*applicant data", r"privacy consent", r"data processing", r"traitement de mes données"],
+        [
+            r"process my data", r"processing.*applicant data", r"privacy consent",
+            r"privacy (?:policy|notice)", r"data processing", r"traitement de mes données",
+        ],
         setup_group="Consent", suggested_answers=["Yes", "I agree"],
         fallback_suggestions=["Consent", "I consent to processing"],
     ),
