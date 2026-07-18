@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.services.answer_policy import review_reason_for_question
 
-CONTROL_ENGINE_VERSION = "2.0.0"
+CONTROL_ENGINE_VERSION = "2.1.0"
 
 _YES = {
     "yes", "y", "true", "1", "agree", "i agree", "accepted", "accept",
@@ -63,6 +63,13 @@ def parse_policy_answers(value: Any) -> List[str]:
     if any(separator in text for separator in (";", "\n", "|")):
         return [part.strip() for part in re.split(r"[;\n|]+", text) if part.strip()]
     return [text]
+
+
+def policy_answer_candidates(policy_result: Dict[str, Any]) -> List[Any]:
+    candidates = list(policy_result.get("answer_candidates") or [])
+    if not candidates and policy_result.get("answer") is not None:
+        candidates = [policy_result.get("answer")]
+    return candidates
 
 
 @dataclass(frozen=True)
@@ -168,6 +175,32 @@ def match_answers_to_options(
         result.matched.append(selected)
         used.add(selected.key)
     return result
+
+
+def match_answer_candidates_to_options(
+    candidates: Sequence[Any],
+    options: Sequence[OptionRecord],
+    *,
+    allow_multiple: bool,
+) -> MatchResult:
+    """Try a primary answer and its ordered fallbacks without guessing an option."""
+    attempted: List[str] = []
+    ambiguous: Dict[str, List[str]] = {}
+    for candidate in candidates:
+        answers = parse_policy_answers(candidate)
+        attempted.extend(answers)
+        match = match_answers_to_options(
+            answers,
+            options,
+            allow_multiple=allow_multiple,
+        )
+        if match.ok:
+            return match
+        ambiguous.update(match.ambiguous_answers)
+    return MatchResult(
+        missing_answers=attempted or ["no approved answer candidates"],
+        ambiguous_answers=ambiguous,
+    )
 
 
 def options_fingerprint(options: Sequence[OptionRecord]) -> str:

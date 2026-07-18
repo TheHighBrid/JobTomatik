@@ -16,10 +16,12 @@ from app.services.control_primitives import (
     is_required,
     make_evidence,
     make_review,
+    match_answer_candidates_to_options,
     match_answers_to_options,
     normalize_text,
     options_fingerprint,
     parse_policy_answers,
+    policy_answer_candidates,
 )
 
 
@@ -242,8 +244,8 @@ async def handle_combobox(
                 ))
         return 0
 
-    answers = parse_policy_answers(policy.get("answer"))
-    if len(answers) != 1:
+    candidates = policy_answer_candidates(policy)
+    if not candidates:
         signature = f"{control_id}:combobox:invalid-answer-count"
         if signature not in processed:
             processed.add(signature)
@@ -251,7 +253,7 @@ async def handle_combobox(
                 descriptor=descriptor, control_type="aria_combobox",
                 policy_result=policy, required=required,
                 reason_code="unsupported_control",
-                summary=f"Custom dropdown requires exactly one approved answer: {descriptor}",
+                summary=f"Custom dropdown requires an approved answer: {descriptor}",
             ))
         return 0
 
@@ -265,9 +267,17 @@ async def handle_combobox(
         return 0
 
     existing_display = await _combobox_display_state(combobox)
-    if _display_contains_answer(existing_display, answers[0]):
+    existing_answer = next(
+        (
+            str(candidate)
+            for candidate in candidates
+            if _display_contains_answer(existing_display, str(candidate))
+        ),
+        None,
+    )
+    if existing_answer:
         processed.add(
-            f"{control_id}:aria-combobox:already-selected:{normalize_text(answers[0])}"
+            f"{control_id}:aria-combobox:already-selected:{normalize_text(existing_answer)}"
         )
         return 0
 
@@ -296,31 +306,48 @@ async def handle_combobox(
     await page.wait_for_timeout(120)
     listbox, handles, options = await _combobox_options(page, combobox)
     searched = False
+    searched_answer = ""
+    match = None
     if not options:
-        searched = await _type_search_answer(page, combobox, answers[0])
-        if searched:
+        for candidate in candidates:
+            candidate_answers = parse_policy_answers(candidate)
+            if len(candidate_answers) != 1:
+                continue
+            searched_answer = candidate_answers[0]
+            searched = await _type_search_answer(page, combobox, searched_answer)
+            if not searched:
+                continue
             listbox, handles, options = await _combobox_options(page, combobox)
+            match = match_answers_to_options(
+                [searched_answer], options, allow_multiple=False
+            )
+            if match.ok:
+                break
+    else:
+        match = match_answer_candidates_to_options(
+            candidates, options, allow_multiple=False
+        )
 
     signature = (
         f"{control_id}:aria-combobox:{options_fingerprint(options)}:"
-        f"searched={searched}"
+        f"searched={normalize_text(searched_answer) if searched else 'false'}"
     )
     if signature in processed:
         await _close_visible_listboxes(page, combobox)
         return 0
     processed.add(signature)
 
-    match = match_answers_to_options(answers, options, allow_multiple=False)
-    if not match.ok:
+    if match is None or not match.ok:
         append_review(outcome.review_items, make_review(
             descriptor=descriptor, control_type="aria_combobox",
             policy_result=policy, required=required, options=options,
             reason_code="unsupported_control",
             summary=f"Approved answer does not map unambiguously to this custom dropdown: {descriptor}",
             details={
-                "missing_answers": match.missing_answers,
-                "ambiguous_answers": match.ambiguous_answers,
+                "missing_answers": match.missing_answers if match else candidates,
+                "ambiguous_answers": match.ambiguous_answers if match else {},
                 "search_attempted": searched,
+                "search_answer": searched_answer,
                 "option_count": len(options),
             },
         ))

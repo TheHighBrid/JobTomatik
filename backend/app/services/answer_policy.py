@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import re
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlparse
@@ -9,159 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.answer_policy import ApplicantAnswerPolicy, AnswerPolicyMode, AnswerPolicyScope
-
-
-QUESTION_CATALOG: List[Dict[str, Any]] = [
-    {
-        "canonical_key": "work_authorization",
-        "label": "Legally authorized to work",
-        "category": "work_authorization",
-        "sensitivity": "legal",
-        "description": "Whether you are legally authorized to work in the job location.",
-        "patterns": [
-            r"authorized to work", r"legally authorized", r"eligible to work",
-            r"right to work", r"work authorization", r"autorisé[e]? à travailler",
-        ],
-    },
-    {
-        "canonical_key": "sponsorship_required",
-        "label": "Requires employer sponsorship",
-        "category": "sponsorship",
-        "sensitivity": "legal",
-        "description": "Whether you currently or later require visa or immigration sponsorship.",
-        "patterns": [
-            r"require sponsorship", r"visa sponsorship", r"immigration sponsorship",
-            r"need sponsorship", r"sponsorship now or in the future", r"parrainage",
-        ],
-    },
-    {
-        "canonical_key": "age_requirement",
-        "label": "Meets legal age requirement",
-        "category": "legal",
-        "sensitivity": "legal",
-        "description": "Confirmation that you meet a stated legal minimum-age requirement.",
-        "patterns": [r"at least 18", r"minimum age", r"legal age", r"18 years of age", r"âge légal"],
-    },
-    {
-        "canonical_key": "criminal_history",
-        "label": "Criminal history declaration",
-        "category": "legal",
-        "sensitivity": "legal",
-        "description": "Any criminal-history or conviction declaration.",
-        "patterns": [r"criminal record", r"criminal history", r"convicted", r"conviction", r"casier judiciaire"],
-    },
-    {
-        "canonical_key": "gender_identity",
-        "label": "Gender identity",
-        "category": "demographic",
-        "sensitivity": "sensitive",
-        "description": "Voluntary gender or gender-identity disclosure.",
-        "patterns": [r"\bgender\b", r"gender identity", r"\bsexe\b", r"identité de genre"],
-    },
-    {
-        "canonical_key": "race_ethnicity",
-        "label": "Race or ethnicity",
-        "category": "demographic",
-        "sensitivity": "sensitive",
-        "description": "Voluntary race, ethnicity, or visible-minority disclosure.",
-        "patterns": [r"race", r"ethnicity", r"ethnic background", r"visible minority", r"origine ethnique"],
-    },
-    {
-        "canonical_key": "veteran_status",
-        "label": "Veteran status",
-        "category": "demographic",
-        "sensitivity": "sensitive",
-        "description": "Voluntary veteran or protected-veteran disclosure.",
-        "patterns": [r"veteran", r"protected veteran", r"ancien combattant"],
-    },
-    {
-        "canonical_key": "disability_status",
-        "label": "Disability status",
-        "category": "demographic",
-        "sensitivity": "sensitive",
-        "description": "Voluntary disability or accommodation disclosure.",
-        "patterns": [
-            r"disability", r"disabled", r"accommodation", r"handicap",
-            r"personne en situation de handicap",
-        ],
-    },
-    {
-        "canonical_key": "salary_expectation",
-        "label": "Salary expectation",
-        "category": "compensation",
-        "sensitivity": "sensitive",
-        "description": "Desired salary, compensation range, or pay expectation.",
-        "patterns": [
-            r"salary expectation", r"expected salary", r"desired salary",
-            r"compensation expectation", r"pay expectation", r"prétentions salariales",
-        ],
-    },
-    {
-        "canonical_key": "willing_to_relocate",
-        "label": "Willing to relocate",
-        "category": "relocation",
-        "sensitivity": "standard",
-        "description": "Whether you are willing to relocate for the role.",
-        "patterns": [r"willing to relocate", r"open to relocation", r"relocate", r"déménager"],
-    },
-    {
-        "canonical_key": "availability_date",
-        "label": "Availability or start date",
-        "category": "availability",
-        "sensitivity": "standard",
-        "description": "Your start date, notice period, or availability.",
-        "patterns": [
-            r"start date", r"available from", r"availability date", r"notice period",
-            r"date de disponibilité", r"préavis",
-        ],
-    },
-    {
-        "canonical_key": "highest_education",
-        "label": "Highest education",
-        "category": "education",
-        "sensitivity": "standard",
-        "description": "Your highest completed education level.",
-        "patterns": [r"highest education", r"highest degree", r"education level", r"niveau d'études"],
-    },
-    {
-        "canonical_key": "currently_employed",
-        "label": "Currently employed",
-        "category": "employment",
-        "sensitivity": "standard",
-        "description": "Whether you are currently employed.",
-        "patterns": [r"currently employed", r"presently employed", r"actuellement en emploi"],
-    },
-    {
-        "canonical_key": "referral_source",
-        "label": "How you heard about the role",
-        "category": "source",
-        "sensitivity": "standard",
-        "description": "The source through which you discovered the position.",
-        "patterns": [r"how did you hear", r"how you heard", r"source of application", r"comment avez-vous entendu"],
-    },
-    {
-        "canonical_key": "terms_consent",
-        "label": "Application terms consent",
-        "category": "consent",
-        "sensitivity": "legal",
-        "description": "Consent to application terms, declarations, or attestations.",
-        "patterns": [
-            r"i agree", r"i certify", r"i acknowledge", r"terms and conditions",
-            r"attest", r"consent", r"j'accepte", r"je certifie",
-        ],
-    },
-    {
-        "canonical_key": "data_processing_consent",
-        "label": "Data processing consent",
-        "category": "consent",
-        "sensitivity": "legal",
-        "description": "Consent to processing or retaining applicant data.",
-        "patterns": [
-            r"process my data", r"retain my data", r"privacy consent", r"data processing",
-            r"traitement de mes données", r"conserver mes données",
-        ],
-    },
-]
+from app.services.answer_policy_catalog import QUESTION_CATALOG
 
 _CATALOG_BY_KEY = {item["canonical_key"]: item for item in QUESTION_CATALOG}
 _SCOPE_PRIORITY = {
@@ -220,6 +69,46 @@ def decrypt_policy_value(value: Optional[str]) -> Optional[str]:
         return None
 
 
+def clean_fallback_answers(values: Iterable[str]) -> List[str]:
+    cleaned: List[str] = []
+    seen = set()
+    for value in values or []:
+        answer = str(value or "").strip()
+        normalized = normalize_question_text(answer)
+        if not answer or normalized in seen:
+            continue
+        seen.add(normalized)
+        cleaned.append(answer)
+    return cleaned[:20]
+
+
+def encrypt_policy_fallbacks(values: Iterable[str]) -> Optional[str]:
+    cleaned = clean_fallback_answers(values)
+    if not cleaned:
+        return None
+    return encrypt_policy_value(json.dumps(cleaned, ensure_ascii=False))
+
+
+def decrypt_policy_fallbacks(value: Optional[str]) -> List[str]:
+    decrypted = decrypt_policy_value(value)
+    if not decrypted:
+        return []
+    try:
+        decoded = json.loads(decrypted)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return clean_fallback_answers(decoded if isinstance(decoded, list) else [])
+
+
+def policy_answer_candidates(policy: Dict[str, Any]) -> List[str]:
+    candidates = [
+        policy.get("answer_label"),
+        policy.get("answer_value"),
+        *(policy.get("fallback_answers") or []),
+    ]
+    return clean_fallback_answers(value for value in candidates if value)
+
+
 def _scope_matches(policy: ApplicantAnswerPolicy, target_url: str, company: str) -> bool:
     scope = policy.scope or AnswerPolicyScope.global_scope.value
     scope_value = normalize_question_text(policy.scope_value)
@@ -243,6 +132,7 @@ def serialize_policy(policy: ApplicantAnswerPolicy) -> Dict[str, Any]:
         "mode": policy.mode,
         "answer_value": decrypt_policy_value(policy.encrypted_value),
         "answer_label": decrypt_policy_value(policy.encrypted_label),
+        "fallback_answers": decrypt_policy_fallbacks(policy.encrypted_fallbacks),
         "match_phrases": list(policy.match_phrases or []),
         "scope": policy.scope,
         "scope_value": policy.scope_value or "",
@@ -302,7 +192,8 @@ def resolve_runtime_policy(question_text: str, policies: Iterable[Dict[str, Any]
         }
 
     mode = policy.get("mode", AnswerPolicyMode.ask_each_time.value)
-    answer = policy.get("answer_label") or policy.get("answer_value")
+    answer_candidates = policy_answer_candidates(policy)
+    answer = answer_candidates[0] if answer_candidates else None
     confirmed = bool(policy.get("confirmed_at"))
     can_autofill = (
         mode in {AnswerPolicyMode.answer.value, AnswerPolicyMode.decline.value}
@@ -330,6 +221,7 @@ def resolve_runtime_policy(question_text: str, policies: Iterable[Dict[str, Any]
         "reason": reason,
         "policy": policy,
         "answer": answer,
+        "answer_candidates": answer_candidates,
     }
 
 

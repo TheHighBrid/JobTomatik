@@ -6,7 +6,11 @@ import re
 from typing import Any, Dict, Iterable, List
 
 from app.models.answer_policy import AnswerPolicyMode
-from app.services.answer_policy import QUESTION_CATALOG, normalize_question_text
+from app.services.answer_policy import (
+    QUESTION_CATALOG,
+    normalize_question_text,
+    policy_answer_candidates,
+)
 
 _EXTRA_PATTERNS = {
     "data_processing_consent": [
@@ -96,7 +100,8 @@ def resolve_control_policy(
         }
 
     mode = policy.get("mode", AnswerPolicyMode.ask_each_time.value)
-    answer = policy.get("answer_label") or policy.get("answer_value")
+    answer_candidates = policy_answer_candidates(policy)
+    answer = answer_candidates[0] if answer_candidates else None
     confirmed = bool(policy.get("confirmed_at"))
     can_autofill = (
         mode in {AnswerPolicyMode.answer.value, AnswerPolicyMode.decline.value}
@@ -124,4 +129,5 @@ def resolve_control_policy(
         "reason": reason,
         "policy": policy,
         "answer": answer,
+        "answer_candidates": answer_candidates,
     }

@@ -16,9 +16,9 @@ from app.services.control_primitives import (
     is_required,
     make_evidence,
     make_review,
-    match_answers_to_options,
+    match_answer_candidates_to_options,
     options_fingerprint,
-    parse_policy_answers,
+    policy_answer_candidates,
 )
 
 
@@ -62,8 +62,8 @@ async def handle_select(
             ))
         return 0
 
-    match = match_answers_to_options(
-        parse_policy_answers(policy.get("answer")), options, allow_multiple=multiple
+    match = match_answer_candidates_to_options(
+        policy_answer_candidates(policy), options, allow_multiple=multiple
     )
     if not match.ok:
         append_review(outcome.review_items, make_review(
@@ -135,8 +135,8 @@ async def handle_datalist(
             ))
         return 0
 
-    match = match_answers_to_options(
-        parse_policy_answers(policy.get("answer")), options, allow_multiple=False
+    match = match_answer_candidates_to_options(
+        policy_answer_candidates(policy), options, allow_multiple=False
     )
     if not match.ok:
         append_review(outcome.review_items, make_review(
@@ -261,11 +261,20 @@ async def handle_choice_group(
             ))
         return 0
 
-    answers = parse_policy_answers(policy.get("answer"))
+    candidates = policy_answer_candidates(policy)
     if input_type == "checkbox_single":
-        decision = boolean_value(answers[0] if answers else "")
+        decision = next(
+            (
+                parsed
+                for candidate in candidates
+                if (parsed := boolean_value(candidate)) is not None
+            ),
+            None,
+        )
         if decision is None:
-            match = match_answers_to_options(answers, options, allow_multiple=False)
+            match = match_answer_candidates_to_options(
+                candidates, options, allow_multiple=False
+            )
             if not match.ok:
                 append_review(outcome.review_items, make_review(
                     descriptor=descriptor, control_type=input_type,
@@ -299,7 +308,9 @@ async def handle_choice_group(
         return 1
 
     multiple = input_type == "checkbox_group"
-    match = match_answers_to_options(answers, options, allow_multiple=multiple)
+    match = match_answer_candidates_to_options(
+        candidates, options, allow_multiple=multiple
+    )
     if not match.ok:
         append_review(outcome.review_items, make_review(
             descriptor=descriptor, control_type=input_type,

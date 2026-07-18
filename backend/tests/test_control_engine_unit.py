@@ -1,6 +1,7 @@
 from app.services.control_engine import (
     OptionRecord,
     certification_manifest,
+    match_answer_candidates_to_options,
     match_answers_to_options,
     parse_policy_answers,
 )
@@ -44,6 +45,35 @@ def test_multi_answer_requires_every_answer_to_match():
     missing = match_answers_to_options(["Remote", "Moon base"], options, allow_multiple=True)
     assert missing.ok is False
     assert missing.missing_answers == ["Moon base"]
+
+
+def test_ordered_fallback_uses_first_answer_that_matches_unambiguously():
+    options = [
+        OptionRecord(key="female", label="Female", value="female"),
+        OptionRecord(key="male", label="Male", value="male"),
+        OptionRecord(key="decline", label="Prefer not to answer", value="decline"),
+    ]
+    result = match_answer_candidates_to_options(
+        ["Man", "Male", "Prefer not to answer"],
+        options,
+        allow_multiple=False,
+    )
+    assert result.ok is True
+    assert result.matched[0].key == "male"
+
+
+def test_ordered_fallback_never_selects_an_unlisted_option():
+    options = [
+        OptionRecord(key="asian", label="Asian", value="asian"),
+        OptionRecord(key="white", label="White", value="white"),
+    ]
+    result = match_answer_candidates_to_options(
+        ["North African", "Middle Eastern", "Prefer not to answer"],
+        options,
+        allow_multiple=False,
+    )
+    assert result.ok is False
+    assert result.matched == []
 
 
 def test_certification_manifest_never_overclaims_universal_coverage():

@@ -10,6 +10,8 @@ from app.database import get_db
 from app.models.answer_policy import ApplicantAnswerPolicy, AnswerPolicyMode, AnswerPolicyScope
 from app.models.user import User
 from app.schemas.answer_policy import (
+    AnswerPolicyBulkResult,
+    AnswerPolicyBulkUpsert,
     AnswerPolicyCatalogItem,
     AnswerPolicyCreate,
     AnswerPolicyOut,
@@ -17,6 +19,8 @@ from app.schemas.answer_policy import (
 )
 from app.services.answer_policy import (
     QUESTION_CATALOG,
+    clean_fallback_answers,
+    encrypt_policy_fallbacks,
     encrypt_policy_value,
     get_catalog_item,
     serialize_policy,
@@ -92,6 +96,7 @@ async def create_answer_policy(
     db: Session = Depends(get_db),
 ):
     match_phrases = [phrase.strip() for phrase in data.match_phrases if phrase.strip()]
+    fallback_answers = clean_fallback_answers(data.fallback_answers)
     category, sensitivity = _metadata_for_policy(data.canonical_key, match_phrases)
     mode = data.mode.value
     scope = data.scope.value
@@ -115,6 +120,7 @@ async def create_answer_policy(
         mode=mode,
         encrypted_value=encrypt_policy_value(data.answer_value),
         encrypted_label=encrypt_policy_value(data.answer_label),
+        encrypted_fallbacks=encrypt_policy_fallbacks(fallback_answers),
         match_phrases=match_phrases,
         scope=scope,
         scope_value=scope_value,
@@ -159,6 +165,11 @@ async def update_answer_policy(
         policy.encrypted_value = encrypt_policy_value(updates.pop("answer_value"))
     if "answer_label" in updates:
         policy.encrypted_label = encrypt_policy_value(updates.pop("answer_label"))
+    if "fallback_answers" in updates:
+        policy.encrypted_fallbacks = encrypt_policy_fallbacks(
+            updates.pop("fallback_answers")
+        )
+        answer_changed = True
     if "match_phrases" in updates:
         policy.match_phrases = [phrase.strip() for phrase in updates.pop("match_phrases") if phrase.strip()]
     if "mode" in updates:
@@ -203,6 +214,105 @@ async def update_answer_policy(
         )
     db.refresh(policy)
     return _policy_out(policy)
+
+
+@router.post("/bulk", response_model=AnswerPolicyBulkResult)
+async def bulk_upsert_answer_policies(
+    data: AnswerPolicyBulkUpsert,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create or replace a reviewed policy pack in one transaction."""
+    created = 0
+    updated = 0
+    saved: List[ApplicantAnswerPolicy] = []
+    request_keys = set()
+
+    for item in data.items:
+        match_phrases = [phrase.strip() for phrase in item.match_phrases if phrase.strip()]
+        fallback_answers = clean_fallback_answers(item.fallback_answers)
+        category, sensitivity = _metadata_for_policy(item.canonical_key, match_phrases)
+        mode = item.mode.value
+        scope = item.scope.value
+        scope_value = item.scope_value.strip().lower()
+        unique_key = (item.canonical_key, scope, scope_value)
+        if unique_key in request_keys:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Duplicate policy in bulk request: {item.canonical_key}",
+            )
+        request_keys.add(unique_key)
+
+        _validate_policy_payload(
+            mode=mode,
+            answer_value=item.answer_value,
+            answer_label=item.answer_label,
+            scope=scope,
+            scope_value=scope_value,
+            allow_autofill=item.allow_autofill,
+            confirmed=item.confirmed,
+        )
+
+        policy = (
+            db.query(ApplicantAnswerPolicy)
+            .filter(
+                ApplicantAnswerPolicy.user_id == current_user.id,
+                ApplicantAnswerPolicy.canonical_key == item.canonical_key,
+                ApplicantAnswerPolicy.scope == scope,
+                ApplicantAnswerPolicy.scope_value == scope_value,
+            )
+            .first()
+        )
+        if policy:
+            updated += 1
+            policy.category = category
+            policy.sensitivity = sensitivity
+            policy.mode = mode
+            policy.encrypted_value = encrypt_policy_value(item.answer_value)
+            policy.encrypted_label = encrypt_policy_value(item.answer_label)
+            policy.encrypted_fallbacks = encrypt_policy_fallbacks(fallback_answers)
+            policy.match_phrases = match_phrases
+            policy.allow_autofill = item.allow_autofill
+            policy.is_active = item.is_active
+            policy.confirmed_at = datetime.utcnow() if item.confirmed else None
+            policy.version = (policy.version or 1) + 1
+        else:
+            created += 1
+            policy = ApplicantAnswerPolicy(
+                user_id=current_user.id,
+                canonical_key=item.canonical_key,
+                category=category,
+                sensitivity=sensitivity,
+                mode=mode,
+                encrypted_value=encrypt_policy_value(item.answer_value),
+                encrypted_label=encrypt_policy_value(item.answer_label),
+                encrypted_fallbacks=encrypt_policy_fallbacks(fallback_answers),
+                match_phrases=match_phrases,
+                scope=scope,
+                scope_value=scope_value,
+                allow_autofill=item.allow_autofill,
+                is_active=item.is_active,
+                confirmed_at=datetime.utcnow() if item.confirmed else None,
+            )
+            db.add(policy)
+        saved.append(policy)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="One or more answer policies conflict with an existing scope.",
+        )
+
+    for policy in saved:
+        db.refresh(policy)
+    return AnswerPolicyBulkResult(
+        policies=[_policy_out(policy) for policy in saved],
+        created=created,
+        updated=updated,
+    )
 
 
 @router.post("/{policy_id}/confirm", response_model=AnswerPolicyOut)

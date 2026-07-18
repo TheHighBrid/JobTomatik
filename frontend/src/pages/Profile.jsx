@@ -48,6 +48,7 @@ const DEFAULT_PREFS = {
   current_role: '',
   years_experience: '',
   key_achievements: '',
+  employment_history: '',
 }
 
 export default function Profile() {
@@ -84,6 +85,7 @@ export default function Profile() {
       current_role: profile.profile_data?.current_role || '',
       years_experience: profile.profile_data?.years_experience || '',
       key_achievements: profile.profile_data?.key_achievements || '',
+      employment_history: profile.profile_data?.employment_history || '',
     })
   }, [profile])
 
@@ -97,6 +99,7 @@ export default function Profile() {
         current_role: prefs.current_role,
         years_experience: prefs.years_experience,
         key_achievements: prefs.key_achievements,
+        employment_history: prefs.employment_history,
       },
       job_preferences: {
         skills: prefs.skills.split(',').map((s) => s.trim()).filter(Boolean),
@@ -306,6 +309,17 @@ export default function Profile() {
               value={prefs.key_achievements}
               onChange={setP('key_achievements')}
             />
+          </Field>
+          <Field label="Employment History (used in cover letters)">
+            <textarea
+              className="input min-h-[110px] resize-y"
+              placeholder={"TD Bank | Role | Relevant experience\nRBC | Role | Relevant experience\nBMO | Loan Officer | Lending and client assessment\nScotiabank | Role | Relevant experience\nTangerine | Role | Relevant experience"}
+              value={prefs.employment_history}
+              onChange={setP('employment_history')}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Use one employer per line. Cover letters will name where each experience was gained and will not invent missing details.
+            </p>
           </Field>
         </div>
       </Section>
