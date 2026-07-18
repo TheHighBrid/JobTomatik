@@ -42,6 +42,10 @@ def _required_text(value: str, field: str, max_length: int) -> str:
     return cleaned
 
 
+def _nonempty_query_value(query: Dict[str, list[str]], key: str) -> bool:
+    return any(str(value or "").strip() for value in query.get(key, []))
+
+
 def normalize_greenhouse_application_url(value: str) -> str:
     raw = _required_text(value, "application_url", 1000)
     try:
@@ -69,11 +73,21 @@ def normalize_greenhouse_application_url(value: str) -> str:
 
     path = parsed.path or "/"
     query = parse_qs(parsed.query, keep_blank_values=True)
+    path_parts = [part for part in path.split("/") if part]
+    path_job_id = any(
+        part.lower() == "jobs"
+        and index + 1 < len(path_parts)
+        and bool(path_parts[index + 1].strip())
+        for index, part in enumerate(path_parts)
+    )
+    embedded_job = (
+        path.lower().endswith("/embed/job_app")
+        and _nonempty_query_value(query, "token")
+    )
     identifies_job = (
-        "/jobs/" in path.lower()
-        or path.lower().endswith("/embed/job_app")
-        or bool(query.get("gh_jid"))
-        or bool(query.get("token"))
+        path_job_id
+        or embedded_job
+        or _nonempty_query_value(query, "gh_jid")
     )
     if not identifies_job:
         raise SupervisedPilotIntakeError(
