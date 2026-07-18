@@ -9,7 +9,11 @@ from app.models.application import Application
 from app.models.job import Job
 from app.models.user import User
 from app.schemas.supervised_pilot_dossier import SupervisedPilotDossierOut
-from app.schemas.supervised_pilot_roster import SupervisedPilotRosterOut
+from app.schemas.supervised_pilot_roster import (
+    SupervisedPilotCandidateImportIn,
+    SupervisedPilotCandidateImportOut,
+    SupervisedPilotRosterOut,
+)
 from app.services.greenhouse_pilot_ingestion import (
     GreenhousePilotIngestionError,
     read_greenhouse_pilot_readiness,
@@ -17,6 +21,10 @@ from app.services.greenhouse_pilot_ingestion import (
 from app.services.supervised_pilot_dossier import (
     SupervisedPilotDossierError,
     build_supervised_pilot_dossier,
+)
+from app.services.supervised_pilot_intake import (
+    SupervisedPilotIntakeError,
+    import_supervised_pilot_candidate,
 )
 from app.services.supervised_pilot_roster import build_supervised_pilot_roster
 
@@ -50,6 +58,34 @@ def _owned_application_records(
     if not job:
         raise HTTPException(status_code=409, detail="Application job is missing")
     return application, job
+
+
+@router.post(
+    "/candidates",
+    response_model=SupervisedPilotCandidateImportOut,
+)
+def import_supervised_pilot_application_candidate(
+    data: SupervisedPilotCandidateImportIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = import_supervised_pilot_candidate(
+            db,
+            current_user,
+            employer=data.employer,
+            role=data.role,
+            application_url=data.application_url,
+            location=data.location,
+            notes=data.notes,
+            source_reference=data.source_reference,
+        )
+    except SupervisedPilotIntakeError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    db.commit()
+    return result
 
 
 @router.get("/roster", response_model=SupervisedPilotRosterOut)

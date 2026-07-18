@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -10,6 +10,7 @@ import {
   Flag,
   Loader2,
   LockKeyhole,
+  Plus,
   ShieldCheck,
   X,
 } from 'lucide-react'
@@ -43,14 +44,46 @@ function StatusIcon({ status }) {
   return <AlertTriangle className="h-4 w-4 text-amber-600" />
 }
 
+const EMPTY_INTAKE = {
+  employer: '',
+  role: '',
+  application_url: '',
+  location: '',
+}
+
 export default function SupervisedPilotRoster() {
+  const queryClient = useQueryClient()
   const [selectedDossierId, setSelectedDossierId] = useState(null)
+  const [intake, setIntake] = useState(EMPTY_INTAKE)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['supervised-pilot-roster'],
     queryFn: () => api.get('/supervised-pilot/roster'),
     select: (response) => response.data,
     retry: false,
   })
+  const importCandidate = useMutation({
+    mutationFn: (payload) => api.post('/supervised-pilot/candidates', payload),
+    onSuccess: async (response) => {
+      setIntake(EMPTY_INTAKE)
+      setSelectedDossierId(response.data.application_id)
+      await queryClient.invalidateQueries({ queryKey: ['supervised-pilot-roster'] })
+    },
+  })
+
+  const updateIntake = (field, value) => {
+    setIntake((current) => ({ ...current, [field]: value }))
+  }
+
+  const submitIntake = (event) => {
+    event.preventDefault()
+    importCandidate.mutate({
+      employer: intake.employer,
+      role: intake.role,
+      application_url: intake.application_url,
+      location: intake.location || null,
+      source_reference: 'phase-b-roster-operator-intake',
+    })
+  }
 
   if (isLoading) {
     return (
@@ -103,6 +136,66 @@ export default function SupervisedPilotRoster() {
             <div className="mt-1">{data.execution_flags.greenhouse_supervised_pilot_enabled ? 'Enabled' : 'Disabled'}</div>
           </div>
         </div>
+
+        <form onSubmit={submitIntake} className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-start gap-2">
+            <Plus className="mt-0.5 h-4 w-4 text-blue-700" />
+            <div>
+              <h3 className="text-sm font-semibold text-blue-950">Import one exact Greenhouse candidate</h3>
+              <p className="mt-0.5 text-xs leading-relaxed text-blue-800">
+                This creates a preparation record only. It does not enable flags, issue an approval, open a browser, or queue a submission.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <input
+              required
+              value={intake.employer}
+              onChange={(event) => updateIntake('employer', event.target.value)}
+              placeholder="Exact employer"
+              className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-blue-500"
+            />
+            <input
+              required
+              value={intake.role}
+              onChange={(event) => updateIntake('role', event.target.value)}
+              placeholder="Exact role"
+              className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-blue-500"
+            />
+            <input
+              required
+              type="url"
+              value={intake.application_url}
+              onChange={(event) => updateIntake('application_url', event.target.value)}
+              placeholder="https://job-boards.greenhouse.io/company/jobs/123"
+              className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-blue-500 md:col-span-2"
+            />
+            <input
+              value={intake.location}
+              onChange={(event) => updateIntake('location', event.target.value)}
+              placeholder="Location, optional"
+              className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={importCandidate.isPending}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {importCandidate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Add to preparation roster
+            </button>
+          </div>
+          {importCandidate.isError && (
+            <div className="mt-2 text-xs font-medium text-red-700">
+              {importCandidate.error?.response?.data?.detail || 'The candidate could not be imported.'}
+            </div>
+          )}
+          {importCandidate.isSuccess && (
+            <div className="mt-2 text-xs font-medium text-emerald-700">
+              Candidate staged safely. Review its dossier before any separate approval action.
+            </div>
+          )}
+        </form>
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
           <span>{data.candidate_count} Greenhouse application(s) · {data.technically_ready_count} structurally ready</span>
@@ -179,7 +272,7 @@ export default function SupervisedPilotRoster() {
         )}
 
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-          The roster and dossier do not judge job suitability. Sensitive answers are not shown, and each application still requires exact employer, role, URL, payload, and final-action confirmation in its supervised panel.
+          The roster, intake, and dossier do not judge job suitability. Sensitive answers are not shown, and each application still requires exact employer, role, URL, payload, and final-action confirmation in its supervised panel.
         </div>
       </div>
     </section>

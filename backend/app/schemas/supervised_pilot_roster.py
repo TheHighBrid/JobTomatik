@@ -6,6 +6,30 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class SupervisedPilotCandidateImportIn(BaseModel):
+    employer: str = Field(min_length=1, max_length=255)
+    role: str = Field(min_length=1, max_length=500)
+    application_url: str = Field(min_length=12, max_length=1000)
+    location: Optional[str] = Field(default=None, max_length=255)
+    notes: Optional[str] = Field(default=None, max_length=5000)
+    source_reference: Optional[str] = Field(default=None, max_length=500)
+
+
+class SupervisedPilotCandidateImportOut(BaseModel):
+    application_id: int
+    job_id: int
+    created_job: bool
+    created_application: bool
+    employer: str
+    role: str
+    application_url: str
+    automation_state: str
+    selection_policy: str
+    submission_queued: bool = False
+    approval_issued: bool = False
+    runtime_flags_changed: bool = False
+
+
 class SupervisedPilotPhaseA(BaseModel):
     qualifying_dry_run_count: int = 0
     distinct_employer_count: int = 0
