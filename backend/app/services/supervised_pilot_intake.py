@@ -11,6 +11,7 @@ import hashlib
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.application import (
@@ -126,7 +127,17 @@ def import_supervised_pilot_candidate(
     external_id = f"greenhouse-phase-b-{digest[:32]}"
     idempotency_key = f"greenhouse-phase-b:{user.id}:{digest[:40]}"
 
-    job = db.query(Job).filter(Job.external_id == external_id).first()
+    job = (
+        db.query(Job)
+        .filter(
+            or_(
+                Job.external_id == external_id,
+                Job.url == normalized_url,
+            )
+        )
+        .order_by(Job.id.asc())
+        .first()
+    )
     created_job = job is None
     if job is None:
         job = Job(
