@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict
 
 from app.models.application import ManualReviewReason, ManualReviewStatus, ManualReviewTask
 from app.services.handoff_notifications import create_handoff_required_notification
-from app.services.handoff_session import HandoffSessionError, issue_handoff_session
+from app.services.handoff_session import (
+    HandoffSessionConflict,
+    HandoffSessionError,
+    issue_handoff_session,
+)
 
 _INSTALLED = False
 _ORIGINAL = None
@@ -13,6 +18,14 @@ _RESUMABLE_REASON_VALUES = {
     ManualReviewReason.mfa_required.value,
     ManualReviewReason.login_required.value,
     ManualReviewReason.anti_bot_challenge.value,
+}
+_TERMINAL_REISSUE_MESSAGE = "A terminal handoff session already exists for this review."
+_HANDOFF_DETAIL_KEYS = {
+    "handoff_public_id",
+    "handoff_status",
+    "handoff_expires_at",
+    "browser_provider",
+    "handoff_notification_id",
 }
 
 
@@ -27,6 +40,52 @@ def _handoff_review_reason(result: Dict[str, Any], fallback_reason) -> str:
         if reason in _RESUMABLE_REASON_VALUES:
             return reason
     return _reason_value(fallback_reason)
+
+
+def _fresh_review_for_retry(db, review: ManualReviewTask) -> ManualReviewTask:
+    """Retire a terminal handoff review and create a fresh browser-bound attempt."""
+    clean_details = {
+        key: value
+        for key, value in dict(review.details or {}).items()
+        if key not in _HANDOFF_DETAIL_KEYS
+    }
+    review.status = ManualReviewStatus.dismissed.value
+    review.resolved_at = datetime.utcnow()
+    review.resolution_notes = "Superseded by a fresh retained-browser handoff attempt."
+
+    replacement = ManualReviewTask(
+        application_id=review.application_id,
+        reason_code=review.reason_code,
+        status=ManualReviewStatus.open.value,
+        summary=review.summary,
+        details=clean_details,
+        blocking_url=review.blocking_url,
+        screenshot_path=review.screenshot_path,
+    )
+    db.add(replacement)
+    db.flush()
+    return replacement
+
+
+def _issue_snapshot_handoff(db, app, review, snapshot, metadata):
+    return issue_handoff_session(
+        db,
+        app,
+        review,
+        browser_provider=snapshot.get("browser_provider") or "unavailable",
+        browser_session_id=snapshot.get("browser_session_id"),
+        browser_endpoint=snapshot.get("browser_endpoint"),
+        browser_node_id=snapshot.get("browser_node_id"),
+        browser_process_id=snapshot.get("browser_process_id"),
+        browser_profile_path=snapshot.get("browser_profile_path"),
+        active_page_hint=snapshot.get("active_page_hint"),
+        current_url=snapshot.get("current_url"),
+        current_fingerprint=snapshot.get("current_fingerprint"),
+        storage_state_path=snapshot.get("storage_state_path"),
+        storage_state_hash=snapshot.get("storage_state_hash"),
+        screenshot_path=snapshot.get("screenshot_path"),
+        metadata=metadata,
+    )
 
 
 def _attach_handoff_session(
@@ -63,24 +122,20 @@ def _attach_handoff_session(
         "adapter": result.get("ats_adapter"),
         "adapter_version": result.get("ats_adapter_version"),
     })
-    issued = issue_handoff_session(
-        db,
-        app,
-        review,
-        browser_provider=snapshot.get("browser_provider") or "unavailable",
-        browser_session_id=snapshot.get("browser_session_id"),
-        browser_endpoint=snapshot.get("browser_endpoint"),
-        browser_node_id=snapshot.get("browser_node_id"),
-        browser_process_id=snapshot.get("browser_process_id"),
-        browser_profile_path=snapshot.get("browser_profile_path"),
-        active_page_hint=snapshot.get("active_page_hint"),
-        current_url=snapshot.get("current_url"),
-        current_fingerprint=snapshot.get("current_fingerprint"),
-        storage_state_path=snapshot.get("storage_state_path"),
-        storage_state_hash=snapshot.get("storage_state_hash"),
-        screenshot_path=snapshot.get("screenshot_path"),
-        metadata=metadata,
-    )
+
+    try:
+        issued = _issue_snapshot_handoff(db, app, review, snapshot, metadata)
+    except HandoffSessionConflict as exc:
+        if str(exc) != _TERMINAL_REISSUE_MESSAGE:
+            raise
+        review = _fresh_review_for_retry(db, review)
+        issued = _issue_snapshot_handoff(db, app, review, snapshot, metadata)
+        result.setdefault("log", []).append({
+            "action": "handoff_session_reissued",
+            "manual_review_id": review.id,
+            "reason_code": review.reason_code,
+        })
+
     notification = create_handoff_required_notification(
         db,
         app,
