@@ -11,6 +11,7 @@ class AnswerPolicyCreate(BaseModel):
     mode: AnswerPolicyMode = AnswerPolicyMode.ask_each_time
     answer_value: Optional[str] = Field(default=None, max_length=4000)
     answer_label: Optional[str] = Field(default=None, max_length=1000)
+    fallback_answers: List[str] = Field(default_factory=list, max_length=20)
     match_phrases: List[str] = Field(default_factory=list, max_length=25)
     scope: AnswerPolicyScope = AnswerPolicyScope.global_scope
     scope_value: str = Field(default="", max_length=255)
@@ -23,6 +24,7 @@ class AnswerPolicyUpdate(BaseModel):
     mode: Optional[AnswerPolicyMode] = None
     answer_value: Optional[str] = Field(default=None, max_length=4000)
     answer_label: Optional[str] = Field(default=None, max_length=1000)
+    fallback_answers: Optional[List[str]] = Field(default=None, max_length=20)
     match_phrases: Optional[List[str]] = Field(default=None, max_length=25)
     scope: Optional[AnswerPolicyScope] = None
     scope_value: Optional[str] = Field(default=None, max_length=255)
@@ -39,6 +41,7 @@ class AnswerPolicyOut(BaseModel):
     mode: str
     answer_value: Optional[str]
     answer_label: Optional[str]
+    fallback_answers: List[str]
     match_phrases: List[str]
     scope: str
     scope_value: str
@@ -57,3 +60,17 @@ class AnswerPolicyCatalogItem(BaseModel):
     sensitivity: str
     description: str
     patterns: List[str]
+    setup_group: str
+    suggested_answers: List[str]
+    fallback_suggestions: List[str]
+    default_mode: str
+
+
+class AnswerPolicyBulkUpsert(BaseModel):
+    items: List[AnswerPolicyCreate] = Field(min_length=1, max_length=75)
+
+
+class AnswerPolicyBulkResult(BaseModel):
+    policies: List[AnswerPolicyOut]
+    created: int
+    updated: int

@@ -6,7 +6,11 @@ import re
 from typing import Any, Dict, Iterable, List
 
 from app.models.answer_policy import AnswerPolicyMode
-from app.services.answer_policy import QUESTION_CATALOG, normalize_question_text
+from app.services.answer_policy import (
+    QUESTION_CATALOG,
+    normalize_question_text,
+    policy_answer_candidates,
+)
 
 _EXTRA_PATTERNS = {
     "data_processing_consent": [
@@ -68,25 +72,37 @@ def resolve_control_policy(
     policies: Iterable[Dict[str, Any]],
 ) -> Dict[str, Any]:
     classification = classify_control_question(question_text)
-    candidates: List[Dict[str, Any]] = []
+    candidates: List[tuple[int, int, Dict[str, Any]]] = []
 
-    for policy in policies:
+    for index, policy in enumerate(policies):
         canonical_key = policy.get("canonical_key", "")
         classified_key = classification["canonical_key"]
-        if (
-            canonical_key == classified_key
-            or classified_key in _CANONICAL_POLICY_ALIASES.get(canonical_key, set())
-        ):
-            candidates.append(policy)
-            continue
-        if canonical_key.startswith("custom.") and any(
-            _custom_phrase_matches(phrase, question_text)
-            for phrase in policy.get("match_phrases", [])
-            if phrase
-        ):
-            candidates.append(policy)
+        score = 0
+        if canonical_key == classified_key:
+            score = 200
+        elif classified_key in _CANONICAL_POLICY_ALIASES.get(canonical_key, set()):
+            score = 150
 
-    policy = candidates[0] if candidates else None
+        matching_phrases = [
+            phrase
+            for phrase in policy.get("match_phrases", [])
+            if phrase and _custom_phrase_matches(phrase, question_text)
+        ]
+        if canonical_key.startswith("custom.") and matching_phrases:
+            # A user-approved phrase for this exact control is more specific than
+            # a broad catalog family such as "relocation" or "start date".
+            score = 300 + max(
+                len(_custom_phrase_text(phrase)) for phrase in matching_phrases
+            )
+
+        if score:
+            candidates.append((score, -index, policy))
+
+    policy = max(
+        candidates,
+        default=(0, 0, None),
+        key=lambda item: (item[0], item[1]),
+    )[2]
     if not policy:
         return {
             **classification,
@@ -96,7 +112,8 @@ def resolve_control_policy(
         }
 
     mode = policy.get("mode", AnswerPolicyMode.ask_each_time.value)
-    answer = policy.get("answer_label") or policy.get("answer_value")
+    answer_candidates = policy_answer_candidates(policy)
+    answer = answer_candidates[0] if answer_candidates else None
     confirmed = bool(policy.get("confirmed_at"))
     can_autofill = (
         mode in {AnswerPolicyMode.answer.value, AnswerPolicyMode.decline.value}
@@ -124,4 +141,5 @@ def resolve_control_policy(
         "reason": reason,
         "policy": policy,
         "answer": answer,
+        "answer_candidates": answer_candidates,
     }

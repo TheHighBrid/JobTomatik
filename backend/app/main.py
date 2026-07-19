@@ -56,6 +56,20 @@ def _safe_migrate(eng):
             conn.rollback()
 
         try:
+            policy_cols = {
+                c["name"]
+                for c in sa_inspect(eng).get_columns("applicant_answer_policies")
+            }
+            if "encrypted_fallbacks" not in policy_cols:
+                conn.execute(text(
+                    "ALTER TABLE applicant_answer_policies "
+                    "ADD COLUMN encrypted_fallbacks TEXT"
+                ))
+                conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
             app_cols = {c["name"] for c in sa_inspect(eng).get_columns("applications")}
             additions = {
                 "automation_state": "VARCHAR(50) DEFAULT 'preparing' NOT NULL",

@@ -40,6 +40,7 @@ class ApplicantAnswerPolicy(Base):
     mode = Column(String(30), nullable=False, default=AnswerPolicyMode.ask_each_time.value)
     encrypted_value = Column(Text)
     encrypted_label = Column(Text)
+    encrypted_fallbacks = Column(Text)
     match_phrases = Column(JSON, default=list)
     scope = Column(String(30), nullable=False, default=AnswerPolicyScope.global_scope.value, index=True)
     scope_value = Column(String(255), nullable=False, default="")
