@@ -1,5 +1,7 @@
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_init
+
 from app.config import get_settings
 
 settings = get_settings()
@@ -11,6 +13,7 @@ celery_app = Celery(
     include=[
         "app.tasks.scraping",
         "app.tasks.applications",
+        "app.tasks.handoffs",
         "app.tasks.unattended",
         "app.tasks.followup",
         "app.tasks.operations",
@@ -26,6 +29,7 @@ celery_app.conf.update(
     task_routes={
         "app.tasks.scraping.*": {"queue": "scraping"},
         "app.tasks.applications.*": {"queue": "applications"},
+        "app.tasks.handoffs.*": {"queue": "applications"},
         "app.tasks.unattended.*": {"queue": "applications"},
         "app.tasks.followup.*": {"queue": "followup"},
         "app.tasks.operations.*": {"queue": "followup"},
@@ -53,3 +57,21 @@ celery_app.conf.update(
         },
     },
 )
+
+
+@worker_init.connect
+def install_worker_task_integrations(**_kwargs):
+    """Install safety and retained-browser extensions in the Celery process.
+
+    FastAPI installs these wrappers in the web process, but application attempts
+    execute in Celery. Installing them at worker startup keeps both processes on
+    the same task path and registers resumable handoff creation before any job is
+    consumed.
+    """
+    from app.services.handoff_integration import install_handoff_task_integration
+    from app.services.supervised_submission_integration import (
+        install_supervised_submission_task_gate,
+    )
+
+    install_handoff_task_integration()
+    install_supervised_submission_task_gate()

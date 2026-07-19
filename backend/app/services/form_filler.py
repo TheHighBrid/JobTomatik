@@ -22,8 +22,19 @@ install_greenhouse_phone_widget_compat()
 install_greenhouse_location_widget_compat()
 
 
+def _dry_run_requested(args, kwargs) -> bool:
+    if "dry_run" in kwargs:
+        return bool(kwargs["dry_run"])
+    if len(args) >= 5:
+        return bool(args[4])
+    return True
+
+
 async def fill_and_submit_application(*args, **kwargs):
-    if resumable_handoffs_enabled():
+    # Dry runs must preserve CAPTCHA/login boundaries so the user can complete
+    # them in the same filled browser session. Explicit configuration extends
+    # the same retained-browser behavior to supervised non-dry runs.
+    if _dry_run_requested(args, kwargs) or resumable_handoffs_enabled():
         return await fill_and_submit_application_with_handoff(*args, **kwargs)
     return await fill_and_submit_application_standard(*args, **kwargs)
 
