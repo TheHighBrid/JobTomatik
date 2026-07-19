@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import httpx
 
+from app.config import get_settings
 from app.services.ats_base import page_fingerprint
 from app.services.browser_handoff import current_browser_node_id
 
@@ -23,9 +24,9 @@ class BrowserRuntimeError(RuntimeError):
 
 
 def resumable_handoffs_enabled() -> bool:
-    return os.getenv("ENABLE_RESUMABLE_HANDOFFS", "false").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
+    # Read through BaseSettings so ENABLE_RESUMABLE_HANDOFFS in backend/.env is
+    # honored without requiring the caller to export it into the shell first.
+    return bool(get_settings().enable_resumable_handoffs)
 
 
 def handoff_storage_root() -> Path:
