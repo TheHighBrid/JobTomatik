@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     supervised_approval_ttl_minutes: int = 20
     supervised_approval_max_ttl_minutes: int = 60
 
+    # Dry runs retain human-verification boundaries automatically. This flag also
+    # enables retained-browser handoffs for explicitly approved non-dry runs.
+    enable_resumable_handoffs: bool = False
+
     # Verified read-only Phase A baseline plus writable Phase B runtime ledger.
     # Readiness merges both sources. Runtime ingestion never rewrites the baseline.
     greenhouse_pilot_baseline_path: str = "evidence/greenhouse-phase-a-baseline.csv"
