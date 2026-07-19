@@ -30,6 +30,8 @@ from app.services.application_state import (
 from app.services.apply_resolver import resolve_application_method
 from app.services.cover_letter import generate_cover_letter
 from app.services.form_filler import fill_and_submit_application
+from app.services.handoff_integration import _attach_handoff_session
+from app.services.handoff_session import HandoffSessionError
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -581,6 +583,18 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
             app.status = ApplicationStatus.pending
             blocking_url = result.get("application_url") or result.get("url") or job.url
             reason_code = _create_result_review_tasks(db, app, result, method, blocking_url)
+            try:
+                _attach_handoff_session(db, app, result, reason_code)
+            except HandoffSessionError as exc:
+                result.setdefault("log", []).append({
+                    "action": "handoff_session_not_created",
+                    "reason": str(exc)[:300],
+                })
+                logger.warning(
+                    "Application %s retained-browser handoff was not created: %s",
+                    application_id,
+                    exc,
+                )
             db.add(Notification(
                 user_id=user.id,
                 type=NotificationType.system,
@@ -592,6 +606,7 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
                     "method": method,
                     "reason": reason_code.value,
                     "question_count": len(result.get("review_items") or []),
+                    "handoff_public_id": result.get("handoff_public_id"),
                 },
             ))
             logger.info("Application %s requires manual review: %s", application_id, result.get("error"))
