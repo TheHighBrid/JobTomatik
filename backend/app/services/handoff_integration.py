@@ -2,12 +2,31 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from app.models.application import ManualReviewStatus, ManualReviewTask
+from app.models.application import ManualReviewReason, ManualReviewStatus, ManualReviewTask
 from app.services.handoff_notifications import create_handoff_required_notification
 from app.services.handoff_session import HandoffSessionError, issue_handoff_session
 
 _INSTALLED = False
 _ORIGINAL = None
+_RESUMABLE_REASON_VALUES = {
+    ManualReviewReason.captcha_detected.value,
+    ManualReviewReason.mfa_required.value,
+    ManualReviewReason.login_required.value,
+    ManualReviewReason.anti_bot_challenge.value,
+}
+
+
+def _reason_value(reason_code) -> str:
+    return str(getattr(reason_code, "value", reason_code) or "")
+
+
+def _handoff_review_reason(result: Dict[str, Any], fallback_reason) -> str:
+    """Choose the actual resumable blocker, even when another review came first."""
+    for item in result.get("review_items") or []:
+        reason = str(item.get("reason_code") or "")
+        if reason in _RESUMABLE_REASON_VALUES:
+            return reason
+    return _reason_value(fallback_reason)
 
 
 def _attach_handoff_session(
@@ -20,11 +39,12 @@ def _attach_handoff_session(
     if not snapshot:
         return
 
+    review_reason = _handoff_review_reason(result, reason_code)
     review = (
         db.query(ManualReviewTask)
         .filter(
             ManualReviewTask.application_id == app.id,
-            ManualReviewTask.reason_code == reason_code.value,
+            ManualReviewTask.reason_code == review_reason,
             ManualReviewTask.status.in_([
                 ManualReviewStatus.open.value,
                 ManualReviewStatus.in_progress.value,
