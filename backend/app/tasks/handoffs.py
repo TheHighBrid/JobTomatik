@@ -27,6 +27,7 @@ from app.services.browser_handoff import (
     resume_handoff_application,
     terminate_retained_browser,
 )
+from app.services.handoff_integration import install_handoff_task_integration
 from app.services.handoff_session import (
     HandoffSessionConflict,
     begin_handoff_resume,
@@ -37,6 +38,11 @@ from app.tasks.applications import _profile_dict, _record_result_evidence
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# This module is part of Celery's explicit include list. Installing here makes
+# retained handoff attachment deterministic even when worker lifecycle signals
+# are not emitted by the local Android/PRoot pool implementation.
+install_handoff_task_integration()
 
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
