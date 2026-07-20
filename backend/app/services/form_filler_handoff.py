@@ -24,6 +24,67 @@ _RESUMABLE_REASONS = {
 }
 
 
+def _promote_deferred_captcha_boundary(flow: Any, log: List[Dict[str, Any]]) -> None:
+    """Preserve a passive CAPTCHA boundary when field review ends the ATS flow first.
+
+    The ATS flow deliberately fills safe fields before returning to the user. When a
+    field also needs review, the flow can return before its second CAPTCHA check. The
+    original deferred-CAPTCHA log entry is durable evidence that the same live page
+    still requires a human challenge, so promote it into a resumable review item before
+    the retained browser is evaluated.
+    """
+    if not getattr(flow, "requires_manual_review", False):
+        return
+    if any(
+        str(item.get("reason_code") or "") == "captcha_detected"
+        for item in getattr(flow, "review_items", []) or []
+    ):
+        return
+
+    deferred = next(
+        (
+            entry
+            for entry in reversed(log)
+            if entry.get("action") == "captcha_widget_deferred_until_manual_handoff"
+        ),
+        None,
+    )
+    if not deferred:
+        return
+
+    step_number = int(deferred.get("step") or getattr(flow, "steps_completed", 0) or 1)
+    details = {
+        "adapter": getattr(flow, "adapter_name", deferred.get("adapter") or "generic"),
+        "adapter_version": getattr(flow, "adapter_version", "1.0.0"),
+        "step": step_number,
+        "handoff_stage": "post_fill_field_review",
+        "fields_filled": int(getattr(flow, "fields_filled", 0) or 0),
+        "control_evidence_count": len(getattr(flow, "control_evidence", []) or []),
+        "upload_evidence_count": len(getattr(flow, "upload_evidence", []) or []),
+        "submit_clicked": False,
+        "promoted_from_deferred_challenge": True,
+    }
+    flow.review_items.append({
+        "reason_code": "captcha_detected",
+        "summary": "A CAPTCHA or human-verification challenge requires manual completion.",
+        "details": details,
+    })
+    event = {
+        "action": "ats_deferred_challenge_promoted_for_handoff",
+        "adapter": details["adapter"],
+        "adapter_version": details["adapter_version"],
+        "step": step_number,
+        "reason_code": "captcha_detected",
+        "fields_filled": details["fields_filled"],
+        "control_evidence_count": details["control_evidence_count"],
+        "upload_evidence_count": details["upload_evidence_count"],
+        "submit_clicked": False,
+        "ts": now_iso(),
+    }
+    flow.step_evidence.append(event)
+    log.append(dict(event))
+
+
 def _resumable_boundary(result: Dict[str, Any]) -> bool:
     if not result.get("requires_manual_review"):
         return False
@@ -133,6 +194,7 @@ async def fill_and_submit_application_with_handoff(
                 dry_run=dry_run,
                 log=log,
             )
+            _promote_deferred_captcha_boundary(flow, log)
             result.update(flow.as_dict())
             result["ats_adapter"] = flow.adapter_name
             result["ats_adapter_version"] = flow.adapter_version
