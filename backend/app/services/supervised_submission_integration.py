@@ -10,9 +10,14 @@ from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.operations_policy import platform_key_for_url
 from app.services.supervised_platforms import get_supervised_platform_policy
+from app.services.supervised_runtime import supervised_target_scope
 from app.services.supervised_submission import (
     SupervisedSubmissionApprovalError,
     validate_supervised_approval,
+)
+from app.services.supervised_target_identity import (
+    persist_supervised_target_metadata,
+    resolve_supervised_target_metadata,
 )
 
 
@@ -88,9 +93,10 @@ def install_supervised_submission_task_gate() -> None:
     """Require an exact one-time approval for every live worker run.
 
     Dry runs retain their existing behavior. A live run must target a platform in
-    the supervised registry and carry an active exact-payload approval. Approval is
-    consumed before the original worker starts, so a crash cannot silently replay a
-    previously approved final action.
+    the supervised registry and carry an active exact-payload approval. Platforms
+    requiring exact target identity are refreshed before approval consumption.
+    Approval is consumed before the original worker starts, so a crash cannot
+    silently replay a previously approved final action.
     """
 
     global _INSTALLED, _ORIGINAL_RUN
@@ -179,6 +185,43 @@ def install_supervised_submission_task_gate() -> None:
                     "error": reason,
                 }
 
+            target_metadata = None
+            if policy.requires_exact_target_identity:
+                target_metadata = application_tasks._run_async(
+                    resolve_supervised_target_metadata(job)
+                )
+                if target_metadata:
+                    persist_supervised_target_metadata(job, target_metadata)
+                if not target_metadata or not target_metadata.get("verified"):
+                    blockers = list((target_metadata or {}).get("blockers") or [])
+                    reason = (
+                        f"{policy.display_name} live submission target verification "
+                        "failed before approval consumption: "
+                        + ", ".join(blockers or ["exact_target_identity_unverified"])
+                    )
+                    _record_block(
+                        db,
+                        application,
+                        user,
+                        job,
+                        platform=platform,
+                        approval_reference=approval_reference,
+                        reason=reason,
+                    )
+                    db.commit()
+                    return {
+                        "success": False,
+                        "dry_run": False,
+                        "application_id": application.id,
+                        "requires_manual_review": False,
+                        "approval_required": True,
+                        "approval_reference": approval_reference,
+                        "supervised_platform_supported": True,
+                        "platform": platform,
+                        "target_verification": target_metadata or {},
+                        "error": reason,
+                    }
+
             try:
                 approval = validate_supervised_approval(
                     db,
@@ -187,6 +230,7 @@ def install_supervised_submission_task_gate() -> None:
                     job,
                     reference=approval_reference,
                     consume=True,
+                    target_metadata=target_metadata,
                 )
             except SupervisedSubmissionApprovalError as exc:
                 reason = str(exc)
@@ -220,7 +264,8 @@ def install_supervised_submission_task_gate() -> None:
         finally:
             db.close()
 
-        result = _ORIGINAL_RUN(application_id, dry_run=False)
+        with supervised_target_scope(target_metadata):
+            result = _ORIGINAL_RUN(application_id, dry_run=False)
         if isinstance(result, dict):
             result.setdefault("approval_reference", consumed_reference)
             result.setdefault("supervised_pilot", True)

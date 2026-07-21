@@ -4,6 +4,9 @@ from datetime import datetime
 from typing import Any, Dict
 
 from app.models.application import ManualReviewReason, ManualReviewStatus, ManualReviewTask
+from app.services.handoff_confirmation_target import (
+    install_handoff_confirmation_target_support,
+)
 from app.services.handoff_notifications import create_handoff_required_notification
 from app.services.handoff_session import (
     HandoffSessionConflict,
@@ -159,8 +162,12 @@ def _attach_handoff_session(
 
 
 def install_handoff_task_integration() -> None:
-    """Install an idempotent extension around application review creation."""
+    """Install idempotent handoff and confirmation-target extensions."""
     global _INSTALLED, _ORIGINAL
+
+    # This compatibility must be available even when the review wrapper was
+    # installed earlier by another import path.
+    install_handoff_confirmation_target_support()
     if _INSTALLED:
         return
 

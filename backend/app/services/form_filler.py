@@ -15,6 +15,7 @@ from app.services.greenhouse_location_widget import (
 from app.services.greenhouse_phone_widget import (
     install_greenhouse_phone_widget_compat,
 )
+from app.services.supervised_runtime import current_supervised_target
 
 
 install_greenhouse_aria_id_compat()
@@ -31,6 +32,13 @@ def _dry_run_requested(args, kwargs) -> bool:
 
 
 async def fill_and_submit_application(*args, **kwargs):
+    # A live supervised worker binds the exact approved target only for the
+    # duration of its own task call. Explicit kwargs remain authoritative.
+    if "supervised_target" not in kwargs:
+        supervised_target = current_supervised_target()
+        if supervised_target:
+            kwargs["supervised_target"] = supervised_target
+
     # Dry runs must preserve CAPTCHA/login boundaries so the user can complete
     # them in the same filled browser session. Explicit configuration extends
     # the same retained-browser behavior to supervised non-dry runs.

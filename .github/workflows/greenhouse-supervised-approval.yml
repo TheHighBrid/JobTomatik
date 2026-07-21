@@ -11,11 +11,19 @@ on:
       - "backend/app/main.py"
       - "backend/app/models/submission_approval.py"
       - "backend/app/schemas/supervised_submission.py"
+      - "backend/app/services/ats_flow.py"
+      - "backend/app/services/browser_handoff.py"
+      - "backend/app/services/form_filler.py"
+      - "backend/app/services/form_filler_handoff.py"
+      - "backend/app/services/form_filler_v3.py"
       - "backend/app/services/supervised_platforms.py"
+      - "backend/app/services/supervised_runtime.py"
       - "backend/app/services/supervised_submission.py"
       - "backend/app/services/supervised_submission_integration.py"
       - "backend/app/services/supervised_target_identity.py"
       - "backend/tests/test_lever_supervised_preflight.py"
+      - "backend/tests/test_lever_worker_handoff_safety.py"
+      - "backend/tests/test_lever_worker_revalidation.py"
       - "backend/tests/test_supervised_platform_registry.py"
       - "backend/tests/test_supervised_submission_approval.py"
       - "docs/greenhouse-supervised-approval-runbook.md"
@@ -31,11 +39,19 @@ on:
       - "backend/app/main.py"
       - "backend/app/models/submission_approval.py"
       - "backend/app/schemas/supervised_submission.py"
+      - "backend/app/services/ats_flow.py"
+      - "backend/app/services/browser_handoff.py"
+      - "backend/app/services/form_filler.py"
+      - "backend/app/services/form_filler_handoff.py"
+      - "backend/app/services/form_filler_v3.py"
       - "backend/app/services/supervised_platforms.py"
+      - "backend/app/services/supervised_runtime.py"
       - "backend/app/services/supervised_submission.py"
       - "backend/app/services/supervised_submission_integration.py"
       - "backend/app/services/supervised_target_identity.py"
       - "backend/tests/test_lever_supervised_preflight.py"
+      - "backend/tests/test_lever_worker_handoff_safety.py"
+      - "backend/tests/test_lever_worker_revalidation.py"
       - "backend/tests/test_supervised_platform_registry.py"
       - "backend/tests/test_supervised_submission_approval.py"
       - "docs/greenhouse-supervised-approval-runbook.md"
@@ -82,7 +98,13 @@ jobs:
             app/api/supervised_submissions.py \
             app/models/submission_approval.py \
             app/schemas/supervised_submission.py \
+            app/services/ats_flow.py \
+            app/services/browser_handoff.py \
+            app/services/form_filler.py \
+            app/services/form_filler_handoff.py \
+            app/services/form_filler_v3.py \
             app/services/supervised_platforms.py \
+            app/services/supervised_runtime.py \
             app/services/supervised_submission.py \
             app/services/supervised_submission_integration.py \
             app/services/supervised_target_identity.py
@@ -91,6 +113,8 @@ jobs:
         run: |
           pytest -q \
             tests/test_lever_supervised_preflight.py \
+            tests/test_lever_worker_handoff_safety.py \
+            tests/test_lever_worker_revalidation.py \
             tests/test_supervised_platform_registry.py \
             tests/test_supervised_submission_approval.py \
             --junitxml=supervised-approval-report.xml
