@@ -5,6 +5,9 @@ import pytest
 
 from app.services import ats_flow, browser_handoff
 from app.services.ats_flow import run_ats_application_flow
+from app.services.handoff_confirmation_target import (
+    install_handoff_confirmation_target_support,
+)
 from app.services.supervised_runtime import (
     current_supervised_target,
     supervised_target_scope,
@@ -125,6 +128,43 @@ async def test_confirmation_route_requires_explicit_same_site_allowance():
     )
     assert allowed["verified"] is True
     assert allowed["same_site_confirmation_allowed"] is True
+
+
+@pytest.mark.asyncio
+async def test_handoff_target_verifier_auto_allows_explicit_confirmation(monkeypatch):
+    install_handoff_confirmation_target_support()
+    page = SimpleNamespace(url=CONFIRMATION_URL)
+    session = SimpleNamespace(
+        handoff_metadata={"supervised_target": _expected_target()},
+    )
+    monkeypatch.setattr(
+        browser_handoff,
+        "_submission_confirmation_state",
+        AsyncMock(return_value={
+            "submission_confirmed": True,
+            "matched_confirmation_phrases": ["thank you for applying"],
+        }),
+    )
+    monkeypatch.setattr(
+        browser_handoff,
+        "detect_ats_adapter",
+        AsyncMock(return_value=SimpleNamespace(name="lever", version="1.1.0")),
+    )
+    target_verifier = AsyncMock(return_value={
+        "verified": True,
+        "blockers": [],
+        "same_site_confirmation_allowed": True,
+    })
+    monkeypatch.setattr(
+        browser_handoff,
+        "verify_supervised_browser_target",
+        target_verifier,
+    )
+
+    result = await browser_handoff._verify_session_target(page, session)
+
+    assert result["verified"] is True
+    assert target_verifier.await_args.kwargs["allow_same_site_confirmation"] is True
 
 
 def test_supervised_runtime_context_is_scoped_and_reset():
