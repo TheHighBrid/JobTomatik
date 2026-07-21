@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:15-alpine
@@ -39,10 +37,16 @@ services:
       - DATABASE_URL=postgresql://jobtomatik:jobtomatik_pass@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - ANSWER_VAULT_KEY=${ANSWER_VAULT_KEY:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,https://localhost,http://localhost,capacitor://localhost}
+      - AI_PROVIDER=${AI_PROVIDER:-template}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
       - FROM_EMAIL=${FROM_EMAIL:-noreply@jobtomatik.com}
+      - DEV_MOCK_JOBS=${DEV_MOCK_JOBS:-false}
       - ALLOW_REAL_APPLICATION_SUBMIT=${ALLOW_REAL_APPLICATION_SUBMIT:-false}
+      - GREENHOUSE_SUPERVISED_PILOT_ENABLED=${GREENHOUSE_SUPERVISED_PILOT_ENABLED:-false}
+      - ENABLE_RESUMABLE_HANDOFFS=${ENABLE_RESUMABLE_HANDOFFS:-false}
       - AUTOPILOT_ENABLED=${AUTOPILOT_ENABLED:-false}
       - AUTOPILOT_DEFAULT_DAILY_CAP=${AUTOPILOT_DEFAULT_DAILY_CAP:-5}
       - AUTOPILOT_DEFAULT_WEEKLY_CAP=${AUTOPILOT_DEFAULT_WEEKLY_CAP:-20}
@@ -65,7 +69,7 @@ services:
 
   celery_worker:
     build: ./backend
-    command: celery -A app.celery_app worker --loglevel=info -Q default,scraping,applications,followup
+    command: celery -A app.celery_app worker --loglevel=info -Q celery,scraping,applications,followup
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
@@ -73,10 +77,15 @@ services:
       - DATABASE_URL=postgresql://jobtomatik:jobtomatik_pass@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - ANSWER_VAULT_KEY=${ANSWER_VAULT_KEY:-}
+      - AI_PROVIDER=${AI_PROVIDER:-template}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
       - FROM_EMAIL=${FROM_EMAIL:-noreply@jobtomatik.com}
+      - DEV_MOCK_JOBS=${DEV_MOCK_JOBS:-false}
       - ALLOW_REAL_APPLICATION_SUBMIT=${ALLOW_REAL_APPLICATION_SUBMIT:-false}
+      - GREENHOUSE_SUPERVISED_PILOT_ENABLED=${GREENHOUSE_SUPERVISED_PILOT_ENABLED:-false}
+      - ENABLE_RESUMABLE_HANDOFFS=${ENABLE_RESUMABLE_HANDOFFS:-false}
       - AUTOPILOT_ENABLED=${AUTOPILOT_ENABLED:-false}
       - AUTOPILOT_DEFAULT_DAILY_CAP=${AUTOPILOT_DEFAULT_DAILY_CAP:-5}
       - AUTOPILOT_DEFAULT_WEEKLY_CAP=${AUTOPILOT_DEFAULT_WEEKLY_CAP:-20}
