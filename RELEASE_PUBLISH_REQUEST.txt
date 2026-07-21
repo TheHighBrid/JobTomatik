@@ -7,3 +7,5 @@ Replace assets:
 - BUILD-INFO.txt
 - APK-BADGING.txt
 Reason: publish corrected exact-source provenance metadata
+Authorization workflow: publish-v1-authorized.yml
+Request revision: 2
