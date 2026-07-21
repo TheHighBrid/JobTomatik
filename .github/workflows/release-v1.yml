@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - release/v1.0.0
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "RELEASE_SOURCE.txt"
+      - ".github/workflows/release-v1.yml"
   workflow_dispatch:
 
 permissions:
@@ -31,7 +37,6 @@ jobs:
             });
 
   verify-backend:
-    needs: announce-release
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -234,7 +239,10 @@ jobs:
     needs:
       - verify-backend
       - build-android
-    if: github.ref == 'refs/heads/release/v1.0.0' || github.event_name == 'workflow_dispatch'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/release/v1.0.0') ||
+      (github.event_name == 'pull_request' && github.head_ref == 'release/v1.0.0') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - name: Download release bundle
@@ -247,7 +255,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ github.event.pull_request.head.sha || github.sha }}
           name: JobTomatik v1.00
           body_path: release/RELEASE_NOTES.md
           make_latest: true
