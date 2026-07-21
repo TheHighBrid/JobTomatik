@@ -85,11 +85,12 @@ def _record_block(
 
 
 def install_supervised_submission_task_gate() -> None:
-    """Require an exact one-time approval for registered supervised platforms.
+    """Require an exact one-time approval for every live worker run.
 
-    Dry runs and platforms not registered for supervised submission retain their
-    previous behavior. Approval is consumed before the original live worker starts,
-    so a crash cannot silently replay a previously approved final action.
+    Dry runs retain their existing behavior. A live run must target a platform in
+    the supervised registry and carry an active exact-payload approval. Approval is
+    consumed before the original worker starts, so a crash cannot silently replay a
+    previously approved final action.
     """
 
     global _INSTALLED, _ORIGINAL_RUN
@@ -127,7 +128,30 @@ def install_supervised_submission_task_gate() -> None:
             platform = platform_key_for_url(_target_url(job))
             policy = get_supervised_platform_policy(platform)
             if policy is None:
-                return _ORIGINAL_RUN(application_id, dry_run=False)
+                reason = (
+                    "Live submission is blocked because this ATS platform is not "
+                    f"registered for supervised submission: {platform or 'generic'}."
+                )
+                _record_block(
+                    db,
+                    application,
+                    user,
+                    job,
+                    platform=platform,
+                    approval_reference=approval_reference,
+                    reason=reason,
+                )
+                db.commit()
+                return {
+                    "success": False,
+                    "dry_run": False,
+                    "application_id": application.id,
+                    "requires_manual_review": False,
+                    "approval_required": False,
+                    "supervised_platform_supported": False,
+                    "platform": platform,
+                    "error": reason,
+                }
 
             if not approval_reference:
                 reason = (
@@ -150,6 +174,7 @@ def install_supervised_submission_task_gate() -> None:
                     "application_id": application.id,
                     "requires_manual_review": False,
                     "approval_required": True,
+                    "supervised_platform_supported": True,
                     "platform": platform,
                     "error": reason,
                 }
@@ -182,6 +207,7 @@ def install_supervised_submission_task_gate() -> None:
                     "requires_manual_review": False,
                     "approval_required": True,
                     "approval_reference": approval_reference,
+                    "supervised_platform_supported": True,
                     "platform": platform,
                     "error": reason,
                 }
