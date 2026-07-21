@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
-  AlertTriangle, CheckCircle2, Hand, Keyboard, Loader2,
-  MousePointer2, RefreshCw, ShieldCheck, XCircle
+  AlertTriangle, ArrowLeft, CheckCircle2, Hand, Keyboard, Loader2,
+  MailPlus, MousePointer2, RefreshCw, RotateCcw, ShieldCheck, XCircle
 } from 'lucide-react'
 import {
   bootstrapHandoff,
@@ -16,9 +16,11 @@ import {
   listApplicationHandoffs,
   recoverHandoffLease,
   sendHandoffAction,
+  submitApplication,
 } from '../api/client'
 
 const ACTIVE_STATUSES = new Set(['awaiting_user', 'claimed', 'ready_to_resume', 'resuming'])
+const RECOVERABLE_STATUSES = new Set(['expired', 'failed', 'cancelled'])
 
 function leaseKey(publicId) {
   return `jobtomatik_handoff_lease_${publicId}`
@@ -56,18 +58,20 @@ export default function ManualHandoffPanel({ applicationId }) {
     refetchInterval: 5000,
   })
 
-  const session = useMemo(
-    () => sessions.find((item) => ACTIVE_STATUSES.has(item.status)) || null,
-    [sessions]
-  )
+  const session = useMemo(() => {
+    const active = sessions.find((item) => ACTIVE_STATUSES.has(item.status))
+    if (active) return active
+    const latest = sessions[0]
+    return latest && RECOVERABLE_STATUSES.has(latest.status) ? latest : null
+  }, [sessions])
 
   useEffect(() => {
-    if (!session) {
+    if (!session || !ACTIVE_STATUSES.has(session.status)) {
       setLeaseToken('')
       return
     }
     setLeaseToken(readLease(session.public_id))
-  }, [session?.public_id])
+  }, [session?.public_id, session?.status])
 
   useEffect(() => () => {
     if (frameUrl) URL.revokeObjectURL(frameUrl)
@@ -114,10 +118,10 @@ export default function ManualHandoffPanel({ applicationId }) {
         if ([403, 409, 410].includes(error?.response?.status)) {
           writeLease(session.public_id, '')
           setLeaseToken('')
-          toast.error('The secure handoff lease expired. Recover it to continue.')
+          toast.error('The secure handoff lease expired. Recover it or start fresh to continue.')
         }
       }
-    }, 60000)
+    }, 30000)
     return () => window.clearInterval(timer)
   }, [leaseToken, session])
 
@@ -148,13 +152,16 @@ export default function ManualHandoffPanel({ applicationId }) {
     },
     onError: (error) => toast.error(getApiErrorMessage(
       error,
-      'The previous lease may still be active. Try again after it expires.'
+      'The previous lease may still be active. Start fresh when the browser session is no longer usable.'
     )),
   })
 
   const actionMutation = useMutation({
     mutationFn: (action) => sendHandoffAction(session.public_id, leaseToken, action),
-    onSuccess: () => refreshFrame(),
+    onSuccess: () => {
+      refreshFrame()
+      invalidate()
+    },
     onError: (error) => toast.error(getApiErrorMessage(error, 'Browser action failed')),
   })
 
@@ -182,10 +189,32 @@ export default function ManualHandoffPanel({ applicationId }) {
     onError: (error) => toast.error(getApiErrorMessage(error, 'Could not cancel handoff')),
   })
 
+  const restartMutation = useMutation({
+    mutationFn: async () => {
+      if (session && ACTIVE_STATUSES.has(session.status)) {
+        await cancelHandoff(session.public_id, 'Superseded by a fresh secure handoff.')
+      }
+      return submitApplication(applicationId, true)
+    },
+    onSuccess: () => {
+      if (session) writeLease(session.public_id, '')
+      setLeaseToken('')
+      setSecretInput('')
+      setFrameUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous)
+        return ''
+      })
+      toast.success('Fresh dry run queued. A new secure handoff will appear when the protected step is reached.')
+      invalidate()
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, 'Could not start a fresh handoff')),
+  })
+
   if (!session) return null
 
   const claimed = session.status === 'claimed' && Boolean(leaseToken)
   const waitingForWorker = ['ready_to_resume', 'resuming'].includes(session.status)
+  const terminal = RECOVERABLE_STATUSES.has(session.status)
   const challengeLabel = session.challenge_type === 'mfa'
     ? 'MFA verification'
     : session.challenge_type === 'login'
@@ -203,11 +232,55 @@ export default function ManualHandoffPanel({ applicationId }) {
     actionMutation.mutate({ action: 'click', x, y })
   }
 
-  const sendSecret = () => {
-    if (!secretInput || !claimed) return
-    actionMutation.mutate({ action: 'type', text: secretInput }, {
-      onSuccess: () => setSecretInput(''),
+  const submitSecret = () => {
+    const value = secretInput.trim()
+    if (!value || !claimed) return
+    actionMutation.mutate({ action: 'replace_and_submit', text: value }, {
+      onSuccess: () => {
+        setSecretInput('')
+        toast.success('Newest code replaced the old value and was submitted')
+      },
     })
+  }
+
+  const runRecoveryAction = (action, successMessage) => {
+    actionMutation.mutate({ action }, {
+      onSuccess: () => toast.success(successMessage),
+    })
+  }
+
+  if (terminal) {
+    return (
+      <section className="card overflow-hidden border border-red-200">
+        <div className="flex items-start gap-3 bg-red-50 px-5 py-4 border-b border-red-100">
+          <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-red-700 shadow-sm flex-shrink-0">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold text-gray-900">Secure handoff ended</h2>
+              <span className="badge bg-red-100 text-red-800 text-xs">{session.status.replaceAll('_', ' ')}</span>
+            </div>
+            <p className="text-sm text-gray-600 mt-1">
+              {session.failure_reason || 'The retained verification session is no longer usable.'}
+            </p>
+          </div>
+        </div>
+        <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <p className="text-sm text-gray-600">
+            Start fresh to rebuild the application form and request a new verification code.
+          </p>
+          <button
+            className="btn-primary flex items-center gap-2 justify-center whitespace-nowrap"
+            onClick={() => restartMutation.mutate()}
+            disabled={restartMutation.isPending}
+          >
+            {restartMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+            Start fresh handoff
+          </button>
+        </div>
+      </section>
+    )
   }
 
   return (
@@ -222,7 +295,7 @@ export default function ManualHandoffPanel({ applicationId }) {
             <span className="badge bg-amber-100 text-amber-800 text-xs">{session.status.replaceAll('_', ' ')}</span>
           </div>
           <p className="text-sm text-gray-600 mt-1">
-            JobTomatik preserved the filled application and paused before the protected step. You complete the human check, then control returns to the same browser session.
+            JobTomatik preserved the filled application and paused before the protected step. Use only the newest code you receive.
           </p>
         </div>
       </div>
@@ -248,16 +321,26 @@ export default function ManualHandoffPanel({ applicationId }) {
         {session.status === 'claimed' && !leaseToken && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-gray-50 p-4">
             <div className="text-sm text-gray-600">
-              This handoff was previously opened, but this tab no longer has its lease. Recovery is allowed only after the previous lease expires.
+              This tab no longer has the browser lease. Recover it after the previous lease expires, or start fresh immediately.
             </div>
-            <button
-              className="btn-secondary flex items-center gap-2 justify-center whitespace-nowrap"
-              onClick={() => recoverMutation.mutate()}
-              disabled={recoverMutation.isPending}
-            >
-              {recoverMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              Recover secure lease
-            </button>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                className="btn-secondary flex items-center gap-2 justify-center whitespace-nowrap"
+                onClick={() => recoverMutation.mutate()}
+                disabled={recoverMutation.isPending || restartMutation.isPending}
+              >
+                {recoverMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Recover lease
+              </button>
+              <button
+                className="btn-primary flex items-center gap-2 justify-center whitespace-nowrap"
+                onClick={() => restartMutation.mutate()}
+                disabled={recoverMutation.isPending || restartMutation.isPending}
+              >
+                {restartMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                Start fresh
+              </button>
+            </div>
           </div>
         )}
 
@@ -282,7 +365,7 @@ export default function ManualHandoffPanel({ applicationId }) {
                   className="inline-flex items-center gap-1 hover:text-white"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh
+                  Refresh image
                 </button>
               </div>
               <div className="relative min-h-[260px] flex items-center justify-center">
@@ -306,26 +389,55 @@ export default function ManualHandoffPanel({ applicationId }) {
               </div>
             </div>
 
+            <div className="flex flex-wrap gap-2 rounded-xl bg-gray-50 p-3">
+              <button
+                className="btn-secondary text-xs flex items-center gap-1.5"
+                onClick={() => runRecoveryAction('resend_code', 'A new verification code was requested')}
+                disabled={actionMutation.isPending}
+              >
+                <MailPlus className="w-3.5 h-3.5" />
+                Request new code
+              </button>
+              <button
+                className="btn-secondary text-xs flex items-center gap-1.5"
+                onClick={() => runRecoveryAction('back', 'Returned to the previous verification page')}
+                disabled={actionMutation.isPending}
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Go back
+              </button>
+              <button
+                className="btn-secondary text-xs flex items-center gap-1.5"
+                onClick={() => runRecoveryAction('reload', 'Verification page reloaded')}
+                disabled={actionMutation.isPending}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Reload page
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
               <div className="flex gap-2">
                 <input
-                  type="password"
+                  type="text"
                   value={secretInput}
                   onChange={(event) => setSecretInput(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter') sendSecret()
+                    if (event.key === 'Enter') submitSecret()
                   }}
                   className="input flex-1"
-                  placeholder="Type an MFA code or required secure value"
+                  placeholder="Paste the newest MFA or verification code"
                   autoComplete="one-time-code"
+                  autoCapitalize="none"
+                  spellCheck="false"
                 />
                 <button
-                  className="btn-secondary flex items-center gap-2"
-                  onClick={sendSecret}
-                  disabled={!secretInput || actionMutation.isPending}
+                  className="btn-primary flex items-center gap-2"
+                  onClick={submitSecret}
+                  disabled={!secretInput.trim() || actionMutation.isPending}
                 >
                   <Keyboard className="w-4 h-4" />
-                  Type
+                  Replace and submit
                 </button>
               </div>
               <div className="flex gap-2 flex-wrap">
@@ -342,19 +454,31 @@ export default function ManualHandoffPanel({ applicationId }) {
               </div>
             </div>
 
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+              Replace and submit clears any expired code already in the focused field, types the newest code, and presses Enter in one action.
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 <MousePointer2 className="w-3.5 h-3.5" />
                 Click directly on the browser image. Typed values are never written to the audit log.
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   className="btn-secondary text-red-600 border-red-200 hover:bg-red-50 flex items-center gap-1.5"
                   onClick={() => cancelMutation.mutate()}
-                  disabled={cancelMutation.isPending}
+                  disabled={cancelMutation.isPending || restartMutation.isPending}
                 >
                   <XCircle className="w-4 h-4" />
                   Cancel
+                </button>
+                <button
+                  className="btn-secondary flex items-center gap-1.5"
+                  onClick={() => restartMutation.mutate()}
+                  disabled={restartMutation.isPending || cancelMutation.isPending}
+                >
+                  {restartMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                  Start over
                 </button>
                 <button
                   className="btn-primary flex items-center gap-1.5"
