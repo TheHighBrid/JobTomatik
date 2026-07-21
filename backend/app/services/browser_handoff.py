@@ -11,8 +11,10 @@ from urllib.parse import urlparse
 
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.services.ats_base import page_fingerprint
+from app.services.ats_registry import detect_ats_adapter
 from app.services.browser_navigation import detect_blocking_challenge, now_iso
 from app.services.handoff_session import decrypt_handoff_secret
+from app.services.supervised_target_identity import verify_supervised_browser_target
 
 
 class BrowserHandoffError(RuntimeError):
@@ -113,9 +115,53 @@ async def _disconnect(playwright) -> None:
         pass
 
 
+def _session_supervised_target(session: ManualHandoffSession) -> Dict[str, Any]:
+    metadata = dict(session.handoff_metadata or {})
+    value = metadata.get("supervised_target")
+    return dict(value) if isinstance(value, dict) else {}
+
+
+async def _verify_session_target(
+    page: Any,
+    session: ManualHandoffSession,
+    *,
+    refresh_official_metadata: bool = False,
+    allow_same_site_confirmation: bool = False,
+) -> Dict[str, Any]:
+    expected = _session_supervised_target(session)
+    if not expected:
+        return {
+            "verified": True,
+            "blockers": [],
+            "target_lock_required": False,
+            "current_url": page.url,
+        }
+    adapter = await detect_ats_adapter(page, page.url)
+    return await verify_supervised_browser_target(
+        current_url=page.url,
+        adapter_name=adapter.name,
+        adapter_version=adapter.version,
+        expected_metadata=expected,
+        refresh_official_metadata=refresh_official_metadata,
+        allow_same_site_confirmation=allow_same_site_confirmation,
+    )
+
+
+def _require_verified_session_target(verification: Dict[str, Any]) -> None:
+    if verification.get("verified"):
+        return
+    blockers = ", ".join(verification.get("blockers") or ["target_identity_mismatch"])
+    raise BrowserHandoffError(
+        "The retained browser no longer matches the explicitly approved application target: "
+        + blockers
+    )
+
+
 async def capture_handoff_frame(session: ManualHandoffSession) -> bytes:
     playwright, _, _, page = await _connect_local_cdp(session)
     try:
+        verification = await _verify_session_target(page, session)
+        _require_verified_session_target(verification)
         return await page.screenshot(type="png", full_page=False)
     finally:
         await _disconnect(playwright)
@@ -164,6 +210,9 @@ async def perform_handoff_action(
 ) -> Dict[str, Any]:
     playwright, _, _, page = await _connect_local_cdp(session)
     try:
+        before_verification = await _verify_session_target(page, session)
+        _require_verified_session_target(before_verification)
+
         settle_ms = 150
         if action == "click":
             if x is None or y is None:
@@ -204,11 +253,20 @@ async def perform_handoff_action(
         else:
             raise BrowserHandoffError(f"Unsupported browser handoff action: {action}")
         await page.wait_for_timeout(settle_ms)
+
+        confirmation = await _submission_confirmation_state(page)
+        after_verification = await _verify_session_target(
+            page,
+            session,
+            allow_same_site_confirmation=bool(confirmation["submission_confirmed"]),
+        )
+        _require_verified_session_target(after_verification)
         fingerprint = await page_fingerprint(page)
         return {
             "action": action,
             "current_url": page.url,
             "current_fingerprint": fingerprint,
+            "target_verification": after_verification,
             "sensitive_value_logged": False,
         }
     finally:
@@ -284,8 +342,17 @@ async def verify_browser_handoff_completion(
         evidence: Dict[str, Any] = {}
         confirmation = await _submission_confirmation_state(page)
         evidence.update(confirmation)
+        target_verification = await _verify_session_target(
+            page,
+            session,
+            allow_same_site_confirmation=bool(confirmation["submission_confirmed"]),
+        )
+        evidence["target_verification"] = target_verification
 
-        if confirmation["submission_confirmed"]:
+        if not target_verification.get("verified"):
+            cleared = False
+            evidence["verification_method"] = "supervised_target_lock"
+        elif confirmation["submission_confirmed"]:
             cleared = True
             evidence["verification_method"] = "explicit_submission_confirmation"
         elif session.challenge_type == HandoffChallengeType.captcha.value:
@@ -324,20 +391,60 @@ async def resume_handoff_application(
 ) -> Dict[str, Any]:
     """Reconnect to the retained page and continue the certified ATS flow."""
     from app.services.ats_flow import run_ats_application_flow
-    from app.services.ats_registry import detect_ats_adapter
     from app.services.form_filler_v3 import _fill_step_fields
 
     playwright, _, _, page = await _connect_local_cdp(session)
     log: list[Dict[str, Any]] = []
+    expected_target = _session_supervised_target(session)
     try:
         confirmation = await _submission_confirmation_state(page)
+        target_verification = await _verify_session_target(
+            page,
+            session,
+            allow_same_site_confirmation=bool(confirmation["submission_confirmed"]),
+        )
+        if not target_verification.get("verified"):
+            error = (
+                "The retained browser no longer matches the explicitly approved "
+                "application target."
+            )
+            log.append({
+                "action": "handoff_target_lock_blocked",
+                "url": page.url,
+                "target_verification": target_verification,
+                "ts": now_iso(),
+            })
+            return {
+                "success": False,
+                "dry_run": dry_run,
+                "url": page.url,
+                "log": log,
+                "error": error,
+                "fields_filled": 0,
+                "requires_manual_review": True,
+                "review_items": [{
+                    "reason_code": "safety_gate_blocked",
+                    "summary": error,
+                    "details": {
+                        "submit_clicked": False,
+                        "target_verification": target_verification,
+                    },
+                }],
+                "ready_to_submit": False,
+                "target_verification": target_verification,
+            }
+
         if confirmation["submission_confirmed"]:
             log.append({
                 "action": "handoff_submission_confirmation_detected",
                 "url": page.url,
                 "matched_phrases": confirmation["matched_confirmation_phrases"],
+                "target_verification": target_verification,
                 "ts": now_iso(),
             })
+            evidence = list(confirmation["confirmation_evidence"])
+            for item in evidence:
+                item.setdefault("metadata", {})["target_verification"] = target_verification
             return {
                 "success": True,
                 "dry_run": dry_run,
@@ -350,9 +457,10 @@ async def resume_handoff_application(
                 "review_items": [],
                 "ready_to_submit": False,
                 "submission_confirmed": True,
-                "confirmation_evidence": confirmation["confirmation_evidence"],
+                "confirmation_evidence": evidence,
                 "ats_adapter": (session.handoff_metadata or {}).get("adapter") or "greenhouse",
                 "ats_adapter_version": (session.handoff_metadata or {}).get("adapter_version") or "unknown",
+                "target_verification": target_verification,
             }
 
         adapter = await detect_ats_adapter(page, page.url)
@@ -367,18 +475,34 @@ async def resume_handoff_application(
                 step_number=step_number,
             )
 
+        async def pre_submit_check(current_page: Any, _current_adapter: Any) -> Dict[str, Any]:
+            detected = await detect_ats_adapter(current_page, current_page.url)
+            return await verify_supervised_browser_target(
+                current_url=current_page.url,
+                adapter_name=detected.name,
+                adapter_version=detected.version,
+                expected_metadata=expected_target,
+                refresh_official_metadata=True,
+            )
+
         flow = await run_ats_application_flow(
             page,
             adapter,
             fill_step=fill_step,
             dry_run=dry_run,
             log=log,
+            pre_submit_check=(
+                pre_submit_check
+                if expected_target and not dry_run
+                else None
+            ),
         )
         result = flow.as_dict()
         result["log"] = log
         result["ats_adapter"] = flow.adapter_name
         result["ats_adapter_version"] = flow.adapter_version
         result["url"] = page.url
+        result["target_verification"] = target_verification
         return result
     finally:
         await _disconnect(playwright)
