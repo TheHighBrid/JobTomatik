@@ -70,17 +70,22 @@ def test_default_cors_origins_are_explicit_and_capacitor_compatible():
     assert "capacitor://localhost" in settings.cors_origin_list
 
 
-def test_local_env_example_uses_sqlite_and_port_8010():
+def test_local_env_and_packaged_client_use_port_8010():
     env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
     active_lines = {
         line.strip()
         for line in env_example.splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     }
+    client = (
+        REPO_ROOT / "frontend" / "src" / "api" / "client.js"
+    ).read_text(encoding="utf-8")
 
     assert "DATABASE_URL=sqlite:///./jobtomatik.db" in active_lines
     assert not any(line.startswith("DATABASE_URL=postgresql://") for line in active_lines)
     assert "VITE_API_URL=http://127.0.0.1:8010" in active_lines
+    assert "import.meta.env.VITE_API_URL || 'http://127.0.0.1:8010'" in client
+    assert "import.meta.env.VITE_API_URL || 'http://localhost:8000'" not in client
 
 
 def test_release_documentation_is_present():
