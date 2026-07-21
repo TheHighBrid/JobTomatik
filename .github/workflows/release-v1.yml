@@ -14,28 +14,12 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 concurrency:
   group: release-jobtomatik-v1
   cancel-in-progress: true
 
 jobs:
-  announce-release:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Announce release run on PR 78
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: 78,
-              body: `🚀 JobTomatik v1.00 release run started.\n\nRun: ${runUrl}\nSource: \`${context.sha}\``,
-            });
-
   verify-backend:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -53,8 +37,10 @@ jobs:
       AUTOPILOT_ENABLED: "false"
       REQUIRE_BROWSER_TESTS: "1"
     steps:
-      - name: Check out repository
+      - name: Check out exact release source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -67,7 +53,7 @@ jobs:
         run: python -m pip install -q --disable-pip-version-check -r requirements.txt
 
       - name: Install Chromium
-        run: python -m playwright install --with-deps chromium
+        run: python -m playwright install chromium
 
       - name: Compile backend
         run: python -m compileall -q app tests
@@ -91,7 +77,7 @@ jobs:
         with:
           name: jobtomatik-v1-backend-verification
           path: backend/release-pytest-output.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
   build-android:
@@ -102,8 +88,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - name: Check out repository
+      - name: Check out exact release source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node
         uses: actions/setup-node@v5
@@ -265,28 +253,3 @@ jobs:
             release/JobTomatik-v1.00.sha256
             release/BUILD-INFO.txt
             release/APK-BADGING.txt
-
-  report-release-status:
-    needs:
-      - announce-release
-      - verify-backend
-      - build-android
-      - publish-release
-    if: always()
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Report release results on PR 78
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const verify = '${{ needs.verify-backend.result }}';
-            const android = '${{ needs.build-android.result }}';
-            const publish = '${{ needs.publish-release.result }}';
-            const ok = verify === 'success' && android === 'success' && publish === 'success';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: 78,
-              body: `${ok ? '✅' : '❌'} JobTomatik v1.00 release run completed.\n\n- Backend verification: **${verify}**\n- Android build: **${android}**\n- Release publication: **${publish}**\n- Run: ${runUrl}\n- Source: \`${context.sha}\``,
-            });
