@@ -1,0 +1,101 @@
+name: Verify JobTomatik v1 publication request
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches:
+      - main
+    paths:
+      - "RELEASE_PUBLISH_REQUEST.txt"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: verify-jobtomatik-v1-publication-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  RELEASE_SOURCE_SHA: 6f7f9fa6a7d3c63516cde381410ac188364dba36
+  AUTHORIZED_PR_NUMBER: "81"
+  AUTHORIZED_HEAD_BRANCH: release/publish-v1.0.0
+
+jobs:
+  verify-request:
+    if: >-
+      github.event.pull_request.number == 81 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'release/publish-v1.0.0' &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify exact request file and frozen source
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pullNumber = Number(process.env.AUTHORIZED_PR_NUMBER);
+            const pull = context.payload.pull_request;
+
+            if (pull.number !== pullNumber) {
+              core.setFailed(`Unexpected PR number: ${pull.number}`);
+              return;
+            }
+            if (pull.head.repo.full_name !== `${owner}/${repo}`) {
+              core.setFailed('Publication request is not from the same repository.');
+              return;
+            }
+            if (pull.head.ref !== process.env.AUTHORIZED_HEAD_BRANCH) {
+              core.setFailed(`Unexpected publication branch: ${pull.head.ref}`);
+              return;
+            }
+            if (pull.base.ref !== 'main') {
+              core.setFailed(`Unexpected base branch: ${pull.base.ref}`);
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: pullNumber,
+              per_page: 100,
+            });
+            if (files.length !== 1 || files[0].filename !== 'RELEASE_PUBLISH_REQUEST.txt') {
+              core.setFailed('Publication request must change only RELEASE_PUBLISH_REQUEST.txt.');
+              return;
+            }
+
+            const marker = await github.rest.repos.getContent({
+              owner,
+              repo,
+              path: 'RELEASE_PUBLISH_REQUEST.txt',
+              ref: pull.head.sha,
+            });
+            if (Array.isArray(marker.data) || marker.data.type !== 'file') {
+              core.setFailed('Publication marker is not a regular file.');
+              return;
+            }
+            const text = Buffer.from(marker.data.content, marker.data.encoding).toString('utf8');
+            const required = [
+              'JobTomatik v1.00 authorized publication request',
+              `Frozen source: ${process.env.RELEASE_SOURCE_SHA}`,
+              'Release tag: v1.0.0',
+              'JobTomatik-v1.00.apk',
+              'JobTomatik-v1.00.sha256',
+              'BUILD-INFO.txt',
+              'APK-BADGING.txt',
+            ];
+            for (const value of required) {
+              if (!text.includes(value)) {
+                core.setFailed(`Publication marker is missing: ${value}`);
+                return;
+              }
+            }
+
+            core.info(`Verified PR #${pullNumber} at ${pull.head.sha}`);
+            core.info(`Frozen application source: ${process.env.RELEASE_SOURCE_SHA}`);
