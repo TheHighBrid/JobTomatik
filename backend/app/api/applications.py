@@ -34,6 +34,7 @@ from app.schemas.application import (
 )
 from app.services.application_integrity import (
     reconcile_user_reported_status,
+    status_closes_submission,
     submission_is_closed,
 )
 from app.services.application_state import resolve_manual_review_task
@@ -301,11 +302,21 @@ async def update_application(
     old_status = app.status
     updates = data.model_dump(exclude_none=True)
     requested_status = updates.pop("status", None)
+    current_state = app.automation_state or ApplicationAutomationState.preparing.value
 
     if requested_status in {ApplicationStatus.pending, ApplicationStatus.applying} and submission_is_closed(app):
         raise HTTPException(
             status_code=409,
             detail="A closed application cannot be reopened through the generic status update endpoint.",
+        )
+    if (
+        requested_status is not None
+        and status_closes_submission(requested_status)
+        and current_state == ApplicationAutomationState.applying.value
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the active application attempt to finish before recording a terminal status.",
         )
 
     for field, value in updates.items():
