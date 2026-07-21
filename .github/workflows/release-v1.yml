@@ -8,13 +8,30 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: release-jobtomatik-v1
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
+  announce-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Announce release run on PR 78
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 78,
+              body: `🚀 JobTomatik v1.00 release run started.\n\nRun: ${runUrl}\nSource: \`${context.sha}\``,
+            });
+
   verify-backend:
+    needs: announce-release
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -240,3 +257,28 @@ jobs:
             release/JobTomatik-v1.00.sha256
             release/BUILD-INFO.txt
             release/APK-BADGING.txt
+
+  report-release-status:
+    needs:
+      - announce-release
+      - verify-backend
+      - build-android
+      - publish-release
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Report release results on PR 78
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const verify = '${{ needs.verify-backend.result }}';
+            const android = '${{ needs.build-android.result }}';
+            const publish = '${{ needs.publish-release.result }}';
+            const ok = verify === 'success' && android === 'success' && publish === 'success';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 78,
+              body: `${ok ? '✅' : '❌'} JobTomatik v1.00 release run completed.\n\n- Backend verification: **${verify}**\n- Android build: **${android}**\n- Release publication: **${publish}**\n- Run: ${runUrl}\n- Source: \`${context.sha}\``,
+            });
