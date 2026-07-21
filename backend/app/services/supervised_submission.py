@@ -1,9 +1,10 @@
-"""Exact-payload approval gate for Greenhouse supervised submissions.
+"""Exact-payload approval gate for supervised ATS submissions.
 
 This service never submits an application. It creates short-lived, one-time
 approval records bound to an exact employer, role, URL, idempotency key, profile,
 resume, cover letter, and approved answer-policy payload. Any mutation, expiry,
-open review task, or feature-flag change invalidates the approval.
+open review task, unsupported platform, or feature-flag change invalidates the
+approval.
 """
 
 from __future__ import annotations
@@ -32,10 +33,16 @@ from app.models.submission_approval import (
 from app.models.user import User
 from app.services.answer_policy import load_runtime_policies
 from app.services.operations_policy import platform_key_for_url
+from app.services.supervised_platforms import (
+    GREENHOUSE_PLATFORM_KEY,
+    SupervisedPlatformPolicy,
+    get_supervised_platform_policy,
+)
 
 
 settings = get_settings()
-SUPPORTED_PLATFORM = "greenhouse"
+# Compatibility alias for existing imports. Operational decisions use the registry.
+SUPPORTED_PLATFORM = GREENHOUSE_PLATFORM_KEY
 
 
 class SupervisedSubmissionApprovalError(ValueError):
@@ -92,6 +99,10 @@ def _active_review_count(db: Session, application_id: int) -> int:
         )
         .count()
     )
+
+
+def _platform_policy(platform: str) -> Optional[SupervisedPlatformPolicy]:
+    return get_supervised_platform_policy(platform)
 
 
 def build_submission_snapshot(
@@ -170,17 +181,16 @@ def build_supervised_preflight(
     state = application.automation_state or ApplicationAutomationState.preparing.value
     open_reviews = _active_review_count(db, application.id)
     live_enabled = bool(settings.allow_real_application_submit)
-    pilot_enabled = bool(
-        getattr(settings, "greenhouse_supervised_pilot_enabled", False)
-    )
+    policy = _platform_policy(snapshot["platform"])
+    pilot_enabled = policy.pilot_enabled(settings) if policy else False
 
     blockers = []
     if not live_enabled:
         blockers.append("global_live_submit_disabled")
-    if not pilot_enabled:
-        blockers.append("greenhouse_supervised_pilot_disabled")
-    if snapshot["platform"] != SUPPORTED_PLATFORM:
+    if policy is None:
         blockers.append("unsupported_platform")
+    elif not pilot_enabled:
+        blockers.append(policy.pilot_disabled_blocker)
     if state != ApplicationAutomationState.ready_to_apply.value:
         blockers.append("application_not_ready_to_apply")
     if open_reviews:
@@ -261,6 +271,9 @@ def issue_supervised_approval(
             "Supervised submission preflight is blocked: "
             + ", ".join(preflight["blockers"])
         )
+    policy = _platform_policy(preflight["platform"])
+    if policy is None:
+        raise SupervisedSubmissionApprovalError("Unsupported supervised platform")
     if confirm_final_submit is not True:
         raise SupervisedSubmissionApprovalError(
             "confirm_final_submit must be explicitly true"
@@ -274,7 +287,8 @@ def issue_supervised_approval(
         ),
     }
     mismatches = [
-        field for field, (provided, expected) in confirmations.items()
+        field
+        for field, (provided, expected) in confirmations.items()
         if provided != expected
     ]
     if mismatches:
@@ -296,7 +310,7 @@ def issue_supervised_approval(
     approval = SubmissionApproval(
         application_id=application.id,
         user_id=user.id,
-        platform=SUPPORTED_PLATFORM,
+        platform=preflight["platform"],
         status=SubmissionApprovalStatus.active.value,
         employer=preflight["employer"],
         role=preflight["role"],
@@ -319,25 +333,28 @@ def issue_supervised_approval(
             "unresolved_manual_review_count": 0,
             "global_live_submit_enabled": True,
             "platform_pilot_enabled": True,
+            "platform_pilot_setting": policy.pilot_setting_name,
         },
     )
     db.add(approval)
     db.flush()
-    db.add(ApplicationEvent(
-        application_id=application.id,
-        event_type="supervised_submission_approval_issued",
-        from_state=application.automation_state,
-        to_state=application.automation_state,
-        payload={
-            "approval_reference": approval.reference,
-            "platform": approval.platform,
-            "employer": approval.employer,
-            "role": approval.role,
-            "application_url": approval.application_url,
-            "expires_at": approval.expires_at.isoformat(),
-            "combined_payload_hash": approval.combined_payload_hash,
-        },
-    ))
+    db.add(
+        ApplicationEvent(
+            application_id=application.id,
+            event_type="supervised_submission_approval_issued",
+            from_state=application.automation_state,
+            to_state=application.automation_state,
+            payload={
+                "approval_reference": approval.reference,
+                "platform": approval.platform,
+                "employer": approval.employer,
+                "role": approval.role,
+                "application_url": approval.application_url,
+                "expires_at": approval.expires_at.isoformat(),
+                "combined_payload_hash": approval.combined_payload_hash,
+            },
+        )
+    )
     return approval
 
 
@@ -407,7 +424,8 @@ def validate_supervised_approval(
         "combined_payload_hash": preflight["combined_payload_hash"],
     }
     mismatches = [
-        field for field, value in expected.items()
+        field
+        for field, value in expected.items()
         if getattr(approval, field) != value
     ]
     if mismatches:
@@ -418,16 +436,18 @@ def validate_supervised_approval(
             "revocation_reason": "approved_payload_changed",
             "mismatched_fields": mismatches,
         }
-        db.add(ApplicationEvent(
-            application_id=application.id,
-            event_type="supervised_submission_approval_invalidated",
-            from_state=application.automation_state,
-            to_state=application.automation_state,
-            payload={
-                "approval_reference": approval.reference,
-                "mismatched_fields": mismatches,
-            },
-        ))
+        db.add(
+            ApplicationEvent(
+                application_id=application.id,
+                event_type="supervised_submission_approval_invalidated",
+                from_state=application.automation_state,
+                to_state=application.automation_state,
+                payload={
+                    "approval_reference": approval.reference,
+                    "mismatched_fields": mismatches,
+                },
+            )
+        )
         raise SupervisedSubmissionApprovalMismatch(
             "Approved submission payload changed: " + ", ".join(mismatches)
         )
@@ -439,17 +459,19 @@ def validate_supervised_approval(
             **dict(approval.approval_metadata or {}),
             "consumed_for_attempt": (application.submission_attempt_count or 0) + 1,
         }
-        db.add(ApplicationEvent(
-            application_id=application.id,
-            event_type="supervised_submission_approval_consumed",
-            from_state=application.automation_state,
-            to_state=application.automation_state,
-            payload={
-                "approval_reference": approval.reference,
-                "attempt": (application.submission_attempt_count or 0) + 1,
-                "combined_payload_hash": approval.combined_payload_hash,
-            },
-        ))
+        db.add(
+            ApplicationEvent(
+                application_id=application.id,
+                event_type="supervised_submission_approval_consumed",
+                from_state=application.automation_state,
+                to_state=application.automation_state,
+                payload={
+                    "approval_reference": approval.reference,
+                    "attempt": (application.submission_attempt_count or 0) + 1,
+                    "combined_payload_hash": approval.combined_payload_hash,
+                },
+            )
+        )
     return approval
 
 
@@ -475,16 +497,18 @@ def revoke_supervised_approval(
             **dict(approval.approval_metadata or {}),
             "revocation_reason": reason,
         }
-        db.add(ApplicationEvent(
-            application_id=application.id,
-            event_type="supervised_submission_approval_revoked",
-            from_state=application.automation_state,
-            to_state=application.automation_state,
-            payload={
-                "approval_reference": approval.reference,
-                "reason": reason,
-            },
-        ))
+        db.add(
+            ApplicationEvent(
+                application_id=application.id,
+                event_type="supervised_submission_approval_revoked",
+                from_state=application.automation_state,
+                to_state=application.automation_state,
+                payload={
+                    "approval_reference": approval.reference,
+                    "reason": reason,
+                },
+            )
+        )
     return approval
 
 

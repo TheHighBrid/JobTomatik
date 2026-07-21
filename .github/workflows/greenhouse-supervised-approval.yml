@@ -9,8 +9,10 @@ on:
       - "backend/app/main.py"
       - "backend/app/models/submission_approval.py"
       - "backend/app/schemas/supervised_submission.py"
+      - "backend/app/services/supervised_platforms.py"
       - "backend/app/services/supervised_submission.py"
       - "backend/app/services/supervised_submission_integration.py"
+      - "backend/tests/test_supervised_platform_registry.py"
       - "backend/tests/test_supervised_submission_approval.py"
       - "docs/greenhouse-supervised-approval-runbook.md"
       - ".github/workflows/greenhouse-supervised-approval.yml"
@@ -23,8 +25,10 @@ on:
       - "backend/app/main.py"
       - "backend/app/models/submission_approval.py"
       - "backend/app/schemas/supervised_submission.py"
+      - "backend/app/services/supervised_platforms.py"
       - "backend/app/services/supervised_submission.py"
       - "backend/app/services/supervised_submission_integration.py"
+      - "backend/tests/test_supervised_platform_registry.py"
       - "backend/tests/test_supervised_submission_approval.py"
       - "docs/greenhouse-supervised-approval-runbook.md"
       - ".github/workflows/greenhouse-supervised-approval.yml"
@@ -69,24 +73,29 @@ jobs:
             app/api/supervised_submissions.py \
             app/models/submission_approval.py \
             app/schemas/supervised_submission.py \
+            app/services/supervised_platforms.py \
             app/services/supervised_submission.py \
             app/services/supervised_submission_integration.py
 
       - name: Run exact approval regression suite
         run: |
-          pytest -q tests/test_supervised_submission_approval.py \
+          pytest -q \
+            tests/test_supervised_platform_registry.py \
+            tests/test_supervised_submission_approval.py \
             --junitxml=supervised-approval-report.xml
 
       - name: Assert default safety flags
         run: |
           python - <<'PY'
           from app.config import get_settings
+          from app.services.supervised_platforms import supervised_platform_keys
 
           settings = get_settings()
           assert settings.allow_real_application_submit is False
           assert settings.greenhouse_supervised_pilot_enabled is False
           assert settings.supervised_approval_ttl_minutes <= 20
           assert settings.supervised_approval_max_ttl_minutes <= 60
+          assert supervised_platform_keys() == ("greenhouse",)
           print("Supervised approval defaults remain fail closed")
           PY
 
