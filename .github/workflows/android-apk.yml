@@ -1,0 +1,107 @@
+name: Android APK
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "backend/tests/test_v1_release_contract.py"
+      - ".github/workflows/android-apk.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - "backend/tests/test_v1_release_contract.py"
+      - ".github/workflows/android-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and synchronize Capacitor
+        run: npm run android:prepare
+
+      - name: Verify Gradle wrapper
+        shell: bash
+        run: |
+          chmod +x android/gradlew
+          grep -q 'services.gradle.org/distributions/gradle-8.11.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
+          ! grep -q '/tmp/gradle' android/gradle/wrapper/gradle-wrapper.properties
+          cd android
+          ./gradlew --no-daemon --version
+
+      - name: Lint and assemble debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          cd android
+          ./gradlew --no-daemon lintDebug assembleDebug | tee android-build-output.txt
+
+      - name: Verify APK identity and version
+        shell: bash
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee android-apk-badging.txt
+          grep -q "package: name='ca.jobtomatik.app'" android-apk-badging.txt
+          grep -q "versionCode='100'" android-apk-badging.txt
+          grep -q "versionName='1.0.0'" android-apk-badging.txt
+          mkdir -p release
+          cp "$APK" release/JobTomatik-v1.00-debug.apk
+          sha256sum release/JobTomatik-v1.00-debug.apk > release/JobTomatik-v1.00-debug.sha256
+
+      - name: Upload APK and reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: jobtomatik-v1-android-apk
+          path: |
+            frontend/release/*
+            frontend/android/android-build-output.txt
+            frontend/android-apk-badging.txt
+            frontend/android/app/build/reports/lint-results-debug.html
+          if-no-files-found: warn
+          retention-days: 30

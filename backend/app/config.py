@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,6 +12,16 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 10080
 
+    # Comma-separated browser origins allowed to call the API with credentials.
+    # These defaults cover Vite, the local browser UI, and Capacitor Android.
+    cors_origins: str = (
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000,"
+        "https://localhost,"
+        "http://localhost,"
+        "capacitor://localhost"
+    )
+
     # AI is optional. The app works for free with AI_PROVIDER=template.
     ai_provider: str = "template"  # template | anthropic
     anthropic_api_key: str = ""
@@ -18,7 +29,7 @@ class Settings(BaseSettings):
 
     # Email is optional. If SENDGRID_API_KEY is empty, email applications are prepared but not sent.
     sendgrid_api_key: str = ""
-    from_email: str = "mohamed@melato.ca"
+    from_email: str = "noreply@jobtomatik.com"
 
     # Optional integrations / local development.
     rapidapi_key: str = ""
@@ -46,6 +57,10 @@ class Settings(BaseSettings):
     greenhouse_pilot_ledger_path: str = "evidence/greenhouse-pilot-ledger.jsonl"
     greenhouse_pilot_readiness_json_path: str = "evidence/greenhouse-pilot-readiness.json"
     greenhouse_pilot_readiness_markdown_path: str = "evidence/greenhouse-pilot-readiness.md"
+
+    @property
+    def cors_origin_list(self) -> List[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

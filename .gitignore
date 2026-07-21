@@ -16,6 +16,7 @@ frontend/dist/
 frontend/build/
 dist/
 build/
+release/
 
 # Python caches/environments
 __pycache__/
@@ -40,8 +41,13 @@ logs/
 
 # Release artifacts and signing keys — never commit these
 *.apk
+*.aab
 *.jks
 *.keystore
+*.p12
+*.pem
+keystore.properties
+frontend/android/keystore.properties
 
 # Capacitor Android — machine-specific and generated files
 frontend/android/local.properties
@@ -50,6 +56,7 @@ frontend/android/app/build/
 frontend/android/build/
 frontend/android/capacitor-cordova-android-plugins/build/
 frontend/android/**/*.apk
+frontend/android/**/*.aab
 
 # OS/editor noise
 .DS_Store

@@ -26,6 +26,11 @@ function isGreenhouseUrl(value) {
   }
 }
 
+function isFinishedApplication(application) {
+  return application?.status === 'applied'
+    || ['submitted', 'confirmed'].includes(application?.automation_state)
+}
+
 export default function ApplicationDetail() {
   const { id } = useParams()
   const qc = useQueryClient()
@@ -80,10 +85,15 @@ export default function ApplicationDetail() {
   })
 
   const handleSubmit = async (dry = false) => {
+    if (isFinishedApplication(app)) {
+      toast('This application is already recorded as submitted.')
+      return
+    }
+
     setSubmitting(true)
     try {
       await submitApplication(id, dry)
-      toast(dry ? 'Dry run complete. Check the application for details.' : 'Application submission started!')
+      toast(dry ? 'Dry run started. Check the application for progress.' : 'Application submission started!')
       setTimeout(() => qc.invalidateQueries(['application', id]), 3000)
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Submission failed')
@@ -103,6 +113,7 @@ export default function ApplicationDetail() {
 
   const job = app.job
   const greenhouseApplication = isGreenhouseUrl(job?.url)
+  const applicationFinished = isFinishedApplication(app)
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
@@ -110,7 +121,6 @@ export default function ApplicationDetail() {
         <ArrowLeft className="w-4 h-4" /> Back to Applications
       </Link>
 
-      {/* Header */}
       <div className="card p-6">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-tomato-100 flex items-center justify-center text-tomato-700 font-bold text-lg flex-shrink-0">
@@ -134,12 +144,11 @@ export default function ApplicationDetail() {
         </div>
       </div>
 
-      <ManualHandoffPanel applicationId={Number(id)} />
-      <SupervisedSubmissionPanel application={app} />
+      {!applicationFinished && <ManualHandoffPanel applicationId={Number(id)} />}
+      {!applicationFinished && <SupervisedSubmissionPanel application={app} />}
       <SubmissionEvidenceReviewPanel application={app} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Status & Notes */}
         <div className="card p-5 space-y-4">
           <h2 className="font-semibold text-gray-900">Status</h2>
           <select
@@ -169,7 +178,6 @@ export default function ApplicationDetail() {
           </button>
         </div>
 
-        {/* Actions */}
         <div className="card p-5 space-y-3">
           <h2 className="font-semibold text-gray-900">Actions</h2>
           <button
@@ -180,15 +188,19 @@ export default function ApplicationDetail() {
             {genCLMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             {app.cover_letter ? 'Regenerate Cover Letter' : 'Generate Cover Letter'}
           </button>
-          <button
-            onClick={() => handleSubmit(true)}
-            disabled={submitting}
-            className="btn-secondary w-full flex items-center gap-2 justify-center text-yellow-700 border-yellow-200 hover:bg-yellow-50"
-          >
-            <AlertCircle className="w-4 h-4" />
-            Dry Run (Preview)
-          </button>
-          {greenhouseApplication ? (
+
+          {!applicationFinished && (
+            <button
+              onClick={() => handleSubmit(true)}
+              disabled={submitting}
+              className="btn-secondary w-full flex items-center gap-2 justify-center text-yellow-700 border-yellow-200 hover:bg-yellow-50"
+            >
+              <AlertCircle className="w-4 h-4" />
+              Dry Run (Preview)
+            </button>
+          )}
+
+          {!applicationFinished && greenhouseApplication && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-relaxed text-slate-600">
               <div className="flex items-center gap-2 font-semibold text-slate-800">
                 <LockKeyhole className="h-4 w-4" />
@@ -196,26 +208,28 @@ export default function ApplicationDetail() {
               </div>
               <p className="mt-1">Use the supervised panel above. It requires exact confirmations, payload hashes, two feature flags, and a one-time approval.</p>
             </div>
-          ) : (
+          )}
+
+          {!applicationFinished && !greenhouseApplication && (
             <button
               onClick={() => handleSubmit(false)}
-              disabled={submitting || app.status === 'applied'}
+              disabled={submitting}
               className="btn-primary w-full flex items-center gap-2 justify-center"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               Submit Application
             </button>
           )}
-          {app.status === 'applied' && (
-            <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 px-3 py-2 rounded-lg">
-              <CheckCircle2 className="w-4 h-4" />
-              Application submitted
+
+          {applicationFinished && (
+            <div className="flex items-center gap-2 text-green-700 text-sm bg-green-50 border border-green-100 px-3 py-3 rounded-lg">
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+              <span>Application submitted. New submission attempts are hidden for this record.</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Cover Letter */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-gray-900 flex items-center gap-2">
@@ -236,7 +250,6 @@ export default function ApplicationDetail() {
         )}
       </div>
 
-      {/* Follow-up scheduler */}
       <div className="card p-5">
         <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
           <Calendar className="w-4 h-4" /> Schedule Follow-up
@@ -293,7 +306,6 @@ export default function ApplicationDetail() {
         )}
       </div>
 
-      {/* Job description */}
       {job?.description && (
         <div className="card p-5">
           <h2 className="font-semibold text-gray-900 mb-3">Job Description</h2>
