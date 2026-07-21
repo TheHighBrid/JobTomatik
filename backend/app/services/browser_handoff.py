@@ -7,10 +7,11 @@ import socket
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.services.ats_base import page_fingerprint
-from app.services.browser_navigation import detect_blocking_challenge
+from app.services.browser_navigation import detect_blocking_challenge, now_iso
 from app.services.handoff_session import decrypt_handoff_secret
 
 
@@ -38,6 +39,24 @@ class BrowserVerification:
             "current_fingerprint": self.current_fingerprint,
             **self.evidence,
         }
+
+
+_CONFIRMATION_PHRASES = (
+    "thank you for applying",
+    "your application has been received",
+    "application has been received",
+    "application received",
+    "application submitted",
+    "we have received your application",
+    "we've received your application",
+)
+_CONFIRMATION_PATH_FRAGMENTS = (
+    "/confirmation",
+    "/application-confirmation",
+    "/application-submitted",
+    "/thank-you",
+    "/thankyou",
+)
 
 
 def current_browser_node_id() -> str:
@@ -217,6 +236,45 @@ async def _captcha_response_state(page) -> Dict[str, Any]:
     }
 
 
+async def _submission_confirmation_state(page: Any) -> Dict[str, Any]:
+    """Detect explicit employer confirmation without relying on a vanished CAPTCHA field."""
+    current_url = str(getattr(page, "url", "") or "")
+    try:
+        body_text = await page.locator("body").inner_text()
+    except Exception:
+        try:
+            body_text = await page.inner_text("body")
+        except Exception:
+            body_text = ""
+
+    normalized = " ".join(str(body_text or "").lower().split())
+    matched = [phrase for phrase in _CONFIRMATION_PHRASES if phrase in normalized]
+    path = (urlparse(current_url).path or "").lower()
+    url_signal = any(fragment in path for fragment in _CONFIRMATION_PATH_FRAGMENTS)
+    confirmed = bool(matched)
+    evidence_type = "confirmation_page" if url_signal else "success_banner"
+    confirmation_evidence = []
+    if confirmed:
+        confirmation_evidence.append({
+            "evidence_type": evidence_type,
+            "is_sufficient": True,
+            "final_url": current_url,
+            "confirmation_text": matched[0],
+            "selector": "body",
+            "metadata": {
+                "verification_method": "explicit_confirmation_text",
+                "confirmation_url_signal": url_signal,
+                "matched_phrases": matched,
+            },
+        })
+    return {
+        "submission_confirmed": confirmed,
+        "confirmation_url_signal": url_signal,
+        "matched_confirmation_phrases": matched,
+        "confirmation_evidence": confirmation_evidence,
+    }
+
+
 async def verify_browser_handoff_completion(
     session: ManualHandoffSession,
 ) -> BrowserVerification:
@@ -224,21 +282,26 @@ async def verify_browser_handoff_completion(
     try:
         fingerprint = await page_fingerprint(page)
         evidence: Dict[str, Any] = {}
-        cleared = False
+        confirmation = await _submission_confirmation_state(page)
+        evidence.update(confirmation)
 
-        if session.challenge_type == HandoffChallengeType.captcha.value:
+        if confirmation["submission_confirmed"]:
+            cleared = True
+            evidence["verification_method"] = "explicit_submission_confirmation"
+        elif session.challenge_type == HandoffChallengeType.captcha.value:
             response_state = await _captcha_response_state(page)
             evidence.update(response_state)
             cleared = bool(response_state["has_completed_response"])
+            evidence["verification_method"] = "captcha_response_state"
         else:
             challenge = await detect_blocking_challenge(page)
             evidence["remaining_challenge"] = challenge
             cleared = challenge is None
+            evidence["verification_method"] = "browser_state"
 
         storage_state = await context.storage_state()
         storage_digest = hashlib.sha256(repr(storage_state).encode("utf-8")).hexdigest()
         evidence["storage_state_hash"] = storage_digest
-        evidence["verification_method"] = "browser_state"
 
         return BrowserVerification(
             challenge_cleared=cleared,
@@ -267,6 +330,31 @@ async def resume_handoff_application(
     playwright, _, _, page = await _connect_local_cdp(session)
     log: list[Dict[str, Any]] = []
     try:
+        confirmation = await _submission_confirmation_state(page)
+        if confirmation["submission_confirmed"]:
+            log.append({
+                "action": "handoff_submission_confirmation_detected",
+                "url": page.url,
+                "matched_phrases": confirmation["matched_confirmation_phrases"],
+                "ts": now_iso(),
+            })
+            return {
+                "success": True,
+                "dry_run": dry_run,
+                "submitted_at": now_iso(),
+                "url": page.url,
+                "log": log,
+                "error": None,
+                "fields_filled": 0,
+                "requires_manual_review": False,
+                "review_items": [],
+                "ready_to_submit": False,
+                "submission_confirmed": True,
+                "confirmation_evidence": confirmation["confirmation_evidence"],
+                "ats_adapter": (session.handoff_metadata or {}).get("adapter") or "greenhouse",
+                "ats_adapter_version": (session.handoff_metadata or {}).get("adapter_version") or "unknown",
+            }
+
         adapter = await detect_ats_adapter(page, page.url)
 
         async def fill_step(surface: Any, step_number: int) -> Dict[str, Any]:
