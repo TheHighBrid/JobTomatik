@@ -59,9 +59,9 @@ PY
 # ── 7. Start ─────────────────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════"
-echo " JobTomatik backend starting on port 8000"
-echo " Test: curl http://127.0.0.1:8000/health"
-echo " App API URL: http://127.0.0.1:8000"
+echo " JobTomatik backend starting on port 8010"
+echo " Test: curl http://127.0.0.1:8010/health"
+echo " App API URL: http://127.0.0.1:8010"
 echo "═══════════════════════════════════════════"
 echo ""
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8010
