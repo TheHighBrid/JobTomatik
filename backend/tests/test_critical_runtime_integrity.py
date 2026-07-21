@@ -20,6 +20,7 @@ from app.models.handoff import (
 )
 from app.models.job import Job, JobStatus
 from app.models.user import User
+from app.tasks import applications as application_tasks
 
 
 class _VisibleApplicationTask:
@@ -222,6 +223,14 @@ def test_manual_applied_status_closes_reviews_handoff_and_all_retry_paths(
     assert retry.status_code == 200, retry.text
     assert retry.json()["status"] == "already_submitted"
     applications_api.submit_application_task.delay.assert_not_called()
+
+    stale_worker_result = application_tasks.submit_application_task.run(
+        application.id,
+        dry_run=True,
+    )
+    assert stale_worker_result["idempotent"] is True
+    assert stale_worker_result["already_submitted"] is True
+    assert stale_worker_result["state"] == ApplicationAutomationState.submitted.value
 
     supervised = auth_client.get(
         f"/api/supervised-submissions/applications/{application.id}/preflight"
