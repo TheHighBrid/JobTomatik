@@ -1,0 +1,9 @@
+JobTomatik v1.00 authorized publication request
+Frozen source: 6f7f9fa6a7d3c63516cde381410ac188364dba36
+Release tag: v1.0.0
+Replace assets:
+- JobTomatik-v1.00.apk
+- JobTomatik-v1.00.sha256
+- BUILD-INFO.txt
+- APK-BADGING.txt
+Reason: publish corrected exact-source provenance metadata
