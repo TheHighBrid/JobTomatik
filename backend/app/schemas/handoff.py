@@ -55,7 +55,16 @@ class HandoffReadyRequest(HandoffLeaseRequest):
 
 
 class HandoffBrowserActionRequest(HandoffLeaseRequest):
-    action: Literal["click", "type", "key", "scroll"]
+    action: Literal[
+        "click",
+        "type",
+        "replace_and_submit",
+        "key",
+        "scroll",
+        "resend_code",
+        "back",
+        "reload",
+    ]
     x: Optional[float] = None
     y: Optional[float] = None
     text: Optional[str] = Field(default=None, max_length=4096)
