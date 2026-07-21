@@ -32,7 +32,16 @@ from app.schemas.application import (
     ManualReviewTaskOut,
     SubmissionEvidenceOut,
 )
+from app.services.application_integrity import (
+    reconcile_user_reported_status,
+    status_closes_submission,
+    submission_is_closed,
+)
 from app.services.application_state import resolve_manual_review_task
+from app.services.browser_handoff import (
+    BrowserHandoffUnavailable,
+    terminate_retained_browser,
+)
 from app.tasks.applications import generate_cover_letter_task, submit_application_task
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -162,7 +171,7 @@ async def bulk_submit_applications(
         .all()
     )
 
-    queued = []
+    dispatch_plan = []
     for job in jobs:
         idempotency_key = _application_idempotency_key(current_user.id, job.id)
         if db.query(Application.id).filter(Application.submission_idempotency_key == idempotency_key).first():
@@ -184,15 +193,26 @@ async def bulk_submit_applications(
             to_state=ApplicationAutomationState.preparing.value,
             payload={"job_id": job.id, "source": "bulk_submit"},
         ))
-        generate_cover_letter_task.delay(app.id)
+        dispatch_plan.append({"application_id": app.id, "job_id": job.id})
+
+    # Workers use separate database connections. Commit every application before
+    # publishing task messages so a fast worker cannot observe a missing row.
+    db.commit()
+
+    queued = []
+    for item in dispatch_plan:
+        generate_cover_letter_task.delay(item["application_id"])
         task = submit_application_task.apply_async(
-            args=[app.id],
+            args=[item["application_id"]],
             kwargs={"dry_run": dry_run},
             countdown=60,
         )
-        queued.append({"application_id": app.id, "job_id": job.id, "task_id": task.id, "dry_run": dry_run})
+        queued.append({
+            **item,
+            "task_id": task.id,
+            "dry_run": dry_run,
+        })
 
-    db.commit()
     return {
         "queued": queued,
         "count": len(queued),
@@ -280,19 +300,61 @@ async def update_application(
         raise HTTPException(status_code=404, detail="Application not found")
 
     old_status = app.status
-    for field, value in data.model_dump(exclude_none=True).items():
+    updates = data.model_dump(exclude_none=True)
+    requested_status = updates.pop("status", None)
+    current_state = app.automation_state or ApplicationAutomationState.preparing.value
+
+    if requested_status in {ApplicationStatus.pending, ApplicationStatus.applying} and submission_is_closed(app):
+        raise HTTPException(
+            status_code=409,
+            detail="A closed application cannot be reopened through the generic status update endpoint.",
+        )
+    if (
+        requested_status is not None
+        and status_closes_submission(requested_status)
+        and current_state == ApplicationAutomationState.applying.value
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the active application attempt to finish before recording a terminal status.",
+        )
+
+    for field, value in updates.items():
         setattr(app, field, value)
 
-    if data.status and data.status != old_status:
+    sessions_to_terminate = []
+    if requested_status is not None:
+        app.status = requested_status
+        sessions_to_terminate = reconcile_user_reported_status(
+            db,
+            app,
+            requested_status,
+            user_id=current_user.id,
+        )
+
+    if requested_status and requested_status != old_status:
         db.add(Notification(
             user_id=current_user.id,
             type=NotificationType.status_change,
-            title=f"Application status updated to {data.status.value}",
-            message=f"Your application for {app.job.title if app.job else 'a job'} is now {data.status.value}.",
-            data={"application_id": app_id, "old_status": old_status.value, "new_status": data.status.value},
+            title=f"Application status updated to {requested_status.value}",
+            message=f"Your application for {app.job.title if app.job else 'a job'} is now {requested_status.value}.",
+            data={
+                "application_id": app_id,
+                "old_status": old_status.value,
+                "new_status": requested_status.value,
+            },
         ))
 
     db.commit()
+
+    # The database transition is authoritative. Browser cleanup is best effort so
+    # a stale/missing local process cannot prevent the user from closing a record.
+    for session in sessions_to_terminate:
+        try:
+            terminate_retained_browser(session)
+        except BrowserHandoffUnavailable:
+            pass
+
     return _load_application(db, app_id)
 
 
@@ -324,18 +386,18 @@ async def submit_application(
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    _require_live_submit_enabled(dry_run)
     state = app.automation_state or ApplicationAutomationState.preparing.value
-    if not dry_run and state in {
-        ApplicationAutomationState.submitted.value,
-        ApplicationAutomationState.confirmed.value,
-    }:
+    if submission_is_closed(app):
         return {
             "status": "already_submitted",
-            "dry_run": False,
+            "dry_run": dry_run,
             "application_id": app.id,
+            "application_status": app.status.value,
+            "automation_state": state,
             "idempotency_key": app.submission_idempotency_key,
         }
+
+    _require_live_submit_enabled(dry_run)
     if state == ApplicationAutomationState.applying.value:
         raise HTTPException(status_code=409, detail="An application attempt is already in progress")
 

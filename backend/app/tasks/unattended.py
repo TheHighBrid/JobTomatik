@@ -9,11 +9,21 @@ from app.models.application import Application, ApplicationStatus, ManualReviewR
 from app.models.job import Job
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
+from app.services.application_integrity import install_closed_application_task_gate
 from app.services.application_state import create_manual_review_task
+from app.services.supervised_submission_integration import (
+    install_supervised_submission_task_gate,
+)
 from app.services.unattended_policy import evaluate_unattended_job_policy
 
 
 logger = logging.getLogger(__name__)
+
+# Celery imports this module before consuming application-queue work. Installing
+# here keeps the worker fail-closed even when a local PRoot pool omits lifecycle
+# signals. The closed-record gate must remain outside the supervised approval gate.
+install_supervised_submission_task_gate()
+install_closed_application_task_gate()
 
 
 @celery_app.task(

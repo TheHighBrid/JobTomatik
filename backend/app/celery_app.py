@@ -68,6 +68,7 @@ def install_worker_task_integrations(**_kwargs):
     the same task path and registers resumable handoff creation before any job is
     consumed.
     """
+    from app.services.application_integrity import install_closed_application_task_gate
     from app.services.handoff_integration import install_handoff_task_integration
     from app.services.supervised_submission_integration import (
         install_supervised_submission_task_gate,
@@ -75,3 +76,5 @@ def install_worker_task_integrations(**_kwargs):
 
     install_handoff_task_integration()
     install_supervised_submission_task_gate()
+    # Must wrap the supervised gate so a stale task cannot consume an approval.
+    install_closed_application_task_gate()
