@@ -123,6 +123,57 @@ def resume_handoff_session_task(self, handoff_public_id: str):
         _record_result_evidence(db, app, result)
         db.flush()
 
+        # A user can complete an employer submission while JobTomatik is operating in
+        # dry-run mode. Explicit employer confirmation is authoritative and must win
+        # over the original dry-run flag so the application is not offered again.
+        if (
+            result.get("success")
+            and result.get("submission_confirmed")
+            and has_sufficient_submission_evidence(db, app.id)
+        ):
+            app.status = ApplicationStatus.applied
+            app.applied_at = app.applied_at or datetime.utcnow()
+            resolve_manual_review_task(
+                db,
+                app,
+                review,
+                "Employer confirmation page detected after the human challenge.",
+            )
+            transition_application_state(
+                db,
+                app,
+                ApplicationAutomationState.submitted,
+                "handoff_submission_confirmation_detected",
+                {
+                    "handoff_public_id": session.public_id,
+                    "final_url": result.get("url"),
+                    "dry_run_started": dry_run,
+                },
+            )
+            transition_application_state(
+                db,
+                app,
+                ApplicationAutomationState.confirmed,
+                "handoff_submission_confirmed",
+                {
+                    "handoff_public_id": session.public_id,
+                    "evidence_count": len(result.get("confirmation_evidence") or []),
+                },
+            )
+            complete_handoff_resume(
+                db,
+                session,
+                result={
+                    "submitted": True,
+                    "confirmed": True,
+                    "dry_run_started": dry_run,
+                    "final_url": result.get("url"),
+                },
+            )
+            terminate_retained_browser(session)
+            db.commit()
+            return result
+
         if result.get("success") and dry_run and result.get("ready_to_submit"):
             app.status = ApplicationStatus.pending
             resolve_manual_review_task(db, app, review, "Human challenge completed and browser flow resumed.")
