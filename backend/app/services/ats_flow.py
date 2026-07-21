@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from app.services.ats_base import ATSAdapter, ATSFlowResult
 from app.services.browser_navigation import detect_blocking_challenge
 
 FillStep = Callable[[Any, int], Awaitable[Dict[str, Any]]]
+PreSubmitCheck = Callable[[Any, ATSAdapter], Awaitable[Dict[str, Any]]]
 
 MAX_ATS_STEPS = 12
 STEP_SETTLE_MS = 350
@@ -138,6 +139,63 @@ async def _return_manual_challenge_handoff(
     return result
 
 
+async def _verify_pre_submit_target(
+    result: ATSFlowResult,
+    log: List[Dict[str, Any]],
+    *,
+    page: Any,
+    adapter: ATSAdapter,
+    step_number: int,
+    fingerprint: str,
+    check: PreSubmitCheck,
+) -> bool:
+    try:
+        verification = dict(await check(page, adapter) or {})
+    except Exception as exc:
+        verification = {
+            "verified": False,
+            "blockers": ["pre_submit_target_verification_error"],
+            "verification_error": f"{type(exc).__name__}: {str(exc)[:300]}",
+        }
+
+    event = {
+        "action": (
+            "ats_pre_submit_target_verified"
+            if verification.get("verified")
+            else "ats_pre_submit_target_blocked"
+        ),
+        "adapter": adapter.name,
+        "adapter_version": adapter.version,
+        "step": step_number,
+        "fingerprint": fingerprint,
+        "submit_clicked": False,
+        "target_verification": verification,
+        "ts": _now(),
+    }
+    _record_step_event(result, log, event)
+    if verification.get("verified"):
+        return True
+
+    result.requires_manual_review = True
+    result.error = (
+        "Final submit was blocked because the live ATS target no longer matches "
+        "the explicitly approved application target."
+    )
+    result.review_items.append(_review(
+        "safety_gate_blocked",
+        result.error,
+        {
+            "adapter": adapter.name,
+            "adapter_version": adapter.version,
+            "step": step_number,
+            "fingerprint": fingerprint,
+            "submit_clicked": False,
+            "target_verification": verification,
+        },
+    ))
+    return False
+
+
 async def run_ats_application_flow(
     page: Any,
     adapter: ATSAdapter,
@@ -146,6 +204,7 @@ async def run_ats_application_flow(
     dry_run: bool,
     log: List[Dict[str, Any]],
     max_steps: int = MAX_ATS_STEPS,
+    pre_submit_check: Optional[PreSubmitCheck] = None,
 ) -> ATSFlowResult:
     """Fill and traverse a bounded ATS flow, never bypassing manual boundaries."""
     result = ATSFlowResult(
@@ -312,6 +371,17 @@ async def run_ats_application_flow(
                     "fingerprint": filled_fingerprint,
                     "ts": _now(),
                 })
+                return result
+
+            if pre_submit_check and not await _verify_pre_submit_target(
+                result,
+                log,
+                page=page,
+                adapter=adapter,
+                step_number=step_number,
+                fingerprint=filled_fingerprint,
+                check=pre_submit_check,
+            ):
                 return result
 
             before_url = result.final_url
