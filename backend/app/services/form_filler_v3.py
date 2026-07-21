@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Optional
 
 from app.services.ats_flow import run_ats_application_flow
 from app.services.ats_registry import detect_ats_adapter
@@ -30,6 +30,7 @@ from app.services.form_filler_v2 import (
     _required,
     _safe_field,
 )
+from app.services.supervised_target_identity import verify_supervised_browser_target
 from app.services.upload_handler import fill_upload_fields
 
 
@@ -296,6 +297,7 @@ async def fill_and_submit_application(
     cover_letter: str,
     resume_path: str,
     dry_run: bool = True,
+    supervised_target: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     log: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {
@@ -388,12 +390,27 @@ async def fill_and_submit_application(
                     step_number=step_number,
                 )
 
+            async def pre_submit_check(current_page: Any, _current_adapter: Any) -> Dict[str, Any]:
+                detected = await detect_ats_adapter(current_page, current_page.url)
+                return await verify_supervised_browser_target(
+                    current_url=current_page.url,
+                    adapter_name=detected.name,
+                    adapter_version=detected.version,
+                    expected_metadata=supervised_target,
+                    refresh_official_metadata=True,
+                )
+
             flow = await run_ats_application_flow(
                 page,
                 adapter,
                 fill_step=fill_step,
                 dry_run=dry_run,
                 log=log,
+                pre_submit_check=(
+                    pre_submit_check
+                    if supervised_target and not dry_run
+                    else None
+                ),
             )
             result.update(flow.as_dict())
             result["ats_adapter"] = flow.adapter_name
