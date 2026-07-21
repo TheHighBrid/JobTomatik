@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import secrets
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, event
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -25,13 +25,9 @@ def new_platform_submission_approval_reference(platform: str) -> str:
     return prefix + "-" + secrets.token_urlsafe(18)
 
 
-def new_submission_approval_reference(context=None) -> str:
-    """Generate a platform-scoped reference while preserving Greenhouse history."""
-    platform = "greenhouse"
-    if context is not None:
-        parameters = context.get_current_parameters()
-        platform = str(parameters.get("platform") or platform)
-    return new_platform_submission_approval_reference(platform)
+def new_submission_approval_reference() -> str:
+    """Historical fallback for records created without the ORM insert hook."""
+    return new_platform_submission_approval_reference("greenhouse")
 
 
 class SubmissionApproval(Base):
@@ -87,3 +83,9 @@ class SubmissionApproval(Base):
     approval_metadata = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+@event.listens_for(SubmissionApproval, "before_insert")
+def _assign_platform_reference(_mapper, _connection, target: SubmissionApproval) -> None:
+    if not target.reference:
+        target.reference = new_platform_submission_approval_reference(target.platform)
