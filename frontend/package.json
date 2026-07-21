@@ -1,7 +1,7 @@
 {
   "name": "jobtomatik",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
@@ -10,9 +10,12 @@
     "cap:add:android": "cap add android",
     "cap:sync": "cap sync",
     "cap:open:android": "cap open android",
-    "build:apk": "npm run build && cap sync android",
     "android:prepare": "npm run build && npx cap sync android",
-    "android:open": "npm run android:prepare && npx cap open android"
+    "android:open": "npm run android:prepare && npx cap open android",
+    "android:lint": "npm run android:prepare && cd android && ./gradlew lintDebug",
+    "build:apk": "npm run build:apk:debug",
+    "build:apk:debug": "npm run android:prepare && cd android && ./gradlew assembleDebug",
+    "build:apk:release": "npm run android:prepare && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.0",
