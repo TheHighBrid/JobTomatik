@@ -17,7 +17,17 @@ class SubmissionApprovalStatus(str, enum.Enum):
 
 
 def new_submission_approval_reference() -> str:
+    """Historical Greenhouse-compatible default for ORM-created records."""
     return "ghsup-" + secrets.token_urlsafe(18)
+
+
+def new_platform_submission_approval_reference(platform: str) -> str:
+    normalized = str(platform or "").strip().lower()
+    prefix = {
+        "greenhouse": "ghsup",
+        "lever": "lvsup",
+    }.get(normalized, "sup")
+    return prefix + "-" + secrets.token_urlsafe(18)
 
 
 class SubmissionApproval(Base):
