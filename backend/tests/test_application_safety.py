@@ -183,9 +183,12 @@ def test_live_success_without_evidence_becomes_submission_uncertain(auth_client,
         fake_fill_and_submit_application,
     )
 
-    from app.tasks.applications import submit_application_task
+    # This test targets the inner application-state safety path. Production calls
+    # use the outer supervised registry gate, which correctly blocks this generic URL.
+    from app.services import supervised_submission_integration
 
-    result = submit_application_task.run(app_id, dry_run=False)
+    assert callable(supervised_submission_integration._ORIGINAL_RUN)
+    result = supervised_submission_integration._ORIGINAL_RUN(app_id, dry_run=False)
 
     assert result["success"] is False
     assert result["requires_manual_review"] is True
