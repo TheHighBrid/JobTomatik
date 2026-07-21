@@ -41,9 +41,13 @@ def _value(value) -> str:
     return str(getattr(value, "value", value) or "")
 
 
+def status_closes_submission(status: ApplicationStatus | str) -> bool:
+    return _value(status) in _SUBMISSION_CLOSED_STATUSES
+
+
 def submission_is_closed(application: Application) -> bool:
     return (
-        _value(application.status) in _SUBMISSION_CLOSED_STATUSES
+        status_closes_submission(application.status)
         or normalize_state(application.automation_state) in _SUBMISSION_CLOSED_STATES
     )
 
