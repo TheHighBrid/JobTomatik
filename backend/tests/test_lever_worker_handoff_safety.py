@@ -16,7 +16,7 @@ POSTING_ID = "12345678-1234-1234-1234-123456789abc"
 OTHER_POSTING_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 LEVER_URL = f"https://jobs.lever.co/safeco/{POSTING_ID}/apply"
 OTHER_LEVER_URL = f"https://jobs.lever.co/safeco/{OTHER_POSTING_ID}/apply"
-CONFIRMATION_URL = f"https://jobs.lever.co/safeco/{POSTING_ID}/thank-you"
+CONFIRMATION_URL = "https://jobs.lever.co/safeco/thank-you"
 
 
 def _expected_target():
