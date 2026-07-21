@@ -16,11 +16,6 @@ class SubmissionApprovalStatus(str, enum.Enum):
     expired = "expired"
 
 
-def new_submission_approval_reference() -> str:
-    """Historical Greenhouse-compatible default for ORM-created records."""
-    return "ghsup-" + secrets.token_urlsafe(18)
-
-
 def new_platform_submission_approval_reference(platform: str) -> str:
     normalized = str(platform or "").strip().lower()
     prefix = {
@@ -28,6 +23,15 @@ def new_platform_submission_approval_reference(platform: str) -> str:
         "lever": "lvsup",
     }.get(normalized, "sup")
     return prefix + "-" + secrets.token_urlsafe(18)
+
+
+def new_submission_approval_reference(context=None) -> str:
+    """Generate a platform-scoped reference while preserving Greenhouse history."""
+    platform = "greenhouse"
+    if context is not None:
+        parameters = context.get_current_parameters()
+        platform = str(parameters.get("platform") or platform)
+    return new_platform_submission_approval_reference(platform)
 
 
 class SubmissionApproval(Base):
