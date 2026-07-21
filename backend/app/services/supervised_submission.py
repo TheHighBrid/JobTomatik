@@ -2,9 +2,9 @@
 
 This service never submits an application. It creates short-lived, one-time
 approval records bound to an exact employer, role, URL, idempotency key, profile,
-resume, cover letter, and approved answer-policy payload. Any mutation, expiry,
-open review task, unsupported platform, or feature-flag change invalidates the
-approval.
+resume, cover letter, approved answer-policy payload, and any platform-required
+target identity. Any mutation, expiry, open review, unsupported platform, or
+feature-flag change invalidates the approval.
 """
 
 from __future__ import annotations
@@ -37,6 +37,11 @@ from app.services.supervised_platforms import (
     GREENHOUSE_PLATFORM_KEY,
     SupervisedPlatformPolicy,
     get_supervised_platform_policy,
+)
+from app.services.supervised_target_identity import (
+    persisted_supervised_target_metadata,
+    target_identity_hash,
+    target_url_for_job,
 )
 
 
@@ -82,11 +87,6 @@ def _hash_file(path_value: Optional[str]) -> Optional[str]:
     return digest.hexdigest()
 
 
-def _target_url(job: Job) -> str:
-    raw = dict(job.raw_data or {})
-    return str(raw.get("selected_apply_url") or job.url or "").strip()
-
-
 def _active_review_count(db: Session, application_id: int) -> int:
     return (
         db.query(ManualReviewTask.id)
@@ -105,14 +105,38 @@ def _platform_policy(platform: str) -> Optional[SupervisedPlatformPolicy]:
     return get_supervised_platform_policy(platform)
 
 
+def _resolved_target_metadata(
+    job: Job,
+    supplied: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    if supplied is not None:
+        return dict(supplied)
+    return persisted_supervised_target_metadata(job)
+
+
 def build_submission_snapshot(
     db: Session,
     application: Application,
     user: User,
     job: Job,
+    *,
+    target_metadata: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    target_url = _target_url(job)
-    platform = platform_key_for_url(target_url)
+    original_target_url = target_url_for_job(job)
+    platform = platform_key_for_url(original_target_url)
+    policy = _platform_policy(platform)
+    identity = _resolved_target_metadata(job, target_metadata)
+    identity_hash = (
+        target_identity_hash(identity)
+        if policy and policy.requires_exact_target_identity
+        else None
+    )
+    application_url = str(
+        identity.get("canonical_application_url")
+        if identity and identity.get("canonical_application_url")
+        else original_target_url
+    ).strip()
+
     profile_payload = {
         "full_name": user.full_name,
         "email": user.email,
@@ -126,37 +150,45 @@ def build_submission_snapshot(
     policies = load_runtime_policies(
         db,
         user.id,
-        target_url=target_url,
+        target_url=application_url,
         company=str(job.company or ""),
     )
     resume_hash = _hash_file(user.resume_path)
     cover_letter_hash = _hash_value(application.cover_letter or "")
     answer_payload_hash = _hash_value(policies)
     profile_snapshot_hash = _hash_value(profile_payload)
-    combined_payload_hash = _hash_value(
-        {
-            "application_id": application.id,
-            "user_id": user.id,
-            "job_id": job.id,
-            "employer": str(job.company or "").strip(),
-            "role": str(job.title or "").strip(),
-            "application_url": target_url,
-            "platform": platform,
-            "submission_idempotency_key": application.submission_idempotency_key,
-            "profile_snapshot_hash": profile_snapshot_hash,
-            "resume_hash": resume_hash,
-            "cover_letter_hash": cover_letter_hash,
-            "answer_payload_hash": answer_payload_hash,
-        }
-    )
+
+    combined_payload: Dict[str, Any] = {
+        "application_id": application.id,
+        "user_id": user.id,
+        "job_id": job.id,
+        "employer": str(job.company or "").strip(),
+        "role": str(job.title or "").strip(),
+        "application_url": application_url,
+        "platform": platform,
+        "submission_idempotency_key": application.submission_idempotency_key,
+        "profile_snapshot_hash": profile_snapshot_hash,
+        "resume_hash": resume_hash,
+        "cover_letter_hash": cover_letter_hash,
+        "answer_payload_hash": answer_payload_hash,
+    }
+    # Preserve existing Greenhouse hashes. Exact target identity is added only for
+    # platforms whose policy explicitly requires it.
+    if policy and policy.requires_exact_target_identity:
+        combined_payload["target_identity_hash"] = identity_hash
+    combined_payload_hash = _hash_value(combined_payload)
+
     return {
         "application_id": application.id,
         "user_id": user.id,
         "job_id": job.id,
         "employer": str(job.company or "").strip(),
         "role": str(job.title or "").strip(),
-        "application_url": target_url,
+        "application_url": application_url,
+        "original_application_url": original_target_url,
         "platform": platform,
+        "platform_display_name": policy.display_name if policy else platform,
+        "adapter_version": policy.adapter_version if policy else None,
         "submission_idempotency_key": str(
             application.submission_idempotency_key or ""
         ).strip(),
@@ -168,6 +200,9 @@ def build_submission_snapshot(
         "policy_count": len(policies),
         "cover_letter_present": bool((application.cover_letter or "").strip()),
         "resume_filename": Path(user.resume_path).name if user.resume_path else None,
+        "target_identity": identity,
+        "target_identity_hash": identity_hash,
+        "target_identity_verified": bool(identity.get("verified")) if identity else False,
     }
 
 
@@ -176,21 +211,36 @@ def build_supervised_preflight(
     application: Application,
     user: User,
     job: Job,
+    *,
+    target_metadata: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    snapshot = build_submission_snapshot(db, application, user, job)
+    snapshot = build_submission_snapshot(
+        db,
+        application,
+        user,
+        job,
+        target_metadata=target_metadata,
+    )
     state = application.automation_state or ApplicationAutomationState.preparing.value
     open_reviews = _active_review_count(db, application.id)
     live_enabled = bool(settings.allow_real_application_submit)
     policy = _platform_policy(snapshot["platform"])
     pilot_enabled = policy.pilot_enabled(settings) if policy else False
 
-    blockers = []
+    blockers: list[str] = []
     if not live_enabled:
         blockers.append("global_live_submit_disabled")
     if policy is None:
         blockers.append("unsupported_platform")
     elif not pilot_enabled:
         blockers.append(policy.pilot_disabled_blocker)
+    if policy and policy.requires_exact_target_identity:
+        identity_blockers = snapshot["target_identity"].get("blockers") or []
+        blockers.extend(str(item) for item in identity_blockers if str(item))
+        if not snapshot["target_identity_verified"] and not identity_blockers:
+            blockers.append("exact_target_identity_unverified")
+        if not snapshot["target_identity_hash"]:
+            blockers.append("exact_target_identity_hash_missing")
     if state != ApplicationAutomationState.ready_to_apply.value:
         blockers.append("application_not_ready_to_apply")
     if open_reviews:
@@ -202,14 +252,18 @@ def build_supervised_preflight(
     if not snapshot["resume_hash"]:
         blockers.append("resume_missing_or_unreadable")
 
+    blockers = list(dict.fromkeys(blockers))
     return {
         "ready": not blockers,
         "blockers": blockers,
         "application_id": application.id,
         "platform": snapshot["platform"],
+        "platform_display_name": snapshot["platform_display_name"],
+        "adapter_version": snapshot["adapter_version"],
         "employer": snapshot["employer"],
         "role": snapshot["role"],
         "application_url": snapshot["application_url"],
+        "original_application_url": snapshot["original_application_url"],
         "automation_state": state,
         "unresolved_manual_review_count": open_reviews,
         "global_live_submit_enabled": live_enabled,
@@ -223,6 +277,9 @@ def build_supervised_preflight(
         "policy_count": snapshot["policy_count"],
         "cover_letter_present": snapshot["cover_letter_present"],
         "resume_filename": snapshot["resume_filename"],
+        "target_identity": snapshot["target_identity"],
+        "target_identity_hash": snapshot["target_identity_hash"],
+        "target_identity_verified": snapshot["target_identity_verified"],
     }
 
 
@@ -264,8 +321,15 @@ def issue_supervised_approval(
     confirm_final_submit: bool,
     expires_in_minutes: Optional[int] = None,
     notes: Optional[str] = None,
+    target_metadata: Optional[Mapping[str, Any]] = None,
 ) -> SubmissionApproval:
-    preflight = build_supervised_preflight(db, application, user, job)
+    preflight = build_supervised_preflight(
+        db,
+        application,
+        user,
+        job,
+        target_metadata=target_metadata,
+    )
     if not preflight["ready"]:
         raise SupervisedSubmissionApprovalError(
             "Supervised submission preflight is blocked: "
@@ -334,6 +398,10 @@ def issue_supervised_approval(
             "global_live_submit_enabled": True,
             "platform_pilot_enabled": True,
             "platform_pilot_setting": policy.pilot_setting_name,
+            "platform_display_name": policy.display_name,
+            "adapter_version": policy.adapter_version,
+            "target_identity_hash": preflight["target_identity_hash"],
+            "target_identity": dict(preflight["target_identity"] or {}),
         },
     )
     db.add(approval)
@@ -352,6 +420,7 @@ def issue_supervised_approval(
                 "application_url": approval.application_url,
                 "expires_at": approval.expires_at.isoformat(),
                 "combined_payload_hash": approval.combined_payload_hash,
+                "target_identity_hash": preflight["target_identity_hash"],
             },
         )
     )
@@ -387,6 +456,7 @@ def validate_supervised_approval(
     *,
     reference: str,
     consume: bool = False,
+    target_metadata: Optional[Mapping[str, Any]] = None,
 ) -> SubmissionApproval:
     approval = _load_owned_approval(
         db,
@@ -404,7 +474,13 @@ def validate_supervised_approval(
         approval.status = SubmissionApprovalStatus.expired.value
         raise SupervisedSubmissionApprovalExpired("Submission approval has expired")
 
-    preflight = build_supervised_preflight(db, application, user, job)
+    preflight = build_supervised_preflight(
+        db,
+        application,
+        user,
+        job,
+        target_metadata=target_metadata,
+    )
     if not preflight["ready"]:
         raise SupervisedSubmissionApprovalError(
             "Supervised submission preflight is blocked: "
@@ -428,11 +504,24 @@ def validate_supervised_approval(
         for field, value in expected.items()
         if getattr(approval, field) != value
     ]
+    approval_metadata = dict(approval.approval_metadata or {})
+    policy = _platform_policy(preflight["platform"])
+    if policy and approval_metadata.get("adapter_version") != policy.adapter_version:
+        mismatches.append("adapter_version")
+    if (
+        policy
+        and policy.requires_exact_target_identity
+        and approval_metadata.get("target_identity_hash")
+        != preflight["target_identity_hash"]
+    ):
+        mismatches.append("target_identity_hash")
+    mismatches = list(dict.fromkeys(mismatches))
+
     if mismatches:
         approval.status = SubmissionApprovalStatus.revoked.value
         approval.revoked_at = now
         approval.approval_metadata = {
-            **dict(approval.approval_metadata or {}),
+            **approval_metadata,
             "revocation_reason": "approved_payload_changed",
             "mismatched_fields": mismatches,
         }
@@ -456,7 +545,7 @@ def validate_supervised_approval(
         approval.status = SubmissionApprovalStatus.consumed.value
         approval.consumed_at = now
         approval.approval_metadata = {
-            **dict(approval.approval_metadata or {}),
+            **approval_metadata,
             "consumed_for_attempt": (application.submission_attempt_count or 0) + 1,
         }
         db.add(
@@ -469,6 +558,7 @@ def validate_supervised_approval(
                     "approval_reference": approval.reference,
                     "attempt": (application.submission_attempt_count or 0) + 1,
                     "combined_payload_hash": approval.combined_payload_hash,
+                    "target_identity_hash": preflight["target_identity_hash"],
                 },
             )
         )

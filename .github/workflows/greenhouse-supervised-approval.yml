@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - ".env.example"
+      - "docker-compose.yml"
       - "backend/app/api/supervised_submissions.py"
       - "backend/app/config.py"
       - "backend/app/main.py"
@@ -12,6 +14,8 @@ on:
       - "backend/app/services/supervised_platforms.py"
       - "backend/app/services/supervised_submission.py"
       - "backend/app/services/supervised_submission_integration.py"
+      - "backend/app/services/supervised_target_identity.py"
+      - "backend/tests/test_lever_supervised_preflight.py"
       - "backend/tests/test_supervised_platform_registry.py"
       - "backend/tests/test_supervised_submission_approval.py"
       - "docs/greenhouse-supervised-approval-runbook.md"
@@ -20,6 +24,8 @@ on:
     branches:
       - main
     paths:
+      - ".env.example"
+      - "docker-compose.yml"
       - "backend/app/api/supervised_submissions.py"
       - "backend/app/config.py"
       - "backend/app/main.py"
@@ -28,6 +34,8 @@ on:
       - "backend/app/services/supervised_platforms.py"
       - "backend/app/services/supervised_submission.py"
       - "backend/app/services/supervised_submission_integration.py"
+      - "backend/app/services/supervised_target_identity.py"
+      - "backend/tests/test_lever_supervised_preflight.py"
       - "backend/tests/test_supervised_platform_registry.py"
       - "backend/tests/test_supervised_submission_approval.py"
       - "docs/greenhouse-supervised-approval-runbook.md"
@@ -51,6 +59,7 @@ jobs:
       DEV_MOCK_JOBS: "false"
       ALLOW_REAL_APPLICATION_SUBMIT: "false"
       GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+      LEVER_SUPERVISED_PILOT_ENABLED: "false"
       AUTOPILOT_ENABLED: "false"
       ENABLE_RESUMABLE_HANDOFFS: "false"
     steps:
@@ -75,11 +84,13 @@ jobs:
             app/schemas/supervised_submission.py \
             app/services/supervised_platforms.py \
             app/services/supervised_submission.py \
-            app/services/supervised_submission_integration.py
+            app/services/supervised_submission_integration.py \
+            app/services/supervised_target_identity.py
 
       - name: Run exact approval regression suite
         run: |
           pytest -q \
+            tests/test_lever_supervised_preflight.py \
             tests/test_supervised_platform_registry.py \
             tests/test_supervised_submission_approval.py \
             --junitxml=supervised-approval-report.xml
@@ -93,9 +104,10 @@ jobs:
           settings = get_settings()
           assert settings.allow_real_application_submit is False
           assert settings.greenhouse_supervised_pilot_enabled is False
+          assert settings.lever_supervised_pilot_enabled is False
           assert settings.supervised_approval_ttl_minutes <= 20
           assert settings.supervised_approval_max_ttl_minutes <= 60
-          assert supervised_platform_keys() == ("greenhouse",)
+          assert supervised_platform_keys() == ("greenhouse", "lever")
           print("Supervised approval defaults remain fail closed")
           PY
 
@@ -103,7 +115,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: greenhouse-supervised-approval-report
+          name: supervised-approval-report
           path: backend/supervised-approval-report.xml
           if-no-files-found: error
           retention-days: 90
