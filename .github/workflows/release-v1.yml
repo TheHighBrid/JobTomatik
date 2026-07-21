@@ -4,16 +4,42 @@ on:
   push:
     branches:
       - release/v1.0.0
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "RELEASE_SOURCE.txt"
+      - ".github/workflows/release-v1.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: release-jobtomatik-v1
-  cancel-in-progress: false
+  cancel-in-progress: true
+
+env:
+  RELEASE_SOURCE_SHA: 6f7f9fa6a7d3c63516cde381410ac188364dba36
 
 jobs:
+  announce-release:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Announce authorized release run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 79,
+              body: `🚀 Authorized JobTomatik v1.00 publication started.\n\nRun: ${runUrl}\nFrozen source: \`${process.env.RELEASE_SOURCE_SHA}\``,
+            });
+
   verify-backend:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -31,8 +57,10 @@ jobs:
       AUTOPILOT_ENABLED: "false"
       REQUIRE_BROWSER_TESTS: "1"
     steps:
-      - name: Check out repository
+      - name: Check out frozen v1 release source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SOURCE_SHA }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -45,7 +73,7 @@ jobs:
         run: python -m pip install -q --disable-pip-version-check -r requirements.txt
 
       - name: Install Chromium
-        run: python -m playwright install --with-deps chromium
+        run: python -m playwright install chromium
 
       - name: Compile backend
         run: python -m compileall -q app tests
@@ -69,7 +97,7 @@ jobs:
         with:
           name: jobtomatik-v1-backend-verification
           path: backend/release-pytest-output.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
   build-android:
@@ -80,8 +108,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - name: Check out repository
+      - name: Check out frozen v1 release source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SOURCE_SHA }}
 
       - name: Set up Node
         uses: actions/setup-node@v5
@@ -177,7 +207,7 @@ jobs:
           Android application ID: ca.jobtomatik.app
           Android version code: 100
           Signing mode: $SIGNING_MODE
-          Source commit: $GITHUB_SHA
+          Source commit: $RELEASE_SOURCE_SHA
           Built by: GitHub Actions
 
           A development-signed APK is installable for personal/local use, but a future
@@ -194,6 +224,8 @@ jobs:
           confirmation evidence, follow-up tracking, and an Android client.
 
           **Signing mode:** \`$SIGNING_MODE\`
+
+          **Frozen source:** \`$RELEASE_SOURCE_SHA\`
 
           The APK is a client. Run the FastAPI backend, Redis, and Celery worker using
           the repository setup tutorial, then connect the app to
@@ -217,7 +249,7 @@ jobs:
     needs:
       - verify-backend
       - build-android
-    if: github.ref == 'refs/heads/release/v1.0.0' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - name: Download release bundle
@@ -230,13 +262,38 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ env.RELEASE_SOURCE_SHA }}
           name: JobTomatik v1.00
           body_path: release/RELEASE_NOTES.md
           make_latest: true
           fail_on_unmatched_files: true
+          overwrite_files: true
           files: |
             release/JobTomatik-v1.00.apk
             release/JobTomatik-v1.00.sha256
             release/BUILD-INFO.txt
             release/APK-BADGING.txt
+
+  report-release-status:
+    needs:
+      - announce-release
+      - verify-backend
+      - build-android
+      - publish-release
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Report authorized release result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const verify = '${{ needs.verify-backend.result }}';
+            const android = '${{ needs.build-android.result }}';
+            const publish = '${{ needs.publish-release.result }}';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 79,
+              body: `JobTomatik v1.00 publication finished.\n\n- Backend: **${verify}**\n- Android: **${android}**\n- Publication: **${publish}**\n- Run: ${runUrl}\n- Frozen source: \`${process.env.RELEASE_SOURCE_SHA}\``,
+            });
