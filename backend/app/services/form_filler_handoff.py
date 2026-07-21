@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Optional
 
 from app.services.ats_flow import run_ats_application_flow
 from app.services.ats_registry import detect_ats_adapter
@@ -15,6 +15,7 @@ from app.services.browser_navigation import (
 from app.services.browser_runtime import launch_retainable_browser
 from app.services.control_engine import CONTROL_ENGINE_VERSION
 from app.services.form_filler_v3 import _fill_step_fields
+from app.services.supervised_target_identity import verify_supervised_browser_target
 
 _RESUMABLE_REASONS = {
     "captcha_detected",
@@ -104,6 +105,7 @@ async def fill_and_submit_application_with_handoff(
     cover_letter: str,
     resume_path: str,
     dry_run: bool = True,
+    supervised_target: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     log: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {
@@ -187,12 +189,27 @@ async def fill_and_submit_application_with_handoff(
                     step_number=step_number,
                 )
 
+            async def pre_submit_check(current_page: Any, _current_adapter: Any) -> Dict[str, Any]:
+                detected = await detect_ats_adapter(current_page, current_page.url)
+                return await verify_supervised_browser_target(
+                    current_url=current_page.url,
+                    adapter_name=detected.name,
+                    adapter_version=detected.version,
+                    expected_metadata=supervised_target,
+                    refresh_official_metadata=True,
+                )
+
             flow = await run_ats_application_flow(
                 page,
                 adapter,
                 fill_step=fill_step,
                 dry_run=dry_run,
                 log=log,
+                pre_submit_check=(
+                    pre_submit_check
+                    if supervised_target and not dry_run
+                    else None
+                ),
             )
             _promote_deferred_captcha_boundary(flow, log)
             result.update(flow.as_dict())
@@ -208,6 +225,7 @@ async def fill_and_submit_application_with_handoff(
                     "adapter_version": flow.adapter_version,
                     "fields_filled": flow.fields_filled,
                     "steps_completed": flow.steps_completed,
+                    "supervised_target": dict(supervised_target or {}),
                 })
                 result["handoff_snapshot"] = snapshot
                 retained = True
@@ -216,6 +234,7 @@ async def fill_and_submit_application_with_handoff(
                     "provider": snapshot["browser_provider"],
                     "browser_session_id": snapshot["browser_session_id"],
                     "current_fingerprint": snapshot["current_fingerprint"],
+                    "supervised_target_locked": bool(supervised_target),
                     "ts": now_iso(),
                 })
     except ImportError:
