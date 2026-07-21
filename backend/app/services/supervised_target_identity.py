@@ -1,4 +1,4 @@
-"""Exact ATS target identity for supervised approval preflight.
+"""Exact ATS target identity for supervised approval and browser execution.
 
 This module performs read-only public metadata inspection. It never submits an
 application and never bypasses authentication, CAPTCHA, MFA, or anti-bot controls.
@@ -11,6 +11,7 @@ import json
 import re
 from datetime import datetime
 from typing import Any, Dict, Mapping, Optional
+from urllib.parse import urlparse
 
 from app.models.job import Job
 from app.services.ats_lever import (
@@ -168,6 +169,102 @@ async def resolve_supervised_target_metadata(job: Job) -> Dict[str, Any]:
     }
 
 
+async def verify_supervised_browser_target(
+    *,
+    current_url: str,
+    adapter_name: str,
+    adapter_version: str,
+    expected_metadata: Optional[Mapping[str, Any]],
+    refresh_official_metadata: bool,
+    allow_same_site_confirmation: bool = False,
+) -> Dict[str, Any]:
+    """Verify that a live browser still represents the explicitly approved target."""
+
+    expected = dict(expected_metadata or {})
+    if not expected:
+        return {
+            "verified": True,
+            "blockers": [],
+            "platform": None,
+            "current_url": current_url,
+            "target_lock_required": False,
+        }
+
+    platform = str(expected.get("platform") or "").strip().lower()
+    if platform != LEVER_PLATFORM_KEY:
+        return {
+            "verified": True,
+            "blockers": [],
+            "platform": platform,
+            "current_url": current_url,
+            "target_lock_required": False,
+        }
+
+    blockers: list[str] = []
+    if str(adapter_name or "").strip().lower() != LEVER_PLATFORM_KEY:
+        blockers.append("lever_runtime_adapter_mismatch")
+    if str(adapter_version or "").strip() != str(expected.get("adapter_version") or "").strip():
+        blockers.append("lever_runtime_adapter_version_mismatch")
+
+    expected_site = str(expected.get("site") or "")
+    expected_posting_id = str(expected.get("posting_id") or "")
+    expected_region = str(expected.get("region") or "")
+    observed_site, observed_posting_id, observed_region = parse_lever_job_url(current_url)
+
+    parsed = urlparse(current_url or "")
+    path_parts = [part for part in parsed.path.split("/") if part]
+    same_site_confirmation = bool(
+        allow_same_site_confirmation
+        and path_parts
+        and path_parts[0] == expected_site
+        and observed_region == expected_region
+    )
+    if observed_site != expected_site or observed_region != expected_region:
+        blockers.append("lever_runtime_site_or_region_mismatch")
+    if observed_posting_id != expected_posting_id and not same_site_confirmation:
+        blockers.append("lever_runtime_posting_mismatch")
+
+    observed_metadata_hash = None
+    if refresh_official_metadata and not blockers:
+        try:
+            official = await fetch_lever_posting(
+                expected_site,
+                expected_posting_id,
+                region=expected_region,
+            )
+            inspected = inspect_lever_posting(official)
+            observed_metadata_hash = _hash_value(_safe_official_payload(official))
+            if not inspected.get("posting_metadata_certified"):
+                blockers.append("lever_runtime_official_metadata_unverified")
+            if observed_metadata_hash != str(expected.get("posting_metadata_hash") or ""):
+                blockers.append("lever_runtime_official_metadata_changed")
+        except Exception as exc:
+            blockers.append("lever_runtime_official_metadata_unavailable")
+            verification_error = f"{type(exc).__name__}: {str(exc)[:300]}"
+        else:
+            verification_error = None
+    else:
+        verification_error = None
+
+    return {
+        "verified": not blockers,
+        "blockers": blockers,
+        "platform": platform,
+        "current_url": current_url,
+        "target_lock_required": True,
+        "expected_site": expected_site,
+        "expected_posting_id": expected_posting_id,
+        "expected_region": expected_region,
+        "observed_site": observed_site,
+        "observed_posting_id": observed_posting_id,
+        "observed_region": observed_region,
+        "expected_metadata_hash": expected.get("posting_metadata_hash"),
+        "observed_metadata_hash": observed_metadata_hash,
+        "same_site_confirmation_allowed": same_site_confirmation,
+        "verification_error": verification_error,
+    }
+
+
 def persisted_supervised_target_metadata(job: Job) -> Dict[str, Any]:
     raw = dict(job.raw_data or {})
     value = raw.get(_PERSISTED_KEY)
@@ -194,4 +291,5 @@ __all__ = [
     "resolve_supervised_target_metadata",
     "target_identity_hash",
     "target_url_for_job",
+    "verify_supervised_browser_target",
 ]
