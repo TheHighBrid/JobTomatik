@@ -25,6 +25,10 @@ from app.services.supervised_submission import (
     revoke_supervised_approval,
     validate_supervised_approval,
 )
+from app.services.supervised_target_identity import (
+    persist_supervised_target_metadata,
+    resolve_supervised_target_metadata,
+)
 from app.tasks.applications import submit_application_task
 
 
@@ -62,8 +66,8 @@ def _require_open_submission(application: Application) -> None:
 
 
 def _approval_error(db: Session, exc: Exception) -> HTTPException:
-    # Expiry and payload-change invalidations are deliberate state changes and
-    # must remain auditable even though the request is rejected.
+    # Expiry, metadata drift, and payload-change invalidations are deliberate state
+    # changes and must remain auditable even though the request is rejected.
     db.commit()
     return HTTPException(status_code=409, detail=str(exc))
 
@@ -79,7 +83,14 @@ async def supervised_submission_preflight(
 ):
     application, user, job = _owned_records(db, application_id, current_user.id)
     _require_open_submission(application)
-    return build_supervised_preflight(db, application, user, job)
+    target_metadata = await resolve_supervised_target_metadata(job)
+    return build_supervised_preflight(
+        db,
+        application,
+        user,
+        job,
+        target_metadata=target_metadata,
+    )
 
 
 @router.post(
@@ -95,6 +106,9 @@ async def create_supervised_submission_approval(
 ):
     application, user, job = _owned_records(db, application_id, current_user.id)
     _require_open_submission(application)
+    target_metadata = await resolve_supervised_target_metadata(job)
+    if target_metadata:
+        persist_supervised_target_metadata(job, target_metadata)
     try:
         approval = issue_supervised_approval(
             db,
@@ -107,6 +121,7 @@ async def create_supervised_submission_approval(
             confirm_final_submit=data.confirm_final_submit,
             expires_in_minutes=data.expires_in_minutes,
             notes=data.notes,
+            target_metadata=target_metadata,
         )
         db.commit()
         db.refresh(approval)
@@ -178,6 +193,9 @@ async def queue_supervised_submission(
 ):
     application, user, job = _owned_records(db, application_id, current_user.id)
     _require_open_submission(application)
+    target_metadata = await resolve_supervised_target_metadata(job)
+    if target_metadata:
+        persist_supervised_target_metadata(job, target_metadata)
     try:
         validate_supervised_approval(
             db,
@@ -186,7 +204,10 @@ async def queue_supervised_submission(
             job,
             reference=reference,
             consume=False,
+            target_metadata=target_metadata,
         )
+        # Persist the latest exact target metadata before the worker reads it.
+        db.commit()
     except SupervisedSubmissionApprovalError as exc:
         raise _approval_error(db, exc)
 
