@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # Email is optional. If SENDGRID_API_KEY is empty, email applications are prepared but not sent.
     sendgrid_api_key: str = ""
-    from_email: str = "mohamed@melato.ca"
+    from_email: str = "noreply@jobtomatik.com"
 
     # Optional integrations / local development.
     rapidapi_key: str = ""
