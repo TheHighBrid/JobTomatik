@@ -14,15 +14,17 @@ from typing import Any, Dict, Mapping, Optional
 
 from app.models.job import Job
 from app.services.ats_lever import (
-    LEVER_ADAPTER_VERSION,
     fetch_lever_posting,
     inspect_lever_posting,
     parse_lever_job_url,
 )
 from app.services.operations_policy import platform_key_for_url
+from app.services.supervised_platforms import (
+    LEVER_PLATFORM_KEY,
+    get_supervised_platform_policy,
+)
 
 
-LEVER_PLATFORM_KEY = "lever"
 _PERSISTED_KEY = "supervised_target_metadata"
 
 
@@ -36,6 +38,11 @@ def _hash_value(value: Any) -> str:
 
 def _normalized_title(value: Any) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))
+
+
+def _lever_adapter_version() -> str:
+    policy = get_supervised_platform_policy(LEVER_PLATFORM_KEY)
+    return policy.adapter_version if policy else "unknown"
 
 
 def target_url_for_job(job: Job) -> str:
@@ -70,7 +77,7 @@ def _invalid_lever_identity(
     return {
         "platform": LEVER_PLATFORM_KEY,
         "adapter": LEVER_PLATFORM_KEY,
-        "adapter_version": LEVER_ADAPTER_VERSION,
+        "adapter_version": _lever_adapter_version(),
         "verified": False,
         "blockers": blockers,
         "target_url": target_url,
@@ -138,7 +145,7 @@ async def resolve_supervised_target_metadata(job: Job) -> Dict[str, Any]:
     identity_payload = {
         "platform": LEVER_PLATFORM_KEY,
         "adapter": LEVER_PLATFORM_KEY,
-        "adapter_version": LEVER_ADAPTER_VERSION,
+        "adapter_version": _lever_adapter_version(),
         "site": site,
         "posting_id": posting_id,
         "region": region,
@@ -181,7 +188,6 @@ def target_identity_hash(metadata: Optional[Mapping[str, Any]]) -> Optional[str]
 
 
 __all__ = [
-    "LEVER_PLATFORM_KEY",
     "canonical_lever_apply_url",
     "persist_supervised_target_metadata",
     "persisted_supervised_target_metadata",
