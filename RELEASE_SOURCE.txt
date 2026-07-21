@@ -1,0 +1,5 @@
+JobTomatik v1.00
+Technical version: 1.0.0
+Verified main source commit: 37c83af7a55a9a166a91536636a98daaaa34c71e
+Release branch: release/v1.0.0
+Release workflow: .github/workflows/release-v1.yml
