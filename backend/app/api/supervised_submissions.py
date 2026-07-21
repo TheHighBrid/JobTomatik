@@ -16,6 +16,7 @@ from app.schemas.supervised_submission import (
     SupervisedPreflightOut,
     SupervisedSubmitQueued,
 )
+from app.services.application_integrity import submission_is_closed
 from app.services.supervised_submission import (
     SupervisedSubmissionApprovalError,
     approval_safe_dict,
@@ -52,6 +53,14 @@ def _owned_records(
     return application, user, job
 
 
+def _require_open_submission(application: Application) -> None:
+    if submission_is_closed(application):
+        raise HTTPException(
+            status_code=409,
+            detail="This application is already closed and cannot receive another supervised submission.",
+        )
+
+
 def _approval_error(db: Session, exc: Exception) -> HTTPException:
     # Expiry and payload-change invalidations are deliberate state changes and
     # must remain auditable even though the request is rejected.
@@ -69,6 +78,7 @@ async def supervised_submission_preflight(
     db: Session = Depends(get_db),
 ):
     application, user, job = _owned_records(db, application_id, current_user.id)
+    _require_open_submission(application)
     return build_supervised_preflight(db, application, user, job)
 
 
@@ -84,6 +94,7 @@ async def create_supervised_submission_approval(
     db: Session = Depends(get_db),
 ):
     application, user, job = _owned_records(db, application_id, current_user.id)
+    _require_open_submission(application)
     try:
         approval = issue_supervised_approval(
             db,
@@ -166,6 +177,7 @@ async def queue_supervised_submission(
     db: Session = Depends(get_db),
 ):
     application, user, job = _owned_records(db, application_id, current_user.id)
+    _require_open_submission(application)
     try:
         validate_supervised_approval(
             db,
