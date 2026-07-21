@@ -1,0 +1,4 @@
+Authorized publication trigger for JobTomatik v1.00
+Frozen application source: 6f7f9fa6a7d3c63516cde381410ac188364dba36
+Release workflow source: 88d490eed21f8092eda22fd49423f2e6aaa4c523
+Purpose: replace v1.0.0 assets with exact-source BUILD-INFO metadata
