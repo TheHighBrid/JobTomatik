@@ -1,4 +1,4 @@
-"""Defense-in-depth worker gate for Greenhouse supervised submissions."""
+"""Defense-in-depth worker gate for platform-scoped supervised submissions."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from app.models.job import Job
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.operations_policy import platform_key_for_url
+from app.services.supervised_platforms import get_supervised_platform_policy
 from app.services.supervised_submission import (
-    SUPPORTED_PLATFORM,
     SupervisedSubmissionApprovalError,
     validate_supervised_approval,
 )
@@ -31,12 +31,13 @@ def _record_block(
     user: User,
     job: Job,
     *,
+    platform: str,
     approval_reference: Optional[str],
     reason: str,
 ) -> None:
     payload = {
         "approval_reference": approval_reference,
-        "platform": SUPPORTED_PLATFORM,
+        "platform": platform,
         "reason": reason[:500],
     }
     recent = (
@@ -51,39 +52,44 @@ def _record_block(
     )
     duplicate = any(
         (item.payload or {}).get("approval_reference") == approval_reference
+        and (item.payload or {}).get("platform") == platform
         and (item.payload or {}).get("reason") == payload["reason"]
         for item in recent
     )
     if duplicate:
         return
-    db.add(ApplicationEvent(
-        application_id=application.id,
-        event_type="supervised_submission_blocked",
-        from_state=application.automation_state,
-        to_state=application.automation_state,
-        payload=payload,
-    ))
-    db.add(Notification(
-        user_id=user.id,
-        type=NotificationType.system,
-        title=f"Supervised submission blocked: {job.title}",
-        message=reason[:1000],
-        data={
-            "application_id": application.id,
-            "job_id": job.id,
-            "platform": SUPPORTED_PLATFORM,
-            "approval_reference": approval_reference,
-            "reason": "supervised_approval_blocked",
-        },
-    ))
+    db.add(
+        ApplicationEvent(
+            application_id=application.id,
+            event_type="supervised_submission_blocked",
+            from_state=application.automation_state,
+            to_state=application.automation_state,
+            payload=payload,
+        )
+    )
+    db.add(
+        Notification(
+            user_id=user.id,
+            type=NotificationType.system,
+            title=f"Supervised submission blocked: {job.title}",
+            message=reason[:1000],
+            data={
+                "application_id": application.id,
+                "job_id": job.id,
+                "platform": platform,
+                "approval_reference": approval_reference,
+                "reason": "supervised_approval_blocked",
+            },
+        )
+    )
 
 
 def install_supervised_submission_task_gate() -> None:
-    """Require an exact one-time approval before any Greenhouse live worker run.
+    """Require an exact one-time approval for registered supervised platforms.
 
-    Generic and other ATS behavior is unchanged. Greenhouse dry-runs are also
-    unchanged. The approval is consumed before the original worker starts, so a
-    process crash cannot silently replay a previously approved final action.
+    Dry runs and platforms not registered for supervised submission retain their
+    previous behavior. Approval is consumed before the original live worker starts,
+    so a crash cannot silently replay a previously approved final action.
     """
 
     global _INSTALLED, _ORIGINAL_RUN
@@ -103,8 +109,6 @@ def install_supervised_submission_task_gate() -> None:
         if dry_run:
             return _ORIGINAL_RUN(application_id, dry_run=True)
 
-        # Use the exact same session factory as the wrapped worker. This keeps
-        # test overrides, local SQLite, and deployed database routing aligned.
         db = application_tasks.SessionLocal()
         try:
             application = (
@@ -120,19 +124,22 @@ def install_supervised_submission_task_gate() -> None:
             if not job or not user:
                 return {"error": "Missing job or user"}
 
-            if platform_key_for_url(_target_url(job)) != SUPPORTED_PLATFORM:
+            platform = platform_key_for_url(_target_url(job))
+            policy = get_supervised_platform_policy(platform)
+            if policy is None:
                 return _ORIGINAL_RUN(application_id, dry_run=False)
 
             if not approval_reference:
                 reason = (
-                    "Greenhouse live submission requires a short-lived, exact-payload "
-                    "approval from the supervised submission API."
+                    f"{policy.display_name} live submission requires a short-lived, "
+                    "exact-payload approval from the supervised submission API."
                 )
                 _record_block(
                     db,
                     application,
                     user,
                     job,
+                    platform=platform,
                     approval_reference=None,
                     reason=reason,
                 )
@@ -143,6 +150,7 @@ def install_supervised_submission_task_gate() -> None:
                     "application_id": application.id,
                     "requires_manual_review": False,
                     "approval_required": True,
+                    "platform": platform,
                     "error": reason,
                 }
 
@@ -162,6 +170,7 @@ def install_supervised_submission_task_gate() -> None:
                     application,
                     user,
                     job,
+                    platform=platform,
                     approval_reference=approval_reference,
                     reason=reason,
                 )
@@ -173,6 +182,7 @@ def install_supervised_submission_task_gate() -> None:
                     "requires_manual_review": False,
                     "approval_required": True,
                     "approval_reference": approval_reference,
+                    "platform": platform,
                     "error": reason,
                 }
 
@@ -188,6 +198,7 @@ def install_supervised_submission_task_gate() -> None:
         if isinstance(result, dict):
             result.setdefault("approval_reference", consumed_reference)
             result.setdefault("supervised_pilot", True)
+            result.setdefault("supervised_platform", platform)
         return result
 
     task.run = wrapped_run
