@@ -19,6 +19,9 @@ concurrency:
   group: release-jobtomatik-v1
   cancel-in-progress: true
 
+env:
+  RELEASE_SOURCE_SHA: 6f7f9fa6a7d3c63516cde381410ac188364dba36
+
 jobs:
   verify-backend:
     runs-on: ubuntu-24.04
@@ -37,10 +40,10 @@ jobs:
       AUTOPILOT_ENABLED: "false"
       REQUIRE_BROWSER_TESTS: "1"
     steps:
-      - name: Check out exact release source
+      - name: Check out frozen v1 release source
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.RELEASE_SOURCE_SHA }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -88,10 +91,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - name: Check out exact release source
+      - name: Check out frozen v1 release source
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.RELEASE_SOURCE_SHA }}
 
       - name: Set up Node
         uses: actions/setup-node@v5
@@ -187,7 +190,7 @@ jobs:
           Android application ID: ca.jobtomatik.app
           Android version code: 100
           Signing mode: $SIGNING_MODE
-          Source commit: $GITHUB_SHA
+          Source commit: $RELEASE_SOURCE_SHA
           Built by: GitHub Actions
 
           A development-signed APK is installable for personal/local use, but a future
@@ -204,6 +207,8 @@ jobs:
           confirmation evidence, follow-up tracking, and an Android client.
 
           **Signing mode:** \`$SIGNING_MODE\`
+
+          **Frozen source:** \`$RELEASE_SOURCE_SHA\`
 
           The APK is a client. Run the FastAPI backend, Redis, and Celery worker using
           the repository setup tutorial, then connect the app to
@@ -243,11 +248,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0
-          target_commitish: ${{ github.event.pull_request.head.sha || github.sha }}
+          target_commitish: ${{ env.RELEASE_SOURCE_SHA }}
           name: JobTomatik v1.00
           body_path: release/RELEASE_NOTES.md
           make_latest: true
           fail_on_unmatched_files: true
+          overwrite_files: true
           files: |
             release/JobTomatik-v1.00.apk
             release/JobTomatik-v1.00.sha256
