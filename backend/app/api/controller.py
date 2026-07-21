@@ -49,7 +49,7 @@ def _prepare_approved_jobs(
     prepared = 0
     skipped = 0
     results: List[Dict[str, Any]] = []
-    countdown = 60
+    dispatch_plan: List[Dict[str, Any]] = []
 
     for job in jobs:
         existing = (
@@ -93,26 +93,32 @@ def _prepare_approved_jobs(
             )
         )
 
-        cover_letter_task = generate_cover_letter_task.delay(app_obj.id)
+        record = {
+            "job_id": job.id,
+            "application_id": app_obj.id,
+            "dry_run": True,
+            "skipped": False,
+        }
+        dispatch_plan.append(record)
+        results.append(record)
+        prepared += 1
+
+    # Celery workers use independent connections. Persist every application before
+    # any task can consume its identifier.
+    db.commit()
+
+    countdown = 60
+    for record in dispatch_plan:
+        cover_letter_task = generate_cover_letter_task.delay(record["application_id"])
         submit_task = submit_application_task.apply_async(
-            args=[app_obj.id],
+            args=[record["application_id"]],
             kwargs={"dry_run": True},
             countdown=countdown,
         )
         countdown += 30
-        prepared += 1
-        results.append(
-            {
-                "job_id": job.id,
-                "application_id": app_obj.id,
-                "cover_letter_task": cover_letter_task.id,
-                "submit_task": submit_task.id,
-                "dry_run": True,
-                "skipped": False,
-            }
-        )
+        record["cover_letter_task"] = cover_letter_task.id
+        record["submit_task"] = submit_task.id
 
-    db.commit()
     return {
         "prepared": prepared,
         # Compatibility alias used by the existing dashboard response handling.
