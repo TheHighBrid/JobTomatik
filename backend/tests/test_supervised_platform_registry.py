@@ -8,6 +8,7 @@ from app.models.job import Job, JobSource, JobStatus
 from app.models.user import User
 from app.services.supervised_platforms import (
     GREENHOUSE_PLATFORM_KEY,
+    LEVER_PLATFORM_KEY,
     get_supervised_platform_policy,
     supervised_platform_keys,
 )
@@ -61,29 +62,41 @@ def test_supervised_platform_registry_preserves_greenhouse_contract():
     assert policy is not None
     assert policy.key == GREENHOUSE_PLATFORM_KEY
     assert policy.display_name == "Greenhouse"
+    assert policy.adapter_version == "1.1.1"
     assert policy.pilot_setting_name == "greenhouse_supervised_pilot_enabled"
     assert policy.pilot_disabled_blocker == "greenhouse_supervised_pilot_disabled"
+    assert policy.requires_exact_target_identity is False
     assert SUPPORTED_PLATFORM == GREENHOUSE_PLATFORM_KEY
 
 
-def test_registry_is_fail_closed_and_does_not_enable_lever_yet():
-    assert supervised_platform_keys() == ("greenhouse",)
-    assert get_supervised_platform_policy("lever") is None
+def test_registry_recognizes_lever_but_keeps_other_platforms_unsupported():
+    assert supervised_platform_keys() == ("greenhouse", "lever")
+    lever = get_supervised_platform_policy("lever")
+    assert lever is not None
+    assert lever.key == LEVER_PLATFORM_KEY
+    assert lever.display_name == "Lever"
+    assert lever.adapter_version == "1.1.0"
+    assert lever.pilot_setting_name == "lever_supervised_pilot_enabled"
+    assert lever.pilot_disabled_blocker == "lever_supervised_pilot_disabled"
+    assert lever.requires_exact_target_identity is True
     assert get_supervised_platform_policy("ashby") is None
     assert get_supervised_platform_policy("smartrecruiters") is None
     assert get_supervised_platform_policy("workday") is None
     assert get_supervised_platform_policy("generic") is None
 
 
-def test_greenhouse_pilot_setting_remains_disabled_by_default():
+def test_platform_pilot_settings_remain_disabled_by_default():
     settings = Settings(_env_file=None)
-    policy = get_supervised_platform_policy("greenhouse")
 
-    assert policy is not None
-    assert policy.pilot_enabled(settings) is False
+    greenhouse = get_supervised_platform_policy("greenhouse")
+    lever = get_supervised_platform_policy("lever")
+    assert greenhouse is not None
+    assert lever is not None
+    assert greenhouse.pilot_enabled(settings) is False
+    assert lever.pilot_enabled(settings) is False
 
 
-def test_unregistered_lever_live_worker_call_stops_before_browser_launch(
+def test_registered_lever_live_worker_still_requires_exact_approval(
     auth_client,
     tmp_path,
 ):
@@ -93,9 +106,9 @@ def test_unregistered_lever_live_worker_call_stops_before_browser_launch(
 
     assert result["success"] is False
     assert result["platform"] == "lever"
-    assert result["supervised_platform_supported"] is False
-    assert result["approval_required"] is False
-    assert "not registered for supervised submission" in result["error"]
+    assert result["supervised_platform_supported"] is True
+    assert result["approval_required"] is True
+    assert "exact-payload approval" in result["error"]
 
     db = TestingSessionLocal()
     application = db.query(Application).filter(Application.id == app_id).one()
