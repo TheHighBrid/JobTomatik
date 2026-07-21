@@ -44,4 +44,9 @@ class SubmissionEvidenceReviewPreflightOut(BaseModel):
     evidence: Dict[str, Any]
     approval_reference: Optional[str]
     application_payload_hash: Optional[str]
+    platform: Optional[str] = None
+    evidence_platform: Optional[str] = None
+    evidence_adapter: Optional[str] = None
+    target_identity_hash: Optional[str] = None
+    target_verification: Dict[str, Any] = Field(default_factory=dict)
     existing_review: Optional[Dict[str, Any]] = None
