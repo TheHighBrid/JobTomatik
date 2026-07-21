@@ -47,9 +47,12 @@ class SupervisedPreflightOut(BaseModel):
     blockers: List[str] = Field(default_factory=list)
     application_id: int
     platform: str
+    platform_display_name: Optional[str] = None
+    adapter_version: Optional[str] = None
     employer: str
     role: str
     application_url: str
+    original_application_url: Optional[str] = None
     automation_state: str
     unresolved_manual_review_count: int
     global_live_submit_enabled: bool
@@ -63,6 +66,9 @@ class SupervisedPreflightOut(BaseModel):
     policy_count: int
     cover_letter_present: bool
     resume_filename: Optional[str]
+    target_identity: Dict[str, Any] = Field(default_factory=dict)
+    target_identity_hash: Optional[str] = None
+    target_identity_verified: bool = False
 
 
 class SupervisedSubmitQueued(BaseModel):
