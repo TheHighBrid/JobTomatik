@@ -51,12 +51,17 @@ class Settings(BaseSettings):
     # enables retained-browser handoffs for explicitly approved non-dry runs.
     enable_resumable_handoffs: bool = False
 
-    # Verified read-only Phase A baseline plus writable Phase B runtime ledger.
-    # Readiness merges both sources. Runtime ingestion never rewrites the baseline.
+    # Verified Greenhouse Phase A baseline plus writable Phase B runtime ledger.
     greenhouse_pilot_baseline_path: str = "evidence/greenhouse-phase-a-baseline.csv"
     greenhouse_pilot_ledger_path: str = "evidence/greenhouse-pilot-ledger.jsonl"
     greenhouse_pilot_readiness_json_path: str = "evidence/greenhouse-pilot-readiness.json"
     greenhouse_pilot_readiness_markdown_path: str = "evidence/greenhouse-pilot-readiness.md"
+
+    # Lever Phase B runtime ledger. The Phase A baseline is added only after the
+    # representative dry-run matrix is separately certified.
+    lever_pilot_ledger_path: str = "evidence/lever-pilot-ledger.jsonl"
+    lever_pilot_readiness_json_path: str = "evidence/lever-pilot-readiness.json"
+    lever_pilot_readiness_markdown_path: str = "evidence/lever-pilot-readiness.md"
 
     @property
     def cors_origin_list(self) -> List[str]:
