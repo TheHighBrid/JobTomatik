@@ -10,6 +10,7 @@ from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.operations_policy import platform_key_for_url
 from app.services.supervised_platforms import get_supervised_platform_policy
+from app.services.supervised_runtime import supervised_target_scope
 from app.services.supervised_submission import (
     SupervisedSubmissionApprovalError,
     validate_supervised_approval,
@@ -263,7 +264,8 @@ def install_supervised_submission_task_gate() -> None:
         finally:
             db.close()
 
-        result = _ORIGINAL_RUN(application_id, dry_run=False)
+        with supervised_target_scope(target_metadata):
+            result = _ORIGINAL_RUN(application_id, dry_run=False)
         if isinstance(result, dict):
             result.setdefault("approval_reference", consumed_reference)
             result.setdefault("supervised_pilot", True)
