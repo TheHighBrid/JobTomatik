@@ -40,11 +40,11 @@ install_supervised_submission_task_gate()
 
 
 def _safe_migrate(eng):
-    """Add backward-compatible columns for local beta databases.
+    """Add backward-compatible columns for existing local databases.
 
     New tables are created by ``Base.metadata.create_all``. These additive column
-    migrations keep existing SQLite/PostgreSQL beta databases usable until a
-    formal Alembic revision chain is introduced.
+    migrations keep older SQLite/PostgreSQL installations usable alongside the
+    formal Alembic revision chain.
     """
     with eng.connect() as conn:
         try:
@@ -105,14 +105,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="JobTomatik API",
-    description="Automated job application platform",
+    description="Safety-first job search, preparation, and supervised application platform",
     version="1.0.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -141,7 +141,7 @@ app.include_router(settings_api.router, prefix="/api")
 @app.get("/health")
 @app.get("/api/system/health")
 async def health():
-    return {"status": "ok", "service": "JobTomatik API"}
+    return {"status": "ok", "service": "JobTomatik API", "version": "1.0.0"}
 
 
 @app.get("/api/system/control-certification")
