@@ -80,3 +80,24 @@ def test_release_documentation_is_present():
 
     missing = [str(path.relative_to(REPO_ROOT)) for path in required if not path.is_file()]
     assert not missing, f"Missing release documentation: {missing}"
+
+
+def test_authorized_v1_publisher_is_frozen_and_narrowly_scoped():
+    workflow = (
+        REPO_ROOT / ".github" / "workflows" / "publish-v1-authorized.yml"
+    ).read_text(encoding="utf-8")
+
+    frozen_sha = "6f7f9fa6a7d3c63516cde381410ac188364dba36"
+    authorized_branch = "release/publish-v1.0.0"
+
+    assert "pull_request_target:" in workflow
+    assert 'RELEASE_PUBLISH_REQUEST.txt' in workflow
+    assert authorized_branch in workflow
+    assert frozen_sha in workflow
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in workflow
+    assert "github.event.pull_request.head.ref == 'release/publish-v1.0.0'" in workflow
+    assert "persist-credentials: false" in workflow
+    assert "ref: ${{ env.RELEASE_SOURCE_SHA }}" in workflow
+    assert "test \"$(git rev-parse HEAD)\" = \"$RELEASE_SOURCE_SHA\"" in workflow
+    assert "github.event.pull_request.head.sha" not in workflow
+    assert "github.event.pull_request.merge_commit_sha" not in workflow
