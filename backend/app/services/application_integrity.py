@@ -33,6 +33,8 @@ _SUBMISSION_CLOSED_STATES = {
     ApplicationAutomationState.confirmed.value,
     ApplicationAutomationState.withdrawn.value,
 }
+_TASK_GATE_INSTALLED = False
+_TASK_GATE_ORIGINAL_RUN = None
 
 
 def _value(value) -> str:
@@ -44,6 +46,57 @@ def submission_is_closed(application: Application) -> bool:
         _value(application.status) in _SUBMISSION_CLOSED_STATUSES
         or normalize_state(application.automation_state) in _SUBMISSION_CLOSED_STATES
     )
+
+
+def closed_application_task_result(application: Application, *, dry_run: bool) -> dict:
+    return {
+        "success": True,
+        "idempotent": True,
+        "already_submitted": True,
+        "dry_run": dry_run,
+        "application_id": application.id,
+        "status": _value(application.status),
+        "state": normalize_state(application.automation_state),
+        "submitted_at": application.applied_at.isoformat() if application.applied_at else None,
+    }
+
+
+def install_closed_application_task_gate() -> None:
+    """Stop stale queued work before a browser or approval can be consumed.
+
+    This gate must be installed after the supervised submission wrapper so a closed
+    application returns idempotently before that wrapper validates or consumes a
+    one-time live approval.
+    """
+
+    global _TASK_GATE_INSTALLED, _TASK_GATE_ORIGINAL_RUN
+    if _TASK_GATE_INSTALLED:
+        return
+
+    from app.tasks import applications as application_tasks
+
+    task = application_tasks.submit_application_task
+    _TASK_GATE_ORIGINAL_RUN = task.run
+
+    def wrapped_run(application_id: int, dry_run: bool = True, **kwargs):
+        db = application_tasks.SessionLocal()
+        try:
+            application = db.query(Application).filter(
+                Application.id == application_id
+            ).first()
+            if application and submission_is_closed(application):
+                return closed_application_task_result(application, dry_run=dry_run)
+        finally:
+            db.close()
+
+        return _TASK_GATE_ORIGINAL_RUN(
+            application_id,
+            dry_run=dry_run,
+            **kwargs,
+        )
+
+    task.run = wrapped_run
+    _TASK_GATE_INSTALLED = True
 
 
 def reconcile_user_reported_status(
