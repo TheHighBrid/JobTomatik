@@ -102,6 +102,36 @@ async def capture_handoff_frame(session: ManualHandoffSession) -> bytes:
         await _disconnect(playwright)
 
 
+async def _click_resend_code_control(page: Any) -> None:
+    selectors = (
+        'button:has-text("Resend code")',
+        'a:has-text("Resend code")',
+        'button:has-text("Send new code")',
+        'a:has-text("Send new code")',
+        'button:has-text("Send another code")',
+        'a:has-text("Send another code")',
+        'button:has-text("Request new code")',
+        'a:has-text("Request new code")',
+        'button:has-text("Get a new code")',
+        'a:has-text("Get a new code")',
+        'button:has-text("Resend verification")',
+        'a:has-text("Resend verification")',
+        '[aria-label*="resend" i]',
+        '[aria-label*="new code" i]',
+    )
+    for selector in selectors:
+        try:
+            locator = page.locator(selector).first
+            if await locator.is_visible() and await locator.is_enabled():
+                await locator.click()
+                return
+        except Exception:
+            continue
+    raise BrowserHandoffError(
+        "No visible resend-code control was found. Use Go back or click the control directly in the browser image."
+    )
+
+
 async def perform_handoff_action(
     session: ManualHandoffSession,
     *,
@@ -115,6 +145,7 @@ async def perform_handoff_action(
 ) -> Dict[str, Any]:
     playwright, _, _, page = await _connect_local_cdp(session)
     try:
+        settle_ms = 150
         if action == "click":
             if x is None or y is None:
                 raise BrowserHandoffError("Click actions require x and y coordinates.")
@@ -123,6 +154,13 @@ async def perform_handoff_action(
             if text is None:
                 raise BrowserHandoffError("Type actions require text.")
             await page.keyboard.insert_text(text)
+        elif action == "replace_and_submit":
+            if text is None:
+                raise BrowserHandoffError("Replace-and-submit actions require text.")
+            await page.keyboard.press("Control+A")
+            await page.keyboard.insert_text(text)
+            await page.keyboard.press("Enter")
+            settle_ms = 750
         elif action == "key":
             allowed_keys = {
                 "Tab", "Shift+Tab", "Enter", "Escape", "Backspace", "Delete",
@@ -133,9 +171,20 @@ async def perform_handoff_action(
             await page.keyboard.press(key)
         elif action == "scroll":
             await page.mouse.wheel(float(delta_x), float(delta_y))
+        elif action == "resend_code":
+            await _click_resend_code_control(page)
+            settle_ms = 750
+        elif action == "back":
+            previous = await page.go_back(wait_until="domcontentloaded", timeout=15000)
+            if previous is None:
+                raise BrowserHandoffError("The retained browser has no previous page to return to.")
+            settle_ms = 500
+        elif action == "reload":
+            await page.reload(wait_until="domcontentloaded", timeout=20000)
+            settle_ms = 500
         else:
             raise BrowserHandoffError(f"Unsupported browser handoff action: {action}")
-        await page.wait_for_timeout(150)
+        await page.wait_for_timeout(settle_ms)
         fingerprint = await page_fingerprint(page)
         return {
             "action": action,
