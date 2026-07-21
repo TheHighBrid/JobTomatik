@@ -1,48 +1,85 @@
-name: Publish JobTomatik v1 authorized
+name: Publish JobTomatik v1 by authorized command
 
 on:
-  pull_request_target:
+  issue_comment:
     types:
-      - opened
-      - synchronize
-      - reopened
-    branches:
-      - main
-    paths:
-      - "RELEASE_PUBLISH_REQUEST.txt"
+      - created
 
 permissions:
   contents: write
   issues: write
+  pull-requests: read
 
 concurrency:
-  group: publish-jobtomatik-v1-authorized
-  cancel-in-progress: true
+  group: publish-jobtomatik-v1-command
+  cancel-in-progress: false
 
 env:
   RELEASE_SOURCE_SHA: 6f7f9fa6a7d3c63516cde381410ac188364dba36
+  AUTHORIZED_PR_NUMBER: "81"
   AUTHORIZED_HEAD_BRANCH: release/publish-v1.0.0
+  AUTHORIZED_REQUEST_SHA: 6a176eeacd7cc413b0456a6e204735459fc12313
+  RELEASE_COMMAND: /publish-jobtomatik-v1.0.0
 
 jobs:
   authorize:
     if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'release/publish-v1.0.0'
+      github.event.issue.pull_request &&
+      github.event.issue.number == 81 &&
+      github.event.comment.body == '/publish-jobtomatik-v1.0.0' &&
+      (github.event.comment.user.login == 'TheHighBrid' ||
+       github.event.comment.user.login == 'chatgpt-codex-connector[bot]')
     runs-on: ubuntu-24.04
     steps:
-      - name: Verify exact publication request
-        shell: bash
-        env:
-          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
-        run: |
-          set -euo pipefail
-          test "$HEAD_REPOSITORY" = "$GITHUB_REPOSITORY"
-          test "$HEAD_BRANCH" = "$AUTHORIZED_HEAD_BRANCH"
-          test "$BASE_BRANCH" = "main"
-          echo "Authorized same-repository JobTomatik v1 publication request."
-          echo "Frozen source: $RELEASE_SOURCE_SHA"
+      - name: Verify exact publication request and branch contents
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pullNumber = Number(process.env.AUTHORIZED_PR_NUMBER);
+            const expectedHeadBranch = process.env.AUTHORIZED_HEAD_BRANCH;
+            const expectedHeadSha = process.env.AUTHORIZED_REQUEST_SHA;
+
+            const pull = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pullNumber,
+            });
+
+            if (pull.data.state !== 'open') {
+              core.setFailed(`Publication request PR #${pullNumber} is not open.`);
+              return;
+            }
+            if (pull.data.base.ref !== 'main') {
+              core.setFailed('Publication request does not target main.');
+              return;
+            }
+            if (pull.data.head.repo.full_name !== `${owner}/${repo}`) {
+              core.setFailed('Publication request is not from the same repository.');
+              return;
+            }
+            if (pull.data.head.ref !== expectedHeadBranch) {
+              core.setFailed(`Unexpected publication branch: ${pull.data.head.ref}`);
+              return;
+            }
+            if (pull.data.head.sha !== expectedHeadSha) {
+              core.setFailed(`Publication request SHA changed: ${pull.data.head.sha}`);
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: pullNumber,
+              per_page: 100,
+            });
+            if (files.length !== 1 || files[0].filename !== 'RELEASE_PUBLISH_REQUEST.txt') {
+              core.setFailed('Publication request must change only RELEASE_PUBLISH_REQUEST.txt.');
+              return;
+            }
+
+            core.info(`Authorized frozen source ${process.env.RELEASE_SOURCE_SHA}`);
 
       - name: Announce authorized publication
         uses: actions/github-script@v8
@@ -52,7 +89,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
               body: `🚀 Authorized JobTomatik v1.00 publication started.\n\nRun: ${runUrl}\nFrozen source: \`${process.env.RELEASE_SOURCE_SHA}\``,
             });
 
@@ -119,7 +156,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: jobtomatik-v1-authorized-backend-verification
+          name: jobtomatik-v1-command-backend-verification
           path: backend/release-pytest-output.txt
           if-no-files-found: warn
           retention-days: 90
@@ -239,7 +276,7 @@ jobs:
           Android version code: 100
           Signing mode: $SIGNING_MODE
           Source commit: $RELEASE_SOURCE_SHA
-          Built by: GitHub Actions authorized pull_request_target publisher
+          Built by: GitHub Actions owner-command publisher
 
           A development-signed APK is installable for personal/local use, but a future
           APK signed by a different certificate may require uninstalling this client.
@@ -271,7 +308,7 @@ jobs:
       - name: Upload release bundle
         uses: actions/upload-artifact@v6
         with:
-          name: JobTomatik-v1.00-authorized-release-bundle
+          name: JobTomatik-v1.00-command-release-bundle
           path: frontend/release/*
           if-no-files-found: error
           retention-days: 90
@@ -286,7 +323,7 @@ jobs:
       - name: Download authorized release bundle
         uses: actions/download-artifact@v6
         with:
-          name: JobTomatik-v1.00-authorized-release-bundle
+          name: JobTomatik-v1.00-command-release-bundle
           path: release
 
       - name: Delete existing same-name assets
@@ -343,6 +380,6 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `JobTomatik v1.00 authorized publication finished.\n\n- Backend: **${verify}**\n- Android: **${android}**\n- Publication: **${publish}**\n- Run: ${runUrl}\n- Frozen source: \`${process.env.RELEASE_SOURCE_SHA}\``,
+              issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
+              body: `JobTomatik v1.00 owner-command publication finished.\n\n- Backend: **${verify}**\n- Android: **${android}**\n- Publication: **${publish}**\n- Run: ${runUrl}\n- Frozen source: \`${process.env.RELEASE_SOURCE_SHA}\``,
             });
