@@ -61,19 +61,21 @@ celery_app.conf.update(
 
 @worker_init.connect
 def install_worker_task_integrations(**_kwargs):
-    """Install safety and retained-browser extensions in the Celery process.
+    """Install safety, routing, and retained-browser extensions in Celery.
 
-    FastAPI installs these wrappers in the web process, but application attempts
+    FastAPI installs some wrappers in the web process, but application attempts
     execute in Celery. Installing them at worker startup keeps both processes on
     the same task path and registers resumable handoff creation before any job is
     consumed.
     """
     from app.services.application_integrity import install_closed_application_task_gate
     from app.services.handoff_integration import install_handoff_task_integration
+    from app.services.linkedin_apply_integration import install_linkedin_apply_resolution
     from app.services.supervised_submission_integration import (
         install_supervised_submission_task_gate,
     )
 
+    install_linkedin_apply_resolution()
     install_handoff_task_integration()
     install_supervised_submission_task_gate()
     # Must wrap the supervised gate so a stale task cannot consume an approval.
