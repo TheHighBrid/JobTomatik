@@ -12,7 +12,7 @@ from app.services.browser_navigation import (
     navigate_job_board_listing,
     now_iso,
 )
-from app.services.browser_runtime import launch_retainable_browser
+from app.services.browser_runtime import launch_application_browser
 from app.services.control_engine import CONTROL_ENGINE_VERSION
 from app.services.form_filler_v3 import _fill_step_fields
 from app.services.supervised_target_identity import verify_supervised_browser_target
@@ -145,7 +145,7 @@ async def fill_and_submit_application_with_handoff(
         from playwright.async_api import async_playwright
 
         async with async_playwright() as playwright:
-            runtime = await launch_retainable_browser(playwright)
+            runtime = await launch_application_browser(playwright)
             page = runtime.page
             log.append({"action": "navigate", "url": job_url, "ts": now_iso()})
             try:
@@ -157,6 +157,8 @@ async def fill_and_submit_application_with_handoff(
             except PlaywrightTimeoutError:
                 log.append({"action": "navigation_timeout", "ts": now_iso()})
 
+            # Compatibility for direct calls. Normal application tasks resolve listings
+            # before entering this ATS runner and persist the target separately.
             target = await navigate_job_board_listing(page, log)
             result.update({
                 key: target[key]
