@@ -12,7 +12,7 @@ import SubmissionEvidenceReviewPanel from '../components/SubmissionEvidenceRevie
 import StatusBadge from '../components/StatusBadge'
 import {
   ArrowLeft, Loader2, RefreshCw, Send, Calendar,
-  FileText, ExternalLink, AlertCircle, CheckCircle2, LockKeyhole
+  FileText, ExternalLink, AlertCircle, CheckCircle2, LockKeyhole, Route
 } from 'lucide-react'
 import { format, addDays } from 'date-fns'
 
@@ -23,6 +23,7 @@ const HANDOFF_REVIEW_REASONS = new Set([
   'mfa_required',
   'login_required',
   'anti_bot_challenge',
+  'application_target_required',
 ])
 
 function isGreenhouseUrl(value) {
@@ -61,6 +62,18 @@ function writeStoredTaskId(key, value) {
   } catch {
     // Polling still works in memory when sessionStorage is unavailable.
   }
+}
+
+function targetStatusLabel(status) {
+  return String(status || 'unresolved').replaceAll('_', ' ')
+}
+
+function targetStatusClasses(status) {
+  if (status === 'resolved') return 'bg-green-100 text-green-700'
+  if (status === 'resolving') return 'bg-blue-100 text-blue-700'
+  if (status === 'requires_human') return 'bg-amber-100 text-amber-700'
+  if (status === 'failed') return 'bg-red-100 text-red-700'
+  return 'bg-gray-100 text-gray-600'
 }
 
 export default function ApplicationDetail() {
@@ -220,7 +233,7 @@ export default function ApplicationDetail() {
 
       toast(
         dry
-          ? 'Dry run started. JobTomatik is checking the application flow.'
+          ? 'Dry run started. JobTomatik is resolving the employer application target.'
           : 'Application submission started.'
       )
     } catch (error) {
@@ -240,11 +253,13 @@ export default function ApplicationDetail() {
   if (!app) return <div className="text-center py-20 text-gray-500">Application not found.</div>
 
   const job = app.job
-  const greenhouseApplication = isGreenhouseUrl(job?.url)
+  const effectiveTargetUrl = app.application_target_url || job?.url
+  const greenhouseApplication = isGreenhouseUrl(effectiveTargetUrl)
   const applicationFinished = isFinishedApplication(app)
   const activeManualReview = [...(app.manual_reviews || [])]
     .filter((review) => ['open', 'in_progress'].includes(review.status))
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+  const targetNavigationReview = activeManualReview?.reason_code === 'application_target_required'
   const linkedInDiscoveryReview = (
     activeManualReview?.reason_code === 'unsupported_platform'
     && isLinkedInUrl(job?.url)
@@ -254,6 +269,7 @@ export default function ApplicationDetail() {
     || HANDOFF_REVIEW_REASONS.has(activeManualReview.reason_code)
   )
   const submissionBusy = submitting || Boolean(submitTaskId)
+  const targetStatus = app.application_target_status || 'unresolved'
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
@@ -284,6 +300,52 @@ export default function ApplicationDetail() {
         </div>
       </div>
 
+      <section className="card p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Route className="w-5 h-5 text-slate-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <h2 className="font-semibold text-gray-900">Application destination</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                JobTomatik keeps the discovery listing separate from the employer or ATS form it will operate.
+              </p>
+            </div>
+          </div>
+          <span className={`badge capitalize ${targetStatusClasses(targetStatus)}`}>
+            {targetStatusLabel(targetStatus)}
+          </span>
+        </div>
+
+        <div className="grid gap-3 text-sm">
+          <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-3">
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Source listing</div>
+            <div className="mt-1 break-all text-gray-700">{app.source_listing_url || job?.url || 'Not recorded yet'}</div>
+          </div>
+          <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-3">
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Employer application target</div>
+            {app.application_target_url ? (
+              <a
+                href={app.application_target_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-start gap-1 break-all text-tomato-600 hover:underline"
+              >
+                {app.application_target_url}
+                <ExternalLink className="w-3 h-3 mt-1 flex-shrink-0" />
+              </a>
+            ) : (
+              <div className="mt-1 text-gray-500">
+                {targetStatus === 'requires_human'
+                  ? 'Waiting for one Apply click in the retained JobTomatik browser.'
+                  : targetStatus === 'resolving'
+                    ? 'Resolving the employer destination now…'
+                    : 'Not resolved yet.'}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       {activeManualReview && (
         <section className="card overflow-hidden border border-amber-200">
           <div className="bg-amber-50 px-5 py-4 border-b border-amber-100">
@@ -295,9 +357,11 @@ export default function ApplicationDetail() {
                   {activeManualReview.summary}
                 </p>
                 <p className="text-sm text-gray-600 mt-2">
-                  {linkedInDiscoveryReview
-                    ? 'This is a LinkedIn discovery listing, not a direct employer application form. It cannot produce a retained-browser handoff. Open the listing and use the employer’s direct careers or ATS application URL for a new dry run.'
-                    : 'This attempt reached a step that JobTomatik cannot complete automatically. Review the reason below and open the application page when manual action is required.'}
+                  {targetNavigationReview
+                    ? 'Use the secure browser handoff below. Click Apply once in the retained LinkedIn page, wait for the employer page to open, then mark the browser step complete. JobTomatik will continue on the employer form in that same session.'
+                    : linkedInDiscoveryReview
+                      ? 'This older attempt treated LinkedIn as an unsupported form. Start a new dry run to use the persistent target resolver.'
+                      : 'This attempt reached a step that JobTomatik cannot complete automatically. Review the reason below and open the application page when manual action is required.'}
                 </p>
                 <div className="text-xs text-gray-500 mt-2">
                   Reason: {activeManualReview.reason_code.replaceAll('_', ' ')}
@@ -306,7 +370,7 @@ export default function ApplicationDetail() {
             </div>
           </div>
 
-          {activeManualReview.blocking_url && (
+          {activeManualReview.blocking_url && !targetNavigationReview && (
             <div className="px-5 py-4">
               <a
                 href={activeManualReview.blocking_url}
