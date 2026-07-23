@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from app.models.application import Application
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
-from app.services.application_target import is_valid_application_target
+from app.services.application_target import (
+    is_valid_application_target,
+    record_application_target,
+)
 from app.services.ats_base import page_fingerprint
 from app.services.browser_navigation import external_target_from_browser, now_iso
 
 
 _INSTALLED = False
+_TASK_PERSISTENCE_INSTALLED = False
 _ORIGINAL_VERIFY = None
 _ORIGINAL_RESUME = None
+_ORIGINAL_HANDOFF_TASK_RUN = None
 
 
 def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
@@ -163,10 +169,61 @@ def install_application_target_handoff_support() -> None:
     try:
         from app.tasks import handoffs as handoff_tasks
         handoff_tasks.resume_handoff_application = target_aware_resume
-    except ImportError:
+    except (ImportError, AttributeError):
         pass
 
     _INSTALLED = True
 
 
-__all__ = ["install_application_target_handoff_support"]
+def install_application_target_handoff_task_persistence() -> None:
+    """Persist a target URL returned by the resumed browser task."""
+    global _TASK_PERSISTENCE_INSTALLED, _ORIGINAL_HANDOFF_TASK_RUN
+    if _TASK_PERSISTENCE_INSTALLED:
+        return
+
+    from app.tasks import handoffs as handoff_tasks
+
+    task = handoff_tasks.resume_handoff_session_task
+    _ORIGINAL_HANDOFF_TASK_RUN = task.run
+
+    def wrapped_run(handoff_public_id: str, **kwargs):
+        result = _ORIGINAL_HANDOFF_TASK_RUN(handoff_public_id, **kwargs)
+        if not isinstance(result, dict):
+            return result
+        target_url = str(result.get("application_target_url") or "")
+        source_url = str(result.get("source_listing_url") or "")
+        if not target_url or not is_valid_application_target(source_url, target_url):
+            return result
+
+        db = handoff_tasks.SessionLocal()
+        try:
+            session = db.query(ManualHandoffSession).filter(
+                ManualHandoffSession.public_id == handoff_public_id
+            ).first()
+            app = (
+                db.query(Application).filter(Application.id == session.application_id).first()
+                if session
+                else None
+            )
+            if app:
+                app.source_listing_url = app.source_listing_url or source_url
+                record_application_target(
+                    db,
+                    app,
+                    target_url=target_url,
+                    method="human_handoff_navigation",
+                    metadata={"handoff_public_id": handoff_public_id},
+                )
+                db.commit()
+        finally:
+            db.close()
+        return result
+
+    task.run = wrapped_run
+    _TASK_PERSISTENCE_INSTALLED = True
+
+
+__all__ = [
+    "install_application_target_handoff_support",
+    "install_application_target_handoff_task_persistence",
+]
