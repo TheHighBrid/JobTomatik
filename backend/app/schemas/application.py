@@ -107,6 +107,11 @@ class ApplicationOut(BaseModel):
     job: Optional[JobOut]
     status: ApplicationStatus
     automation_state: str = "preparing"
+    source_listing_url: Optional[str] = None
+    application_target_url: Optional[str] = None
+    application_target_status: str = "unresolved"
+    application_target_resolved_at: Optional[datetime] = None
+    application_target_metadata: Dict[str, Any] = Field(default_factory=dict)
     submission_idempotency_key: Optional[str]
     submission_attempt_count: int = 0
     last_submission_attempt_at: Optional[datetime]
