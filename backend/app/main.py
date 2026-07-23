@@ -76,6 +76,11 @@ def _safe_migrate(eng):
             app_cols = {c["name"] for c in sa_inspect(eng).get_columns("applications")}
             additions = {
                 "automation_state": "VARCHAR(50) DEFAULT 'preparing' NOT NULL",
+                "source_listing_url": "VARCHAR(1000)",
+                "application_target_url": "VARCHAR(1000)",
+                "application_target_status": "VARCHAR(50) DEFAULT 'unresolved' NOT NULL",
+                "application_target_resolved_at": "TIMESTAMP",
+                "application_target_metadata": "JSON",
                 "submission_idempotency_key": "VARCHAR(255)",
                 "submission_attempt_count": "INTEGER DEFAULT 0 NOT NULL",
                 "last_submission_attempt_at": "TIMESTAMP",
@@ -92,6 +97,10 @@ def _safe_migrate(eng):
             conn.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_applications_automation_state "
                 "ON applications (automation_state)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_applications_application_target_status "
+                "ON applications (application_target_status)"
             ))
             conn.commit()
         except Exception:
