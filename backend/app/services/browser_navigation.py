@@ -12,10 +12,15 @@ from app.services.control_engine import normalize_text
 JOB_BOARD_HOSTS = {
     "jobbank.gc.ca", "www.jobbank.gc.ca",
     "guichetemplois.gc.ca", "www.guichetemplois.gc.ca",
+    "linkedin.com", "www.linkedin.com",
 }
 JOB_BANK_LISTING_PATHS = (
     "/jobsearch/jobposting/",
     "/rechercheemplois/offredemploi/",
+)
+LINKEDIN_LISTING_PATHS = (
+    "/jobs/view/",
+    "/jobs/collections/",
 )
 _FAKE_URL_RE = re.compile(r"/jobs/[0-9a-f]{12,20}/?$", re.IGNORECASE)
 APPLY_LINK_HINTS = ("apply", "application", "career", "careers", "recruit", "mailto:")
@@ -84,9 +89,12 @@ def is_fake_url(url: str) -> bool:
 
 def _is_listing(url: str) -> bool:
     parsed = urlparse(url)
-    return parsed.hostname in JOB_BOARD_HOSTS and any(
-        fragment in parsed.path for fragment in JOB_BANK_LISTING_PATHS
-    )
+    hostname = (parsed.hostname or "").lower()
+    if hostname in {"jobbank.gc.ca", "www.jobbank.gc.ca", "guichetemplois.gc.ca", "www.guichetemplois.gc.ca"}:
+        return any(fragment in parsed.path for fragment in JOB_BANK_LISTING_PATHS)
+    if hostname in {"linkedin.com", "www.linkedin.com"}:
+        return any(fragment in parsed.path for fragment in LINKEDIN_LISTING_PATHS)
+    return False
 
 
 def _probable_apply_href(href: str, current_url: str) -> bool:
