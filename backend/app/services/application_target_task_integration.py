@@ -93,6 +93,24 @@ def _apply_target_review_copy(db, app: Application, result: Dict[str, Any], reas
     }
 
 
+def _restore_job_discovery_url(application_tasks, application_id: int, source_url: str) -> None:
+    """Undo the legacy task body's temporary Job.url assignment after every run."""
+    if not source_url:
+        return
+    db = application_tasks.SessionLocal()
+    try:
+        app = db.query(Application).filter(Application.id == application_id).first()
+        job = db.query(Job).filter(Job.id == app.job_id).first() if app else None
+        if job and job.url != source_url:
+            job.url = source_url
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
     db = application_tasks.SessionLocal()
     source_url = ""
@@ -229,8 +247,8 @@ def install_application_target_task_integration() -> None:
         try:
             return _ORIGINAL_ENSURE_APPLICATION_METHOD(job)
         finally:
-            # The discovery URL is immutable. Older resolution code may assign an
-            # employer URL to Job.url, so restore it before the transaction commits.
+            # Preserve the discovery URL even when the legacy resolver assigns a
+            # selected external target inside this ORM session.
             job.url = original_url
 
     def wrapped_run(application_id: int, dry_run: bool = True, **kwargs):
@@ -240,6 +258,7 @@ def install_application_target_task_integration() -> None:
             return terminal_result
 
         target_url = prepared.get("target_url")
+        source_url = str(prepared.get("source_url") or "")
         token = _ACTIVE_APPLICATION_TARGET.set(target_url)
         try:
             return _ORIGINAL_RUN(
@@ -248,7 +267,10 @@ def install_application_target_task_integration() -> None:
                 **kwargs,
             )
         finally:
-            _ACTIVE_APPLICATION_TARGET.reset(token)
+            try:
+                _restore_job_discovery_url(application_tasks, application_id, source_url)
+            finally:
+                _ACTIVE_APPLICATION_TARGET.reset(token)
 
     application_tasks._ensure_application_method = target_aware_application_method
     task.run = wrapped_run
