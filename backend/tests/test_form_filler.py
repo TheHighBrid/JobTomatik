@@ -88,3 +88,26 @@ async def test_navigate_jobbank_listing_returns_manual_review_for_email_apply():
     assert result["contact_email"] == "hiring@example.com"
     assert "email" in result["reason"].lower()
     assert log[-1]["action"] == "email_apply_detected"
+
+
+@pytest.mark.asyncio
+async def test_navigate_linkedin_listing_follows_employer_apply_link():
+    employer_url = (
+        "https://jobs.rbc.com/ca/en/hvhapply?"
+        "jobSeqNo=RBCAA0088R0000171559EXTERNALENCA&utm_source=LinkedIn"
+    )
+    page = FakePage(
+        "https://www.linkedin.com/jobs/view/bilingual-fraud-advisor-at-rbc-4439524897/",
+        anchors=[FakeAnchor(employer_url, "Apply")],
+    )
+    log = []
+
+    result = await _navigate_job_board_listing(page, log)
+
+    assert page.navigated_to == employer_url
+    assert result == {"application_url": employer_url}
+    assert [entry["action"] for entry in log] == [
+        "listing_page_detected",
+        "external_apply_link_found",
+        "external_apply_navigated",
+    ]
