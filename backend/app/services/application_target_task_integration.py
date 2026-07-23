@@ -8,9 +8,11 @@ from app.models.application import (
     Application,
     ApplicationAutomationState,
     ApplicationStatus,
+    ApplicationTargetStatus,
     ManualReviewStatus,
     ManualReviewTask,
 )
+from app.models.handoff import ACTIVE_HANDOFF_STATUSES, ManualHandoffSession
 from app.models.job import Job
 from app.models.notification import Notification, NotificationType
 from app.services.application_state import normalize_state, transition_application_state
@@ -93,6 +95,54 @@ def _apply_target_review_copy(db, app: Application, result: Dict[str, Any], reas
     }
 
 
+def _active_target_handoff_result(db, app: Application, source_url: str) -> Optional[Dict[str, Any]]:
+    """Return the existing live browser handoff instead of opening the profile twice."""
+    if app.application_target_status != ApplicationTargetStatus.requires_human.value:
+        return None
+    session = (
+        db.query(ManualHandoffSession)
+        .filter(
+            ManualHandoffSession.application_id == app.id,
+            ManualHandoffSession.status.in_(ACTIVE_HANDOFF_STATUSES),
+        )
+        .order_by(ManualHandoffSession.created_at.desc(), ManualHandoffSession.id.desc())
+        .first()
+    )
+    if not session:
+        return None
+    return {
+        "success": False,
+        "dry_run": True,
+        "url": source_url,
+        "source_listing_url": source_url,
+        "application_target_url": None,
+        "application_target_status": ApplicationTargetStatus.requires_human.value,
+        "target_resolution_only": True,
+        "requires_manual_review": True,
+        "error": (
+            "A retained browser handoff is already active. Complete that browser step "
+            "instead of starting another application attempt."
+        ),
+        "review_items": [{
+            "reason_code": "application_target_required",
+            "summary": "Click Apply once in the existing retained browser session.",
+            "details": {
+                "stage": "application_target_resolution",
+                "source_listing_url": source_url,
+                "submit_clicked": False,
+            },
+        }],
+        "handoff_public_id": session.public_id,
+        "handoff_expires_at": session.expires_at.isoformat(),
+        "log": [{
+            "action": "existing_application_target_handoff_reused",
+            "handoff_public_id": session.public_id,
+        }],
+        "submitted_at": None,
+        "fields_filled": 0,
+    }
+
+
 def _restore_job_discovery_url(application_tasks, application_id: int, source_url: str) -> None:
     """Undo the legacy task body's temporary Job.url assignment after every run."""
     if not source_url:
@@ -131,6 +181,10 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
         if not source_url:
             db.commit()
             return {"target_url": None, "source_url": source_url}
+
+        existing_handoff = _active_target_handoff_result(db, app, source_url)
+        if existing_handoff:
+            return {"terminal_result": existing_handoff}
 
         _restore_retryable_state(db, app)
         mark_target_resolving(db, app, source_url=source_url)
