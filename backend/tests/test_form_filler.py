@@ -16,23 +16,45 @@ class FakeAnchor:
 
 
 class FakeControl:
-    def __init__(self):
+    def __init__(self, page=None, target_url=None):
+        self.page = page
+        self.target_url = target_url
         self.clicked = False
+
+    async def is_visible(self):
+        return True
+
+    async def is_enabled(self):
+        return True
 
     async def click(self, timeout=None):
         self.clicked = True
+        if self.page is not None and self.target_url:
+            self.page.url = self.target_url
 
 
 class FakePage:
-    def __init__(self, url, anchors=None, body="", control=None):
+    def __init__(
+        self,
+        url,
+        anchors=None,
+        body="",
+        control=None,
+        control_selector=None,
+    ):
         self.url = url
         self.anchors = anchors or []
         self.body = body
         self.control = control
+        self.control_selector = control_selector
         self.navigated_to = None
 
     async def query_selector(self, selector):
-        return self.control if self.control and "Show how to apply" in selector else None
+        if not self.control:
+            return None
+        if self.control_selector is None or selector == self.control_selector:
+            return self.control
+        return None
 
     async def wait_for_load_state(self, state, timeout=None):
         return None
@@ -53,12 +75,13 @@ class FakePage:
 
 @pytest.mark.asyncio
 async def test_navigate_jobbank_listing_reveals_and_follows_external_apply_link():
-    control = FakeControl()
     page = FakePage(
         "https://www.jobbank.gc.ca/jobsearch/jobposting/49851398?source=searchresults",
         anchors=[FakeAnchor("https://company.example/careers/apply/123", "Apply on company site")],
-        control=control,
+        control_selector='button:has-text("Show how to apply")',
     )
+    control = FakeControl(page)
+    page.control = control
     log = []
 
     result = await _navigate_job_board_listing(page, log)
@@ -68,7 +91,7 @@ async def test_navigate_jobbank_listing_reveals_and_follows_external_apply_link(
     assert result == {"application_url": "https://company.example/careers/apply/123"}
     assert [entry["action"] for entry in log] == [
         "listing_page_detected",
-        "apply_instructions_revealed",
+        "apply_control_clicked",
         "external_apply_link_found",
         "external_apply_navigated",
     ]
@@ -91,13 +114,13 @@ async def test_navigate_jobbank_listing_returns_manual_review_for_email_apply():
 
 
 @pytest.mark.asyncio
-async def test_navigate_linkedin_listing_follows_employer_apply_link():
+async def test_navigate_regional_linkedin_listing_follows_employer_apply_link():
     employer_url = (
         "https://jobs.rbc.com/ca/en/hvhapply?"
         "jobSeqNo=RBCAA0088R0000171559EXTERNALENCA&utm_source=LinkedIn"
     )
     page = FakePage(
-        "https://www.linkedin.com/jobs/view/bilingual-fraud-advisor-at-rbc-4439524897/",
+        "https://ca.linkedin.com/jobs/view/bilingual-fraud-advisor-at-rbc-4439524897/",
         anchors=[FakeAnchor(employer_url, "Apply")],
     )
     log = []
@@ -111,3 +134,43 @@ async def test_navigate_linkedin_listing_follows_employer_apply_link():
         "external_apply_link_found",
         "external_apply_navigated",
     ]
+
+
+@pytest.mark.asyncio
+async def test_navigate_linkedin_apply_control_detects_direct_redirect():
+    employer_url = (
+        "https://jobs.rbc.com/ca/en/hvhapply?"
+        "jobSeqNo=RBCAA0088R0000171559EXTERNALENCA&utm_source=LinkedIn"
+    )
+    page = FakePage(
+        "https://ca.linkedin.com/jobs/view/bilingual-fraud-advisor-at-rbc-4439524897/",
+        control_selector="#jobs-apply-button-id",
+    )
+    control = FakeControl(page, employer_url)
+    page.control = control
+    log = []
+
+    result = await _navigate_job_board_listing(page, log)
+
+    assert control.clicked is True
+    assert page.url == employer_url
+    assert result == {"application_url": employer_url}
+    assert [entry["action"] for entry in log] == [
+        "listing_page_detected",
+        "apply_control_clicked",
+        "external_apply_control_navigated",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_linkedin_listing_without_employer_target_fails_closed():
+    linkedin_url = "https://ca.linkedin.com/jobs/view/example-role-123/"
+    page = FakePage(linkedin_url, body="Job details without an outbound apply destination")
+    log = []
+
+    result = await _navigate_job_board_listing(page, log)
+
+    assert result["manual_review_only"] is True
+    assert result["application_url"] == linkedin_url
+    assert "no outbound employer" in result["reason"].lower()
+    assert log[-1]["action"] == "apply_target_not_found"
