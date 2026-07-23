@@ -8,6 +8,8 @@ from app.models.application import (
     Application,
     ApplicationAutomationState,
     ApplicationStatus,
+    ManualReviewStatus,
+    ManualReviewTask,
 )
 from app.models.job import Job
 from app.models.notification import Notification, NotificationType
@@ -18,7 +20,6 @@ from app.services.application_target import (
     record_application_target,
     record_target_failure,
     record_target_requires_human,
-    target_url_for_application,
 )
 from app.services.application_target_resolver import resolve_application_target_with_browser
 
@@ -40,6 +41,58 @@ def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     return loop.run_until_complete(coro)
 
 
+def _restore_retryable_state(db, app: Application) -> None:
+    """Move an older failed attempt back into a legal retry state."""
+    if normalize_state(app.automation_state) != ApplicationAutomationState.failed.value:
+        return
+    transition_application_state(
+        db,
+        app,
+        ApplicationAutomationState.ready_to_apply,
+        "application_target_retry_started",
+        {"previous_target_status": app.application_target_status},
+    )
+
+
+def _apply_target_review_copy(db, app: Application, result: Dict[str, Any], reason_value: str) -> None:
+    """Replace the generic question-review copy with the doorway instruction."""
+    matching_item = next(
+        (
+            item
+            for item in result.get("review_items") or []
+            if str(item.get("reason_code") or "") == reason_value
+        ),
+        None,
+    )
+    if not matching_item:
+        return
+    review = (
+        db.query(ManualReviewTask)
+        .filter(
+            ManualReviewTask.application_id == app.id,
+            ManualReviewTask.reason_code == reason_value,
+            ManualReviewTask.status.in_([
+                ManualReviewStatus.open.value,
+                ManualReviewStatus.in_progress.value,
+            ]),
+        )
+        .order_by(ManualReviewTask.created_at.desc(), ManualReviewTask.id.desc())
+        .first()
+    )
+    if not review:
+        return
+    review.summary = str(
+        matching_item.get("summary")
+        or result.get("error")
+        or "One browser navigation step requires your input."
+    )
+    review.details = {
+        **dict(review.details or {}),
+        "stage": "application_target_resolution",
+        "source_listing_url": result.get("source_listing_url"),
+    }
+
+
 def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
     db = application_tasks.SessionLocal()
     source_url = ""
@@ -54,12 +107,14 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
         source_url = (app.source_listing_url or job.url or "").strip()
         target_url = initialize_application_target(db, app, job)
         if target_url:
+            _restore_retryable_state(db, app)
             db.commit()
             return {"target_url": target_url, "source_url": source_url}
         if not source_url:
             db.commit()
             return {"target_url": None, "source_url": source_url}
 
+        _restore_retryable_state(db, app)
         mark_target_resolving(db, app, source_url=source_url)
         db.commit()
     finally:
@@ -86,14 +141,6 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
                 method=str(result.get("resolution_method") or "browser_navigation"),
                 metadata={"resolver_log_entries": len(result.get("log") or [])},
             )
-            if normalize_state(app.automation_state) == ApplicationAutomationState.failed.value:
-                transition_application_state(
-                    db,
-                    app,
-                    ApplicationAutomationState.ready_to_apply,
-                    "application_target_recovered",
-                    {"application_target_url": target_url},
-                )
             db.commit()
             return {"target_url": target_url, "source_url": source_url}
 
@@ -114,6 +161,8 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
                 "target_resolution",
                 source_url,
             )
+            reason_value = str(getattr(reason_code, "value", reason_code))
+            _apply_target_review_copy(db, app, result, reason_value)
             db.add(Notification(
                 user_id=app.user_id,
                 type=NotificationType.system,
@@ -122,7 +171,7 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
                 data={
                     "job_id": job.id,
                     "application_id": app.id,
-                    "reason": reason_code.value,
+                    "reason": reason_value,
                     "handoff_public_id": result.get("handoff_public_id"),
                     "stage": "application_target_resolution",
                 },
