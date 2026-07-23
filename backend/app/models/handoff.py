@@ -24,6 +24,7 @@ class HandoffChallengeType(str, enum.Enum):
     mfa = "mfa"
     login = "login"
     anti_bot = "anti_bot"
+    navigation = "navigation"
 
 
 class HandoffActorType(str, enum.Enum):
