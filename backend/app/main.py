@@ -27,6 +27,9 @@ from app.api import (
 from app.config import get_settings
 from app.database import Base, engine
 from app.services.application_integrity import install_closed_application_task_gate
+from app.services.application_target_task_integration import (
+    install_application_target_task_integration,
+)
 from app.services.ats_manifest import ats_certification_manifest
 from app.services.control_engine import certification_manifest
 from app.services.handoff_integration import install_handoff_task_integration
@@ -37,6 +40,7 @@ from app.services.supervised_submission_integration import (
 
 settings = get_settings()
 install_handoff_task_integration()
+install_application_target_task_integration()
 install_supervised_submission_task_gate()
 # Keep this outermost so closed applications stop before approval consumption.
 install_closed_application_task_gate()
