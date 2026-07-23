@@ -6,6 +6,9 @@ from typing import Any, Dict
 from app.models.application import ManualReviewReason, ManualReviewStatus, ManualReviewTask
 from app.models.handoff import HandoffChallengeType
 from app.services import handoff_session as handoff_session_service
+from app.services.application_target_handoff import (
+    install_application_target_handoff_support,
+)
 from app.services.handoff_confirmation_target import (
     install_handoff_confirmation_target_support,
 )
@@ -177,9 +180,10 @@ def install_handoff_task_integration() -> None:
     """Install idempotent handoff and confirmation-target extensions."""
     global _INSTALLED, _ORIGINAL
 
-    # This compatibility must be available even when the review wrapper was
-    # installed earlier by another import path.
+    # These compatibility layers must be available even when the review wrapper
+    # was installed earlier by another import path.
     install_handoff_confirmation_target_support()
+    install_application_target_handoff_support()
     if _INSTALLED:
         return
 
