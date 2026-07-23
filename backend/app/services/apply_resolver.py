@@ -2,8 +2,9 @@
 Application method resolver.
 
 The app must not try to type into listing/search pages. This resolver turns a
-Job Bank/listing page into one of three explicit lanes:
+listing page into one of four explicit lanes:
 - external_url: browser form filling may run on the selected ATS/company URL
+- browser listing: the browser may open the listing only to follow its outbound Apply link
 - email: email application can be prepared/sent by the email lane
 - manual: no safe automation target was found
 """
@@ -54,8 +55,13 @@ APPLY_WORDS = (
     "candidature",
 )
 
-UNSUPPORTED_JOB_BOARDS = (
+# These boards are allowed only as browser launchpads. The form runner must
+# follow an outbound employer/ATS Apply link before it scans or fills controls.
+BROWSER_RESOLVABLE_JOB_BOARDS = (
     "linkedin.com",
+)
+
+UNSUPPORTED_JOB_BOARDS = (
     "indeed.com",
     "glassdoor.com",
 )
@@ -100,9 +106,16 @@ def _is_http_url(url: str) -> bool:
         return False
 
 
+def _host_matches(host: str, domains: tuple[str, ...]) -> bool:
+    return any(host == domain or host.endswith("." + domain) for domain in domains)
+
+
+def is_browser_resolvable_job_board_url(url: str) -> bool:
+    return _host_matches(_domain(url), BROWSER_RESOLVABLE_JOB_BOARDS)
+
+
 def is_unsupported_job_board_url(url: str) -> bool:
-    host = _domain(url)
-    return any(host == board or host.endswith("." + board) for board in UNSUPPORTED_JOB_BOARDS)
+    return _host_matches(_domain(url), UNSUPPORTED_JOB_BOARDS)
 
 
 def is_external_candidate(url: str) -> bool:
@@ -196,10 +209,19 @@ async def resolve_application_method(job_url: str, client: Optional[httpx.AsyncC
     if not _is_http_url(job_url):
         return {"application_method": "manual", "reason": "Invalid URL", "jobbank_original_url": job_url}
 
+    if is_browser_resolvable_job_board_url(job_url):
+        return {
+            "application_method": "external_url",
+            "selected_apply_url": job_url,
+            "reason": "LinkedIn listing will be opened only to follow its outbound employer Apply link",
+            "listing_navigation_required": True,
+            "jobbank_original_url": job_url,
+        }
+
     if is_unsupported_job_board_url(job_url):
         return {
             "application_method": "unsupported_job_board",
-            "reason": "LinkedIn/Indeed/Glassdoor listing pages are not safe auto-submit targets",
+            "reason": "Indeed/Glassdoor listing pages are not safe auto-submit targets",
             "jobbank_original_url": job_url,
         }
 
