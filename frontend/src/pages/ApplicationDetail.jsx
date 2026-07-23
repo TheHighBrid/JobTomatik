@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   getApplication, updateApplication, generateCoverLetter,
-  submitApplication, createFollowup
+  submitApplication, createFollowup, getTaskStatus, getApiErrorMessage
 } from '../api/client'
 import ManualHandoffPanel from '../components/ManualHandoffPanel'
 import SupervisedSubmissionPanel from '../components/SupervisedSubmissionPanel'
@@ -17,6 +17,13 @@ import {
 import { format, addDays } from 'date-fns'
 
 const STATUSES = ['pending', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn']
+const TERMINAL_TASK_STATUSES = new Set(['SUCCESS', 'FAILURE', 'REVOKED'])
+const HANDOFF_REVIEW_REASONS = new Set([
+  'captcha_detected',
+  'mfa_required',
+  'login_required',
+  'anti_bot_challenge',
+])
 
 function isGreenhouseUrl(value) {
   try {
@@ -26,9 +33,34 @@ function isGreenhouseUrl(value) {
   }
 }
 
+function isLinkedInUrl(value) {
+  try {
+    return new URL(value || '').hostname.toLowerCase().includes('linkedin.com')
+  } catch {
+    return /linkedin\.com/i.test(String(value || ''))
+  }
+}
+
 function isFinishedApplication(application) {
   return application?.status === 'applied'
     || ['submitted', 'confirmed'].includes(application?.automation_state)
+}
+
+function readStoredTaskId(key) {
+  try {
+    return window.sessionStorage.getItem(key) || ''
+  } catch {
+    return ''
+  }
+}
+
+function writeStoredTaskId(key, value) {
+  try {
+    if (value) window.sessionStorage.setItem(key, value)
+    else window.sessionStorage.removeItem(key)
+  } catch {
+    // Polling still works in memory when sessionStorage is unavailable.
+  }
 }
 
 export default function ApplicationDetail() {
@@ -39,6 +71,8 @@ export default function ApplicationDetail() {
   const [followupEmail, setFollowupEmail] = useState('')
   const [followupDate, setFollowupDate] = useState(format(addDays(new Date(), 7), "yyyy-MM-dd'T'HH:mm"))
   const [submitting, setSubmitting] = useState(false)
+  const submitTaskStorageKey = `jobtomatik_submit_task_${id}`
+  const [submitTaskId, setSubmitTaskId] = useState(() => readStoredTaskId(submitTaskStorageKey))
 
   const { data: app, isLoading } = useQuery({
     queryKey: ['application', id],
@@ -46,12 +80,86 @@ export default function ApplicationDetail() {
     select: (r) => r.data,
   })
 
+  const {
+    data: submitTask,
+    isError: submitTaskQueryFailed,
+    error: submitTaskQueryError,
+  } = useQuery({
+    queryKey: ['application-submit-task', submitTaskId],
+    queryFn: () => getTaskStatus(submitTaskId),
+    select: (response) => response.data,
+    enabled: Boolean(submitTaskId),
+    refetchInterval: (query) => {
+      const value = query.state.data?.data || query.state.data
+      return TERMINAL_TASK_STATUSES.has(value?.status) ? false : 1500
+    },
+    refetchIntervalInBackground: true,
+    retry: 2,
+  })
+
+  useEffect(() => {
+    setSubmitTaskId(readStoredTaskId(submitTaskStorageKey))
+  }, [submitTaskStorageKey])
+
   useEffect(() => {
     if (app) {
       setNotes(app.notes || '')
       setNewStatus(app.status)
     }
   }, [app?.id])
+
+  useEffect(() => {
+    if (!submitTaskId || !submitTask || !TERMINAL_TASK_STATUSES.has(submitTask.status)) return
+
+    writeStoredTaskId(submitTaskStorageKey, '')
+    setSubmitTaskId('')
+    setSubmitting(false)
+
+    qc.invalidateQueries({ queryKey: ['application', id] })
+    qc.invalidateQueries({ queryKey: ['handoffs', Number(id)] })
+    qc.invalidateQueries({ queryKey: ['applications'] })
+
+    const result = submitTask.result || {}
+    const taskError = typeof result === 'string' ? result : result.error
+
+    if (submitTask.status !== 'SUCCESS') {
+      toast.error(taskError || `Application task ended with ${submitTask.status}`)
+      return
+    }
+
+    if (result.requires_manual_review) {
+      toast.error(result.error || 'Manual review is required before continuing.')
+      return
+    }
+
+    if (result.success) {
+      toast.success(
+        result.dry_run
+          ? 'Dry run completed successfully.'
+          : 'Application submission completed.'
+      )
+      return
+    }
+
+    toast.error(result.error || 'The application attempt finished without success.')
+  }, [submitTask, submitTaskId, submitTaskStorageKey, id, qc])
+
+  useEffect(() => {
+    if (!submitTaskId || !submitTaskQueryFailed) return
+
+    writeStoredTaskId(submitTaskStorageKey, '')
+    setSubmitTaskId('')
+    setSubmitting(false)
+    toast.error(getApiErrorMessage(
+      submitTaskQueryError,
+      'The application task status could not be loaded.'
+    ))
+  }, [
+    submitTaskId,
+    submitTaskQueryFailed,
+    submitTaskQueryError,
+    submitTaskStorageKey,
+  ])
 
   const updateMut = useMutation({
     mutationFn: (data) => updateApplication(id, data),
@@ -92,11 +200,31 @@ export default function ApplicationDetail() {
 
     setSubmitting(true)
     try {
-      await submitApplication(id, dry)
-      toast(dry ? 'Dry run started. Check the application for progress.' : 'Application submission started!')
-      setTimeout(() => qc.invalidateQueries(['application', id]), 3000)
-    } catch (e) {
-      toast.error(e.response?.data?.detail || 'Submission failed')
+      const response = await submitApplication(id, dry)
+      const taskId = response.data?.task_id
+
+      if (!taskId) {
+        if (response.data?.status === 'already_submitted') {
+          toast('This application is already recorded as submitted.')
+        } else {
+          toast.error('The backend did not return a submission task ID.')
+        }
+        return
+      }
+
+      writeStoredTaskId(submitTaskStorageKey, taskId)
+      setSubmitTaskId(taskId)
+
+      qc.invalidateQueries({ queryKey: ['application', id] })
+      qc.invalidateQueries({ queryKey: ['handoffs', Number(id)] })
+
+      toast(
+        dry
+          ? 'Dry run started. JobTomatik is checking the application flow.'
+          : 'Application submission started.'
+      )
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Submission failed'))
     } finally {
       setSubmitting(false)
     }
@@ -114,6 +242,18 @@ export default function ApplicationDetail() {
   const job = app.job
   const greenhouseApplication = isGreenhouseUrl(job?.url)
   const applicationFinished = isFinishedApplication(app)
+  const activeManualReview = [...(app.manual_reviews || [])]
+    .filter((review) => ['open', 'in_progress'].includes(review.status))
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+  const linkedInDiscoveryReview = (
+    activeManualReview?.reason_code === 'unsupported_platform'
+    && isLinkedInUrl(job?.url)
+  )
+  const handoffExpected = (
+    !activeManualReview
+    || HANDOFF_REVIEW_REASONS.has(activeManualReview.reason_code)
+  )
+  const submissionBusy = submitting || Boolean(submitTaskId)
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
@@ -144,7 +284,47 @@ export default function ApplicationDetail() {
         </div>
       </div>
 
-      {!applicationFinished && <ManualHandoffPanel applicationId={Number(id)} />}
+      {activeManualReview && (
+        <section className="card overflow-hidden border border-amber-200">
+          <div className="bg-amber-50 px-5 py-4 border-b border-amber-100">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-700 mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <h2 className="font-semibold text-gray-900">Manual review required</h2>
+                <p className="text-sm text-gray-700 mt-1">
+                  {activeManualReview.summary}
+                </p>
+                <p className="text-sm text-gray-600 mt-2">
+                  {linkedInDiscoveryReview
+                    ? 'This is a LinkedIn discovery listing, not a direct employer application form. It cannot produce a retained-browser handoff. Open the listing and use the employer’s direct careers or ATS application URL for a new dry run.'
+                    : 'This attempt reached a step that JobTomatik cannot complete automatically. Review the reason below and open the application page when manual action is required.'}
+                </p>
+                <div className="text-xs text-gray-500 mt-2">
+                  Reason: {activeManualReview.reason_code.replaceAll('_', ' ')}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {activeManualReview.blocking_url && (
+            <div className="px-5 py-4">
+              <a
+                href={activeManualReview.blocking_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-secondary inline-flex items-center gap-2"
+              >
+                Open application page
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </div>
+          )}
+        </section>
+      )}
+
+      {!applicationFinished && handoffExpected && (
+        <ManualHandoffPanel applicationId={Number(id)} />
+      )}
       {!applicationFinished && <SupervisedSubmissionPanel application={app} />}
       <SubmissionEvidenceReviewPanel application={app} />
 
@@ -180,6 +360,16 @@ export default function ApplicationDetail() {
 
         <div className="card p-5 space-y-3">
           <h2 className="font-semibold text-gray-900">Actions</h2>
+
+          {submitTaskId && (
+            <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-800">
+              <Loader2 className="w-4 h-4 animate-spin mt-0.5 flex-shrink-0" />
+              <span>
+                Application automation is running. This page will update automatically when the worker finishes.
+              </span>
+            </div>
+          )}
+
           <button
             onClick={() => genCLMut.mutate()}
             disabled={genCLMut.isPending}
@@ -192,10 +382,12 @@ export default function ApplicationDetail() {
           {!applicationFinished && (
             <button
               onClick={() => handleSubmit(true)}
-              disabled={submitting}
+              disabled={submissionBusy}
               className="btn-secondary w-full flex items-center gap-2 justify-center text-yellow-700 border-yellow-200 hover:bg-yellow-50"
             >
-              <AlertCircle className="w-4 h-4" />
+              {submissionBusy
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <AlertCircle className="w-4 h-4" />}
               Dry Run (Preview)
             </button>
           )}
@@ -213,10 +405,10 @@ export default function ApplicationDetail() {
           {!applicationFinished && !greenhouseApplication && (
             <button
               onClick={() => handleSubmit(false)}
-              disabled={submitting}
+              disabled={submissionBusy}
               className="btn-primary w-full flex items-center gap-2 justify-center"
             >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {submissionBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               Submit Application
             </button>
           )}
