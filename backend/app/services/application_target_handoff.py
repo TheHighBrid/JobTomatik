@@ -18,6 +18,13 @@ _ORIGINAL_VERIFY = None
 _ORIGINAL_RESUME = None
 _ORIGINAL_HANDOFF_TASK_RUN = None
 
+_ATS_REASON_TO_CHALLENGE = {
+    "captcha_detected": HandoffChallengeType.captcha.value,
+    "mfa_required": HandoffChallengeType.mfa.value,
+    "login_required": HandoffChallengeType.login.value,
+    "anti_bot_challenge": HandoffChallengeType.anti_bot.value,
+}
+
 
 def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
     metadata = dict(session.handoff_metadata or {})
@@ -38,6 +45,14 @@ async def _target_page(context: Any, target_url: str, fallback: Any) -> Any:
         if str(getattr(candidate, "url", "") or "") == target_url:
             return candidate
     return fallback
+
+
+def _next_challenge_type(result: Dict[str, Any]) -> str | None:
+    for item in result.get("review_items") or []:
+        challenge = _ATS_REASON_TO_CHALLENGE.get(str(item.get("reason_code") or ""))
+        if challenge:
+            return challenge
+    return None
 
 
 def install_application_target_handoff_support() -> None:
@@ -133,6 +148,7 @@ def install_application_target_handoff_support() -> None:
                 **dict(session.handoff_metadata or {}),
                 "resolved_target_url": target_url,
                 "target_resolution_only": False,
+                "stage": "ats_application",
             }
         finally:
             await browser_handoff._disconnect(playwright)
@@ -144,6 +160,14 @@ def install_application_target_handoff_support() -> None:
             resume_path=resume_path,
             dry_run=dry_run,
         )
+        next_challenge = _next_challenge_type(result)
+        if next_challenge:
+            session.challenge_type = next_challenge
+            session.handoff_metadata = {
+                **dict(session.handoff_metadata or {}),
+                "stage": "ats_application",
+                "target_resolution_only": False,
+            }
         result["source_listing_url"] = source_url
         result["application_target_url"] = target_url
         result["application_target_status"] = "resolved"
