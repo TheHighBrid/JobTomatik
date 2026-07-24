@@ -4,15 +4,27 @@ Export endpoints: download application data as CSV or JSON.
 import csv
 import io
 import json
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
-from app.database import get_db
+
 from app.auth import get_current_user
-from app.models.user import User
+from app.database import get_db
 from app.models.application import Application
+from app.models.user import User
+
 
 router = APIRouter(prefix="/export", tags=["export"])
+
+
+def _csv_safe(value) -> str:
+    """Prevent external text from becoming a spreadsheet formula."""
+    text = "" if value is None else str(value)
+    stripped = text.lstrip()
+    if text.startswith(("\t", "\r")) or stripped.startswith(("=", "+", "-", "@")):
+        return "'" + text
+    return text
 
 
 @router.get("/applications/csv")
@@ -35,22 +47,22 @@ def export_applications_csv(
         "Status", "Salary Min", "Salary Max", "Applied At",
         "Interview At", "Offer At", "Notes", "URL"
     ])
-    for a in apps:
-        j = a.job
+    for application in apps:
+        job = application.job
         writer.writerow([
-            a.id,
-            j.title if j else "",
-            j.company if j else "",
-            j.location if j else "",
-            j.source.value if j and j.source else "",
-            a.status.value,
-            j.salary_min if j else "",
-            j.salary_max if j else "",
-            a.applied_at.isoformat() if a.applied_at else "",
-            a.interview_at.isoformat() if a.interview_at else "",
-            a.offer_received_at.isoformat() if a.offer_received_at else "",
-            a.notes or "",
-            j.url if j else "",
+            application.id,
+            _csv_safe(job.title if job else ""),
+            _csv_safe(job.company if job else ""),
+            _csv_safe(job.location if job else ""),
+            _csv_safe(job.source.value if job and job.source else ""),
+            _csv_safe(application.status.value),
+            job.salary_min if job else "",
+            job.salary_max if job else "",
+            application.applied_at.isoformat() if application.applied_at else "",
+            application.interview_at.isoformat() if application.interview_at else "",
+            application.offer_received_at.isoformat() if application.offer_received_at else "",
+            _csv_safe(application.notes or ""),
+            _csv_safe(job.url if job else ""),
         ])
 
     output.seek(0)
@@ -75,24 +87,24 @@ def export_applications_json(
     )
 
     data = []
-    for a in apps:
-        j = a.job
+    for application in apps:
+        job = application.job
         data.append({
-            "id": a.id,
-            "status": a.status.value,
-            "applied_at": a.applied_at.isoformat() if a.applied_at else None,
-            "interview_at": a.interview_at.isoformat() if a.interview_at else None,
-            "salary_offered": a.salary_offered,
-            "notes": a.notes,
+            "id": application.id,
+            "status": application.status.value,
+            "applied_at": application.applied_at.isoformat() if application.applied_at else None,
+            "interview_at": application.interview_at.isoformat() if application.interview_at else None,
+            "salary_offered": application.salary_offered,
+            "notes": application.notes,
             "job": {
-                "title": j.title if j else None,
-                "company": j.company if j else None,
-                "location": j.location if j else None,
-                "url": j.url if j else None,
-                "salary_min": j.salary_min if j else None,
-                "salary_max": j.salary_max if j else None,
-                "source": j.source.value if j and j.source else None,
-                "skills": j.skills if j else [],
+                "title": job.title if job else None,
+                "company": job.company if job else None,
+                "location": job.location if job else None,
+                "url": job.url if job else None,
+                "salary_min": job.salary_min if job else None,
+                "salary_max": job.salary_max if job else None,
+                "source": job.source.value if job and job.source else None,
+                "skills": job.skills if job else [],
             },
         })
 
