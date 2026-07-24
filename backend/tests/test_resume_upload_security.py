@@ -17,7 +17,7 @@ async def test_resume_upload_streams_a_valid_pdf_to_disk(tmp_path):
     await _store_resume_upload(upload, destination)
 
     assert destination.read_bytes().startswith(b"%PDF-")
-    assert not destination.with_suffix(".upload").exists()
+    assert {path.name for path in tmp_path.iterdir()} == {"resume.pdf"}
 
 
 @pytest.mark.asyncio
@@ -29,8 +29,7 @@ async def test_resume_upload_rejects_a_renamed_non_pdf(tmp_path):
         await _store_resume_upload(upload, destination)
 
     assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
-    assert not destination.exists()
-    assert not destination.with_suffix(".upload").exists()
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.asyncio
@@ -45,8 +44,7 @@ async def test_resume_upload_rejects_files_larger_than_ten_megabytes(tmp_path):
         await _store_resume_upload(upload, destination)
 
     assert exc_info.value.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
-    assert not destination.exists()
-    assert not destination.with_suffix(".upload").exists()
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_resume_storage_is_not_mounted_as_public_static_content():
