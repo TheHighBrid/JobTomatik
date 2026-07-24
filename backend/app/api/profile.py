@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from uuid import uuid4
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -40,7 +41,7 @@ async def update_profile(
 
 async def _store_resume_upload(file: UploadFile, destination: Path) -> None:
     """Store a bounded PDF upload without loading the whole résumé into memory."""
-    temporary = destination.with_suffix(".upload")
+    temporary = destination.with_name(f".{destination.name}.{uuid4().hex}.upload")
     total_bytes = 0
     signature = b""
 
