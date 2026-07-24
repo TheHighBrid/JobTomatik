@@ -57,7 +57,7 @@ async def _store_resume_upload(file: UploadFile, destination: Path) -> None:
                 total_bytes += len(chunk)
                 if total_bytes > MAX_RESUME_BYTES:
                     raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        status_code=413,
                         detail="Resume PDF must be 10 MB or smaller",
                     )
                 await out.write(chunk)
