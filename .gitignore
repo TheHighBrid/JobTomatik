@@ -39,7 +39,12 @@ backend/uploads/
 *.log
 logs/
 
-# Release artifacts and signing keys — never commit these
+# Persistent browser identity and retained handoff evidence
+# These directories can contain cookies, storage state, screenshots, and page HTML.
+browser_profiles/
+handoff_sessions/
+
+# Release artifacts and signing keys, never commit these
 *.apk
 *.aab
 *.jks
@@ -49,7 +54,7 @@ logs/
 keystore.properties
 frontend/android/keystore.properties
 
-# Capacitor Android — machine-specific and generated files
+# Capacitor Android, machine-specific and generated files
 frontend/android/local.properties
 frontend/android/.gradle/
 frontend/android/app/build/
