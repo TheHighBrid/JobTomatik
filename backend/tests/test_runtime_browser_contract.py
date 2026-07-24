@@ -30,6 +30,17 @@ def test_compose_serializes_the_shared_application_browser_profile():
     assert command in compose
 
 
+def test_compose_published_ports_default_to_loopback_only():
+    compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+
+    for port in (5432, 6379, 8000, 3000):
+        assert f'"127.0.0.1:{port}:{port}"' in compose
+        assert f'"{port}:{port}"' not in compose.replace(
+            f'"127.0.0.1:{port}:{port}"',
+            "",
+        )
+
+
 def test_sensitive_browser_runtime_directories_are_gitignored():
     ignored = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
 
