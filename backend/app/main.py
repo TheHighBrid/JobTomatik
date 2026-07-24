@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect, text
 
 from app.api import (
@@ -34,6 +33,7 @@ from app.services.application_target_task_integration import (
     install_application_target_task_integration,
 )
 from app.services.ats_manifest import ats_certification_manifest
+from app.services.autonomy_certification import build_autonomy_certification_manifest
 from app.services.control_engine import certification_manifest
 from app.services.handoff_integration import install_handoff_task_integration
 from app.services.operations_policy import operations_readiness_manifest
@@ -141,7 +141,6 @@ app.add_middleware(
 )
 
 os.makedirs(settings.upload_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
@@ -176,6 +175,11 @@ async def ats_certification():
     return ats_certification_manifest()
 
 
+@app.get("/api/system/autonomy-certification")
+async def autonomy_certification():
+    return build_autonomy_certification_manifest()
+
+
 @app.get("/api/system/operations-readiness")
 async def operations_readiness():
     readiness = operations_readiness_manifest()
@@ -189,4 +193,7 @@ async def operations_readiness():
     readiness["autonomous_adapters"] = list(ats.get("autonomous_adapters", []))
     readiness["autonomous_adapter_count"] = len(readiness["autonomous_adapters"])
     readiness["invariants"]["canonical_adapter_maturity_required"] = True
+    readiness["invariants"]["no_autonomous_adapter_currently_enabled"] = not bool(
+        readiness["autonomous_adapters"]
+    )
     return readiness

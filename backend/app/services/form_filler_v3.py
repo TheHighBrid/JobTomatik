@@ -49,7 +49,7 @@ async def _is_combobox_internal(element: Any) -> bool:
 async def _anonymous_text_context(element: Any) -> Dict[str, Any]:
     try:
         return await element.evaluate(
-            """(el) => {
+            r"""(el) => {
               const root = el.closest(
                 '[data-field],.field-wrapper,.application-field,' +
                 '[class*="field-wrapper"],[class*="application-field"],fieldset'
