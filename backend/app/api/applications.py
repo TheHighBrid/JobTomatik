@@ -242,9 +242,311 @@ async def list_applications(
     )
     if status:
         query = query.filter(Application.status == status)
+    query = query.order_by(Application.created_at.desc())
+    return query.offset((page - 1) * per_page).limit(per_page).all()
+
+
+@router.get("/stats")
+async def get_application_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    apps = db.query(Application).filter(Application.user_id == current_user.id).all()
+    stats = {s.value: 0 for s in ApplicationStatus}
+    automation = {s.value: 0 for s in ApplicationAutomationState}
+    for app in apps:
+        stats[app.status.value] += 1
+        state = app.automation_state or ApplicationAutomationState.preparing.value
+        automation[state] = automation.get(state, 0) + 1
+    stats["total"] = len(apps)
+    stats["automation_states"] = automation
+    stats["open_manual_reviews"] = (
+        db.query(ManualReviewTask.id)
+        .join(Application, ManualReviewTask.application_id == Application.id)
+        .filter(
+            Application.user_id == current_user.id,
+            ManualReviewTask.status.in_([
+                ManualReviewStatus.open.value,
+                ManualReviewStatus.in_progress.value,
+            ]),
+        )
+        .count()
+    )
+    return stats
+
+
+@router.get("/{app_id}", response_model=ApplicationOut)
+async def get_application(
+    app_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = _load_application(db, app_id)
+    if not app or app.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return app
+
+
+@router.patch("/{app_id}", response_model=ApplicationOut)
+async def update_application(
+    app_id: int,
+    data: ApplicationUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    old_status = app.status
+    updates = data.model_dump(exclude_none=True)
+    requested_status = updates.pop("status", None)
+    current_state = app.automation_state or ApplicationAutomationState.preparing.value
+
+    if requested_status in {ApplicationStatus.pending, ApplicationStatus.applying} and submission_is_closed(app):
+        raise HTTPException(
+            status_code=409,
+            detail="A closed application cannot be reopened through the generic status update endpoint.",
+        )
+    if (
+        requested_status is not None
+        and status_closes_submission(requested_status)
+        and current_state == ApplicationAutomationState.applying.value
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the active application attempt to finish before recording a terminal status.",
+        )
+
+    for field, value in updates.items():
+        setattr(app, field, value)
+
+    sessions_to_terminate = []
+    if requested_status is not None:
+        app.status = requested_status
+        sessions_to_terminate = reconcile_user_reported_status(
+            db,
+            app,
+            requested_status,
+            user_id=current_user.id,
+        )
+
+    if requested_status and requested_status != old_status:
+        db.add(Notification(
+            user_id=current_user.id,
+            type=NotificationType.status_change,
+            title=f"Application status updated to {requested_status.value}",
+            message=f"Your application for {app.job.title if app.job else 'a job'} is now {requested_status.value}.",
+            data={
+                "application_id": app_id,
+                "old_status": old_status.value,
+                "new_status": requested_status.value,
+            },
+        ))
+
+    db.commit()
+
+    # The database transition is authoritative. Browser cleanup is best effort so
+    # a stale/missing local process cannot prevent the user from closing a record.
+    for session in sessions_to_terminate:
+        try:
+            terminate_retained_browser(session)
+        except BrowserHandoffUnavailable:
+            pass
+
+    return _load_application(db, app_id)
+
+
+@router.post("/{app_id}/generate-cover-letter")
+async def generate_cover_letter(
+    app_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    task = generate_cover_letter_task.delay(app_id)
+    return {"task_id": task.id, "status": "queued"}
+
+
+@router.post("/{app_id}/submit")
+async def submit_application(
+    app_id: int,
+    dry_run: bool = Query(True),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    state = app.automation_state or ApplicationAutomationState.preparing.value
+    if submission_is_closed(app):
+        return {
+            "status": "already_submitted",
+            "dry_run": dry_run,
+            "application_id": app.id,
+            "application_status": app.status.value,
+            "automation_state": state,
+            "idempotency_key": app.submission_idempotency_key,
+        }
+
+    _require_live_submit_enabled(dry_run)
+    if state == ApplicationAutomationState.applying.value:
+        raise HTTPException(status_code=409, detail="An application attempt is already in progress")
+
+    task = submit_application_task.delay(app_id, dry_run=dry_run)
+    return {
+        "task_id": task.id,
+        "status": "queued",
+        "dry_run": dry_run,
+        "idempotency_key": app.submission_idempotency_key,
+    }
+
+
+@router.get("/{app_id}/manual-reviews", response_model=List[ManualReviewTaskOut])
+async def list_manual_reviews(
+    app_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
     return (
-        query.order_by(Application.created_at.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
+        db.query(ManualReviewTask)
+        .filter(ManualReviewTask.application_id == app_id)
+        .order_by(ManualReviewTask.created_at.desc())
         .all()
+    )
+
+
+@router.post("/{app_id}/manual-reviews/{review_id}/resolve", response_model=ManualReviewTaskOut)
+async def resolve_manual_review(
+    app_id: int,
+    review_id: int,
+    data: ManualReviewResolve,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    review = db.query(ManualReviewTask).filter(
+        ManualReviewTask.id == review_id,
+        ManualReviewTask.application_id == app_id,
+    ).first()
+    if not review:
+        raise HTTPException(status_code=404, detail="Manual review task not found")
+    if review.status == ManualReviewStatus.resolved.value:
+        return review
+
+    resolve_manual_review_task(db, app, review, data.resolution_notes)
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+@router.get("/{app_id}/evidence", response_model=List[SubmissionEvidenceOut])
+async def list_submission_evidence(
+    app_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return (
+        db.query(SubmissionEvidence)
+        .filter(SubmissionEvidence.application_id == app_id)
+        .order_by(SubmissionEvidence.captured_at.desc())
+        .all()
+    )
+
+
+@router.get("/{app_id}/events", response_model=List[ApplicationEventOut])
+async def list_application_events(
+    app_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return (
+        db.query(ApplicationEvent)
+        .filter(ApplicationEvent.application_id == app_id)
+        .order_by(ApplicationEvent.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/{app_id}/followups", response_model=FollowUpOut, status_code=201)
+async def create_followup(
+    app_id: int,
+    data: FollowUpCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    followup = FollowUp(
+        application_id=app_id,
+        scheduled_at=data.scheduled_at,
+        subject=data.subject,
+        message=data.message,
+        recipient_email=data.recipient_email,
+        status="pending",
+    )
+    db.add(followup)
+    db.commit()
+    db.refresh(followup)
+    return followup
+
+
+@router.get("/{app_id}/followups", response_model=List[FollowUpOut])
+async def list_followups(
+    app_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    app = db.query(Application).filter(
+        Application.id == app_id, Application.user_id == current_user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return app.followups
+
+
+def _load_application(db: Session, app_id: int) -> Optional[Application]:
+    return (
+        db.query(Application)
+        .options(
+            joinedload(Application.job),
+            joinedload(Application.followups),
+            joinedload(Application.manual_reviews),
+            joinedload(Application.submission_evidence),
+            joinedload(Application.events),
+        )
+        .filter(Application.id == app_id)
+        .first()
     )
