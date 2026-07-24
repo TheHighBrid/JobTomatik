@@ -94,23 +94,37 @@ class RetainableBrowserRuntime:
                 self.process.kill()
                 self.process.wait(timeout=5)
         if remove_profile:
-            shutil.rmtree(self.session_dir, ignore_errors=True)
+            profile = Path(self.browser_profile_path)
+            try:
+                profile.relative_to(self.session_dir)
+            except ValueError:
+                # Persistent operator profiles must never be deleted by handoff cleanup.
+                pass
+            else:
+                shutil.rmtree(profile, ignore_errors=True)
+        shutil.rmtree(self.session_dir, ignore_errors=True) if remove_profile else None
 
 
-async def launch_retainable_browser(playwright, *, viewport: Optional[Dict[str, int]] = None) -> RetainableBrowserRuntime:
+async def launch_retainable_browser(
+    playwright,
+    *,
+    viewport: Optional[Dict[str, int]] = None,
+    profile_dir: Optional[Path | str] = None,
+    headless: bool = True,
+    executable_path: str = "",
+) -> RetainableBrowserRuntime:
     session_id = str(uuid4())
     session_dir = handoff_storage_root() / session_id
-    profile_dir = session_dir / "profile"
+    resolved_profile_dir = Path(profile_dir) if profile_dir else session_dir / "profile"
     session_dir.mkdir(parents=True, exist_ok=True)
-    profile_dir.mkdir(parents=True, exist_ok=True)
+    resolved_profile_dir.mkdir(parents=True, exist_ok=True)
     port = _reserve_port()
-    executable = playwright.chromium.executable_path
+    executable = executable_path or playwright.chromium.executable_path
     log_path = session_dir / "chromium.log"
     log_handle = log_path.open("ab")
 
     args = [
         executable,
-        "--headless=new",
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
@@ -118,9 +132,12 @@ async def launch_retainable_browser(playwright, *, viewport: Optional[Dict[str, 
         "--no-default-browser-check",
         "--remote-debugging-address=127.0.0.1",
         f"--remote-debugging-port={port}",
-        f"--user-data-dir={profile_dir}",
+        f"--user-data-dir={resolved_profile_dir}",
         "about:blank",
     ]
+    if headless:
+        args.insert(1, "--headless=new")
+
     process = subprocess.Popen(
         args,
         stdout=log_handle,
@@ -135,7 +152,8 @@ async def launch_retainable_browser(playwright, *, viewport: Optional[Dict[str, 
         if process.poll() is not None:
             log_handle.close()
             raise BrowserRuntimeError(
-                f"Chromium exited before CDP became available with code {process.returncode}."
+                "Chromium exited before CDP became available. The dedicated profile may "
+                f"already be open in another browser process (exit code {process.returncode})."
             )
         try:
             response = httpx.get(f"{endpoint}/json/version", timeout=0.5)
@@ -168,10 +186,26 @@ async def launch_retainable_browser(playwright, *, viewport: Optional[Dict[str, 
         process=process,
         cdp_endpoint=endpoint,
         browser_session_id=session_id,
-        browser_profile_path=str(profile_dir),
+        browser_profile_path=str(resolved_profile_dir),
         browser_node_id=current_browser_node_id(),
         browser=browser,
         context=context,
         page=page,
         session_dir=session_dir,
+    )
+
+
+async def launch_application_browser(
+    playwright,
+    *,
+    viewport: Optional[Dict[str, int]] = None,
+) -> RetainableBrowserRuntime:
+    """Launch JobTomatik's dedicated, persistent application-browser identity."""
+    settings = get_settings()
+    return await launch_retainable_browser(
+        playwright,
+        viewport=viewport,
+        profile_dir=Path(settings.application_browser_profile_dir).expanduser(),
+        headless=bool(settings.application_browser_headless),
+        executable_path=(settings.application_browser_executable or "").strip(),
     )

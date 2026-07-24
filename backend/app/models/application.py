@@ -30,6 +30,14 @@ class ApplicationAutomationState(str, enum.Enum):
     withdrawn = "withdrawn"
 
 
+class ApplicationTargetStatus(str, enum.Enum):
+    unresolved = "unresolved"
+    resolving = "resolving"
+    resolved = "resolved"
+    requires_human = "requires_human"
+    failed = "failed"
+
+
 class ManualReviewReason(str, enum.Enum):
     captcha_detected = "captcha_detected"
     anti_bot_challenge = "anti_bot_challenge"
@@ -40,6 +48,7 @@ class ManualReviewReason(str, enum.Enum):
     ambiguous_question = "ambiguous_question"
     unsupported_control = "unsupported_control"
     unsupported_platform = "unsupported_platform"
+    application_target_required = "application_target_required"
     login_required = "login_required"
     employer_contact_missing = "employer_contact_missing"
     validation_error = "validation_error"
@@ -85,6 +94,16 @@ class Application(Base):
         default=ApplicationAutomationState.preparing.value,
         index=True,
     )
+    source_listing_url = Column(String(1000))
+    application_target_url = Column(String(1000))
+    application_target_status = Column(
+        String(50),
+        nullable=False,
+        default=ApplicationTargetStatus.unresolved.value,
+        index=True,
+    )
+    application_target_resolved_at = Column(DateTime(timezone=True))
+    application_target_metadata = Column(JSON, default=dict)
     submission_idempotency_key = Column(
         String(255),
         nullable=True,

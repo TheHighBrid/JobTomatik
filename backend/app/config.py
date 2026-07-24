@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     dev_mock_jobs: bool = False
 
+    # Persistent local browser used to resolve job-board listings and run ATS forms.
+    # The code default remains headless for CI. Local XFCE installs can set
+    # APPLICATION_BROWSER_HEADLESS=false and log in once to the dedicated profile.
+    application_browser_profile_dir: str = "browser_profiles/jobtomatik-operator"
+    application_browser_headless: bool = True
+    application_browser_executable: str = ""
+    application_target_human_wait_seconds: int = 0
+
     # Defense-in-depth gate for any non-dry-run application attempt.
     # Keep disabled until the active adapter has passed supervised certification.
     allow_real_application_submit: bool = False
