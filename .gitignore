@@ -62,3 +62,6 @@ frontend/android/**/*.aab
 .DS_Store
 .vscode/
 .idea/
+
+# Runtime lock files
+backend/evidence/*.lock
