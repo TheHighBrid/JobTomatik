@@ -70,7 +70,7 @@ services:
 
   celery_worker:
     build: ./backend
-    command: celery -A app.celery_app worker --loglevel=info -Q celery,scraping,applications,followup
+    command: celery -A app.celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q celery,scraping,applications,followup
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
