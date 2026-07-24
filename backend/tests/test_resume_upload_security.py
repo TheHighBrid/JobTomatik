@@ -43,7 +43,7 @@ async def test_resume_upload_rejects_files_larger_than_ten_megabytes(tmp_path):
     with pytest.raises(HTTPException) as exc_info:
         await _store_resume_upload(upload, destination)
 
-    assert exc_info.value.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+    assert exc_info.value.status_code == 413
     assert list(tmp_path.iterdir()) == []
 
 
