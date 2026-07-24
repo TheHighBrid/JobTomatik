@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect, text
 
 from app.api import (
@@ -139,7 +138,6 @@ app.add_middleware(
 )
 
 os.makedirs(settings.upload_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
