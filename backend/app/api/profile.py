@@ -51,8 +51,9 @@ async def _store_resume_upload(file: UploadFile, destination: Path) -> None:
                 chunk = await file.read(UPLOAD_CHUNK_BYTES)
                 if not chunk:
                     break
-                if not signature:
-                    signature = chunk[: len(PDF_SIGNATURE)]
+                if len(signature) < len(PDF_SIGNATURE):
+                    needed = len(PDF_SIGNATURE) - len(signature)
+                    signature += chunk[:needed]
                 total_bytes += len(chunk)
                 if total_bytes > MAX_RESUME_BYTES:
                     raise HTTPException(
@@ -82,8 +83,8 @@ async def upload_resume(
 ):
     # Android and iOS MIME types are unreliable, so validate the extension and
     # the file signature instead of trusting Content-Type alone.
-    filename_lower = (file.filename or "").lower()
-    if not filename_lower.endswith(".pdf"):
+    display_filename = os.path.basename((file.filename or "").replace("\\", "/"))[:255]
+    if not display_filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Please upload a PDF file (.pdf extension required)",
@@ -96,7 +97,7 @@ async def upload_resume(
     await _store_resume_upload(file, filepath)
 
     current_user.resume_path = str(filepath)
-    current_user.resume_filename = file.filename
+    current_user.resume_filename = display_filename
     db.commit()
     db.refresh(current_user)
     return current_user
