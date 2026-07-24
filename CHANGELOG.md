@@ -2,6 +2,15 @@
 
 All notable JobTomatik changes are recorded here.
 
+## [Unreleased]
+
+### Product direction
+
+- Declared fully autonomous, evidence-backed real submission as the final JobTomatik operating goal.
+- Clarified that the supervised v1 workflow is a foundation and rollout stage, not the permanent product ceiling.
+- Reframed real-submission, autopilot, and adapter-maturity controls as progressive release gates.
+- Preserved confirmation evidence, duplicate prevention, idempotency, circuit breakers, caps, and kill switches as safeguards for both supervised and autonomous operation.
+
 ## [1.0.0] - 2026-07-21
 
 ### Added
@@ -39,18 +48,18 @@ All notable JobTomatik changes are recorded here.
 - Confirmation pages being incorrectly reported as active human-verification challenges.
 - Local-only Gradle wrapper and keystore paths preventing reproducible Android builds.
 
-### Security
+### Security and operating controls
 
 - Removed committed Android signing passwords and machine-specific keystore paths.
 - Release signing now uses environment variables or private Gradle properties.
 - Expanded ignore rules for APKs, AABs, keystores, certificates, and local signing configuration.
-- Kept real submission, supervised pilots, and unattended automation disabled by default.
-- Preserved fail-closed behavior for unsupported controls, uncertain confirmation, and human-verification boundaries.
+- Established conservative development defaults for real submission, supervised pilots, and unattended automation while certification progresses.
+- Preserved fail-closed behavior for unsupported controls, uncertain confirmation, and explicit human-verification boundaries.
 
-### Known boundaries
+### Current v1 maturity
 
 - The Android APK is a client and requires a running JobTomatik backend, Redis, and Celery worker.
-- Greenhouse, Lever, and Ashby remain at `dry_run` maturity.
-- SmartRecruiters and Workday remain `detect_only`.
-- No adapter is certified for autonomous submission in v1.00.
+- Greenhouse, Lever, and Ashby are currently at `dry_run` maturity.
+- SmartRecruiters and Workday are currently at `detect_only`.
+- Adapter promotion continues through `human_reviewed_submit` toward `certified_autonomous`.
 - A development-signed CI APK may require reinstalling when moving to a permanently signed build.

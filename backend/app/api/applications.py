@@ -48,8 +48,9 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 settings = get_settings()
 
 LIVE_SUBMIT_BLOCKED_DETAIL = (
-    "Real application submission is disabled. Set "
-    "ALLOW_REAL_APPLICATION_SUBMIT=true only after supervised adapter certification."
+    "Real application submission is not enabled in the current release profile. "
+    "Promote ALLOW_REAL_APPLICATION_SUBMIT=true after the selected adapter and "
+    "operating profile meet the repository owner's release criteria."
 )
 
 

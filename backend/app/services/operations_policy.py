@@ -1,4 +1,4 @@
-"""Bounded unattended-operation policies for JobTomatik."""
+"""Operational policies for scheduled and autonomous JobTomatik execution."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def is_quiet_hour(now: datetime, start_hour: int, end_hour: int) -> bool:
 
 
 def _period_counts(db, user_id: int, now: datetime) -> tuple[int, int]:
-    # Caps are rolling safety windows. Calendar-day or calendar-week boundaries
+    # Caps are rolling operating windows. Calendar-day or calendar-week boundaries
     # would allow a burst immediately after midnight or the start of a new week.
     day_start = now - timedelta(days=1)
     week_start = now - timedelta(days=7)
@@ -149,7 +149,7 @@ def evaluate_platform_policy(url: str) -> AutomationDecision:
         return AutomationDecision(
             False,
             "platform_disabled",
-            f"Scheduled automation is disabled for platform: {platform}",
+            f"Scheduled automation is not enabled for platform in the current profile: {platform}",
             {"platform": platform, "disabled_platforms": sorted(disabled)},
         )
     return AutomationDecision(True, "platform_allowed", "Platform is enabled", {"platform": platform})
@@ -164,7 +164,7 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
         return AutomationDecision(
             False,
             "global_autopilot_disabled",
-            "Scheduled unattended automation is disabled globally.",
+            "Autonomous scheduling is not enabled in the current operations profile.",
         )
 
     start_hour = _bounded_hour(
@@ -226,7 +226,7 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
     return AutomationDecision(
         True,
         "autopilot_allowed",
-        "Scheduled automation is within configured safety limits.",
+        "Autonomous scheduling is within the configured operating limits.",
         {
             "daily_count": daily_count,
             "daily_cap": effective_daily,
