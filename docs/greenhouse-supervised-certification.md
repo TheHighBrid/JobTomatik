@@ -1,8 +1,8 @@
 # Greenhouse Supervised Certification Protocol
 
-This protocol governs the promotion of the Greenhouse adapter from `dry_run` to `human_reviewed_submit`.
+This protocol governs the promotion of the Greenhouse adapter from `dry_run` to `human_reviewed_submit` as an intermediate milestone on the path to `certified_autonomous`.
 
-It does not authorize unattended submission. It does not authorize CAPTCHA, anti-bot, MFA, login, assessment, or identity-verification bypass.
+This protocol does not attempt to bypass CAPTCHA, anti-bot, MFA, login, assessment, or identity-verification controls. Autonomous promotion is handled by a later release record after this evidence stage is complete.
 
 Tracking issue: #24
 Roadmap: #13
@@ -11,11 +11,11 @@ Roadmap: #13
 
 The Greenhouse adapter remains `dry_run` until every required gate in this document has passed and an explicit approval reference has been recorded in the canonical adapter manifest.
 
-Promotion under this protocol is limited to:
+Promotion under this protocol is:
 
 `human_reviewed_submit`
 
-Promotion to `certified_autonomous` is outside this protocol.
+The next intended maturity is `certified_autonomous`, governed by the autonomy release gates and a separate explicit approval record.
 
 ## 2. Required evidence set
 
@@ -136,15 +136,15 @@ Greenhouse may be promoted to `human_reviewed_submit` only when all of the follo
 - [ ] Supervised pilot report was retained.
 - [ ] Explicit approval reference was recorded.
 
-## 7. Prohibited actions
+## 7. Protocol rules
 
 - Never use the synthetic certification identity for a real application.
 - Never infer demographic, legal, authorization, sponsorship, consent, or identity answers.
 - Never bypass CAPTCHA, anti-bot, MFA, login, assessment, or identity verification.
-- Never submit without explicit approval.
+- During this supervised evidence protocol, require the exact approval defined above.
 - Never submit twice.
 - Never mark an uncertain outcome successful.
-- Never broaden the release to autonomous submission through this protocol.
+- Record autonomous promotion separately after the autonomy release gates pass.
 
 ## 8. Progress ledger
 
