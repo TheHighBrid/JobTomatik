@@ -64,7 +64,7 @@ function AutoPilotPanel({ readiness, atsManifest, isLoading }) {
       const d = res.data
       setMsgType('success')
       setMsg(
-        `Safe dry run launched: ${d.auto_approved} jobs approved and ` +
+        `Preview run launched: ${d.auto_approved} jobs approved and ` +
         `${d.applications_queued ?? 0} applications queued for preparation.`
       )
       qc.invalidateQueries({ queryKey: ['jobQueue'] })
@@ -82,7 +82,7 @@ function AutoPilotPanel({ readiness, atsManifest, isLoading }) {
     onSuccess: (res) => {
       const d = res.data
       setMsgType('success')
-      setMsg(`Dry-run preparation: ${d.applied} applications queued, ${d.skipped} already existed.`)
+      setMsg(`Preview preparation: ${d.applied} applications queued, ${d.skipped} already existed.`)
       qc.invalidateQueries({ queryKey: ['appStats'] })
       qc.invalidateQueries({ queryKey: ['recentApps'] })
     },
@@ -104,11 +104,11 @@ function AutoPilotPanel({ readiness, atsManifest, isLoading }) {
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="font-bold text-lg">Automation Controller</h2>
             <span className="text-[11px] bg-amber-400/15 text-amber-200 border border-amber-300/20 px-2 py-0.5 rounded-full">
-              Dry-run only
+              Progressive autonomy
             </span>
           </div>
           <p className="text-white/65 text-xs mt-0.5">
-            Search, score, prepare, validate, and hand off safely. Live submission remains backend-gated.
+            Search, score, prepare, validate, and advance application paths according to the active release profile.
           </p>
         </div>
       </div>
@@ -117,32 +117,32 @@ function AutoPilotPanel({ readiness, atsManifest, isLoading }) {
         <ControllerMetric
           icon={readiness?.autopilot_enabled ? ShieldCheck : PauseCircle}
           label="Scheduled autopilot"
-          value={isLoading ? 'Checking…' : readiness?.autopilot_enabled ? 'Enabled' : 'Paused'}
-          detail="Global environment gate"
+          value={isLoading ? 'Checking…' : readiness?.autopilot_enabled ? 'Enabled' : 'Staged'}
+          detail="Current operations profile"
         />
         <ControllerMetric
           icon={readiness?.real_submission_enabled ? ShieldCheck : ShieldOff}
           label="Live submission"
-          value={isLoading ? 'Checking…' : readiness?.real_submission_enabled ? 'Enabled' : 'Blocked'}
-          detail="Controller never changes this gate"
+          value={isLoading ? 'Checking…' : readiness?.real_submission_enabled ? 'Enabled' : 'Staged'}
+          detail="Promoted by release profile"
         />
         <ControllerMetric
           icon={Gauge}
           label="Application caps"
           value={`${dailyCap} daily / ${weeklyCap} weekly`}
-          detail="Global maximums"
+          detail="Configured operating limits"
         />
         <ControllerMetric
           icon={autonomousAdapters.length ? ShieldCheck : AlertTriangle}
           label="Autonomous adapters"
           value={`${autonomousAdapters.length} / ${adapters.length || 5}`}
-          detail="Requires certified_autonomous"
+          detail="Progress toward certified_autonomous"
         />
       </div>
 
       {disabledPlatforms.length > 0 && (
         <div className="mb-4 text-xs px-3 py-2 rounded-lg bg-white/10 border border-white/10">
-          Disabled platforms: <span className="font-semibold">{disabledPlatforms.join(', ')}</span>
+          Platforms excluded by this profile: <span className="font-semibold">{disabledPlatforms.join(', ')}</span>
         </div>
       )}
 
@@ -155,7 +155,7 @@ function AutoPilotPanel({ readiness, atsManifest, isLoading }) {
           {pilotMut.isPending
             ? <Loader2 className="w-4 h-4 animate-spin" />
             : <Play className="w-4 h-4" />}
-          Run Safe Dry Run
+          Run Preview Pipeline
         </button>
         <button
           onClick={() => bulkMut.mutate()}
@@ -170,7 +170,7 @@ function AutoPilotPanel({ readiness, atsManifest, isLoading }) {
       </div>
 
       <p className="mt-3 text-[11px] text-white/55">
-        No action on this panel can enable real submission, bypass a challenge, or promote adapter maturity.
+        This panel reflects the active release profile. Adapter promotion and real submission are governed by backend policy and certification evidence.
       </p>
 
       {msg && (
@@ -243,7 +243,7 @@ export default function Dashboard() {
             {user?.full_name ? `Hey ${user.full_name.split(' ')[0]}!` : 'Dashboard'}
           </h1>
           <p className="text-gray-500 mt-0.5 text-sm">
-            Controller connected in safe preparation mode.
+            Controller connected. JobTomatik is progressing from supervised foundation to autonomous operation.
           </p>
         </div>
         {queueCount > 0 && (
@@ -354,7 +354,7 @@ export default function Dashboard() {
           ) : !queueData?.jobs?.length ? (
             <div className="py-8 text-center text-gray-400 text-sm">
               <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="mb-2">Queue empty. Run a safe dry run or manual search.</p>
+              <p className="mb-2">Queue empty. Run a preview pipeline or manual search.</p>
               <Link to="/search" className="text-tomato-600 hover:underline text-sm">
                 Run a manual search
               </Link>
@@ -408,7 +408,7 @@ export default function Dashboard() {
           </div>
         ) : !recentApps?.length ? (
           <div className="py-6 text-center text-gray-400 text-sm">
-            No applications yet. Run a <span className="text-tomato-600 font-medium">safe dry run</span> above to prepare the pipeline.
+            No applications yet. Run a <span className="text-tomato-600 font-medium">preview pipeline</span> above to prepare the system.
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
