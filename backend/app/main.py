@@ -33,6 +33,7 @@ from app.services.application_target_task_integration import (
     install_application_target_task_integration,
 )
 from app.services.ats_manifest import ats_certification_manifest
+from app.services.autonomy_certification import build_autonomy_certification_manifest
 from app.services.control_engine import certification_manifest
 from app.services.handoff_integration import install_handoff_task_integration
 from app.services.operations_policy import operations_readiness_manifest
@@ -170,6 +171,11 @@ async def control_certification():
 @app.get("/api/system/ats-certification")
 async def ats_certification():
     return ats_certification_manifest()
+
+
+@app.get("/api/system/autonomy-certification")
+async def autonomy_certification():
+    return build_autonomy_certification_manifest()
 
 
 @app.get("/api/system/operations-readiness")
