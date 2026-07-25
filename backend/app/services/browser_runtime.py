@@ -148,7 +148,10 @@ async def launch_retainable_browser(
     endpoint = f"http://127.0.0.1:{port}"
 
     last_error = ""
-    for _ in range(80):
+    # Chromium startup on Android + Ubuntu PRoot can be substantially slower
+    # than desktop Linux, especially under swap pressure. Give the local CDP
+    # endpoint up to 30 seconds to become ready before treating startup as dead.
+    for _ in range(300):
         if process.poll() is not None:
             log_handle.close()
             raise BrowserRuntimeError(
@@ -168,7 +171,11 @@ async def launch_retainable_browser(
         raise BrowserRuntimeError(f"Chromium CDP endpoint did not become ready: {last_error[:200]}")
 
     try:
-        browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
+        # CDP may answer /json/version before the browser websocket is fully
+        # responsive on constrained Android/PRoot devices. Five seconds caused
+        # healthy Chromium processes to be killed during startup, so allow the
+        # attachment phase the same 30-second budget.
+        browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=30_000)
         contexts = list(browser.contexts)
         if not contexts:
             raise BrowserRuntimeError("Retained Chromium exposed no default browser context.")
