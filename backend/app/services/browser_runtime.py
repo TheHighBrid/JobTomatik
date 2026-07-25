@@ -23,6 +23,30 @@ class BrowserRuntimeError(RuntimeError):
     pass
 
 
+def chromium_stability_args() -> list[str]:
+    """Return conservative flags for Chromium in containers and Android/proot.
+
+    ``--disable-gpu`` alone does not prevent Chromium from starting a GPU
+    process.  In particular, WebGL may fall back to Mesa's software renderer
+    and repeatedly abort the GPU process.  Disabling all 3D APIs and the
+    software rasterizer prevents that crash loop; LinkedIn's authentication
+    flow does not require either feature.
+    """
+    return [
+        "--disable-gpu",
+        "--disable-gpu-compositing",
+        "--disable-gpu-rasterization",
+        "--disable-software-rasterizer",
+        "--disable-3d-apis",
+        "--disable-accelerated-2d-canvas",
+        "--disable-accelerated-video-decode",
+        "--disable-accelerated-video-encode",
+        "--disable-webgl",
+        "--disable-webgl2",
+        "--disable-features=Vulkan,UseSkiaRenderer,CanvasOopRasterization,WebGPU",
+    ]
+
+
 def resumable_handoffs_enabled() -> bool:
     # Read through BaseSettings so ENABLE_RESUMABLE_HANDOFFS in backend/.env is
     # honored without requiring the caller to export it into the shell first.
@@ -39,6 +63,15 @@ def _reserve_port() -> int:
     port = int(sock.getsockname()[1])
     sock.close()
     return port
+
+
+def _chromium_environment() -> Dict[str, str]:
+    """Remove malformed desktop-session variables commonly inherited in proot."""
+    environment = os.environ.copy()
+    dbus_address = environment.get("DBUS_SESSION_BUS_ADDRESS", "")
+    if dbus_address and not dbus_address.startswith(("unix:", "tcp:")):
+        environment.pop("DBUS_SESSION_BUS_ADDRESS", None)
+    return environment
 
 
 @dataclass
@@ -133,6 +166,7 @@ async def launch_retainable_browser(
         "--remote-debugging-address=127.0.0.1",
         f"--remote-debugging-port={port}",
         f"--user-data-dir={resolved_profile_dir}",
+        *chromium_stability_args(),
         "about:blank",
     ]
     if headless:
@@ -144,6 +178,7 @@ async def launch_retainable_browser(
         stderr=subprocess.STDOUT,
         start_new_session=True,
         close_fds=True,
+        env=_chromium_environment(),
     )
     endpoint = f"http://127.0.0.1:{port}"
 
