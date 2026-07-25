@@ -42,24 +42,40 @@ def _reserve_port() -> int:
 
 
 def chromium_stability_args() -> list[str]:
-    """Return conservative rendering flags for local retained Chromium sessions.
+    """Disable Chromium rendering paths that repeatedly abort inside Android PRoot.
 
-    Android + Ubuntu PRoot can expose the host Turnip/Mesa GPU stack to Chromium,
-    but that path is not stable enough for a long-lived automation browser. The
-    dedicated application browser does not need WebGL or accelerated compositing,
-    so prefer software rendering rather than allowing repeated GPU-process aborts.
+    ``--disable-gpu`` alone still allows Chromium to start a software GPU process.
+    On this runtime that process has crashed in Mesa/WebGL with exit code 6. Disable
+    both hardware and software 3D paths because LinkedIn authentication and ordinary
+    ATS forms do not require accelerated rendering.
     """
     return [
         "--disable-gpu",
         "--disable-gpu-compositing",
         "--disable-gpu-rasterization",
+        "--disable-software-rasterizer",
+        "--disable-3d-apis",
         "--disable-accelerated-2d-canvas",
         "--disable-accelerated-video-decode",
         "--disable-accelerated-video-encode",
         "--disable-webgl",
         "--disable-webgl2",
-        "--disable-features=Vulkan,UseSkiaRenderer,CanvasOopRasterization",
+        "--disable-features=Vulkan,UseSkiaRenderer,CanvasOopRasterization,WebGPU",
     ]
+
+
+def _chromium_environment() -> Dict[str, str]:
+    """Return a PRoot-safe Chromium environment.
+
+    XFCE/Termux sessions can expose an ``autolaunch:`` D-Bus address that Chromium
+    cannot parse inside Ubuntu PRoot. Remove only malformed values while preserving
+    valid unix or TCP addresses and all other environment variables.
+    """
+    environment = os.environ.copy()
+    dbus_address = environment.get("DBUS_SESSION_BUS_ADDRESS", "")
+    if dbus_address and not dbus_address.startswith(("unix:", "tcp:")):
+        environment.pop("DBUS_SESSION_BUS_ADDRESS", None)
+    return environment
 
 
 @dataclass
@@ -166,6 +182,7 @@ async def launch_retainable_browser(
         stderr=subprocess.STDOUT,
         start_new_session=True,
         close_fds=True,
+        env=_chromium_environment(),
     )
     endpoint = f"http://127.0.0.1:{port}"
 
