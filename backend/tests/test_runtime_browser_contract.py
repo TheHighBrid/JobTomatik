@@ -13,10 +13,11 @@ def _active_env_lines() -> set[str]:
     }
 
 
-def test_target_resolution_handoff_is_nonblocking_by_default():
+def test_target_resolution_allows_a_fifteen_minute_operator_window():
     active_lines = _active_env_lines()
 
-    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=0" in active_lines
+    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=900" in active_lines
+    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=0" not in active_lines
     assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=180" not in active_lines
 
 
