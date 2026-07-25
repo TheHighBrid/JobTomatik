@@ -41,6 +41,27 @@ def _reserve_port() -> int:
     return port
 
 
+def chromium_stability_args() -> list[str]:
+    """Return conservative rendering flags for local retained Chromium sessions.
+
+    Android + Ubuntu PRoot can expose the host Turnip/Mesa GPU stack to Chromium,
+    but that path is not stable enough for a long-lived automation browser. The
+    dedicated application browser does not need WebGL or accelerated compositing,
+    so prefer software rendering rather than allowing repeated GPU-process aborts.
+    """
+    return [
+        "--disable-gpu",
+        "--disable-gpu-compositing",
+        "--disable-gpu-rasterization",
+        "--disable-accelerated-2d-canvas",
+        "--disable-accelerated-video-decode",
+        "--disable-accelerated-video-encode",
+        "--disable-webgl",
+        "--disable-webgl2",
+        "--disable-features=Vulkan,UseSkiaRenderer,CanvasOopRasterization",
+    ]
+
+
 @dataclass
 class RetainableBrowserRuntime:
     process: subprocess.Popen
@@ -128,6 +149,7 @@ async def launch_retainable_browser(
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
+        *chromium_stability_args(),
         "--no-first-run",
         "--no-default-browser-check",
         "--remote-debugging-address=127.0.0.1",
