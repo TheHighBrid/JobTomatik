@@ -15,11 +15,27 @@ def _active_env_lines() -> set[str]:
     }
 
 
-def test_target_resolution_handoff_is_nonblocking_by_default():
+def test_target_resolution_allows_a_fifteen_minute_operator_window():
     active_lines = _active_env_lines()
 
-    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=0" in active_lines
+    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=900" in active_lines
+    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=0" not in active_lines
     assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=180" not in active_lines
+
+
+def test_retained_browser_uses_software_rendering_stability_flags():
+    args = chromium_stability_args()
+
+    assert "--disable-gpu" in args
+    assert "--disable-gpu-compositing" in args
+    assert "--disable-gpu-rasterization" in args
+    assert "--disable-webgl" in args
+    assert any(
+        arg.startswith("--disable-features=")
+        and "Vulkan" in arg
+        and "UseSkiaRenderer" in arg
+        for arg in args
+    )
 
 
 def test_compose_serializes_the_shared_application_browser_profile():

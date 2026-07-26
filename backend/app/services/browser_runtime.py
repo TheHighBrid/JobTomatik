@@ -161,6 +161,7 @@ async def launch_retainable_browser(
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
+        *chromium_stability_args(),
         "--no-first-run",
         "--no-default-browser-check",
         "--remote-debugging-address=127.0.0.1",
@@ -182,28 +183,70 @@ async def launch_retainable_browser(
     )
     endpoint = f"http://127.0.0.1:{port}"
 
+    # Android + Ubuntu PRoot can take substantially longer than desktop Linux
+    # to expose and stabilize the CDP websocket, particularly under swap and
+    # storage pressure. Keep Chromium alive while both stages retry.
+    loop = asyncio.get_running_loop()
+    startup_deadline = loop.time() + 120
     last_error = ""
-    for _ in range(80):
+    websocket_ready = False
+
+    while loop.time() < startup_deadline:
         if process.poll() is not None:
             log_handle.close()
             raise BrowserRuntimeError(
-                "Chromium exited before CDP became available. The dedicated profile may "
-                f"already be open in another browser process (exit code {process.returncode})."
+                "Chromium exited before CDP became available. "
+                f"See {log_path} (exit code {process.returncode})."
             )
         try:
-            response = httpx.get(f"{endpoint}/json/version", timeout=0.5)
-            if response.status_code == 200 and response.json().get("webSocketDebuggerUrl"):
+            response = httpx.get(f"{endpoint}/json/version", timeout=0.75)
+            websocket_ready = bool(
+                response.status_code == 200
+                and response.json().get("webSocketDebuggerUrl")
+            )
+            if websocket_ready:
                 break
         except Exception as exc:
             last_error = str(exc)
-        await asyncio.sleep(0.1)
-    else:
+        await asyncio.sleep(0.25)
+
+    if not websocket_ready:
         process.terminate()
         log_handle.close()
-        raise BrowserRuntimeError(f"Chromium CDP endpoint did not become ready: {last_error[:200]}")
+        raise BrowserRuntimeError(
+            "Chromium CDP endpoint did not become ready within 120 seconds: "
+            f"{last_error[:200]}. See {log_path}."
+        )
+
+    browser = None
+    attach_error = ""
+    while loop.time() < startup_deadline:
+        if process.poll() is not None:
+            log_handle.close()
+            raise BrowserRuntimeError(
+                "Chromium exited while Playwright was attaching over CDP. "
+                f"See {log_path} (exit code {process.returncode})."
+            )
+        try:
+            remaining_ms = max(5_000, int((startup_deadline - loop.time()) * 1000))
+            browser = await playwright.chromium.connect_over_cdp(
+                endpoint,
+                timeout=min(15_000, remaining_ms),
+            )
+            break
+        except Exception as exc:
+            attach_error = str(exc)
+            await asyncio.sleep(1)
+
+    if browser is None:
+        process.terminate()
+        log_handle.close()
+        raise BrowserRuntimeError(
+            "Playwright could not attach to the Chromium CDP websocket within "
+            f"120 seconds: {attach_error[:300]}. See {log_path}."
+        )
 
     try:
-        browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
         contexts = list(browser.contexts)
         if not contexts:
             raise BrowserRuntimeError("Retained Chromium exposed no default browser context.")
