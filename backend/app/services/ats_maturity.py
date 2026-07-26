@@ -1,8 +1,10 @@
 """Canonical ATS maturity model derived from runtime manifest evidence.
 
 The descriptive ``certification_level`` strings used by individual adapters are
-retained for diagnostics, but they never authorize unattended submission. Only
-this roadmap-aligned maturity field is consumed by the unattended policy gate.
+retained for diagnostics. Autonomous execution is promoted through this
+roadmap-aligned maturity field only after the required release evidence exists.
+The model is designed to advance adapters toward autonomous operation rather
+than define supervised operation as the permanent endpoint.
 """
 
 from __future__ import annotations
@@ -131,11 +133,13 @@ def _has_detection_evidence(manifest: Mapping[str, Any]) -> bool:
 
 
 def derive_adapter_maturity(manifest: Mapping[str, Any]) -> AdapterMaturity:
-    """Derive operational maturity without trusting certification prose.
+    """Derive the current operational maturity from reviewable evidence.
 
-    Promotion to a submission-capable maturity requires explicit, reviewable
-    release-gate records. Descriptive labels, green workflows, fixtures, and
-    zero-submit live exercises cannot independently authorize real submission.
+    Submission-capable promotion requires explicit release-gate records.
+    Descriptive labels, green workflows, fixtures, and zero-submit exercises are
+    evidence inputs, but autonomous promotion occurs only when the autonomy
+    release record is complete. This is a progression mechanism toward the
+    project's autonomous operating goal.
     """
 
     name = str(manifest.get("name") or "").strip().lower()
@@ -168,7 +172,7 @@ def derive_adapter_maturity(manifest: Mapping[str, Any]) -> AdapterMaturity:
 
 
 def annotate_adapter_manifest(manifest: Mapping[str, Any]) -> Dict[str, Any]:
-    """Add the canonical maturity and fail-closed release-gate diagnostics."""
+    """Add canonical maturity and release-gate diagnostics."""
 
     value = dict(manifest)
     maturity = derive_adapter_maturity(value)

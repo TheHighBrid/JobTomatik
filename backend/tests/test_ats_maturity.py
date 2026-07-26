@@ -8,7 +8,7 @@ from app.services.ats_maturity import (
 from app.services import unattended_policy
 
 
-def test_current_registry_maturities_are_conservative_and_explicit():
+def test_current_registry_maturity_snapshot_is_explicit():
     manifest = ats_certification_manifest()
     adapters = {item["name"]: item for item in manifest["adapters"]}
 
@@ -85,7 +85,7 @@ def test_autonomous_promotion_requires_approval_and_every_release_gate():
     assert derive_adapter_maturity(manifest) is AdapterMaturity.CERTIFIED_AUTONOMOUS
 
 
-def test_generic_adapter_never_becomes_submission_capable():
+def test_generic_adapter_requires_a_specific_implementation_before_promotion():
     release = {gate: True for gate in AUTONOMY_RELEASE_GATES}
     release.update({"approved": True, "approval_reference": "invalid-generic-release"})
     annotated = annotate_adapter_manifest(
@@ -115,7 +115,6 @@ def test_live_maturity_reader_never_falls_back_to_certification_level(monkeypatc
     )
 
     maturities = unattended_policy.live_platform_maturities()
-
     assert maturities["ashby"] is None
     assert maturities["generic"] is None
 
@@ -130,11 +129,12 @@ def test_ats_certification_endpoint_exposes_canonical_maturity(client):
     assert all("maturity" in item for item in payload["adapters"])
 
 
-def test_operations_readiness_exposes_adapter_maturity(client):
+def test_operations_readiness_exposes_product_goal_and_adapter_maturity(client):
     response = client.get("/api/system/operations-readiness")
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["product_goal"] == "fully_autonomous_evidence_backed_real_submission"
     assert payload["adapter_maturities"] == {
         "greenhouse": AdapterMaturity.DRY_RUN.value,
         "lever": AdapterMaturity.DRY_RUN.value,
@@ -143,5 +143,5 @@ def test_operations_readiness_exposes_adapter_maturity(client):
         "workday": AdapterMaturity.DETECT_ONLY.value,
     }
     assert payload["autonomous_adapters"] == []
+    assert payload["autonomous_adapter_count"] == 0
     assert payload["invariants"]["canonical_adapter_maturity_required"] is True
-    assert payload["invariants"]["no_autonomous_adapter_currently_enabled"] is True

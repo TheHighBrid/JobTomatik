@@ -68,8 +68,7 @@ def _safe_migrate(eng):
 
         try:
             policy_cols = {
-                c["name"]
-                for c in sa_inspect(eng).get_columns("applicant_answer_policies")
+                c["name"] for c in sa_inspect(eng).get_columns("applicant_answer_policies")
             }
             if "encrypted_fallbacks" not in policy_cols:
                 conn.execute(text(
@@ -125,7 +124,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="JobTomatik API",
-    description="Safety-first job search, preparation, and supervised application platform",
+    description=(
+        "AI-powered job-search and application automation platform progressing "
+        "toward evidence-backed autonomous real submission"
+    ),
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -186,8 +188,10 @@ async def operations_readiness():
         item["name"]: item.get("maturity")
         for item in ats.get("adapters", [])
     }
+    readiness["product_goal"] = "fully_autonomous_evidence_backed_real_submission"
     readiness["adapter_maturities"] = maturities
     readiness["autonomous_adapters"] = list(ats.get("autonomous_adapters", []))
+    readiness["autonomous_adapter_count"] = len(readiness["autonomous_adapters"])
     readiness["invariants"]["canonical_adapter_maturity_required"] = True
     readiness["invariants"]["no_autonomous_adapter_currently_enabled"] = not bool(
         readiness["autonomous_adapters"]

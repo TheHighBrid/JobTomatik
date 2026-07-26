@@ -6,7 +6,7 @@ Security fixes are maintained for the latest `1.x` release on `main`.
 
 ## Reporting a vulnerability
 
-Use GitHub’s private vulnerability-reporting or Security Advisory feature for this repository when available. Do not place access tokens, applicant data, résumé contents, signing keys, verification codes, or a working exploit in a public issue.
+Use GitHub's private vulnerability-reporting or Security Advisory feature for this repository when available. Do not place access tokens, applicant data, résumé contents, signing keys, verification codes, or a working exploit in a public issue.
 
 Include:
 
@@ -29,7 +29,7 @@ A JobTomatik installation may store:
 - submission evidence;
 - notification and follow-up history.
 
-Protect the backend database, `uploads/`, `handoff_sessions/`, environment files, backups, and device storage. The Android manifest disables application backup, but backend files remain the operator’s responsibility.
+Protect the backend database, `uploads/`, `handoff_sessions/`, browser profile directories, environment files, backups, and device storage. The Android manifest disables application backup, but backend files remain the operator's responsibility.
 
 ## Required secret practices
 
@@ -38,7 +38,7 @@ Protect the backend database, `uploads/`, `handoff_sessions/`, environment files
 - Set and preserve `ANSWER_VAULT_KEY` when separating answer-policy encryption from the JWT secret.
 - Never commit `.env`, API keys, résumé files, databases, browser profiles, or handoff screenshots.
 - Never type verification codes into logs or issue comments.
-- Keep real submission and unattended automation disabled unless a reviewed release gate explicitly requires them.
+- Treat real-submission and autonomous-operation flags as controlled release gates. Promote them only in builds whose adapters, evidence, duplicate protection, recovery behavior, and operational limits meet the operator's readiness criteria.
 
 ## Android signing
 
@@ -63,11 +63,13 @@ The Android client permits cleartext traffic because the reference installation 
 
 ## Human-verification boundary
 
-JobTomatik does not bypass CAPTCHA, anti-bot, MFA, login, assessment, or identity-verification controls. It pauses and gives the authenticated user limited control of the retained browser. Any change that silently solves, evades, or suppresses these controls is outside the v1 security model.
+JobTomatik does not attempt to evade CAPTCHA, anti-bot, MFA, login, assessment, or identity-verification controls. When a third-party service explicitly requires a human action, the system pauses, preserves state, requests the action, and resumes afterward when possible.
 
-## Submission safety boundary
+This boundary does not redefine JobTomatik as permanently supervised. The product direction remains fully autonomous operation for the portions of the job-application workflow that can be completed legitimately and reliably without a required human verification step.
 
-The defaults must remain:
+## Submission integrity
+
+Development builds currently ship with conservative release-gate values:
 
 ```env
 ALLOW_REAL_APPLICATION_SUBMIT=false
@@ -75,4 +77,6 @@ GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
 AUTOPILOT_ENABLED=false
 ```
 
-Confirmation evidence is required before JobTomatik marks an application submitted or confirmed. A missing or ambiguous confirmation must fail closed and require review.
+These values are staging defaults, not a permanent product restriction. A promoted autonomous release may enable the relevant controls after the operator accepts its certification evidence and operating profile.
+
+Confirmation evidence is required before JobTomatik marks an application submitted or confirmed. A missing or ambiguous confirmation must not be recorded as success. Duplicate prevention, idempotency, caps, circuit breakers, and operator kill switches remain valid safeguards in both supervised and autonomous modes.

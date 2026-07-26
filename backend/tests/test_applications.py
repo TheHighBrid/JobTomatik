@@ -99,7 +99,9 @@ def test_live_submit_is_blocked_when_gate_is_disabled(auth_client, monkeypatch):
     resp = auth_client.post(f"/api/applications/{app_id}/submit?dry_run=false")
 
     assert resp.status_code == 409
-    assert "Real application submission is disabled" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "not enabled in the current release profile" in detail
+    assert "repository owner's release criteria" in detail
 
 
 def test_create_followup(auth_client):

@@ -4,7 +4,9 @@ Date: 2026-07-21
 
 ## Release decision
 
-JobTomatik v1.00 is approved for **supervised local use** after all required CI gates pass. It is not approved for autonomous real submission.
+JobTomatik v1.00 is approved as the **supervised foundation release** after all required CI gates pass. This audit covers the current rollout stage and does not redefine the product's final operating model.
+
+The final JobTomatik goal remains fully autonomous, evidence-backed real submission for certified application paths. Promotion beyond the v1 operating boundary is handled through adapter maturity, release evidence, and operator-approved configuration.
 
 ## Audit scope
 
@@ -33,15 +35,17 @@ JobTomatik v1.00 is approved for **supervised local use** after all required CI 
 | Repository lacked a complete installation and recovery guide | High | Added `docs/SETUP_TUTORIAL.md` |
 | Repository lacked Android build and release automation | High | Added APK CI plus the v1 release workflow |
 
-## Safety invariants retained
+## Development release-gate state
 
-- `ALLOW_REAL_APPLICATION_SUBMIT=false` by default.
-- `GREENHOUSE_SUPERVISED_PILOT_ENABLED=false` by default.
-- `AUTOPILOT_ENABLED=false` by default.
-- No ATS adapter is `certified_autonomous`.
-- CAPTCHA, anti-bot, login, MFA, assessment, identity, legal ambiguity, and unsupported controls remain human-review boundaries.
+- `ALLOW_REAL_APPLICATION_SUBMIT=false` is the v1 development default.
+- `GREENHOUSE_SUPERVISED_PILOT_ENABLED=false` is the v1 development default.
+- `AUTOPILOT_ENABLED=false` is the v1 development default.
+- ATS adapters are promoted progressively through the canonical maturity model toward `certified_autonomous`.
+- CAPTCHA, anti-bot, login, MFA, assessment, identity, legal ambiguity, and unsupported controls remain explicit third-party or policy boundaries.
 - Employer confirmation evidence is required before automatic submitted/confirmed reconciliation.
 - Android signing keys and passwords are excluded from source control.
+
+These controls describe the audited v1 release profile. They are not a permanent prohibition on autonomous operation.
 
 ## Required release gates
 
@@ -52,7 +56,7 @@ The release branch must pass:
 3. Alembic migration smoke test;
 4. retained-browser certification;
 5. frontend production build;
-6. Docker Compose validation and fail-safe flag checks;
+6. Docker Compose validation and release-profile flag checks;
 7. Android Gradle wrapper validation;
 8. Android `lintDebug`;
 9. Android APK assembly;
@@ -67,12 +71,26 @@ The release branch must pass:
 - Docker is suitable for core services, but local-CDP handoff affinity is best supported by the single-node Android/Ubuntu reference setup.
 - Public job-source scraping remains best effort and every posting must be verified at its original source.
 
+## Autonomy roadmap interpretation
+
+The audited maturity progression is:
+
+```text
+unsupported
+→ detect_only
+→ dry_run
+→ human_reviewed_submit
+→ certified_autonomous
+```
+
+A later release may promote autonomous operation when its evidence shows correct target resolution, truthful policy execution, reliable confirmation, duplicate protection, recovery, caps, circuit breakers, exclusions, and kill switches.
+
 ## Operator checklist
 
-- Preserve `.env`, database, uploads, and signing-key backups.
+- Preserve `.env`, database, uploads, browser profiles, and signing-key backups.
 - Run Celery with `--pool=solo` on Android/PRoot.
 - Keep Redis running before starting Celery.
 - Use the exact API base URL without `/api`.
-- Review Answer Policy Vault entries for truthfulness before every new employer workflow.
+- Keep Answer Policy Vault entries truthful and current.
 - Do not repeat a confirmed application.
 - Read release `BUILD-INFO.txt` before installing an APK update.

@@ -1,6 +1,6 @@
 # JobTomatik v1.00
 
-JobTomatik v1.00 is the first complete supervised release of the project.
+JobTomatik v1.00 is the first complete supervised foundation release on the roadmap to fully autonomous job discovery, preparation, application, and evidence-backed real submission.
 
 ## Highlights
 
@@ -12,10 +12,15 @@ JobTomatik v1.00 is the first complete supervised release of the project.
 - Automatic closure of successful handoffs and confirmed application state.
 - Android Capacitor client with reproducible Gradle and GitHub Actions builds.
 - Full Android/Termux/Ubuntu installation and recovery tutorial.
+- Adapter maturity and release-gate infrastructure for progressive promotion toward autonomous execution.
 
-## Important boundary
+## Product direction
 
-Real and unattended application submission remain disabled by default. JobTomatik v1.00 is designed for human-supervised use and does not bypass CAPTCHA, anti-bot, login, MFA, assessment, or identity-verification controls.
+The final JobTomatik operating goal is fully autonomous real submission for certified application paths. Version 1.00 establishes the supervised and evidence-producing foundation needed to develop, test, and promote that capability safely adapter by adapter.
+
+Development builds begin with conservative release-gate values. Those defaults describe the current rollout stage, not a permanent supervised-only product definition.
+
+JobTomatik does not attempt to evade CAPTCHA, anti-bot, login, MFA, assessment, or identity-verification controls. When a third-party service explicitly requires a human action, the retained-browser system can pause, request the action, and resume afterward.
 
 ## Android
 

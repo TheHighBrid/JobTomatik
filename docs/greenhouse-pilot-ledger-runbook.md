@@ -2,7 +2,7 @@
 
 This runbook explains how to retain and aggregate evidence for issue #24.
 
-It does not authorize live submission, change adapter maturity, or replace the approval requirements in `greenhouse-supervised-certification.md`.
+It does not itself execute live submission, change adapter maturity, or replace the approval requirements in `greenhouse-supervised-certification.md`. Its output supplies evidence for the next maturity stage.
 
 ## Workflow output
 
@@ -22,9 +22,9 @@ The artifact contains:
 
 Only successful `exercise` entries with `final_submit_clicked=false` may count toward the 30-run matrix. Inspection-only entries do not count.
 
-## Safety behavior
+## Evidence-integrity behavior
 
-The ledger builder fails closed when:
+The ledger builder rejects evidence when:
 
 - the summary does not explicitly state `final_submit_clicked=false`
 - any exercise record does not explicitly state `final_submit_clicked=false`
@@ -32,7 +32,7 @@ The ledger builder fails closed when:
 - a supervised final-submit record lacks an approval reference
 - the same `run_id` is encountered with conflicting evidence
 
-The builder cannot enable `ALLOW_REAL_APPLICATION_SUBMIT`, scheduled autopilot, or adapter maturity.
+The builder reports readiness evidence. Release controls such as `ALLOW_REAL_APPLICATION_SUBMIT`, scheduled autopilot, and adapter maturity are promoted separately through the owner's release decision.
 
 ## Aggregate retained reports
 
@@ -92,6 +92,6 @@ python scripts/update_greenhouse_pilot_ledger.py \
   --release-approval-reference "issue-24-approval-comment-or-review-reference"
 ```
 
-The approval reference does not bypass missing evidence. It is only one of the required gates.
+The approval reference does not replace missing evidence. It is one of the required promotion inputs.
 
-Promotion to `certified_autonomous` remains outside issue #24 and outside this runbook.
+After `human_reviewed_submit`, the intended next stage is `certified_autonomous`, using the separate autonomy release gates and an explicit owner-approved release record.

@@ -1,22 +1,24 @@
 # Greenhouse supervised submission approval runbook
 
-This runbook defines the only supported path for a Greenhouse real-submission pilot. It does not authorize unattended or autonomous submission.
+This runbook defines the supported path for the Greenhouse reviewed real-submission pilot. It is an evidence-collection stage on the path from `dry_run` to `human_reviewed_submit` and ultimately `certified_autonomous`.
 
-## Safety boundary
+The reviewed pilot uses an exact one-time approval. A later autonomous release uses its own explicit adapter promotion and operating-profile controls rather than silently inheriting this pilot approval mechanism.
 
-A Greenhouse live worker run requires all three gates:
+## Pilot boundary
+
+A Greenhouse live worker run under this reviewed pilot requires all three gates:
 
 1. `ALLOW_REAL_APPLICATION_SUBMIT=true`
 2. `GREENHOUSE_SUPERVISED_PILOT_ENABLED=true`
 3. One active, short-lived approval bound to the exact application payload
 
-The approval is one-time. It is consumed before the worker starts. A crash, timeout, or retry therefore requires a fresh user approval.
+The approval is one-time. It is consumed before the worker starts. A crash, timeout, or retry therefore requires a fresh user approval during this pilot stage.
 
-All flags remain `false` outside a tightly supervised execution window.
+The pilot flags remain `false` outside a reviewed evidence-collection window. This does not prohibit a separately promoted autonomous release profile.
 
 ## Approval scope
 
-Each approval is bound to:
+Each pilot approval is bound to:
 
 - authenticated user and application
 - exact employer and role
@@ -31,11 +33,11 @@ Each approval is bound to:
 
 Applicant answers, browser credentials, MFA codes, CAPTCHA responses, browser endpoints, and resume tokens are never stored in the approval record.
 
-Any change to the target, résumé, cover letter, profile, or approved policies invalidates the approval.
+Any change to the target, résumé, cover letter, profile, or approved policies invalidates the pilot approval.
 
 ## Preconditions
 
-Before enabling the two runtime flags:
+Before enabling the two pilot flags:
 
 - confirm the application is in `ready_to_apply`
 - resolve every open manual-review task
@@ -80,13 +82,13 @@ The response returns an approval reference and hashes only. Treat the reference 
 POST /api/supervised-submissions/applications/{application_id}/approvals/{approval_reference}/submit
 ```
 
-The worker revalidates every gate and hash, then consumes the approval before opening the live attempt.
+The worker revalidates every pilot gate and hash, then consumes the approval before opening the live attempt.
 
 ### 4. Verify evidence
 
 A successful result must have concrete confirmation evidence. A click without sufficient evidence must remain `submission_uncertain` and require review.
 
-### 5. Close the execution window
+### 5. Close the pilot execution window
 
 Immediately restore:
 
@@ -96,6 +98,8 @@ GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
 ```
 
 Restart the API and workers so cached settings are replaced.
+
+This closes the reviewed pilot profile only. It does not prevent a later `certified_autonomous` profile from enabling the global real-submission and autopilot controls under its own release record.
 
 ## Revocation
 
@@ -112,13 +116,15 @@ Revocation is idempotent for an already terminal approval. A consumed approval c
 
 ## Failure handling
 
-- Missing approval: worker stops before changing the application state.
-- Expired approval: worker stops and records the blocked attempt.
+- Missing pilot approval: worker stops before changing the application state.
+- Expired pilot approval: worker stops and records the blocked attempt.
 - Payload mismatch: approval is revoked and the mismatched hash fields are logged.
-- Open manual review: approval and submission are blocked.
-- Worker crash after consumption: do not retry automatically. Run recovery, inspect the application state and evidence, then issue a fresh approval only when safe.
-- Uncertain confirmation: keep `submission_uncertain`; never mark submitted manually without evidence.
+- Open manual review: pilot approval and submission are blocked.
+- Worker crash after consumption: do not replay the reviewed pilot automatically. Run recovery, inspect state and evidence, then issue a fresh pilot approval only when appropriate.
+- Uncertain confirmation: keep `submission_uncertain`; never record success without evidence.
 
-## Promotion boundary
+## Promotion path
 
-This gate enables supervised evidence collection only. It does not promote Greenhouse to `human_reviewed_submit`, and it never authorizes `certified_autonomous`. Promotion still requires the complete 30 dry-run matrix, 10 independently reviewed supervised submissions, zero duplicates, zero false submitted records, and an explicit release approval reference.
+This runbook collects the reviewed real-submission evidence required for `human_reviewed_submit`. Promotion still requires the complete 30 dry-run matrix, 10 independently reviewed submissions, zero duplicates, zero false submitted records, and an explicit release approval reference.
+
+After that stage, Greenhouse is intended to progress toward `certified_autonomous` through the autonomy release gates, including replay recovery, handoff notifications, configured limits and kill switches, and incident-response validation.

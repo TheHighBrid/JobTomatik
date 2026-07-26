@@ -1,6 +1,6 @@
 # JobTomatik v1.00: Complete Setup and Operating Tutorial
 
-This guide starts from a clean Android device and ends with a working JobTomatik installation capable of searching jobs, preparing applications, running safe previews, opening retained-browser handoffs, and recording employer confirmation evidence.
+This guide starts from a clean Android device and ends with a working JobTomatik installation capable of searching jobs, preparing applications, running previews, opening retained-browser handoffs, and recording employer confirmation evidence.
 
 The reference v1 setup uses:
 
@@ -13,11 +13,13 @@ The APK is not a standalone server. Redis, FastAPI, Celery, and Playwright must 
 
 ---
 
-## 1. Safety boundary before installation
+## 1. Product direction and current release stage
 
-JobTomatik v1 is a supervised assistant, not a blind auto-apply bot.
+JobTomatik's final product goal is fully autonomous job discovery, preparation, application, real submission, confirmation, tracking, and follow-up for certified application paths.
 
-Keep these values disabled:
+Version 1.00 is the supervised foundation of that system, not the permanent ceiling. Its conservative development defaults are release controls used while adapters, evidence, duplicate prevention, recovery, and operating policies are being promoted toward autonomous maturity.
+
+The v1 development profile starts with:
 
 ```env
 ALLOW_REAL_APPLICATION_SUBMIT=false
@@ -26,12 +28,24 @@ AUTOPILOT_ENABLED=false
 DEV_MOCK_JOBS=false
 ```
 
-Normal v1 operation is:
+These settings describe the current rollout profile. They do not redefine JobTomatik as a supervised-only product.
+
+Current v1 operation is:
 
 ```text
 search → approve job → create application → review materials → Dry Run
 → manual handoff when required → explicit employer confirmation → evidence
 ```
+
+The intended mature operation is:
+
+```text
+continuous search → autonomous ranking and preparation
+→ target resolution → certified ATS execution → real submission
+→ employer confirmation evidence → tracking and follow-up
+```
+
+JobTomatik does not attempt to evade CAPTCHA, MFA, identity verification, or other third-party security controls. When a site explicitly requires a human action, it may preserve state, request the smallest necessary intervention, and resume afterward.
 
 Never run the same application again after an employer has displayed a clear “application received” or “thank you for applying” page.
 
@@ -122,7 +136,7 @@ Paths are different:
 | Termux host | `/data/data/com.termux/files/home/JobTomatik` or `~/JobTomatik` | React/Vite client |
 | Ubuntu PRoot | `/root/JobTomatik` | FastAPI, Redis, Celery, Playwright |
 
-A Python virtual environment created in Ubuntu does not work in regular Termux. A Termux Node installation should not be treated as an Ubuntu package.
+A Python virtual environment created in Ubuntu does not work in regular Termux. A Termux Node installation should not be treated as an Ubuntu package. Run native Node modules from the normal Termux repository, not `/root/JobTomatik`, because Android's linker may reject native modules loaded from the PRoot filesystem.
 
 ---
 
@@ -272,6 +286,8 @@ HANDOFF_STORAGE_DIR=handoff_sessions
 ```
 
 Save in nano with `Ctrl+O`, Enter, then leave with `Ctrl+X`.
+
+The submission and autopilot values above are development release gates. Promote them only in a release profile whose selected adapters and operating controls meet the repository owner's readiness criteria.
 
 ### Important encryption note
 
@@ -641,7 +657,9 @@ cd android
 ./gradlew --no-daemon lintDebug assembleDebug
 ```
 
-The Gradle wrapper downloads Gradle 8.11.1 from the official Gradle distribution service.
+The Android CI toolchain uses Node.js 20, Temurin Java 21, Gradle 8.11.1, Android Gradle Plugin 8.7.2, Android API 35, and Build Tools 35.0.0.
+
+If Gradle reports `Unsupported class file major version 69`, the environment is using Java 25. Point `JAVA_HOME` and `PATH` to JDK 21 before running the wrapper.
 
 ### Release signing
 
@@ -843,9 +861,9 @@ Request a new code, focus the field, paste only the newest code, and use **Repla
 
 Update to v1.00 or newer. The confirmation detector must see explicit employer success text and/or the confirmation URL. Refresh the browser image and press **I completed the challenge** once.
 
-### `Real application submission is disabled`
+### `Real application submission is not enabled in the current release profile`
 
-This is the expected safety gate when the red direct-submit action is used while `ALLOW_REAL_APPLICATION_SUBMIT=false`. Use Dry Run and the documented supervised flow. Do not enable the flag merely to remove the message.
+This message means the active backend profile has not promoted real submission yet. Continue with the current preview or supervised workflow, or promote the release gate only after the selected adapter and operating controls meet the repository owner's readiness criteria.
 
 ### APK cannot reach the backend
 
@@ -897,9 +915,8 @@ Before calling the installation ready:
 [ ] Handoff opens and refreshes its browser image
 [ ] Confirmation evidence closes the handoff
 [ ] Confirmed applications hide new submission controls
-[ ] ALLOW_REAL_APPLICATION_SUBMIT remains false
-[ ] AUTOPILOT_ENABLED remains false
+[ ] Active release profile and adapter maturity are reviewed
 [ ] Database and signing key backups exist
 ```
 
-Once every item is checked, JobTomatik v1.00 is ready for normal supervised use.
+Once every item is checked, JobTomatik v1.00 is ready for its current supervised foundation workflow and continued promotion toward autonomous operation.

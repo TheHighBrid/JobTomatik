@@ -1,14 +1,29 @@
 # JobTomatik v1.00
 
-**A safety-first job-search, application-preparation, and supervised browser assistant.**
+**An AI-powered job-search and application system built toward fully autonomous, evidence-backed real submission.**
 
-JobTomatik searches and scores roles, organizes a review queue, generates cover letters, attaches a résumé, fills supported application forms, pauses at human-verification boundaries, records submission evidence, and tracks follow-ups.
+JobTomatik searches and scores roles, organizes an application queue, prepares tailored materials, fills supported application forms, handles retained-browser sessions, records submission evidence, and tracks follow-ups.
 
-The v1 milestone includes the first end-to-end confirmed application through a retained Greenhouse handoff. JobTomatik remains deliberately conservative: real and unattended submission are disabled by default, and unsupported or ambiguous steps stop for human review.
+## Product direction
+
+The final product goal is a fully autonomous job-hunt agent that can:
+
+- discover and rank suitable roles;
+- prepare truthful, tailored application materials;
+- resolve job-board listings into employer or ATS application targets;
+- complete supported forms and upload the correct documents;
+- make policy-bounded decisions using the applicant's approved profile and answer rules;
+- submit real applications without routine human operation;
+- verify employer confirmation before recording an application as submitted;
+- recover from failures, prevent duplicates, and continue operating within configured limits.
+
+JobTomatik v1 is the supervised foundation of that system, not its permanent ceiling. Current release controls let each adapter progress through detection, dry-run, reviewed submission, and autonomous certification as implementation evidence matures.
+
+JobTomatik does not attempt to evade CAPTCHA, MFA, identity verification, or other third-party security controls. When a site explicitly requires a human action, the system may pause, request that action, and resume afterward.
 
 ## Download
 
-The Android client is published on the repository’s **Releases** page:
+The Android client is published on the repository's **Releases** page:
 
 - [Download the latest JobTomatik APK](https://github.com/TheHighBrid/JobTomatik/releases/latest)
 - Technical version: `1.0.0`
@@ -17,42 +32,53 @@ The Android client is published on the repository’s **Releases** page:
 - Minimum Android SDK: 23
 - Target Android SDK: 35
 
-The APK is the user interface. The FastAPI backend, Redis, Celery worker, database, and Playwright browser runtime still run locally or on a trusted server.
+The APK is the user interface. The FastAPI backend, Redis, Celery worker, database, and Playwright browser runtime run locally or on a trusted server.
 
-> Check `BUILD-INFO.txt` in the release before upgrading. When permanent Android signing secrets are not configured, CI publishes a development-signed APK intended for personal/local installation. A differently signed future APK may require uninstalling the previous build first.
+> Check `BUILD-INFO.txt` in the release before upgrading. When permanent Android signing secrets are not configured, CI publishes a development-signed APK intended for personal or local installation. A differently signed future APK may require uninstalling the previous build first.
 
-## What v1 includes
+## Current v1 capabilities
 
-| Area | v1 state |
+| Area | Current state |
 |---|---|
 | Authentication, profile, résumé | Working |
 | Job search and scoring | Working with best-effort public sources |
-| Review queue | Working |
+| Review and application queue | Working |
 | Cover-letter generation | Local template by default; optional Anthropic provider |
 | Answer Policy Vault | Working, encrypted at rest |
-| Greenhouse form filling | Dry-run and supervised handoff verified |
-| Retained browser handoff | CAPTCHA, anti-bot, login, and MFA interaction supported |
+| Listing-to-employer target resolution | In active development |
+| Greenhouse form filling | Dry-run and retained-handoff verified |
+| Retained browser handoff | CAPTCHA, anti-bot, login, MFA, and navigation interaction supported |
 | Expired-code recovery | Replace-and-submit, request new code, back, reload, and restart controls |
-| Submission confirmation | Explicit confirmation pages create evidence and close the handoff |
+| Submission confirmation | Explicit confirmation evidence closes successful applications |
 | Duplicate protection | Confirmed records hide further submission controls |
 | Adapter health and notifications | Working |
 | Follow-up scheduling | Working; SendGrid optional |
-| Autonomous real submission | Disabled |
+| Fully autonomous real submission | Product target, promoted adapter by adapter through release evidence |
 
-## Canonical ATS boundaries
+## Adapter maturity and autonomy roadmap
 
-Green tests do not authorize automatic submission. Runtime maturity controls the boundary.
+Adapter maturity is an operational progression, not a permanent restriction:
 
-| Adapter | Maturity | Safe v1 boundary |
+```text
+unsupported
+→ detect_only
+→ dry_run
+→ human_reviewed_submit
+→ certified_autonomous
+```
+
+The current v1 evidence boundary is:
+
+| Adapter | Current maturity | Current operating boundary |
 |---|---|---|
 | Greenhouse | `dry_run` | Form preparation, retained handoff, and confirmation evidence |
 | Lever | `dry_run` | Form preparation through pre-submit or manual challenge |
 | Ashby | `dry_run` | Form preparation through pre-submit or manual challenge |
-| SmartRecruiters | `detect_only` | Metadata and manual handoff |
-| Workday | `detect_only` | Account/login handoff |
-| Generic sites | `unsupported` | Manual review |
+| SmartRecruiters | `detect_only` | Metadata detection and handoff |
+| Workday | `detect_only` | Account and login handoff |
+| Generic sites | `unsupported` | Target resolution or manual review |
 
-No adapter is marked `certified_autonomous` in v1.
+Each adapter is intended to advance toward `certified_autonomous` after its real-world reliability, duplicate prevention, confirmation evidence, recovery behavior, and incident controls meet the repository's release criteria.
 
 ## Architecture
 
@@ -70,9 +96,19 @@ FastAPI backend ─── SQLite/PostgreSQL
         └── Playwright Chromium retained-browser sessions
 ```
 
+The application-target architecture keeps the original discovery listing separate from the real employer or ATS form:
+
+```text
+source listing
+→ target resolution
+→ employer application target
+→ ATS adapter or bounded browser agent
+→ confirmation evidence
+```
+
 ## Fast Android / Termux start
 
-The complete guide is in **[docs/SETUP_TUTORIAL.md](docs/SETUP_TUTORIAL.md)**. The essential layout is:
+The complete guide is in **[docs/SETUP_TUTORIAL.md](docs/SETUP_TUTORIAL.md)**.
 
 - Regular Termux runs the React development client when needed.
 - Ubuntu PRoot runs Python, Redis, FastAPI, Celery, and Playwright.
@@ -102,7 +138,7 @@ celery -A app.celery_app worker \
   -Q applications,celery,scraping,followup
 ```
 
-`--pool=solo` is recommended on Android/PRoot because a single retained Chromium controller is more reliable than multiple forked workers.
+`--pool=solo` is recommended on Android/PRoot because one retained Chromium controller is more reliable than multiple forked workers.
 
 ### Optional browser frontend
 
@@ -116,24 +152,24 @@ VITE_API_URL=http://127.0.0.1:8010 npm run dev
 
 Open `http://127.0.0.1:3000`.
 
-## First-run workflow
+## Current v1 workflow
 
 1. Register or sign in.
 2. Complete **Profile** and upload the current résumé PDF.
-3. Review the **Answer Policy Vault**. Approve only truthful reusable answers.
-4. Search for jobs and approve one exact posting.
-5. Open its application record and review the generated cover letter.
+3. Review the **Answer Policy Vault** and approve truthful reusable answers.
+4. Search for jobs and approve an exact posting.
+5. Open its application record and review the generated material.
 6. Press **Dry Run (Preview)**.
-7. Review every filled answer and uploaded file.
-8. Complete any CAPTCHA, login, or verification code through **Open secure handoff**.
-9. When the employer displays a clear confirmation page, press **I completed the challenge**.
-10. JobTomatik records the evidence, closes the handoff, and marks the application submitted/confirmed.
+7. Review filled answers and uploaded files.
+8. Complete any unavoidable third-party verification through **Open secure handoff**.
+9. Allow JobTomatik to resume and verify the employer confirmation page.
+10. JobTomatik records the evidence and updates the application state.
 
-Never repeat an application after the employer has displayed a received/thank-you confirmation.
+Do not repeat an application after the employer has displayed a received or thank-you confirmation.
 
-## Safety defaults
+## Development and rollout controls
 
-Keep these values disabled unless a separately reviewed supervised release gate explicitly requires them:
+The repository ships conservative development defaults while autonomous capabilities are being tested and promoted:
 
 ```env
 ALLOW_REAL_APPLICATION_SUBMIT=false
@@ -143,9 +179,9 @@ ENABLE_RESUMABLE_HANDOFFS=false
 DEV_MOCK_JOBS=false
 ```
 
-Dry runs may retain human-verification sessions automatically. The `ENABLE_RESUMABLE_HANDOFFS` switch extends that capability to explicitly approved non-dry runs; it does not bypass any challenge.
+These are configurable release gates, not a statement that the product must remain supervised. An autonomous release can enable the relevant controls after its adapters, policies, duplicate protection, recovery paths, and confirmation evidence satisfy the operator's chosen readiness criteria.
 
-JobTomatik always stops for CAPTCHA, anti-bot challenges, MFA, login boundaries, assessments, identity checks, unsupported controls, and ambiguous legal or sensitive questions.
+Dry runs may retain human-verification sessions automatically. `ENABLE_RESUMABLE_HANDOFFS` extends that capability to approved non-dry runs; it does not bypass a third-party challenge.
 
 ## Configuration
 
@@ -155,7 +191,7 @@ Copy the example file and use a strong secret:
 cp .env.example backend/.env
 ```
 
-Recommended Android/Termux values:
+Recommended Android/Termux development values:
 
 ```env
 DATABASE_URL=sqlite:///./jobtomatik.db
@@ -186,7 +222,7 @@ docker compose up --build
 - Backend: `http://localhost:8000`
 - API docs: `http://localhost:8000/docs`
 
-The Docker composition is useful for the core application. Local-CDP retained-browser handoffs require the API and browser worker to share reachable browser-session affinity; the Android/Ubuntu single-node setup is the reference v1 configuration.
+Local-CDP retained-browser handoffs require the API and browser worker to share reachable browser-session affinity. The Android/Ubuntu single-node setup is the reference v1 configuration.
 
 ## Build the Android APK
 
@@ -243,7 +279,7 @@ cd android
 ./gradlew --no-daemon lintDebug assembleDebug
 ```
 
-GitHub Actions runs backend tests, frontend compilation, the retained-handoff certification matrix, Android lint, and APK assembly for release changes.
+The Android CI toolchain uses Node.js 20, Temurin Java 21, Gradle 8.11.1, Android Gradle Plugin 8.7.2, Android API 35, and Build Tools 35.0.0.
 
 ## Repository guide
 
@@ -251,7 +287,7 @@ GitHub Actions runs backend tests, frontend compilation, the retained-handoff ce
 backend/                 FastAPI, Celery, Playwright, policies, evidence, tests
 frontend/                React client and Capacitor Android project
 docs/SETUP_TUTORIAL.md   Complete installation and operating tutorial
-evidence/                Canonical pilot and certification records
+evidence/                Pilot and certification records
 .github/workflows/       CI, Android build, stabilization, and release automation
 CHANGELOG.md              Version history
 SECURITY.md               Secrets, local-data, and vulnerability guidance
@@ -270,12 +306,12 @@ Interactive OpenAPI documentation is available at `/docs` on the running backend
 | POST | `/api/jobs/search` | Queue a job search |
 | GET | `/api/jobs/queue` | Review job candidates |
 | POST | `/api/applications` | Create an application record |
-| POST | `/api/applications/{id}/submit?dry_run=true` | Start a preview form-fill attempt |
+| POST | `/api/applications/{id}/submit?dry_run=true` | Start a preview application attempt |
 | GET | `/api/handoffs/application/{id}/sessions` | List retained handoffs |
-| POST | `/api/handoffs/{public_id}/complete` | Verify and resume a completed challenge |
+| POST | `/api/handoffs/{public_id}/complete` | Verify and resume a completed handoff |
 | GET | `/api/applications/{id}/evidence` | Read submission evidence |
-| GET | `/api/system/operations-readiness` | Inspect active safety gates |
+| GET | `/api/system/operations-readiness` | Inspect current automation and release gates |
 
 ## Release history
 
-See **[CHANGELOG.md](CHANGELOG.md)**. The v1.00 release finalizes retained-browser recovery, explicit confirmation-page reconciliation, portable Android builds, secret-free signing configuration, and reproducible APK automation.
+See **[CHANGELOG.md](CHANGELOG.md)**. JobTomatik v1.00 establishes the supervised foundation, retained-browser recovery, confirmation evidence, portable Android builds, and the adapter-maturity system used to progress toward autonomous operation.
