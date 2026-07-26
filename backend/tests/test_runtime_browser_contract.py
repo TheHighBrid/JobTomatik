@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.services.browser_runtime import chromium_stability_args
+from app.services.browser_runtime import _chromium_environment, chromium_stability_args
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -76,3 +76,30 @@ def test_backend_dependency_manifest_has_no_duplicate_entries():
     ]
 
     assert len(requirements) == len(set(requirements))
+
+
+def test_chromium_stability_flags_disable_software_3d_crash_paths():
+    args = chromium_stability_args()
+
+    assert "--disable-gpu" in args
+    assert "--disable-software-rasterizer" in args
+    assert "--disable-3d-apis" in args
+    assert any(
+        argument.startswith("--disable-features=") and "WebGPU" in argument
+        for argument in args
+    )
+
+
+def test_chromium_environment_drops_invalid_dbus_address(monkeypatch):
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "autolaunch:")
+
+    assert "DBUS_SESSION_BUS_ADDRESS" not in _chromium_environment()
+
+
+def test_chromium_environment_preserves_valid_dbus_address(monkeypatch):
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
+
+    assert (
+        _chromium_environment()["DBUS_SESSION_BUS_ADDRESS"]
+        == "unix:path=/run/user/1000/bus"
+    )
