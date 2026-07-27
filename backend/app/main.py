@@ -16,6 +16,7 @@ from app.api import (
     greenhouse_pilot_ledger,
     handoffs,
     jobs,
+    lever_pilot_ledger,
     notifications,
     profile,
     settings as settings_api,
@@ -150,6 +151,7 @@ app.include_router(supervised_submissions.router, prefix="/api")
 app.include_router(supervised_pilot_roster.router, prefix="/api")
 app.include_router(submission_evidence_reviews.router, prefix="/api")
 app.include_router(greenhouse_pilot_ledger.router, prefix="/api")
+app.include_router(lever_pilot_ledger.router, prefix="/api")
 app.include_router(adapter_health.router, prefix="/api")
 app.include_router(handoffs.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
@@ -182,18 +184,4 @@ async def autonomy_certification():
 
 @app.get("/api/system/operations-readiness")
 async def operations_readiness():
-    readiness = operations_readiness_manifest()
-    ats = ats_certification_manifest()
-    maturities = {
-        item["name"]: item.get("maturity")
-        for item in ats.get("adapters", [])
-    }
-    readiness["product_goal"] = "fully_autonomous_evidence_backed_real_submission"
-    readiness["adapter_maturities"] = maturities
-    readiness["autonomous_adapters"] = list(ats.get("autonomous_adapters", []))
-    readiness["autonomous_adapter_count"] = len(readiness["autonomous_adapters"])
-    readiness["invariants"]["canonical_adapter_maturity_required"] = True
-    readiness["invariants"]["no_autonomous_adapter_currently_enabled"] = not bool(
-        readiness["autonomous_adapters"]
-    )
-    return readiness
+    return operations_readiness_manifest()
