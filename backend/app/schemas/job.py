@@ -1,7 +1,9 @@
-from pydantic import BaseModel
-from typing import Optional, List, Any, Dict
 from datetime import datetime
-from app.models.job import JobSource, JobType, JobStatus
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict
+
+from app.models.job import JobSource, JobStatus, JobType
 
 
 class JobSearch(BaseModel):
@@ -16,6 +18,8 @@ class JobSearch(BaseModel):
 
 
 class JobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     external_id: Optional[str]
     title: str
@@ -36,9 +40,6 @@ class JobOut(BaseModel):
     industry: Optional[str]
     relevance_score: Optional[float]
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class JobListOut(BaseModel):
