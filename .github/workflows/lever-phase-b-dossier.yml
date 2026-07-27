@@ -115,7 +115,8 @@ jobs:
       - name: Assert dossier interface exposes no approval or submit action
         run: |
           ! grep -E "queueSupervisedSubmission|createSupervisedSubmissionApproval|submitApplication" frontend/src/components/SupervisedPilotDossierPanel.jsx
-          grep -q "Lever Phase B candidate dossier" frontend/src/components/SupervisedPilotDossierPanel.jsx
+          grep -q "const platformName = platform === 'lever' ? 'Lever' : 'Greenhouse'" frontend/src/components/SupervisedPilotDossierPanel.jsx
+          grep -q "{platformName} Phase B candidate dossier" frontend/src/components/SupervisedPilotDossierPanel.jsx
           grep -q "direct_submit_action_in_dossier" backend/app/services/supervised_pilot_dossier.py
           grep -q '"read_only": True' backend/app/services/supervised_pilot_dossier.py
 
