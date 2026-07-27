@@ -14,11 +14,12 @@ from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.models.user import User
 from app.services.application_state import record_submission_evidence
-from app.services.lever_pilot_ingestion import (
+from app.services.lever_pilot_ingestion import load_phase_a_baseline
+from app.services.lever_pilot_ledger_boundary import (
     LeverPilotIngestionError,
     ingest_confirmed_lever_application,
-    load_phase_a_baseline,
     read_lever_pilot_readiness,
+    validate_phase_b_runtime_ledger,
 )
 from app.services.platform_submission_evidence import review_platform_submission_evidence
 
@@ -143,6 +144,57 @@ def _paths(tmp_path):
     }
 
 
+def _phase_a_runtime_record(index: int) -> dict:
+    site = f"runtime-dry-{index}"
+    posting_id = f"00000000-0000-0000-0000-{index:012d}"
+    url = f"https://jobs.lever.co/{site}/{posting_id}/apply"
+    return {
+        "schema_version": "1.0",
+        "run_id": f"lv-runtime-dry-{index}",
+        "mode": "dry_run",
+        "platform": "lever",
+        "completed_at": datetime.utcnow().isoformat(),
+        "employer": f"Runtime Dry Employer {index}",
+        "role": "Analyst",
+        "site": site,
+        "posting_id": posting_id,
+        "region": "global" if index % 2 else "eu",
+        "board_token": site,
+        "job_id": posting_id,
+        "application_url": url,
+        "canonical_application_url": url,
+        "adapter": "lever",
+        "adapter_version": "1.1.0",
+        "operator": "github-actions:TheHighBrid",
+        "source_reference": f"actions-run:runtime:{index}",
+        "artifact_sha256": f"{index % 10}" * 64,
+        "approval_reference": None,
+        "controls_discovered": 3,
+        "controls_filled": 3,
+        "controls_skipped": 0,
+        "controls_blocked": 0,
+        "policies_used": 2,
+        "uploads_verified": 1,
+        "validation_errors": [],
+        "handoff_reason": None,
+        "handoff_boundary": None,
+        "pre_submit_state": "ready_to_submit",
+        "final_url": url,
+        "final_submit_clicked": False,
+        "confirmation_evidence_type": None,
+        "confirmation_evidence_reference": None,
+        "final_status": "dry_run_passed",
+        "duplicate_guard_verified": None,
+        "duplicate_submission_detected": False,
+        "reviewed_by": None,
+        "review_reference": None,
+        "qualifies_for_dry_run_matrix": True,
+        "synthetic_profile": True,
+        "error": None,
+        "notes": None,
+    }
+
+
 def test_missing_phase_a_baseline_counts_as_zero_not_readiness(tmp_path):
     result = read_lever_pilot_readiness(
         baseline_path=tmp_path / "missing.csv",
@@ -155,6 +207,23 @@ def test_missing_phase_a_baseline_counts_as_zero_not_readiness(tmp_path):
     assert result["summary"]["canonical_maturity"] == "dry_run"
     assert result["summary"]["qualifying_dry_run_count"] == 0
     assert result["summary"]["promotion_ready"] is False
+
+
+def test_runtime_ledger_rejects_dry_run_records_instead_of_counting_them(tmp_path):
+    ledger = tmp_path / "lever-pilot-ledger.jsonl"
+    planted = [_phase_a_runtime_record(index) for index in range(1, 31)]
+    ledger.write_text(
+        "".join(json.dumps(record, sort_keys=True) + "\n" for record in planted),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LeverPilotIngestionError, match="Phase B records only"):
+        validate_phase_b_runtime_ledger(ledger)
+    with pytest.raises(LeverPilotIngestionError, match="Phase B records only"):
+        read_lever_pilot_readiness(
+            baseline_path=tmp_path / "missing.csv",
+            ledger_path=ledger,
+        )
 
 
 def test_confirmed_lever_record_is_atomically_ingested_and_idempotent(db_session, tmp_path):
@@ -173,6 +242,8 @@ def test_confirmed_lever_record_is_atomically_ingested_and_idempotent(db_session
     assert first["added"] is True
     assert second["added"] is False
     assert first["record"]["platform"] == "lever"
+    assert first["record"]["mode"] == "supervised_real_submission"
+    assert first["record"]["approval_reference"].startswith("lvsup-")
     assert first["record"]["site"] == SITE
     assert first["record"]["posting_id"] == POSTING_ID
     assert first["record"]["region"] == "global"
@@ -181,12 +252,15 @@ def test_confirmed_lever_record_is_atomically_ingested_and_idempotent(db_session
     assert first["runtime_record_count"] == 1
     assert first["ledger_record_count"] == 1
     assert first["summary"]["supervised_confirmed_count"] == 1
+    assert first["summary"]["qualifying_dry_run_count"] == 0
     assert first["summary"]["canonical_maturity"] == "dry_run"
     assert first["summary"]["promotion_ready"] is False
 
     lines = paths["ledger_path"].read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1
-    assert json.loads(lines[0])["run_id"] == first["record"]["run_id"]
+    persisted = json.loads(lines[0])
+    assert persisted["run_id"] == first["record"]["run_id"]
+    assert persisted["mode"] == "supervised_real_submission"
     assert paths["summary_json_path"].is_file()
     assert paths["summary_markdown_path"].is_file()
     assert not list(tmp_path.glob(".*.tmp"))
