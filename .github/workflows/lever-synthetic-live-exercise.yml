@@ -107,13 +107,14 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           from app.config import get_settings
 
           report = json.load(open('lever-synthetic-live.json'))
           settings = get_settings()
           assert settings.allow_real_application_submit is False
           assert settings.lever_supervised_pilot_enabled is False
-          assert settings.autopilot_enabled is False
+          assert os.environ.get('AUTOPILOT_ENABLED', '').lower() == 'false'
           assert report['final_submit_clicked'] is False
           assert report['passed'] is True
           inspections = [item for item in report['reports'] if item.get('mode') == 'inspect']
