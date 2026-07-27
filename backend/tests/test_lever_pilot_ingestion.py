@@ -108,7 +108,11 @@ def _confirmed_fixture(db_session):
         final_url=CANONICAL_URL,
         confirmation_text="Thank you for applying",
         screenshot_path="evidence/lever-ledger-confirmation.png",
-        metadata={"source": "lever_confirmation"},
+        metadata={
+            "source": "lever_confirmation",
+            "adapter": "lever",
+            "adapter_version": "1.1.0",
+        },
     )
     db_session.flush()
     review_platform_submission_evidence(
