@@ -23,6 +23,7 @@ from app.services.submission_evidence_review import SubmissionEvidenceReviewErro
 SITE = "lever-pilot"
 POSTING_ID = "12345678-1234-1234-1234-123456789abc"
 CANONICAL_URL = f"https://jobs.lever.co/{SITE}/{POSTING_ID}/apply"
+CONFIRMATION_URL = f"https://jobs.lever.co/{SITE}/thank-you"
 IDENTITY = {
     "platform": "lever",
     "adapter": "lever",
@@ -38,7 +39,7 @@ IDENTITY = {
 }
 
 
-def _fixture(db_session):
+def _fixture(db_session, *, final_url=CANONICAL_URL, confirmation_text="Thank you for applying"):
     user = User(
         email="lever-evidence@example.test",
         hashed_password="not-used",
@@ -102,11 +103,15 @@ def _fixture(db_session):
         application,
         "confirmation_page",
         is_sufficient=True,
-        final_url=CANONICAL_URL,
-        confirmation_text="Thank you for applying",
+        final_url=final_url,
+        confirmation_text=confirmation_text,
         screenshot_path="evidence/lever-confirmation.png",
         payload_hash="caller-value-is-replaced",
-        metadata={"source": "lever_confirmation"},
+        metadata={
+            "source": "lever_confirmation",
+            "adapter": "lever",
+            "adapter_version": "1.1.0",
+        },
     )
     db_session.flush()
     db_session.commit()
@@ -135,7 +140,10 @@ def test_lever_evidence_is_bound_to_consumed_approval_and_exact_target(db_sessio
 
     assert evidence.payload_hash == approval.combined_payload_hash
     assert evidence.evidence_metadata["platform"] == "lever"
+    assert evidence.evidence_metadata["adapter"] == "lever"
     assert evidence.evidence_metadata["adapter_version"] == "1.1.0"
+    assert evidence.evidence_metadata["expected_adapter_version"] == "1.1.0"
+    assert evidence.evidence_metadata["approval_reference"] == approval.reference
     assert evidence.evidence_metadata["site"] == SITE
     assert evidence.evidence_metadata["posting_id"] == POSTING_ID
     assert evidence.evidence_metadata["region"] == "global"
@@ -168,11 +176,43 @@ def test_lever_evidence_is_bound_to_consumed_approval_and_exact_target(db_sessio
     assert record["review_reference"] == review.reference
 
 
+def test_strong_same_site_confirmation_route_is_accepted(db_session):
+    user, job, application, _, evidence = _fixture(
+        db_session,
+        final_url=CONFIRMATION_URL,
+        confirmation_text="Thank you for applying",
+    )
+
+    preflight = build_platform_evidence_review_preflight(
+        db_session, application, job, evidence
+    )
+    assert preflight["ready_for_acceptance"] is True
+    assert "lever_evidence_final_url_posting_mismatch" not in preflight["blockers"]
+
+
+def test_same_site_route_without_concrete_confirmation_is_blocked(db_session):
+    user, job, application, _, evidence = _fixture(
+        db_session,
+        final_url=CONFIRMATION_URL,
+        confirmation_text="",
+    )
+    evidence.screenshot_path = None
+    db_session.commit()
+
+    preflight = build_platform_evidence_review_preflight(
+        db_session, application, job, evidence
+    )
+    assert preflight["ready_for_acceptance"] is False
+    assert "concrete_confirmation_signal_missing" in preflight["blockers"]
+    assert "lever_evidence_final_url_posting_mismatch" in preflight["blockers"]
+
+
 def test_lever_evidence_payload_or_identity_drift_blocks_acceptance(db_session):
     user, job, application, approval, evidence = _fixture(db_session)
     evidence.payload_hash = "0" * 64
     metadata = dict(evidence.evidence_metadata or {})
     metadata["posting_id"] = "wrong-posting"
+    metadata["approval_reference"] = "wrong-approval"
     evidence.evidence_metadata = metadata
     db_session.commit()
 
@@ -182,9 +222,24 @@ def test_lever_evidence_payload_or_identity_drift_blocks_acceptance(db_session):
     assert preflight["ready_for_acceptance"] is False
     assert "lever_evidence_payload_hash_mismatch" in preflight["blockers"]
     assert "lever_evidence_posting_id_mismatch" in preflight["blockers"]
+    assert "lever_evidence_approval_reference_mismatch" in preflight["blockers"]
 
     with pytest.raises(SubmissionEvidenceReviewError, match="acceptance is blocked"):
         _review(db_session, user, job, application, evidence)
+
+
+def test_observed_adapter_version_mismatch_is_not_overwritten(db_session):
+    user, job, application, _, evidence = _fixture(db_session)
+    metadata = dict(evidence.evidence_metadata or {})
+    metadata["adapter_version"] = "0.9.0"
+    evidence.evidence_metadata = metadata
+    db_session.commit()
+
+    preflight = build_platform_evidence_review_preflight(
+        db_session, application, job, evidence
+    )
+    assert preflight["ready_for_acceptance"] is False
+    assert "lever_evidence_adapter_version_mismatch" in preflight["blockers"]
 
 
 def test_greenhouse_base_review_behavior_remains_available(db_session):
