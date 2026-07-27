@@ -94,6 +94,7 @@ jobs:
         working-directory: backend
         run: |
           python - <<'PY'
+          import os
           from app.config import get_settings
           from app.services.supervised_pilot_dossier import (
               MANDATORY_STOP_REASONS,
@@ -104,7 +105,8 @@ jobs:
           assert settings.allow_real_application_submit is False
           assert settings.greenhouse_supervised_pilot_enabled is False
           assert settings.lever_supervised_pilot_enabled is False
-          assert settings.autopilot_enabled is False
+          assert os.environ.get('AUTOPILOT_ENABLED', '').lower() == 'false'
+          assert settings.enable_resumable_handoffs is False
           assert SUPPORTED_DOSSIER_PLATFORMS == {'greenhouse', 'lever'}
           assert 'captcha_detected' in MANDATORY_STOP_REASONS
           assert 'identity_verification_required' in MANDATORY_STOP_REASONS
