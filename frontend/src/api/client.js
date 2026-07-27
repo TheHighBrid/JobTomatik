@@ -1,45 +1,22 @@
 import axios from 'axios'
 
-const DEFAULT_API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8010'
+import { safeLocalStorage } from '../storage'
+import { normalizeApiBaseUrl } from './url'
+
+const DEFAULT_API_URL = import.meta.env?.VITE_API_URL || 'http://127.0.0.1:8010'
 const API_URL_STORAGE_KEY = 'jobtomatik_api_url'
 
-const safeLocalStorage = {
-  getItem(key) {
-    try {
-      return window.localStorage.getItem(key)
-    } catch {
-      return null
-    }
-  },
-  setItem(key, value) {
-    try {
-      window.localStorage.setItem(key, value)
-    } catch {
-      // Ignore storage errors in restricted WebViews/private mode.
-    }
-  },
-  removeItem(key) {
-    try {
-      window.localStorage.removeItem(key)
-    } catch {
-      // Ignore storage errors in restricted WebViews/private mode.
-    }
-  },
-}
-
-export function normalizeApiBaseUrl(value) {
-  const trimmed = String(value || '').trim().replace(/\/+$/, '')
-  if (!trimmed) return DEFAULT_API_URL
-  if (!/^https?:\/\//i.test(trimmed)) return `https://${trimmed}`
-  return trimmed
-}
+export { normalizeApiBaseUrl }
 
 export function getApiBaseUrl() {
-  return normalizeApiBaseUrl(safeLocalStorage.getItem(API_URL_STORAGE_KEY) || DEFAULT_API_URL)
+  return normalizeApiBaseUrl(
+    safeLocalStorage.getItem(API_URL_STORAGE_KEY) || DEFAULT_API_URL,
+    DEFAULT_API_URL,
+  )
 }
 
 export function setApiBaseUrl(value) {
-  const normalized = normalizeApiBaseUrl(value)
+  const normalized = normalizeApiBaseUrl(value, DEFAULT_API_URL)
   safeLocalStorage.setItem(API_URL_STORAGE_KEY, normalized)
   api.defaults.baseURL = `${normalized}/api`
   return normalized
@@ -47,8 +24,9 @@ export function setApiBaseUrl(value) {
 
 export function resetApiBaseUrl() {
   safeLocalStorage.removeItem(API_URL_STORAGE_KEY)
-  api.defaults.baseURL = `${normalizeApiBaseUrl(DEFAULT_API_URL)}/api`
-  return normalizeApiBaseUrl(DEFAULT_API_URL)
+  const normalized = normalizeApiBaseUrl(DEFAULT_API_URL)
+  api.defaults.baseURL = `${normalized}/api`
+  return normalized
 }
 
 export function isNetworkError(err) {
@@ -70,7 +48,7 @@ export function getApiErrorMessage(err, fallback = 'Request failed') {
 }
 
 export async function testApiConnection(baseUrl = getApiBaseUrl()) {
-  const normalized = normalizeApiBaseUrl(baseUrl)
+  const normalized = normalizeApiBaseUrl(baseUrl, DEFAULT_API_URL)
   const response = await axios.get(`${normalized}/health`, { timeout: 8000 })
   return response.data
 }
@@ -78,6 +56,7 @@ export async function testApiConnection(baseUrl = getApiBaseUrl()) {
 const api = axios.create({
   baseURL: `${getApiBaseUrl()}/api`,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 20_000,
 })
 
 api.interceptors.request.use((config) => {
@@ -92,7 +71,10 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       safeLocalStorage.removeItem('token')
       safeLocalStorage.removeItem('user')
-      if (window.location.pathname !== '/login') window.location.href = '/login'
+      const isAuthRequest = /\/auth\/(login|register)$/.test(err.config?.url || '')
+      if (!isAuthRequest && window.location.pathname !== '/login') {
+        window.location.assign('/login')
+      }
     }
     return Promise.reject(err)
   }
