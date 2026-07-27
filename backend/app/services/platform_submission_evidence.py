@@ -213,24 +213,46 @@ def review_platform_submission_evidence(
 ) -> SubmissionEvidenceReview:
     normalized_decision = str(decision or "").strip().lower()
     preflight = build_platform_evidence_review_preflight(db, application, job, evidence)
-    if normalized_decision == "accepted" and not preflight["ready_for_acceptance"]:
-        raise SubmissionEvidenceReviewError(
-            "Evidence acceptance is blocked: " + ", ".join(preflight["blockers"])
-        )
-    return review_base_submission_evidence(
+    effective_decision = normalized_decision
+    effective_notes = notes
+    platform_blockers: list[str] = []
+
+    if (
+        normalized_decision == "accepted"
+        and preflight.get("platform") == LEVER_PLATFORM
+        and not preflight["ready_for_acceptance"]
+    ):
+        # Persist a rejected independent review so the established base service
+        # creates the submission_uncertain state and manual-review task. Raising
+        # here would be rolled back by the API and lose the safety record.
+        effective_decision = "rejected"
+        platform_blockers = list(preflight["blockers"])
+        blocker_note = "Lever evidence acceptance blocked: " + ", ".join(platform_blockers)
+        effective_notes = f"{notes}\n{blocker_note}" if notes else blocker_note
+
+    review = review_base_submission_evidence(
         db,
         application,
         user,
         job,
         evidence,
-        decision=decision,
+        decision=effective_decision,
         confirm_employer=confirm_employer,
         confirm_role=confirm_role,
         confirm_evidence_type=confirm_evidence_type,
         confirm_evidence_matches_application=confirm_evidence_matches_application,
         review_acknowledgement=review_acknowledgement,
-        notes=notes,
+        notes=effective_notes,
     )
+    if platform_blockers:
+        metadata = dict(review.review_metadata or {})
+        metadata.update({
+            "requested_decision": normalized_decision,
+            "platform": LEVER_PLATFORM,
+            "platform_blockers": platform_blockers,
+        })
+        review.review_metadata = metadata
+    return review
 
 
 def build_platform_supervised_pilot_record(
