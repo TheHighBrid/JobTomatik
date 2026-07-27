@@ -247,12 +247,13 @@ def record_submission_evidence(
         identity = approval_metadata.get("target_identity")
         target_identity = dict(identity) if isinstance(identity, dict) else {}
         effective_payload_hash = lever_approval.combined_payload_hash
+        # Preserve adapter and adapter_version supplied by the browser evidence.
+        # The review layer compares those observed values with the approved values.
         evidence_metadata.update({
             "platform": "lever",
-            "adapter": "lever",
-            "adapter_version": approval_metadata.get("adapter_version"),
             "approval_reference": lever_approval.reference,
             "combined_payload_hash": lever_approval.combined_payload_hash,
+            "expected_adapter_version": approval_metadata.get("adapter_version"),
             "site": target_identity.get("site"),
             "posting_id": target_identity.get("posting_id"),
             "region": target_identity.get("region"),
