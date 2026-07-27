@@ -1,5 +1,10 @@
+import asyncio
 from pathlib import Path
+from time import monotonic
+from types import SimpleNamespace
 
+from app.config import Settings
+from app.services.browser_navigation import wait_for_external_application_target
 from app.services.browser_runtime import _chromium_environment, chromium_stability_args
 
 
@@ -15,12 +20,49 @@ def _active_env_lines() -> set[str]:
     }
 
 
-def test_target_resolution_allows_a_fifteen_minute_operator_window():
+def test_target_resolution_handoff_is_nonblocking_by_default():
     active_lines = _active_env_lines()
 
-    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=900" in active_lines
-    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=0" not in active_lines
+    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=0" in active_lines
+    assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=900" not in active_lines
     assert "APPLICATION_TARGET_HUMAN_WAIT_SECONDS=180" not in active_lines
+
+
+def test_unresolved_target_resolution_returns_promptly_under_default_profile(monkeypatch):
+    monkeypatch.delenv("APPLICATION_TARGET_HUMAN_WAIT_SECONDS", raising=False)
+    settings = Settings(_env_file=None)
+    source_url = "https://www.linkedin.com/jobs/view/1234567890"
+
+    class UnresolvedPage:
+        def __init__(self):
+            self.url = source_url
+            self.context = SimpleNamespace(pages=[self])
+            self.wait_calls = 0
+
+        async def wait_for_timeout(self, _milliseconds):
+            self.wait_calls += 1
+
+    page = UnresolvedPage()
+    log = []
+    started = monotonic()
+    target = asyncio.run(
+        wait_for_external_application_target(
+            page,
+            source_url,
+            timeout_seconds=settings.application_target_human_wait_seconds,
+            log=log,
+        )
+    )
+    elapsed = monotonic() - started
+
+    assert settings.application_target_human_wait_seconds == 0
+    assert target is None
+    assert page.wait_calls == 0
+    assert elapsed < 0.25
+    assert not any(
+        item.get("action") == "application_target_human_window_started"
+        for item in log
+    )
 
 
 def test_retained_browser_uses_software_rendering_stability_flags():
