@@ -18,7 +18,7 @@ def test_android_gradle_wrapper_is_portable():
     ).read_text(encoding="utf-8")
 
     assert "services.gradle.org/distributions/gradle-8.11.1-bin.zip" in wrapper
-    assert "file\:///tmp/" not in wrapper
+    assert r"file\:///tmp/" not in wrapper
     assert "validateDistributionUrl=true" in wrapper
 
 
