@@ -22,7 +22,7 @@ from app.services.lever_pilot_ingestion import (
     configured_paths,
     ingest_confirmed_lever_application as _ingest_confirmed_lever_application,
     read_lever_pilot_readiness as _read_lever_pilot_readiness,
-    validate_lever_record,
+    validate_phase_b_record,
 )
 
 
@@ -56,18 +56,7 @@ def validate_phase_b_runtime_ledger(path: Path) -> list[Dict[str, Any]]:
                 f"Lever Phase B ledger line {line_number} must be a JSON object"
             )
 
-        validate_lever_record(value)
-        if value.get("mode") != SUPERVISED_MODE:
-            raise LeverPilotIngestionError(
-                "Lever runtime ledger accepts supervised Phase B records only; "
-                f"line {line_number} has mode {value.get('mode')!r}."
-            )
-        approval_reference = str(value.get("approval_reference") or "").strip()
-        if not approval_reference.startswith("lvsup-"):
-            raise LeverPilotIngestionError(
-                "Lever Phase B records require an lvsup-* approval reference; "
-                f"line {line_number} has {approval_reference or 'missing'}."
-            )
+        validate_phase_b_record(value, line_number=line_number)
         records.append(dict(value))
     return records
 
