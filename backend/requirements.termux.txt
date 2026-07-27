@@ -3,7 +3,7 @@
 # Use with SQLite (set DATABASE_URL=sqlite:///./jobtomatik.db in .env)
 
 fastapi==0.111.0
-uvicorn==0.29.0
+uvicorn==0.51.0
 sqlalchemy==2.0.30
 alembic==1.13.1
 redis==5.0.4

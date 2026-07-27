@@ -3,7 +3,7 @@
 # automation packages such as Playwright and Pillow; auth/login/register do not
 # need them.
 fastapi==0.111.0
-uvicorn==0.29.0
+uvicorn==0.51.0
 sqlalchemy==2.0.30
 alembic==1.13.1
 redis==5.0.4
