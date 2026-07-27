@@ -1,0 +1,28 @@
+# Secrets and local overrides
+.env
+.env.*
+*.env
+
+# Local applicant and runtime data
+*.db
+*.sqlite
+*.sqlite3
+uploads/
+browser_profiles/
+handoff_sessions/
+logs/
+*.log
+
+# Python caches and environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local tooling and repository noise
+.git/
+.github/
+.DS_Store

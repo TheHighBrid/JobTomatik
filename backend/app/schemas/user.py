@@ -1,13 +1,39 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 UTF-8 bytes")
+        return value
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_full_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if len(normalized) > 200:
+            raise ValueError("Full name must be 200 characters or fewer")
+        return normalized
 
 
 class UserUpdate(BaseModel):

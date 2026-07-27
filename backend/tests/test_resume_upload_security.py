@@ -1,9 +1,10 @@
+import stat
 from io import BytesIO
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
 
-from app.api.profile import MAX_RESUME_BYTES, _store_resume_upload
+from app.api.profile import MAX_RESUME_BYTES, PRIVATE_FILE_MODE, _store_resume_upload
 
 
 @pytest.mark.asyncio
@@ -17,6 +18,7 @@ async def test_resume_upload_streams_a_valid_pdf_to_disk(tmp_path):
     await _store_resume_upload(upload, destination)
 
     assert destination.read_bytes().startswith(b"%PDF-")
+    assert stat.S_IMODE(destination.stat().st_mode) == PRIVATE_FILE_MODE
     assert {path.name for path in tmp_path.iterdir()} == {"resume.pdf"}
 
 

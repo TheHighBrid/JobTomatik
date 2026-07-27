@@ -3,7 +3,7 @@ services:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: jobtomatik
-      POSTGRES_PASSWORD: jobtomatik_pass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobtomatik_pass}
       POSTGRES_DB: jobtomatik
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -27,14 +27,17 @@ services:
 
   backend:
     build: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    init: true
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      - DATABASE_URL=postgresql://jobtomatik:jobtomatik_pass@db:5432/jobtomatik
+      - APP_ENV=${APP_ENV:-development}
+      - ENABLE_API_DOCS=${ENABLE_API_DOCS:-true}
+      - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
       - ANSWER_VAULT_KEY=${ANSWER_VAULT_KEY:-}
@@ -58,7 +61,7 @@ services:
       - AUTOPILOT_CIRCUIT_BREAKER_MINUTES=${AUTOPILOT_CIRCUIT_BREAKER_MINUTES:-120}
       - AUTOPILOT_DISABLED_PLATFORMS=${AUTOPILOT_DISABLED_PLATFORMS:-}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/system/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/system/ready', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -70,12 +73,14 @@ services:
 
   celery_worker:
     build: ./backend
+    init: true
     command: celery -A app.celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q celery,scraping,applications,followup
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
     environment:
-      - DATABASE_URL=postgresql://jobtomatik:jobtomatik_pass@db:5432/jobtomatik
+      - APP_ENV=${APP_ENV:-development}
+      - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
       - ANSWER_VAULT_KEY=${ANSWER_VAULT_KEY:-}
@@ -105,11 +110,13 @@ services:
 
   celery_beat:
     build: ./backend
+    init: true
     command: celery -A app.celery_app beat --loglevel=info
     volumes:
       - ./backend:/app
     environment:
-      - DATABASE_URL=postgresql://jobtomatik:jobtomatik_pass@db:5432/jobtomatik
+      - APP_ENV=${APP_ENV:-development}
+      - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
       - ALLOW_REAL_APPLICATION_SUBMIT=${ALLOW_REAL_APPLICATION_SUBMIT:-false}
@@ -130,6 +137,7 @@ services:
 
   frontend:
     build: ./frontend
+    init: true
     ports:
       - "127.0.0.1:3000:3000"
     volumes:

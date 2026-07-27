@@ -33,12 +33,21 @@ Protect the backend database, `uploads/`, `handoff_sessions/`, browser profile d
 
 ## Required secret practices
 
-- Replace the default `SECRET_KEY` before real use.
+- Set `APP_ENV=production` for any hardened hosted deployment.
+- Replace the default `SECRET_KEY` before real use. Production and real-submission modes reject known placeholders and values shorter than 32 UTF-8 bytes.
 - Keep `SECRET_KEY` stable after issuing authentication tokens.
 - Set and preserve `ANSWER_VAULT_KEY` when separating answer-policy encryption from the JWT secret.
 - Never commit `.env`, API keys, résumé files, databases, browser profiles, or handoff screenshots.
 - Never type verification codes into logs or issue comments.
+- Credentialed `CORS_ORIGINS` values must be explicit. Wildcards are rejected.
+- Disable `ENABLE_API_DOCS` when interactive API documentation is unnecessary on a public deployment.
 - Treat real-submission and autonomous-operation flags as controlled release gates. Promote them only in builds whose adapters, evidence, duplicate protection, recovery behavior, and operational limits meet the operator's readiness criteria.
+
+## Authentication storage
+
+The current web and Capacitor client persists the bearer token in browser local storage so a personal installation survives app restarts. This is not the final storage model for a broadly distributed hosted release. A future Android release should use a vetted native secure-storage plugin, and a hosted browser deployment should use a hardened short-lived session design.
+
+Any public deployment must also add authentication rate limiting, progressive abuse controls, audit events, and monitoring. The repository's local-first default is not a substitute for an internet-facing authentication perimeter.
 
 ## Android signing
 
@@ -59,7 +68,9 @@ If the release workflow has no permanent signing secrets, it may publish a devel
 
 ## Network guidance
 
-The Android client permits cleartext traffic because the reference installation connects to a same-device backend at `http://127.0.0.1:8010`. Use HTTPS and a narrowly configured `CORS_ORIGINS` value when the backend is hosted anywhere else. Do not expose the development FastAPI or Redis ports directly to the public internet.
+The Android client permits cleartext traffic because the reference installation connects to a same-device backend at `http://127.0.0.1:8010`. The client also permits HTTP for loopback, emulator, `.local`, and private-network addresses during development. Public and remote backend addresses must use HTTPS and the client rejects public HTTP API URLs.
+
+Use a narrowly configured `CORS_ORIGINS` value when the backend is hosted anywhere else. Do not expose development FastAPI, PostgreSQL, or Redis ports directly to the public internet. Put a production deployment behind a TLS reverse proxy and a restricted network boundary.
 
 ## Human-verification boundary
 
@@ -80,3 +91,15 @@ AUTOPILOT_ENABLED=false
 These values are staging defaults, not a permanent product restriction. A promoted autonomous release may enable the relevant controls after the operator accepts its certification evidence and operating profile.
 
 Confirmation evidence is required before JobTomatik marks an application submitted or confirmed. A missing or ambiguous confirmation must not be recorded as success. Duplicate prevention, idempotency, caps, circuit breakers, and operator kill switches remain valid safeguards in both supervised and autonomous modes.
+
+## Automated security maintenance
+
+The repository uses:
+
+- CodeQL analysis for Python and JavaScript/TypeScript;
+- Dependabot for Python, npm, Gradle, and GitHub Actions dependencies;
+- backend regression, migration, browser, and release-contract tests;
+- frontend runtime regression tests and production builds;
+- Docker Compose validation with fail-safe submission defaults.
+
+Security automation is a detection layer, not proof that a release is vulnerability-free. Review and validate dependency and workflow updates before merging.

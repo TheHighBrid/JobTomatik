@@ -19,6 +19,7 @@ router = APIRouter(prefix="/profile", tags=["profile"])
 MAX_RESUME_BYTES = 10 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 PDF_SIGNATURE = b"%PDF-"
+PRIVATE_FILE_MODE = 0o600
 
 
 @router.get("", response_model=UserOut)
@@ -40,7 +41,7 @@ async def update_profile(
 
 
 async def _store_resume_upload(file: UploadFile, destination: Path) -> None:
-    """Store a bounded PDF upload without loading the whole résumé into memory."""
+    """Store a bounded private PDF upload without loading the whole résumé into memory."""
     temporary = destination.with_name(f".{destination.name}.{uuid4().hex}.upload")
     total_bytes = 0
     signature = b""
@@ -69,6 +70,7 @@ async def _store_resume_upload(file: UploadFile, destination: Path) -> None:
             )
 
         os.replace(temporary, destination)
+        os.chmod(destination, PRIVATE_FILE_MODE)
     finally:
         await file.close()
         if temporary.exists():

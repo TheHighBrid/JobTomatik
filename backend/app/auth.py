@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import bcrypt
@@ -14,21 +14,34 @@ from app.models.user import User
 settings = get_settings()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
+MAX_BCRYPT_PASSWORD_BYTES = 72
+
+
+def _encode_password(password: str) -> bytes:
+    encoded = password.encode("utf-8")
+    if len(encoded) > MAX_BCRYPT_PASSWORD_BYTES:
+        raise ValueError(
+            f"Password must be at most {MAX_BCRYPT_PASSWORD_BYTES} UTF-8 bytes for bcrypt"
+        )
+    return encoded
+
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    return bcrypt.hashpw(_encode_password(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     try:
-        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+        return bcrypt.checkpw(_encode_password(plain), hashed.encode("utf-8"))
     except (TypeError, ValueError, UnicodeError):
         return False
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=settings.access_token_expire_minutes))
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
+    )
     to_encode["exp"] = expire
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
@@ -41,10 +54,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     )
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        user_id: int = payload.get("sub")
-        if user_id is None:
+        subject = payload.get("sub")
+        if subject is None:
             raise credentials_exception
-    except JWTError:
+        user_id = int(subject)
+    except (JWTError, TypeError, ValueError):
         raise credentials_exception
 
     user = db.query(User).filter(User.id == user_id).first()

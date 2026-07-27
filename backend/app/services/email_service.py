@@ -1,12 +1,42 @@
 """
-Email service using SendGrid. Falls back to a console logger when no key is set.
+Email service using SendGrid. Falls back to a privacy-conscious console logger when no key is set.
 """
+
+import asyncio
 import logging
 from typing import Optional
+
 from app.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+
+def _send_with_sendgrid(
+    *,
+    to: str,
+    sender: str,
+    subject: str,
+    body: str,
+    html_body: Optional[str],
+) -> bool:
+    """Run the synchronous SendGrid SDK outside the FastAPI event loop."""
+    import sendgrid
+    from sendgrid.helpers.mail import Content, Email, Mail, To
+
+    sg = sendgrid.SendGridAPIClient(api_key=settings.sendgrid_api_key)
+    mail = Mail(
+        from_email=Email(sender),
+        to_emails=To(to),
+        subject=subject,
+    )
+    if html_body:
+        mail.content = [Content("text/html", html_body), Content("text/plain", body)]
+    else:
+        mail.content = [Content("text/plain", body)]
+
+    response = sg.client.mail.send.post(request_body=mail.get())
+    return response.status_code in (200, 202)
 
 
 async def send_email(
@@ -19,28 +49,26 @@ async def send_email(
     sender = from_email or settings.from_email
 
     if not settings.sendgrid_api_key:
-        logger.info(f"[EMAIL MOCK] To: {to} | Subject: {subject}\n{body}")
+        recipient_domain = to.rsplit("@", 1)[-1] if "@" in to else "unknown"
+        logger.info(
+            "[EMAIL MOCK] recipient_domain=%s subject=%s body_length=%d",
+            recipient_domain,
+            subject,
+            len(body),
+        )
         return True
 
     try:
-        import sendgrid
-        from sendgrid.helpers.mail import Mail, Email, To, Content
-
-        sg = sendgrid.SendGridAPIClient(api_key=settings.sendgrid_api_key)
-        mail = Mail(
-            from_email=Email(sender),
-            to_emails=To(to),
+        return await asyncio.to_thread(
+            _send_with_sendgrid,
+            to=to,
+            sender=sender,
             subject=subject,
+            body=body,
+            html_body=html_body,
         )
-        if html_body:
-            mail.content = [Content("text/html", html_body), Content("text/plain", body)]
-        else:
-            mail.content = [Content("text/plain", body)]
-
-        response = sg.client.mail.send.post(request_body=mail.get())
-        return response.status_code in (200, 202)
-    except Exception as e:
-        logger.error(f"SendGrid error: {e}")
+    except Exception:
+        logger.exception("SendGrid delivery failed")
         return False
 
 
@@ -76,7 +104,7 @@ async def send_status_notification(
         f"Hi {applicant_name},\n\n"
         f"Your application for {job_title} at {company} has been updated to: {new_status.upper()}.\n\n"
         f"Log in to JobTomatik to see full details and take action.\n\n"
-        f"— The JobTomatik Team"
+        f"The JobTomatik Team"
     )
     return await send_email(to=to, subject=subject, body=body)
 
@@ -85,12 +113,12 @@ async def send_welcome_email(to: str, name: str) -> bool:
     subject = "Welcome to JobTomatik!"
     body = (
         f"Hi {name},\n\n"
-        f"Welcome to JobTomatik — your automated job application assistant.\n\n"
+        f"Welcome to JobTomatik, your automated job application assistant.\n\n"
         f"Get started by:\n"
         f"1. Completing your profile\n"
         f"2. Uploading your resume\n"
         f"3. Setting your job preferences\n"
         f"4. Running your first job search\n\n"
-        f"Happy job hunting!\n— The JobTomatik Team"
+        f"Happy job hunting!\nThe JobTomatik Team"
     )
     return await send_email(to=to, subject=subject, body=body)

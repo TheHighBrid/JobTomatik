@@ -44,9 +44,12 @@ export default function Register() {
 
         <div className="card p-6 space-y-4">
           <div>
-            <label className="label">Full name</label>
+            <label className="label" htmlFor="register-full-name">Full name</label>
             <input
+              id="register-full-name"
               type="text"
+              autoComplete="name"
+              maxLength={200}
               className="input"
               placeholder="Jane Smith"
               value={form.full_name}
@@ -54,9 +57,11 @@ export default function Register() {
             />
           </div>
           <div>
-            <label className="label">Email</label>
+            <label className="label" htmlFor="register-email">Email</label>
             <input
+              id="register-email"
               type="email"
+              autoComplete="email"
               className="input"
               placeholder="you@example.com"
               value={form.email}
@@ -64,24 +69,32 @@ export default function Register() {
             />
           </div>
           <div>
-            <label className="label">Password</label>
+            <label className="label" htmlFor="register-password">Password</label>
             <input
+              id="register-password"
               type="password"
+              autoComplete="new-password"
+              minLength={8}
               className="input"
               placeholder="Minimum 8 characters"
               value={form.password}
               onChange={set('password')}
               onKeyDown={(e) => e.key === 'Enter' && !mut.isPending && mut.mutate()}
+              aria-describedby="register-password-help"
             />
+            <p id="register-password-help" className="mt-1 text-xs text-gray-500">
+              Use at least 8 characters. Very long Unicode passwords may exceed bcrypt&apos;s 72-byte limit.
+            </p>
           </div>
           <button
+            type="button"
             onClick={() => mut.mutate()}
-            disabled={mut.isPending || !form.email || !form.password}
+            disabled={mut.isPending || !form.email || form.password.length < 8}
             className="btn-primary w-full mt-2"
           >
             {mut.isPending ? 'Creating account…' : 'Create account'}
           </button>
-          {error && <p className="text-sm text-red-600 leading-relaxed">{error}</p>}
+          {error && <p className="text-sm text-red-600 leading-relaxed" role="alert">{error}</p>}
         </div>
 
         <div className="mt-4 card p-4 text-sm space-y-3">
@@ -89,6 +102,7 @@ export default function Register() {
             type="button"
             onClick={() => setShowApiConnection((open) => !open)}
             className="w-full text-left font-medium text-gray-700"
+            aria-expanded={showApiConnection}
           >
             API connection {showApiConnection ? '−' : '+'}
           </button>

@@ -1,12 +1,17 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+from app.auth import create_access_token, hash_password, verify_password
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserOut, Token
-from app.auth import hash_password, verify_password, create_access_token
+from app.schemas.user import Token, UserCreate, UserOut
 from app.services.email_service import send_welcome_email
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -22,10 +27,16 @@ async def register(user_in: UserCreate, db: Session = Depends(get_db)):
         full_name=user_in.full_name,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Email already registered")
     db.refresh(user)
 
-    await send_welcome_email(user.email, user.full_name or user.email)
+    welcome_sent = await send_welcome_email(user.email, user.full_name or user.email)
+    if not welcome_sent:
+        logger.warning("Welcome email delivery failed for user_id=%s", user.id)
 
     token = create_access_token({"sub": str(user.id)})
     return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))
@@ -36,7 +47,8 @@ async def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.email == form.username).first()
+    normalized_email = form.username.strip().lower()
+    user = db.query(User).filter(User.email == normalized_email).first()
     if not user or not verify_password(form.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

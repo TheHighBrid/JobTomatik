@@ -14,12 +14,18 @@ export default function ApiBaseUrlField({ compact = false }) {
   const [testResult, setTestResult] = useState(null)
 
   const save = () => {
-    const normalized = setApiBaseUrl(value)
-    setValue(normalized)
-    setSaved(true)
-    setTestResult(null)
-    window.setTimeout(() => setSaved(false), 1800)
-    return normalized
+    try {
+      const normalized = setApiBaseUrl(value)
+      setValue(normalized)
+      setSaved(true)
+      setTestResult(null)
+      window.setTimeout(() => setSaved(false), 1800)
+      return normalized
+    } catch (error) {
+      setSaved(false)
+      setTestResult({ ok: false, message: error.message || 'Invalid backend API URL.' })
+      return null
+    }
   }
 
   const reset = () => {
@@ -32,6 +38,8 @@ export default function ApiBaseUrlField({ compact = false }) {
 
   const test = async () => {
     const normalized = save()
+    if (!normalized) return
+
     setTesting(true)
     setTestResult(null)
     try {
@@ -50,9 +58,14 @@ export default function ApiBaseUrlField({ compact = false }) {
   return (
     <div className={compact ? 'space-y-2' : 'space-y-3'}>
       <div>
-        <label className="label">Backend API URL</label>
+        <label className="label" htmlFor="backend-api-url">Backend API URL</label>
         <input
+          id="backend-api-url"
           type="url"
+          inputMode="url"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck="false"
           className="input"
           placeholder="https://api.your-domain.com"
           value={value}
@@ -75,15 +88,19 @@ export default function ApiBaseUrlField({ compact = false }) {
         <button type="button" onClick={reset} className="text-xs text-gray-500 hover:text-gray-800">
           Reset
         </button>
-        {saved && <span className="text-xs text-green-600">Saved</span>}
+        {saved && <span className="text-xs text-green-600" role="status">Saved</span>}
       </div>
       {testResult && (
-        <p className={testResult.ok ? 'text-xs text-green-700' : 'text-xs text-red-600'}>
+        <p
+          className={testResult.ok ? 'text-xs text-green-700' : 'text-xs text-red-600'}
+          role="status"
+          aria-live="polite"
+        >
           {testResult.message}
         </p>
       )}
       <p className="text-xs text-gray-500 leading-relaxed">
-        For an Android APK, this must be a backend your phone can reach. On Android, localhost only works if the backend is running on this same device. Use a deployed HTTPS API URL, or your computer&apos;s LAN IP during local testing.
+        For an Android APK, this must be a backend your phone can reach. Local and private-network addresses may use HTTP during development. Any public or remote backend must use HTTPS.
       </p>
     </div>
   )

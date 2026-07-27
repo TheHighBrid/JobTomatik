@@ -26,19 +26,44 @@ export default function Layout() {
   const { setUnreadCount } = useNotificationStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // Close mobile sidebar on route change
   useEffect(() => { setSidebarOpen(false) }, [location.pathname])
 
   useEffect(() => {
-    const fetch = async () => {
+    if (!sidebarOpen) return undefined
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [sidebarOpen])
+
+  useEffect(() => {
+    let active = true
+
+    const fetchUnreadCount = async () => {
+      if (document.visibilityState === 'hidden') return
       try {
         const res = await getUnreadCount()
-        setUnreadCount(res.data.count)
-      } catch {}
+        if (active) setUnreadCount(res.data.count)
+      } catch {
+        // Notification polling is non-critical and retries on the next visible interval.
+      }
     }
-    fetch()
-    const interval = setInterval(fetch, 30_000)
-    return () => clearInterval(interval)
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') fetchUnreadCount()
+    }
+
+    fetchUnreadCount()
+    const interval = window.setInterval(fetchUnreadCount, 30_000)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [setUnreadCount])
 
   const handleLogout = () => {
@@ -48,7 +73,6 @@ export default function Layout() {
 
   const SidebarContent = () => (
     <>
-      {/* Brand */}
       <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 bg-tomato-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
@@ -57,15 +81,16 @@ export default function Layout() {
           <span className="font-bold text-gray-900 text-lg">JobTomatik</span>
         </div>
         <button
+          type="button"
           onClick={() => setSidebarOpen(false)}
           className="md:hidden p-1 rounded-lg text-gray-400 hover:bg-gray-100"
+          aria-label="Close navigation menu"
         >
-          <X className="w-5 h-5" />
+          <X className="w-5 h-5" aria-hidden="true" />
         </button>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto" aria-label="Primary navigation">
         {NAV.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
@@ -79,13 +104,12 @@ export default function Layout() {
               }`
             }
           >
-            <Icon className="w-4 h-4 flex-shrink-0" />
+            <Icon className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
             {label}
           </NavLink>
         ))}
       </nav>
 
-      {/* User footer */}
       <div className="px-3 py-4 border-t border-gray-100">
         <div className="flex items-center gap-3 px-3 py-2 rounded-lg">
           <div className="w-8 h-8 rounded-full bg-tomato-100 flex items-center justify-center text-tomato-700 font-semibold text-sm">
@@ -99,10 +123,11 @@ export default function Layout() {
           </div>
         </div>
         <button
+          type="button"
           onClick={handleLogout}
           className="mt-1 w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
         >
-          <LogOut className="w-4 h-4" />
+          <LogOut className="w-4 h-4" aria-hidden="true" />
           Sign out
         </button>
       </div>
@@ -111,33 +136,38 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
-      {/* Desktop sidebar */}
       <aside className="hidden md:flex w-64 bg-white border-r border-gray-100 flex-col shadow-sm flex-shrink-0">
         <SidebarContent />
       </aside>
 
-      {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div
-            className="absolute inset-0 bg-black/40"
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40 cursor-default"
             onClick={() => setSidebarOpen(false)}
+            aria-label="Close navigation menu"
           />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-white flex flex-col shadow-xl">
+          <aside
+            id="mobile-sidebar"
+            className="absolute left-0 top-0 bottom-0 w-72 bg-white flex flex-col shadow-xl"
+          >
             <SidebarContent />
           </aside>
         </div>
       )}
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* Top bar */}
         <header className="bg-white border-b border-gray-100 px-4 md:px-6 py-3 flex items-center justify-between gap-4 shadow-sm flex-shrink-0">
           <button
+            type="button"
             onClick={() => setSidebarOpen(true)}
             className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+            aria-label="Open navigation menu"
+            aria-expanded={sidebarOpen}
+            aria-controls="mobile-sidebar"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
           <div className="md:hidden flex items-center gap-2">
             <div className="w-6 h-6 bg-tomato-600 rounded-md flex items-center justify-center text-white font-bold text-xs">
@@ -154,7 +184,6 @@ export default function Layout() {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
       <MobileNav />
     </div>
   )
