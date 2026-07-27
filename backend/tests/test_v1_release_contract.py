@@ -18,7 +18,7 @@ def test_android_gradle_wrapper_is_portable():
     ).read_text(encoding="utf-8")
 
     assert "services.gradle.org/distributions/gradle-8.11.1-bin.zip" in wrapper
-    assert "file\\:///tmp/" not in wrapper
+    assert "file\:///tmp/" not in wrapper
     assert "validateDistributionUrl=true" in wrapper
 
 
@@ -59,6 +59,7 @@ def test_frontend_apk_scripts_run_gradle_assembly():
     assert "assembleDebug" in package["scripts"]["build:apk:debug"]
     assert "assembleRelease" in package["scripts"]["build:apk:release"]
     assert "lintDebug" in package["scripts"]["android:lint"]
+    assert package["scripts"]["test"] == "node --test"
 
 
 def test_default_cors_origins_are_explicit_and_capacitor_compatible():
@@ -85,7 +86,7 @@ def test_local_runtime_contract_uses_sqlite_and_port_8010_everywhere():
     assert "DATABASE_URL=sqlite:///./jobtomatik.db" in active_lines
     assert not any(line.startswith("DATABASE_URL=postgresql://") for line in active_lines)
     assert "VITE_API_URL=http://127.0.0.1:8010" in active_lines
-    assert "import.meta.env.VITE_API_URL || 'http://127.0.0.1:8010'" in client
+    assert "import.meta.env?.VITE_API_URL || 'http://127.0.0.1:8010'" in client
     assert "import.meta.env.VITE_API_URL || 'http://localhost:8000'" not in client
     assert "uvicorn app.main:app --host 127.0.0.1 --port 8010" in launcher
     assert "http://127.0.0.1:8010/health" in launcher
