@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Verify exact publication request and branch contents
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
@@ -82,7 +82,7 @@ jobs:
             core.info(`Authorized frozen source ${process.env.RELEASE_SOURCE_SHA}`);
 
       - name: Announce authorized publication
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -327,7 +327,7 @@ jobs:
           path: release
 
       - name: Delete existing same-name assets
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
@@ -370,7 +370,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Report authorized release result
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
