@@ -7,7 +7,7 @@ uvicorn==0.29.0
 sqlalchemy==2.0.30
 alembic==1.18.5
 redis==5.0.4
-celery==5.4.0
+celery==5.6.3
 anthropic==0.26.0
 sendgrid==6.11.0
 python-jose[cryptography]==3.3.0
