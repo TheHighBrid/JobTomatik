@@ -1,0 +1,28 @@
+# Secrets and local overrides
+.env
+.env.*
+*.env
+
+# Dependencies and build outputs
+node_modules/
+dist/
+build/
+coverage/
+
+# Android generated output and signing material
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/**/*.apk
+android/**/*.aab
+android/keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+
+# Local tooling and repository noise
+.git/
+.github/
+.DS_Store
