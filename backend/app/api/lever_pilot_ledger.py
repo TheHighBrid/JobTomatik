@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.application import Application
 from app.models.job import Job
 from app.models.user import User
-from app.services.lever_pilot_ingestion import (
+from app.services.lever_pilot_ledger_boundary import (
     LeverPilotIngestionError,
     ingest_confirmed_lever_application,
     read_lever_pilot_readiness,
