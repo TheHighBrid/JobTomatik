@@ -13,6 +13,7 @@ from app.models.application import (
     SubmissionEvidence,
     SubmissionEvidenceType,
 )
+from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 
 
 _ALLOWED_TRANSITIONS = {
@@ -205,6 +206,24 @@ def resolve_manual_review_task(
     return review
 
 
+def _latest_consumed_lever_approval(
+    db: Session,
+    application_id: int,
+) -> Optional[SubmissionApproval]:
+    approval = (
+        db.query(SubmissionApproval)
+        .filter(
+            SubmissionApproval.application_id == application_id,
+            SubmissionApproval.status == SubmissionApprovalStatus.consumed.value,
+        )
+        .order_by(SubmissionApproval.consumed_at.desc(), SubmissionApproval.id.desc())
+        .first()
+    )
+    if approval and str(approval.platform or "").strip().lower() == "lever":
+        return approval
+    return None
+
+
 def record_submission_evidence(
     db: Session,
     application: Application,
@@ -220,6 +239,29 @@ def record_submission_evidence(
     payload_hash: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> SubmissionEvidence:
+    evidence_metadata = dict(metadata or {})
+    effective_payload_hash = payload_hash
+    lever_approval = _latest_consumed_lever_approval(db, application.id)
+    if lever_approval:
+        approval_metadata = dict(lever_approval.approval_metadata or {})
+        identity = approval_metadata.get("target_identity")
+        target_identity = dict(identity) if isinstance(identity, dict) else {}
+        effective_payload_hash = lever_approval.combined_payload_hash
+        evidence_metadata.update({
+            "platform": "lever",
+            "adapter": "lever",
+            "adapter_version": approval_metadata.get("adapter_version"),
+            "approval_reference": lever_approval.reference,
+            "combined_payload_hash": lever_approval.combined_payload_hash,
+            "site": target_identity.get("site"),
+            "posting_id": target_identity.get("posting_id"),
+            "region": target_identity.get("region"),
+            "canonical_application_url": target_identity.get("canonical_application_url"),
+            "posting_metadata_hash": target_identity.get("posting_metadata_hash"),
+            "target_identity_hash": target_identity.get("identity_hash"),
+            "canonical_final_url": final_url or target_identity.get("canonical_application_url"),
+        })
+
     evidence = SubmissionEvidence(
         application_id=application.id,
         evidence_type=(evidence_type.value if isinstance(evidence_type, SubmissionEvidenceType) else str(evidence_type)),
@@ -230,8 +272,8 @@ def record_submission_evidence(
         external_application_id=external_application_id,
         screenshot_path=screenshot_path,
         html_snapshot_path=html_snapshot_path,
-        payload_hash=payload_hash,
-        evidence_metadata=metadata or {},
+        payload_hash=effective_payload_hash,
+        evidence_metadata=evidence_metadata,
     )
     db.add(evidence)
     return evidence
