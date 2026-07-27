@@ -346,7 +346,7 @@ jobs:
             }
 
       - name: Publish corrected GitHub release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v1.0.0
           target_commitish: ${{ env.RELEASE_SOURCE_SHA }}
