@@ -18,10 +18,30 @@ updates:
       - dependencies
       - frontend
     groups:
+      capacitor:
+        patterns:
+          - "@capacitor/*"
+        update-types:
+          - minor
+          - patch
       frontend-runtime:
         dependency-type: production
+        exclude-patterns:
+          - "@capacitor/*"
+        update-types:
+          - minor
+          - patch
       frontend-development:
         dependency-type: development
+        exclude-patterns:
+          - "@capacitor/*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "@capacitor/*"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: gradle
     directory: /frontend/android
@@ -31,6 +51,10 @@ updates:
     labels:
       - dependencies
       - android
+    ignore:
+      - dependency-name: "com.android.tools.build:gradle"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: github-actions
     directory: /
