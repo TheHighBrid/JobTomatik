@@ -86,7 +86,7 @@ def test_local_runtime_contract_uses_sqlite_and_port_8010_everywhere():
     assert "DATABASE_URL=sqlite:///./jobtomatik.db" in active_lines
     assert not any(line.startswith("DATABASE_URL=postgresql://") for line in active_lines)
     assert "VITE_API_URL=http://127.0.0.1:8010" in active_lines
-    assert "import.meta.env?.VITE_API_URL || 'http://127.0.0.1:8010'" in client
+    assert "import.meta.env.VITE_API_URL || 'http://127.0.0.1:8010'" in client
     assert "import.meta.env.VITE_API_URL || 'http://localhost:8000'" not in client
     assert "uvicorn app.main:app --host 127.0.0.1 --port 8010" in launcher
     assert "http://127.0.0.1:8010/health" in launcher
