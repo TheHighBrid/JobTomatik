@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -11,11 +12,33 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from playwright.async_api import async_playwright
 
-from app.services.browser_runtime import launch_application_browser
+from app.config import get_settings
+from app.services.browser_runtime import launch_retainable_browser
 
 
 LINKEDIN_LOGIN_URL = "https://www.linkedin.com/login"
 LINKEDIN_AUTH_COOKIE = "li_at"
+
+
+def _require_interactive_display() -> None:
+    display = (os.environ.get("DISPLAY") or "").strip()
+    wayland_display = (os.environ.get("WAYLAND_DISPLAY") or "").strip()
+    if display or wayland_display:
+        return
+    raise RuntimeError(
+        "Interactive LinkedIn login requires a visible graphical display. "
+        "Set DISPLAY for X11 or WAYLAND_DISPLAY before running this helper."
+    )
+
+
+async def _launch_interactive_browser(playwright: Any) -> Any:
+    settings = get_settings()
+    return await launch_retainable_browser(
+        playwright,
+        profile_dir=Path(settings.application_browser_profile_dir).expanduser(),
+        headless=False,
+        executable_path=(settings.application_browser_executable or "").strip(),
+    )
 
 
 async def _linkedin_login_saved(context: Any) -> bool:
@@ -49,10 +72,11 @@ async def _wait_for_saved_login(runtime: Any) -> None:
 
 
 async def main() -> int:
+    _require_interactive_display()
     runtime = None
     async with async_playwright() as playwright:
         try:
-            runtime = await launch_application_browser(playwright)
+            runtime = await _launch_interactive_browser(playwright)
             print("PLAYWRIGHT_ATTACHED")
             print(f"Profile: {runtime.browser_profile_path}")
 
