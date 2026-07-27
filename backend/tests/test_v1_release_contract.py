@@ -93,12 +93,26 @@ def test_local_runtime_contract_uses_sqlite_and_port_8010_everywhere():
     assert "--port 8000" not in launcher
 
 
+def test_docker_build_contexts_exclude_secrets_and_runtime_data():
+    backend_ignore = (REPO_ROOT / "backend" / ".dockerignore").read_text(encoding="utf-8")
+    frontend_ignore = (REPO_ROOT / "frontend" / ".dockerignore").read_text(encoding="utf-8")
+    frontend_dockerfile = (REPO_ROOT / "frontend" / "Dockerfile").read_text(encoding="utf-8")
+
+    for token in (".env", "uploads/", "browser_profiles/", "handoff_sessions/"):
+        assert token in backend_ignore
+    for token in (".env", "node_modules/", "android/app/build/", "*.jks"):
+        assert token in frontend_ignore
+    assert "RUN npm ci" in frontend_dockerfile
+    assert "RUN npm install" not in frontend_dockerfile
+
+
 def test_release_documentation_is_present():
     required = [
         REPO_ROOT / "README.md",
         REPO_ROOT / "CHANGELOG.md",
         REPO_ROOT / "SECURITY.md",
         REPO_ROOT / "docs" / "SETUP_TUTORIAL.md",
+        REPO_ROOT / "docs" / "FULL_AUDIT_2026-07-27.md",
     ]
 
     missing = [str(path.relative_to(REPO_ROOT)) for path in required if not path.is_file()]
