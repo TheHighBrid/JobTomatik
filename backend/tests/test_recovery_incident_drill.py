@@ -64,7 +64,7 @@ def test_recovery_incident_workflow_contract():
 
     assert "actions/checkout@v6" in text
     assert "actions/setup-python@v7" in text
-    assert "actions/upload-artifact@v6" in text
+    assert "actions/upload-artifact@v7" in text
     assert 'ALLOW_REAL_APPLICATION_SUBMIT: "false"' in text
     assert 'AUTOPILOT_ENABLED: "false"' in text
     assert "working-directory: backend" in text
