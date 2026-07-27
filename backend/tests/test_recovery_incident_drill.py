@@ -62,7 +62,7 @@ def test_recovery_incident_workflow_contract():
     workflow = Path(__file__).parents[2] / ".github" / "workflows" / "recovery-incident-drill.yml"
     text = workflow.read_text(encoding="utf-8")
 
-    assert "actions/checkout@v6" in text
+    assert "actions/checkout@v7" in text
     assert "actions/setup-python@v7" in text
     assert "actions/upload-artifact@v6" in text
     assert 'ALLOW_REAL_APPLICATION_SUBMIT: "false"' in text
