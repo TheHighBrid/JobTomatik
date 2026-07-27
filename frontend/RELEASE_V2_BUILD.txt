@@ -1,6 +1,0 @@
-Authorized Android build and GitHub Release publication request for JobTomatik v2.00.
-
-Technical Android version: 2.0.0
-Android version code: 200
-Release tag: v2.0.0
-Release title: JobTomatik v2.00
