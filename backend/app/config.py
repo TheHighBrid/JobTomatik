@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     greenhouse_pilot_readiness_json_path: str = "evidence/greenhouse-pilot-readiness.json"
     greenhouse_pilot_readiness_markdown_path: str = "evidence/greenhouse-pilot-readiness.md"
 
+    # Lever evidence is isolated from Greenhouse. The baseline may remain absent
+    # until retained Phase A artifacts are indexed; absence counts as zero evidence.
+    lever_pilot_baseline_path: str = "evidence/lever-phase-a-baseline.csv"
+    lever_pilot_ledger_path: str = "evidence/lever-pilot-ledger.jsonl"
+    lever_pilot_readiness_json_path: str = "evidence/lever-pilot-readiness.json"
+    lever_pilot_readiness_markdown_path: str = "evidence/lever-pilot-readiness.md"
+
     @property
     def cors_origin_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
