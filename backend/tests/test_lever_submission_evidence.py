@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta
 
-import pytest
-
 from app.models.application import (
     Application,
     ApplicationAutomationState,
     ApplicationStatus,
+    ManualReviewStatus,
+    ManualReviewTask,
     SubmissionEvidence,
 )
 from app.models.job import Job
@@ -17,7 +17,6 @@ from app.services.platform_submission_evidence import (
     build_platform_supervised_pilot_record,
     review_platform_submission_evidence,
 )
-from app.services.submission_evidence_review import SubmissionEvidenceReviewError
 
 
 SITE = "lever-pilot"
@@ -207,7 +206,7 @@ def test_same_site_route_without_concrete_confirmation_is_blocked(db_session):
     assert "lever_evidence_final_url_posting_mismatch" in preflight["blockers"]
 
 
-def test_lever_evidence_payload_or_identity_drift_blocks_acceptance(db_session):
+def test_lever_evidence_drift_is_rejected_and_creates_manual_review(db_session):
     user, job, application, approval, evidence = _fixture(db_session)
     evidence.payload_hash = "0" * 64
     metadata = dict(evidence.evidence_metadata or {})
@@ -224,8 +223,22 @@ def test_lever_evidence_payload_or_identity_drift_blocks_acceptance(db_session):
     assert "lever_evidence_posting_id_mismatch" in preflight["blockers"]
     assert "lever_evidence_approval_reference_mismatch" in preflight["blockers"]
 
-    with pytest.raises(SubmissionEvidenceReviewError, match="acceptance is blocked"):
-        _review(db_session, user, job, application, evidence)
+    review = _review(db_session, user, job, application, evidence)
+    db_session.commit()
+    db_session.refresh(application)
+
+    assert review.decision == "rejected"
+    assert review.review_metadata["requested_decision"] == "accepted"
+    assert "lever_evidence_payload_hash_mismatch" in review.review_metadata["platform_blockers"]
+    assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
+
+    manual_review = (
+        db_session.query(ManualReviewTask)
+        .filter(ManualReviewTask.application_id == application.id)
+        .one()
+    )
+    assert manual_review.status == ManualReviewStatus.open.value
+    assert manual_review.details["review_reference"] == review.reference
 
 
 def test_observed_adapter_version_mismatch_is_not_overwritten(db_session):
