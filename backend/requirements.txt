@@ -13,7 +13,7 @@ bcrypt==4.0.1
 python-multipart==0.0.31
 httpx==0.27.0
 beautifulsoup4==4.12.3
-lxml==6.1.0
+lxml==5.2.2
 python-dotenv==1.2.2
 pydantic==2.13.4
 pydantic-settings==2.3.0
