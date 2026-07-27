@@ -1,0 +1,50 @@
+name: Refresh PR 123 frontend lockfile
+
+on:
+  push:
+    branches:
+      - fix/pr122-tailwind-v4-migration
+    paths:
+      - frontend/package.json
+      - frontend/package-lock.json
+      - .github/workflows/refresh-pr123-frontend-lockfile.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lockfile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v6
+        with:
+          ref: fix/pr122-tailwind-v4-migration
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Regenerate npm lockfile
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Commit lockfile
+        shell: bash
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "package-lock.json is already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Regenerate frontend lockfile for Tailwind v4"
+          git push origin HEAD:fix/pr122-tailwind-v4-migration
