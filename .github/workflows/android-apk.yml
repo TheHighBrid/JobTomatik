@@ -88,17 +88,17 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee android-apk-badging.txt
           grep -q "package: name='ca.jobtomatik.app'" android-apk-badging.txt
-          grep -q "versionCode='100'" android-apk-badging.txt
-          grep -q "versionName='1.0.0'" android-apk-badging.txt
+          grep -q "versionCode='200'" android-apk-badging.txt
+          grep -q "versionName='2.0.0'" android-apk-badging.txt
           mkdir -p release
-          cp "$APK" release/JobTomatik-v1.00-debug.apk
-          sha256sum release/JobTomatik-v1.00-debug.apk > release/JobTomatik-v1.00-debug.sha256
+          cp "$APK" release/JobTomatik-v2.00-debug.apk
+          sha256sum release/JobTomatik-v2.00-debug.apk > release/JobTomatik-v2.00-debug.sha256
 
       - name: Upload APK and reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: jobtomatik-v1-android-apk
+          name: jobtomatik-v2-android-apk
           path: |
             frontend/release/*
             frontend/android/android-build-output.txt
