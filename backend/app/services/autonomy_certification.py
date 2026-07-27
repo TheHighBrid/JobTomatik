@@ -16,6 +16,7 @@ from app.services.operations_policy import operations_readiness_manifest
 
 AUTONOMY_TARGET_MATURITY = "certified_autonomous"
 AUTONOMY_CERTIFICATION_FRAMEWORK_VERSION = "autonomy_certification_v1"
+_EXPLICIT_EXERCISE_EVIDENCE_STATUSES = frozenset({"certified", "reached"})
 
 # Ordered stages make the destination explicit without pretending the runtime is
 # already submission-capable. Each stage can be used as a release checklist.
@@ -78,24 +79,32 @@ def _gate_status(adapter: Mapping[str, Any], release_key: str, gates: Iterable[s
     }
 
 
+def _is_explicit_exercise_evidence(value: Any) -> bool:
+    """Accept only statuses that explicitly prove an exercise was reached or certified."""
+    if not isinstance(value, str):
+        return False
+    return value.strip().lower() in _EXPLICIT_EXERCISE_EVIDENCE_STATUSES
+
+
 def _live_dry_run_status(adapter: Mapping[str, Any]) -> Dict[str, Any]:
     live = adapter.get("live_certification")
     if not isinstance(live, Mapping):
         live = {}
     maturity = adapter.get("maturity")
-    passed = maturity in {
+    maturity_allows_live_dry_run = maturity in {
         "dry_run",
         "human_reviewed_submit",
         AUTONOMY_TARGET_MATURITY,
     }
     checks = {
+        "maturity_allows_live_dry_run": maturity_allows_live_dry_run,
         "live_certification_present": bool(live),
         "final_submit_not_clicked": live.get("final_submit_clicked") is False,
         "boundary_or_synthetic_exercise_present": bool(
             live.get("latest_certified_boundary")
-            or live.get("synthetic_full_form_exercise")
-            or live.get("synthetic_live_full_form_exercise")
-        ),
+        )
+        or _is_explicit_exercise_evidence(live.get("synthetic_full_form_exercise"))
+        or _is_explicit_exercise_evidence(live.get("synthetic_live_full_form_exercise")),
         "resume_upload_evidence_present": bool(
             live.get("verified_resume_upload")
             or live.get("live_verified_resume_upload")
@@ -104,9 +113,9 @@ def _live_dry_run_status(adapter: Mapping[str, Any]) -> Dict[str, Any]:
     }
     missing = [name for name, value in checks.items() if not value]
     return {
-        "passed": passed,
+        "passed": not missing,
         "checks": checks,
-        "missing": [] if passed else missing,
+        "missing": missing,
         "latest_certified_boundary": live.get("latest_certified_boundary"),
     }
 

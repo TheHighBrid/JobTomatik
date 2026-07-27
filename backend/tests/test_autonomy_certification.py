@@ -1,5 +1,21 @@
-from app.services.autonomy_certification import build_autonomy_certification_manifest
+import pytest
+
+from app.services.autonomy_certification import (
+    _live_dry_run_status,
+    build_autonomy_certification_manifest,
+)
 from app.services.ats_maturity import AUTONOMY_RELEASE_GATES, HUMAN_REVIEWED_RELEASE_GATES
+
+
+def _adapter_with_synthetic_live_exercise(status: str):
+    return {
+        "maturity": "dry_run",
+        "live_certification": {
+            "synthetic_live_full_form_exercise": status,
+            "fixture_verified_resume_upload": True,
+            "final_submit_clicked": False,
+        },
+    }
 
 
 def test_autonomy_certification_manifest_tracks_current_blockers():
@@ -23,6 +39,30 @@ def test_autonomy_certification_manifest_tracks_current_blockers():
         "human_reviewed_real_submission",
         "autonomous_real_submission",
     ]
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        "not_reached_due_to_pre_form_datadome",
+        "not_reached_due_to_account_boundary",
+    ],
+)
+def test_unreached_synthetic_live_exercises_remain_certification_blockers(status):
+    stage = _live_dry_run_status(_adapter_with_synthetic_live_exercise(status))
+
+    assert stage["passed"] is False
+    assert stage["checks"]["boundary_or_synthetic_exercise_present"] is False
+    assert "boundary_or_synthetic_exercise_present" in stage["missing"]
+
+
+@pytest.mark.parametrize("status", ["certified", "reached"])
+def test_explicit_synthetic_live_exercise_evidence_clears_boundary_check(status):
+    stage = _live_dry_run_status(_adapter_with_synthetic_live_exercise(status))
+
+    assert stage["passed"] is True
+    assert stage["checks"]["boundary_or_synthetic_exercise_present"] is True
+    assert stage["missing"] == []
 
 
 def test_autonomy_certification_endpoint(client):
