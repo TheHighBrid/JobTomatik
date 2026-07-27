@@ -246,14 +246,21 @@ def record_submission_evidence(
         approval_metadata = dict(lever_approval.approval_metadata or {})
         identity = approval_metadata.get("target_identity")
         target_identity = dict(identity) if isinstance(identity, dict) else {}
-        effective_payload_hash = lever_approval.combined_payload_hash
-        # Preserve adapter and adapter_version supplied by the browser evidence.
-        # The review layer compares those observed values with the approved values.
-        evidence_metadata.update({
+        expected_payload_hash = lever_approval.combined_payload_hash
+
+        # A missing browser hash may be bound to the trusted consumed approval. A
+        # supplied browser hash is immutable evidence and must never be overwritten,
+        # even when it disagrees with the approved payload.
+        if effective_payload_hash is None:
+            effective_payload_hash = expected_payload_hash
+
+        # Preserve every value actually supplied by the browser. Fill only missing
+        # context so the platform review can compare observed values against the
+        # expected approval snapshot and detect drift instead of erasing it.
+        observed_defaults = {
             "platform": "lever",
             "approval_reference": lever_approval.reference,
-            "combined_payload_hash": lever_approval.combined_payload_hash,
-            "expected_adapter_version": approval_metadata.get("adapter_version"),
+            "combined_payload_hash": expected_payload_hash,
             "site": target_identity.get("site"),
             "posting_id": target_identity.get("posting_id"),
             "region": target_identity.get("region"),
@@ -261,6 +268,21 @@ def record_submission_evidence(
             "posting_metadata_hash": target_identity.get("posting_metadata_hash"),
             "target_identity_hash": target_identity.get("identity_hash"),
             "canonical_final_url": final_url or target_identity.get("canonical_application_url"),
+        }
+        for key, value in observed_defaults.items():
+            evidence_metadata.setdefault(key, value)
+
+        evidence_metadata.update({
+            "expected_platform": "lever",
+            "expected_approval_reference": lever_approval.reference,
+            "expected_combined_payload_hash": expected_payload_hash,
+            "expected_adapter_version": approval_metadata.get("adapter_version"),
+            "expected_site": target_identity.get("site"),
+            "expected_posting_id": target_identity.get("posting_id"),
+            "expected_region": target_identity.get("region"),
+            "expected_canonical_application_url": target_identity.get("canonical_application_url"),
+            "expected_posting_metadata_hash": target_identity.get("posting_metadata_hash"),
+            "expected_target_identity_hash": target_identity.get("identity_hash"),
         })
 
     evidence = SubmissionEvidence(
