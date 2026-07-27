@@ -1,0 +1,67 @@
+name: Migrate upload-artifact v7
+
+on:
+  push:
+    branches:
+      - fix/upload-artifact-v7-contracts
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v6
+        with:
+          ref: fix/upload-artifact-v7-contracts
+          fetch-depth: 0
+
+      - name: Update action references and contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          migration = Path('.github/workflows/migrate-upload-artifact-v7.yml')
+          changed = []
+          for path in sorted(Path('.github/workflows').glob('*.yml')):
+              if path == migration:
+                  continue
+              text = path.read_text(encoding='utf-8')
+              updated = text
+              for version in ('v4', 'v5', 'v6'):
+                  updated = updated.replace(
+                      f'actions/upload-artifact@{version}',
+                      'actions/upload-artifact@v7',
+                  )
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+                  changed.append(str(path))
+
+          contract = Path('backend/tests/test_recovery_incident_drill.py')
+          text = contract.read_text(encoding='utf-8')
+          updated = text.replace(
+              'assert "actions/upload-artifact@v6" in text',
+              'assert "actions/upload-artifact@v7" in text',
+          )
+          if updated == text:
+              raise SystemExit('Expected upload-artifact v6 contract was not found')
+          contract.write_text(updated, encoding='utf-8')
+          changed.append(str(contract))
+
+          if not changed:
+              raise SystemExit('No upload-artifact references were updated')
+          print('\n'.join(changed))
+          PY
+
+      - name: Commit clean migration and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/migrate-upload-artifact-v7.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows backend/tests/test_recovery_incident_drill.py
+          git commit -m "Upgrade upload-artifact workflows and contracts to v7"
+          git push origin HEAD:fix/upload-artifact-v7-contracts
