@@ -28,8 +28,8 @@ def test_android_release_config_contains_no_committed_signing_secret():
         REPO_ROOT / "frontend" / "android" / "app" / "build.gradle"
     ).read_text(encoding="utf-8")
 
-    assert 'versionCode 100' in build_gradle
-    assert 'versionName "1.0.0"' in build_gradle
+    assert 'versionCode 200' in build_gradle
+    assert 'versionName "2.0.0"' in build_gradle
     assert "JOBTOMATIK_KEYSTORE_PATH" in build_gradle
     assert "/home/user/JobTomatik" not in build_gradle
     assert "jobtomatik123" not in build_gradle
@@ -120,31 +120,27 @@ def test_release_documentation_is_present():
     assert not missing, f"Missing release documentation: {missing}"
 
 
-def test_owner_command_v1_publisher_is_frozen_and_narrowly_scoped():
+def test_owner_command_v2_publisher_is_authorized_and_narrowly_scoped():
     workflow_path = (
         REPO_ROOT / ".github" / "workflows" / "publish-v1-command.yml"
     )
     workflow = workflow_path.read_text(encoding="utf-8")
 
-    frozen_sha = "6f7f9fa6a7d3c63516cde381410ac188364dba36"
-    request_sha = "6a176eeacd7cc413b0456a6e204735459fc12313"
-
     assert workflow_path.is_file()
     assert not (
         REPO_ROOT / ".github" / "workflows" / "publish-v1-authorized.yml"
     ).exists()
+    assert "name: Publish JobTomatik v2 by authorized command" in workflow
     assert "issue_comment:" in workflow
-    assert "github.event.issue.number == 81" in workflow
-    assert "github.event.comment.body == '/publish-jobtomatik-v1.0.0'" in workflow
+    assert "github.event.issue.number == 142" in workflow
+    assert "github.event.comment.body == '/publish-jobtomatik-v2.0.0'" in workflow
     assert "github.event.comment.user.login == 'TheHighBrid'" in workflow
     assert "chatgpt-codex-connector[bot]" in workflow
-    assert "AUTHORIZED_HEAD_BRANCH: release/publish-v1.0.0" in workflow
-    assert f"AUTHORIZED_REQUEST_SHA: {request_sha}" in workflow
-    assert frozen_sha in workflow
-    assert "files.length !== 1" in workflow
-    assert "files[0].filename !== 'RELEASE_PUBLISH_REQUEST.txt'" in workflow
-    assert "persist-credentials: false" in workflow
-    assert "ref: ${{ env.RELEASE_SOURCE_SHA }}" in workflow
-    assert "test \"$(git rev-parse HEAD)\" = \"$RELEASE_SOURCE_SHA\"" in workflow
+    assert 'AUTHORIZED_PR_NUMBER: "142"' in workflow
+    assert "ref: main" in workflow
+    assert "versionCode='200'" in workflow
+    assert "versionName='2.0.0'" in workflow
+    assert "tag_name: v2.0.0" in workflow
+    assert "JobTomatik-v2.00.apk" in workflow
     assert "github.event.pull_request.head.sha" not in workflow
     assert "github.event.pull_request.merge_commit_sha" not in workflow
