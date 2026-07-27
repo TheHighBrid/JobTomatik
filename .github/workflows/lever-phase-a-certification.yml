@@ -96,6 +96,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           from app.config import get_settings
 
           settings = get_settings()
@@ -103,7 +104,8 @@ jobs:
           summary = report['readiness']['summary']
           assert settings.allow_real_application_submit is False
           assert settings.lever_supervised_pilot_enabled is False
-          assert settings.autopilot_enabled is False
+          assert os.environ.get('AUTOPILOT_ENABLED', '').lower() == 'false'
+          assert settings.enable_resumable_handoffs is False
           assert report['passed'] is True
           assert report['safety']['browser_opened'] is False
           assert report['safety']['approval_issued'] is False
