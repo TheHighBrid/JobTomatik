@@ -184,4 +184,18 @@ async def autonomy_certification():
 
 @app.get("/api/system/operations-readiness")
 async def operations_readiness():
-    return operations_readiness_manifest()
+    readiness = operations_readiness_manifest()
+    ats = ats_certification_manifest()
+    maturities = {
+        item["name"]: item.get("maturity")
+        for item in ats.get("adapters", [])
+    }
+    readiness["product_goal"] = "fully_autonomous_evidence_backed_real_submission"
+    readiness["adapter_maturities"] = maturities
+    readiness["autonomous_adapters"] = list(ats.get("autonomous_adapters", []))
+    readiness["autonomous_adapter_count"] = len(readiness["autonomous_adapters"])
+    readiness["invariants"]["canonical_adapter_maturity_required"] = True
+    readiness["invariants"]["no_autonomous_adapter_currently_enabled"] = not bool(
+        readiness["autonomous_adapters"]
+    )
+    return readiness
