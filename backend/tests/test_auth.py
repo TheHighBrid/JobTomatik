@@ -1,6 +1,3 @@
-import pytest
-
-
 def test_register_success(client):
     resp = client.post("/api/auth/register", json={
         "email": "user@example.com",
@@ -20,6 +17,27 @@ def test_register_duplicate_email(client):
     resp = client.post("/api/auth/register", json=payload)
     assert resp.status_code == 400
     assert "already registered" in resp.json()["detail"]
+
+
+def test_email_identity_is_case_insensitive(client):
+    password = "pass12345"
+    created = client.post("/api/auth/register", json={
+        "email": "Person@Example.COM",
+        "password": password,
+    })
+    duplicate = client.post("/api/auth/register", json={
+        "email": "person@example.com",
+        "password": password,
+    })
+    login = client.post("/api/auth/login", data={
+        "username": "PERSON@example.com",
+        "password": password,
+    })
+
+    assert created.status_code == 201
+    assert created.json()["user"]["email"] == "person@example.com"
+    assert duplicate.status_code == 400
+    assert login.status_code == 200
 
 
 def test_register_rejects_short_password(client):
