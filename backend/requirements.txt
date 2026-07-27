@@ -6,7 +6,7 @@ psycopg2-binary==2.9.9
 redis==5.0.4
 celery[redis]==5.6.3
 playwright==1.44.0
-anthropic==0.26.0
+anthropic==0.120.0
 sendgrid==6.11.0
 python-jose[cryptography]==3.5.0
 bcrypt==4.0.1
