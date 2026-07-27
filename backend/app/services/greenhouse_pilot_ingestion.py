@@ -1,9 +1,9 @@
 """Locked Phase B ingestion merged with the verified Phase A baseline.
 
 The checked-in Phase A CSV is read-only and contains 30 artifact-backed dry-run
-records. Runtime ingestion writes only independently confirmed supervised records
-to a separate JSONL ledger. Readiness merges both sources under the runtime ledger
-lock, so historical evidence is counted without being copied or rewritten.
+records. Runtime ingestion writes only independently confirmed Greenhouse supervised
+records to a separate JSONL ledger. Readiness merges both sources under the runtime
+ledger lock, so historical evidence is counted without being copied or rewritten.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models.application import Application, ApplicationEvent
 from app.models.job import Job
+from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.models.user import User
 from app.services.greenhouse_pilot import (
     DRY_RUN_MODE,
@@ -129,6 +130,32 @@ def _combined_digest(records: list[Dict[str, Any]]) -> str:
 def _optional_int(value: Any) -> Optional[int]:
     text = str(value or "").strip()
     return int(text) if text else None
+
+
+def _require_greenhouse_consumed_approval(
+    db: Session,
+    application_id: int,
+) -> SubmissionApproval:
+    approval = (
+        db.query(SubmissionApproval)
+        .filter(
+            SubmissionApproval.application_id == application_id,
+            SubmissionApproval.status == SubmissionApprovalStatus.consumed.value,
+        )
+        .order_by(SubmissionApproval.consumed_at.desc(), SubmissionApproval.id.desc())
+        .first()
+    )
+    platform = str(approval.platform or "").strip().lower() if approval else ""
+    if platform != "greenhouse":
+        raise GreenhousePilotIngestionError(
+            "Greenhouse runtime ledger accepts Greenhouse approvals only; "
+            f"observed platform: {platform or 'missing'}."
+        )
+    if not str(approval.reference or "").startswith("ghsup-"):
+        raise GreenhousePilotIngestionError(
+            "Greenhouse runtime ledger requires a ghsup-* approval reference"
+        )
+    return approval
 
 
 def load_phase_a_baseline(
@@ -305,14 +332,21 @@ def ingest_confirmed_supervised_application(
     summary_json_path: Optional[str | Path] = None,
     summary_markdown_path: Optional[str | Path] = None,
 ) -> Dict[str, Any]:
-    """Append one confirmed Phase B record while preserving Phase A immutability."""
+    """Append one confirmed Greenhouse Phase B record while preserving Phase A."""
 
+    approval = _require_greenhouse_consumed_approval(db, application.id)
     try:
         record = build_supervised_pilot_record(db, application, user, job)
     except (ValueError, PilotEvidenceError) as exc:
         raise GreenhousePilotIngestionError(str(exc)) from exc
     if record.get("mode") != SUPERVISED_MODE:
         raise GreenhousePilotIngestionError("Runtime pilot ingestion accepts supervised records only")
+    if str(record.get("adapter") or "").strip().lower() != "greenhouse":
+        raise GreenhousePilotIngestionError("Greenhouse runtime ledger accepts Greenhouse records only")
+    if record.get("approval_reference") != approval.reference:
+        raise GreenhousePilotIngestionError(
+            "Greenhouse pilot record approval does not match the consumed approval"
+        )
 
     paths = configured_paths()
     if baseline_path is not None:

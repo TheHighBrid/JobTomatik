@@ -16,7 +16,9 @@ from app.api import (
     greenhouse_pilot_ledger,
     handoffs,
     jobs,
+    lever_pilot_ledger,
     notifications,
+    pilot_ledger,
     profile,
     settings as settings_api,
     submission_evidence_reviews,
@@ -184,7 +186,9 @@ app.include_router(applications.router, prefix="/api")
 app.include_router(supervised_submissions.router, prefix="/api")
 app.include_router(supervised_pilot_roster.router, prefix="/api")
 app.include_router(submission_evidence_reviews.router, prefix="/api")
+app.include_router(pilot_ledger.router, prefix="/api")
 app.include_router(greenhouse_pilot_ledger.router, prefix="/api")
+app.include_router(lever_pilot_ledger.router, prefix="/api")
 app.include_router(adapter_health.router, prefix="/api")
 app.include_router(handoffs.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")

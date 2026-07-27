@@ -12,11 +12,15 @@ from app.models.user import User
 from app.services.greenhouse_pilot_ingestion import (
     GreenhousePilotIngestionError,
     ingest_confirmed_supervised_application,
-    read_greenhouse_pilot_readiness,
+)
+from app.services.lever_pilot_ledger_boundary import (
+    LeverPilotIngestionError,
+    ingest_confirmed_lever_application,
 )
 
 
-router = APIRouter(prefix="/greenhouse-pilot-ledger", tags=["greenhouse-pilot-ledger"])
+router = APIRouter(prefix="/pilot-ledger", tags=["pilot-ledger"])
+_SUPPORTED_PLATFORMS = {"greenhouse", "lever"}
 
 
 def _owned_application(db: Session, application_id: int, user_id: int) -> Application:
@@ -42,20 +46,6 @@ def _latest_consumed_approval(db: Session, application_id: int) -> SubmissionApp
     )
 
 
-def _require_greenhouse_approval(db: Session, application_id: int) -> SubmissionApproval:
-    approval = _latest_consumed_approval(db, application_id)
-    platform = str(approval.platform or "").strip().lower() if approval else ""
-    if platform != "greenhouse":
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Greenhouse pilot ingestion accepts Greenhouse approvals only; "
-                f"observed platform: {platform or 'missing'}."
-            ),
-        )
-    return approval
-
-
 @router.post("/applications/{application_id}/ingest")
 def ingest_application_pilot_record(
     application_id: int,
@@ -63,30 +53,38 @@ def ingest_application_pilot_record(
     db: Session = Depends(get_db),
 ):
     application = _owned_application(db, application_id, current_user.id)
-    _require_greenhouse_approval(db, application.id)
     job = db.query(Job).filter(Job.id == application.job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Application job not found")
-    try:
-        result = ingest_confirmed_supervised_application(
-            db,
-            application,
-            current_user,
-            job,
+
+    approval = _latest_consumed_approval(db, application.id)
+    platform = str(approval.platform or "").strip().lower() if approval else ""
+    if platform not in _SUPPORTED_PLATFORMS:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Pilot ledger ingestion requires a consumed Greenhouse or Lever approval; "
+                f"observed platform: {platform or 'missing'}."
+            ),
         )
-        db.commit()
-        return result
-    except GreenhousePilotIngestionError as exc:
-        db.rollback()
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-
-@router.get("/readiness")
-def pilot_ledger_readiness(
-    current_user: User = Depends(get_current_user),
-):
-    del current_user
     try:
-        return read_greenhouse_pilot_readiness()
-    except GreenhousePilotIngestionError as exc:
+        if platform == "lever":
+            result = ingest_confirmed_lever_application(
+                db,
+                application,
+                current_user,
+                job,
+            )
+        else:
+            result = ingest_confirmed_supervised_application(
+                db,
+                application,
+                current_user,
+                job,
+            )
+        db.commit()
+        return {"platform": platform, **result}
+    except (GreenhousePilotIngestionError, LeverPilotIngestionError) as exc:
+        db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc

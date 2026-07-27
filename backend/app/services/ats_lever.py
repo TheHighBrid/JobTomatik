@@ -22,7 +22,7 @@ LEVER_GLOBAL_JOBS_HOST = "jobs.lever.co"
 LEVER_EU_JOBS_HOST = "jobs.eu.lever.co"
 LEVER_GLOBAL_API_HOST = "api.lever.co"
 LEVER_EU_API_HOST = "api.eu.lever.co"
-LEVER_ADAPTER_VERSION = "1.0.0"
+LEVER_ADAPTER_VERSION = "1.1.0"
 LEVER_POSTING_FIELDS = {
     "id",
     "text",

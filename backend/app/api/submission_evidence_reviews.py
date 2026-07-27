@@ -16,12 +16,14 @@ from app.schemas.submission_evidence_review import (
     SubmissionEvidenceReviewOut,
     SubmissionEvidenceReviewPreflightOut,
 )
+from app.services.platform_submission_evidence import (
+    build_platform_evidence_review_preflight,
+    build_platform_supervised_pilot_record,
+    review_platform_submission_evidence,
+)
 from app.services.submission_evidence_review import (
     SubmissionEvidenceReviewError,
-    build_evidence_review_preflight,
     build_evidence_snapshot,
-    build_supervised_pilot_record,
-    review_submission_evidence,
     serialize_evidence_review,
 )
 
@@ -78,7 +80,7 @@ def evidence_review_preflight(
     application = _owned_application(db, application_id, current_user.id)
     job = _application_job(db, application)
     evidence = _application_evidence(db, application_id, evidence_id)
-    return build_evidence_review_preflight(db, application, job, evidence)
+    return build_platform_evidence_review_preflight(db, application, job, evidence)
 
 
 @router.post(
@@ -97,7 +99,7 @@ def create_evidence_review(
     job = _application_job(db, application)
     evidence = _application_evidence(db, application_id, evidence_id)
     try:
-        review = review_submission_evidence(
+        review = review_platform_submission_evidence(
             db,
             application,
             current_user,
@@ -156,6 +158,6 @@ def export_supervised_pilot_record(
     application = _owned_application(db, application_id, current_user.id)
     job = _application_job(db, application)
     try:
-        return build_supervised_pilot_record(db, application, current_user, job)
+        return build_platform_supervised_pilot_record(db, application, current_user, job)
     except SubmissionEvidenceReviewError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
