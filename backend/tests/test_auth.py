@@ -15,22 +15,33 @@ def test_register_success(client):
 
 
 def test_register_duplicate_email(client):
-    payload = {"email": "dup@example.com", "password": "pass123"}
+    payload = {"email": "dup@example.com", "password": "pass12345"}
     client.post("/api/auth/register", json=payload)
     resp = client.post("/api/auth/register", json=payload)
     assert resp.status_code == 400
     assert "already registered" in resp.json()["detail"]
 
 
+def test_register_rejects_short_password(client):
+    resp = client.post("/api/auth/register", json={
+        "email": "short@example.com",
+        "password": "p123",
+    })
+
+    assert resp.status_code == 422
+    assert "at least 8 characters" in str(resp.json())
+
+
 def test_login_success(client):
-    client.post("/api/auth/register", json={"email": "a@b.com", "password": "p123"})
-    resp = client.post("/api/auth/login", data={"username": "a@b.com", "password": "p123"})
+    password = "p12345678"
+    client.post("/api/auth/register", json={"email": "a@b.com", "password": password})
+    resp = client.post("/api/auth/login", data={"username": "a@b.com", "password": password})
     assert resp.status_code == 200
     assert "access_token" in resp.json()
 
 
 def test_login_wrong_password(client):
-    client.post("/api/auth/register", json={"email": "a@b.com", "password": "p123"})
+    client.post("/api/auth/register", json={"email": "a@b.com", "password": "p12345678"})
     resp = client.post("/api/auth/login", data={"username": "a@b.com", "password": "wrong"})
     assert resp.status_code == 401
 
