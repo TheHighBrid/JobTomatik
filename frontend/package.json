@@ -34,7 +34,7 @@
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.23.1",
     "recharts": "^3.10.1",
-    "zustand": "^4.5.2"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.6.7",
