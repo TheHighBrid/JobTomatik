@@ -170,7 +170,11 @@ export const listSubmissionEvidenceReviews = (appId) =>
 export const exportSupervisedPilotRecord = (appId) =>
   api.get(`/applications/${appId}/supervised-pilot-record`)
 
-// Platform-isolated pilot ledgers. Callers must choose the reviewed platform.
+// Platform-isolated pilot ledgers. Explicit functions remain available for operator
+// tooling, while the generic UI path is dispatched by the backend from the consumed
+// approval platform and cannot silently default to Greenhouse.
+export const ingestSupervisedPilotRecord = (appId) =>
+  api.post(`/pilot-ledger/applications/${appId}/ingest`)
 export const ingestGreenhouseSupervisedPilotRecord = (appId) =>
   api.post(`/greenhouse-pilot-ledger/applications/${appId}/ingest`)
 export const getGreenhousePilotLedgerReadiness = () =>
