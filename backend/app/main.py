@@ -1,5 +1,5 @@
+import logging
 import os
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -41,6 +41,7 @@ from app.services.supervised_submission_integration import (
     install_supervised_submission_task_gate,
 )
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 install_handoff_task_integration()
 install_application_target_handoff_task_persistence()
@@ -55,29 +56,40 @@ def _safe_migrate(eng):
 
     New tables are created by ``Base.metadata.create_all``. These additive column
     migrations keep older SQLite/PostgreSQL installations usable alongside the
-    formal Alembic revision chain.
+    formal Alembic revision chain. A failed migration is fatal because continuing
+    with a partially upgraded schema produces harder-to-diagnose runtime errors.
     """
+    failures = []
+
     with eng.connect() as conn:
         try:
             user_cols = {c["name"] for c in sa_inspect(eng).get_columns("users")}
             if "automation_settings" not in user_cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN automation_settings JSON"))
                 conn.commit()
-        except Exception:
+        except Exception as exc:
             conn.rollback()
+            logger.exception("Failed additive migration for users.automation_settings")
+            failures.append(("users.automation_settings", exc))
 
         try:
             policy_cols = {
                 c["name"] for c in sa_inspect(eng).get_columns("applicant_answer_policies")
             }
             if "encrypted_fallbacks" not in policy_cols:
-                conn.execute(text(
-                    "ALTER TABLE applicant_answer_policies "
-                    "ADD COLUMN encrypted_fallbacks TEXT"
-                ))
+                conn.execute(
+                    text(
+                        "ALTER TABLE applicant_answer_policies "
+                        "ADD COLUMN encrypted_fallbacks TEXT"
+                    )
+                )
                 conn.commit()
-        except Exception:
+        except Exception as exc:
             conn.rollback()
+            logger.exception(
+                "Failed additive migration for applicant_answer_policies.encrypted_fallbacks"
+            )
+            failures.append(("applicant_answer_policies.encrypted_fallbacks", exc))
 
         try:
             app_cols = {c["name"] for c in sa_inspect(eng).get_columns("applications")}
@@ -94,24 +106,40 @@ def _safe_migrate(eng):
             }
             for column_name, definition in additions.items():
                 if column_name not in app_cols:
-                    conn.execute(text(f"ALTER TABLE applications ADD COLUMN {column_name} {definition}"))
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE applications ADD COLUMN {column_name} {definition}"
+                        )
+                    )
                     conn.commit()
-            conn.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS "
-                "ix_applications_submission_idempotency_key "
-                "ON applications (submission_idempotency_key)"
-            ))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_applications_automation_state "
-                "ON applications (automation_state)"
-            ))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_applications_application_target_status "
-                "ON applications (application_target_status)"
-            ))
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "ix_applications_submission_idempotency_key "
+                    "ON applications (submission_idempotency_key)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_applications_automation_state "
+                    "ON applications (automation_state)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_applications_application_target_status "
+                    "ON applications (application_target_status)"
+                )
+            )
             conn.commit()
-        except Exception:
+        except Exception as exc:
             conn.rollback()
+            logger.exception("Failed additive migration for applications")
+            failures.append(("applications", exc))
+
+    if failures:
+        failed_targets = ", ".join(target for target, _ in failures)
+        raise RuntimeError(f"Database compatibility migration failed: {failed_targets}")
 
 
 @asynccontextmanager
@@ -119,9 +147,15 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _safe_migrate(engine)
     os.makedirs(settings.upload_dir, exist_ok=True)
+    logger.info(
+        "JobTomatik startup complete environment=%s api_docs=%s",
+        settings.app_environment,
+        settings.enable_api_docs,
+    )
     yield
 
 
+api_docs_enabled = settings.enable_api_docs
 app = FastAPI(
     title="JobTomatik API",
     description=(
@@ -130,6 +164,9 @@ app = FastAPI(
     ),
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if api_docs_enabled else None,
+    redoc_url="/redoc" if api_docs_enabled else None,
+    openapi_url="/openapi.json" if api_docs_enabled else None,
 )
 
 app.add_middleware(
@@ -139,8 +176,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-os.makedirs(settings.upload_dir, exist_ok=True)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
@@ -163,6 +198,14 @@ app.include_router(settings_api.router, prefix="/api")
 @app.get("/api/system/health")
 async def health():
     return {"status": "ok", "service": "JobTomatik API", "version": "1.0.0"}
+
+
+@app.get("/api/system/ready")
+def readiness_probe():
+    """Confirm the API process can execute a database query."""
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+    return {"status": "ready", "service": "JobTomatik API", "version": "1.0.0"}
 
 
 @app.get("/api/system/control-certification")
