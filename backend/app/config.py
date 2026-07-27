@@ -1,16 +1,29 @@
 from functools import lru_cache
-from typing import List
+from typing import List, Literal
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"
+PLACEHOLDER_SECRET_MARKERS = (
+    "change-me",
+    "replace-with",
+    "supersecretkey",
+    "development-secret",
+)
+
+
 class Settings(BaseSettings):
+    app_environment: Literal["development", "test", "production"] = "development"
+    enable_api_docs: bool = True
+
     database_url: str = "sqlite:///./jobtomatik.db"
     redis_url: str = "redis://localhost:6379/0"
-    secret_key: str = "supersecretkey-change-in-production"
+    secret_key: str = DEFAULT_SECRET_KEY
     answer_vault_key: str = ""
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 10080
+    algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
+    access_token_expire_minutes: int = Field(default=10080, ge=5, le=43200)
 
     # Comma-separated browser origins allowed to call the API with credentials.
     # These defaults cover Vite, the local browser UI, and Capacitor Android.
@@ -44,7 +57,7 @@ class Settings(BaseSettings):
     application_browser_executable: str = ""
     # Keep target resolution nonblocking for headless and solo-worker deployments.
     # A positive value is an explicit opt-in that occupies the current worker task.
-    application_target_human_wait_seconds: int = 0
+    application_target_human_wait_seconds: int = Field(default=0, ge=0, le=3600)
 
     # Defense-in-depth gate for any non-dry-run application attempt.
     # Keep disabled until the active adapter has passed supervised certification.
@@ -54,8 +67,8 @@ class Settings(BaseSettings):
     # matching platform flag, and a one-time exact-payload approval are required.
     greenhouse_supervised_pilot_enabled: bool = False
     lever_supervised_pilot_enabled: bool = False
-    supervised_approval_ttl_minutes: int = 20
-    supervised_approval_max_ttl_minutes: int = 60
+    supervised_approval_ttl_minutes: int = Field(default=20, ge=1, le=60)
+    supervised_approval_max_ttl_minutes: int = Field(default=60, ge=1, le=240)
 
     # Dry runs retain human-verification boundaries automatically. This flag also
     # enables retained-browser handoffs for explicitly approved non-dry runs.
@@ -71,6 +84,46 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_environment == "production"
+
+    @property
+    def uses_placeholder_secret(self) -> bool:
+        normalized = self.secret_key.strip().lower()
+        return (
+            len(self.secret_key.encode("utf-8")) < 32
+            or normalized == DEFAULT_SECRET_KEY
+            or any(marker in normalized for marker in PLACEHOLDER_SECRET_MARKERS)
+        )
+
+    @model_validator(mode="after")
+    def validate_runtime_security(self) -> "Settings":
+        if "*" in self.cors_origin_list:
+            raise ValueError("CORS_ORIGINS cannot contain '*' when credentialed requests are enabled")
+
+        if self.supervised_approval_ttl_minutes > self.supervised_approval_max_ttl_minutes:
+            raise ValueError(
+                "SUPERVISED_APPROVAL_TTL_MINUTES cannot exceed "
+                "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
+            )
+
+        sensitive_runtime = any(
+            (
+                self.is_production,
+                self.allow_real_application_submit,
+                self.greenhouse_supervised_pilot_enabled,
+                self.lever_supervised_pilot_enabled,
+            )
+        )
+        if sensitive_runtime and self.uses_placeholder_secret:
+            raise ValueError(
+                "SECRET_KEY must be a non-placeholder value of at least 32 UTF-8 bytes "
+                "for production or real-submission operation"
+            )
+
+        return self
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
