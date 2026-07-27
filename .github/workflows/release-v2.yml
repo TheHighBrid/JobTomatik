@@ -3,7 +3,7 @@ name: Release JobTomatik v2.00
 on:
   push:
     branches:
-      - release/v2.0.0
+      - main
     paths:
       - "frontend/**"
       - ".github/workflows/release-v2.yml"
