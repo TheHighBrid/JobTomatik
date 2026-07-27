@@ -1,8 +1,8 @@
 """Locked evidence ingestion and readiness reporting for the Lever pilot.
 
-Lever evidence is isolated from Greenhouse files.  Phase A records may be indexed
-from an immutable CSV when retained artifacts exist; Phase B records are appended to
-a locked JSONL ledger only after independent evidence review and exact-target checks.
+Lever evidence is isolated from Greenhouse files. Phase A records may be indexed
+from an immutable CSV when retained artifacts exist; the runtime JSONL accepts only
+Phase B supervised records after independent evidence review and exact-target checks.
 """
 
 from __future__ import annotations
@@ -170,6 +170,24 @@ def validate_lever_record(record: Mapping[str, Any]) -> None:
             )
 
 
+def validate_phase_b_record(record: Mapping[str, Any], *, line_number: Optional[int] = None) -> None:
+    """Require one runtime-ledger record to be a Lever supervised Phase B record."""
+
+    validate_lever_record(record)
+    location = f" at line {line_number}" if line_number is not None else ""
+    if record.get("mode") != SUPERVISED_MODE:
+        raise LeverPilotIngestionError(
+            "Lever runtime ledger accepts supervised Phase B records only"
+            f"{location}; observed mode {record.get('mode')!r}."
+        )
+    approval_reference = str(record.get("approval_reference") or "").strip()
+    if not approval_reference.startswith("lvsup-"):
+        raise LeverPilotIngestionError(
+            "Lever Phase B records require an lvsup-* approval reference"
+            f"{location}; observed {approval_reference or 'missing'}."
+        )
+
+
 def _record_keys(record: Mapping[str, Any]) -> Dict[str, str]:
     values = {
         "run_id": str(record.get("run_id") or "").strip(),
@@ -215,6 +233,8 @@ def merge_records(
 
 
 def load_ledger(path: Path) -> list[Dict[str, Any]]:
+    """Load the runtime JSONL as a strict Phase B-only ledger."""
+
     if not path.exists():
         return []
     records: list[Dict[str, Any]] = []
@@ -225,18 +245,20 @@ def load_ledger(path: Path) -> list[Dict[str, Any]]:
             value = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise LeverPilotIngestionError(
-                f"invalid Lever JSONL at line {line_number}: {exc}"
+                f"invalid Lever Phase B JSONL at line {line_number}: {exc}"
             ) from exc
         if not isinstance(value, dict):
             raise LeverPilotIngestionError(
-                f"Lever ledger line {line_number} must be a JSON object"
+                f"Lever Phase B ledger line {line_number} must be a JSON object"
             )
-        validate_lever_record(value)
+        validate_phase_b_record(value, line_number=line_number)
         records.append(value)
     return merge_records([], records)
 
 
 def _atomic_write_ledger(path: Path, records: list[Dict[str, Any]]) -> None:
+    for record in records:
+        validate_phase_b_record(record)
     content = "".join(_canonical_json(record) + "\n" for record in records)
     _atomic_replace_text(path, content)
 
@@ -244,7 +266,7 @@ def _atomic_write_ledger(path: Path, records: list[Dict[str, Any]]) -> None:
 def load_phase_a_baseline(path: Path) -> list[Dict[str, Any]]:
     """Load an optional immutable Lever Phase A index.
 
-    A missing file represents zero collected evidence, not readiness.  Once rows are
+    A missing file represents zero collected evidence, not readiness. Once rows are
     present, every row must carry an immutable artifact digest and exact target.
     """
 
@@ -484,7 +506,7 @@ def ingest_confirmed_lever_application(
 ) -> Dict[str, Any]:
     try:
         record = build_platform_supervised_pilot_record(db, application, user, job)
-        validate_lever_record(record)
+        validate_phase_b_record(record)
     except (ValueError, PilotEvidenceError, LeverPilotIngestionError) as exc:
         raise LeverPilotIngestionError(str(exc)) from exc
 
@@ -504,6 +526,8 @@ def ingest_confirmed_lever_application(
         combined = merge_records(existing, [record])
         added = len(combined) > len(existing)
         updated_runtime = merge_records(runtime, [record]) if added else runtime
+        for runtime_record in updated_runtime:
+            validate_phase_b_record(runtime_record)
         if added:
             _atomic_write_ledger(paths["ledger"], updated_runtime)
         payload = _readiness_payload(paths, baseline, updated_runtime, combined)
@@ -541,4 +565,5 @@ __all__ = [
     "load_phase_a_baseline",
     "read_lever_pilot_readiness",
     "validate_lever_record",
+    "validate_phase_b_record",
 ]
