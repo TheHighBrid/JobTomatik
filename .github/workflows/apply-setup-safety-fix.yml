@@ -1,0 +1,126 @@
+name: Apply setup safety fix
+
+on:
+  push:
+    branches:
+      - fix/setup-development-kill-switch-checks
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Restore explicit development kill-switch verification
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          tutorial_path = Path("docs/SETUP_TUTORIAL.md")
+          tutorial = tutorial_path.read_text(encoding="utf-8")
+
+          checklist_marker = """Before calling the installation ready:
+
+```text
+"""
+          replacement = """Before calling the installation ready, verify the effective backend settings rather than relying only on the text in `.env`:
+
+```bash
+cd /root/JobTomatik/backend
+source .venv/bin/activate
+
+python - <<'PY'
+from app.config import get_settings
+
+get_settings.cache_clear()
+settings = get_settings()
+
+checks = {
+    \"ALLOW_REAL_APPLICATION_SUBMIT\": settings.allow_real_application_submit,
+    \"AUTOPILOT_ENABLED\": settings.autopilot_enabled,
+}
+
+for name, enabled in checks.items():
+    print(f\"{name}={'true' if enabled else 'false'}\")
+
+if any(checks.values()):
+    raise SystemExit(
+        \"Development kill-switch verification failed. \"
+        \"Set both values to false and restart the backend and worker.\"
+    )
+PY
+```
+
+Required output for the development profile:
+
+```text
+ALLOW_REAL_APPLICATION_SUBMIT=false
+AUTOPILOT_ENABLED=false
+```
+
+Then complete the checklist:
+
+```text
+"""
+          if checklist_marker not in tutorial:
+              raise SystemExit("Verification checklist marker was not found")
+          tutorial = tutorial.replace(checklist_marker, replacement, 1)
+
+          old_items = """[ ] Confirmed applications hide new submission controls
+[ ] Active release profile and adapter maturity are reviewed
+[ ] Database and signing key backups exist
+"""
+          new_items = """[ ] Confirmed applications hide new submission controls
+[ ] Effective backend setting reports ALLOW_REAL_APPLICATION_SUBMIT=false
+[ ] Effective backend setting reports AUTOPILOT_ENABLED=false
+[ ] Active release profile and adapter maturity are reviewed
+[ ] Database and signing key backups exist
+"""
+          if old_items not in tutorial:
+              raise SystemExit("Expected checklist items were not found")
+          tutorial = tutorial.replace(old_items, new_items, 1)
+          tutorial_path.write_text(tutorial, encoding="utf-8")
+
+          test_path = Path("backend/tests/test_setup_tutorial_safety.py")
+          test_path.write_text(
+              '''from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_setup_tutorial_verifies_development_kill_switches():
+    tutorial = (REPO_ROOT / "docs" / "SETUP_TUTORIAL.md").read_text(encoding="utf-8")
+
+    assert "settings.allow_real_application_submit" in tutorial
+    assert "settings.autopilot_enabled" in tutorial
+    assert "ALLOW_REAL_APPLICATION_SUBMIT=false" in tutorial
+    assert "AUTOPILOT_ENABLED=false" in tutorial
+    assert (
+        "[ ] Effective backend setting reports "
+        "ALLOW_REAL_APPLICATION_SUBMIT=false"
+    ) in tutorial
+    assert (
+        "[ ] Effective backend setting reports AUTOPILOT_ENABLED=false"
+    ) in tutorial
+''',
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Remove one-time workflow and commit
+        run: |
+          rm -f .github/workflows/apply-setup-safety-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/SETUP_TUTORIAL.md backend/tests/test_setup_tutorial_safety.py .github/workflows/apply-setup-safety-fix.yml
+          git commit -m "Restore explicit development kill-switch checks"
+          git push origin HEAD:${{ github.ref_name }}
