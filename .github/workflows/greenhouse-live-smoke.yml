@@ -99,7 +99,7 @@ jobs:
 
       - name: Upload live smoke report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: greenhouse-live-smoke-report
           path: |

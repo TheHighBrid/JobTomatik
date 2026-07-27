@@ -158,7 +158,7 @@ jobs:
 
       - name: Upload live certification report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: greenhouse-supervised-live-certification-report
           path: |

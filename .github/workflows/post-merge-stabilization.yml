@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload integrated backend report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: post-merge-integrated-pytest-output
           path: backend/integrated-pytest-output.txt
