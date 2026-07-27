@@ -202,7 +202,7 @@ def main() -> int:
         completed_at=args.completed_at,
     )
     export_phase_a_candidate(Path(args.output), record)
-    print(json.dumps(record, indent=2, sort_keys=True))
+    print(f"Exported Phase A candidate to {args.output}")
     return 0
 
 
