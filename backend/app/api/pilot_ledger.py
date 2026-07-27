@@ -13,7 +13,7 @@ from app.services.greenhouse_pilot_ingestion import (
     GreenhousePilotIngestionError,
     ingest_confirmed_supervised_application,
 )
-from app.services.lever_pilot_ingestion import (
+from app.services.lever_pilot_ledger_boundary import (
     LeverPilotIngestionError,
     ingest_confirmed_lever_application,
 )
