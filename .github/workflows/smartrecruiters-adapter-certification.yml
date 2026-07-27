@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload SmartRecruiters certification report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smartrecruiters-adapter-certification-report
           path: backend/smartrecruiters-certification.txt
