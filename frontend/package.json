@@ -19,8 +19,8 @@
     "build:apk:release": "npm run android:prepare && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
-    "@capacitor/android": "^7.4.0",
-    "@capacitor/core": "^7.4.0",
+    "@capacitor/android": "^7.6.8",
+    "@capacitor/core": "^7.6.8",
     "@headlessui/react": "^2.0.4",
     "@tanstack/react-query": "^5.101.4",
     "axios": "^1.7.2",
