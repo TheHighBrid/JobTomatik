@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.application import ApplicationStatus
 from app.schemas.job import JobOut
@@ -30,6 +30,8 @@ class FollowUpCreate(BaseModel):
 
 
 class FollowUpOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     application_id: int
     scheduled_at: datetime
@@ -40,15 +42,14 @@ class FollowUpOut(BaseModel):
     status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ManualReviewResolve(BaseModel):
     resolution_notes: Optional[str] = None
 
 
 class ManualReviewTaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     application_id: int
     reason_code: str
@@ -64,11 +65,10 @@ class ManualReviewTaskOut(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime]
 
-    class Config:
-        from_attributes = True
-
 
 class SubmissionEvidenceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     application_id: int
     evidence_type: str
@@ -83,11 +83,10 @@ class SubmissionEvidenceOut(BaseModel):
     evidence_metadata: Dict[str, Any] = Field(default_factory=dict)
     captured_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ApplicationEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     application_id: int
     event_type: str
@@ -96,11 +95,10 @@ class ApplicationEventOut(BaseModel):
     payload: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ApplicationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     user_id: int
     job_id: int
@@ -128,6 +126,3 @@ class ApplicationOut(BaseModel):
     events: List[ApplicationEventOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: Optional[datetime]
-
-    class Config:
-        from_attributes = True
