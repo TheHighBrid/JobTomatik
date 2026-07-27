@@ -1,9 +1,9 @@
 name: Apply setup safety fix
 
 on:
-  push:
-    branches:
-      - fix/setup-development-kill-switch-checks
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
 
 permissions:
   contents: write
@@ -13,10 +13,10 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
+      - name: Check out source branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Restore explicit development kill-switch verification
@@ -108,19 +108,19 @@ def test_setup_tutorial_verifies_development_kill_switches():
         "[ ] Effective backend setting reports "
         "ALLOW_REAL_APPLICATION_SUBMIT=false"
     ) in tutorial
-    assert (
-        "[ ] Effective backend setting reports AUTOPILOT_ENABLED=false"
-    ) in tutorial
+    assert "[ ] Effective backend setting reports AUTOPILOT_ENABLED=false" in tutorial
 ''',
               encoding="utf-8",
           )
           PY
 
       - name: Remove one-time workflow and commit
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           rm -f .github/workflows/apply-setup-safety-fix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/SETUP_TUTORIAL.md backend/tests/test_setup_tutorial_safety.py .github/workflows/apply-setup-safety-fix.yml
           git commit -m "Restore explicit development kill-switch checks"
-          git push origin HEAD:${{ github.ref_name }}
+          git push origin "HEAD:${HEAD_BRANCH}"
