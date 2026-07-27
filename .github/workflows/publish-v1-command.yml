@@ -321,7 +321,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download authorized release bundle
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: JobTomatik-v1.00-command-release-bundle
           path: release
