@@ -8,10 +8,14 @@ on:
       - "frontend/**"
       - ".github/workflows/release-v2.yml"
   workflow_dispatch:
+  issue_comment:
+    types:
+      - created
 
 permissions:
   contents: write
   issues: write
+  pull-requests: read
 
 concurrency:
   group: release-jobtomatik-v2
@@ -24,6 +28,15 @@ env:
 
 jobs:
   build-and-publish:
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       github.event.issue.number == 142 &&
+       github.event.comment.body == '/publish-jobtomatik-v2.0.0' &&
+       (github.event.comment.user.login == 'TheHighBrid' ||
+        github.event.comment.user.login == 'chatgpt-codex-connector[bot]'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -40,7 +53,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: 79,
+              issue_number: 142,
               body: `🚀 JobTomatik v2.00 build and publication started.\n\nRun: ${runUrl}\nSource: \`${context.sha}\``,
             });
 
@@ -194,7 +207,16 @@ jobs:
 
   report-release-status:
     needs: build-and-publish
-    if: always()
+    if: >-
+      always() &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        github.event.issue.number == 142 &&
+        github.event.comment.body == '/publish-jobtomatik-v2.0.0' &&
+        (github.event.comment.user.login == 'TheHighBrid' ||
+         github.event.comment.user.login == 'chatgpt-codex-connector[bot]')))
     runs-on: ubuntu-24.04
     steps:
       - name: Report release result
@@ -206,6 +228,6 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: 79,
+              issue_number: 142,
               body: `JobTomatik v2.00 publication finished with status **${result}**.\n\nRun: ${runUrl}\nSource: \`${context.sha}\``,
             });
