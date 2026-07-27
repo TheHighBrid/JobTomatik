@@ -16,7 +16,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+  issues: write
 
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -106,3 +108,89 @@ jobs:
             frontend/android/app/build/reports/lint-results-debug.html
           if-no-files-found: warn
           retention-days: 30
+
+  publish-v2-release:
+    needs: build-apk
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'release/publish-v2.0.0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Download verified APK artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: jobtomatik-v2-android-apk
+          path: downloaded
+
+      - name: Prepare JobTomatik v2.00 release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_APK="$(find downloaded -type f -name 'JobTomatik-v2.00-debug.apk' -print -quit)"
+          test -n "$SOURCE_APK"
+          test -s "$SOURCE_APK"
+
+          mkdir -p release
+          cp "$SOURCE_APK" release/JobTomatik-v2.00.apk
+          sha256sum release/JobTomatik-v2.00.apk > release/JobTomatik-v2.00.sha256
+
+          BADGING="$(find downloaded -type f -name 'android-apk-badging.txt' -print -quit)"
+          if [ -n "$BADGING" ]; then
+            cp "$BADGING" release/APK-BADGING.txt
+          else
+            printf '%s\n' "Verified during Android APK build job." > release/APK-BADGING.txt
+          fi
+
+          cat > release/BUILD-INFO.txt <<EOF
+          JobTomatik v2.00
+          Technical version: 2.0.0
+          Android application ID: ca.jobtomatik.app
+          Android version code: 200
+          Signing mode: development
+          Source commit: $GITHUB_SHA
+          Built and verified by: GitHub Actions
+          EOF
+
+          cat > release/RELEASE_NOTES.md <<EOF
+          # JobTomatik v2.00
+
+          JobTomatik v2.00 packages the current application and updated visual system into a new Android APK.
+
+          - Android version: 2.0.0
+          - Android version code: 200
+          - Application ID: ca.jobtomatik.app
+          - Signing mode: development
+          - Source commit: $GITHUB_SHA
+
+          The APK was compiled, linted, identity-checked, version-checked, and supplied with a SHA-256 checksum by GitHub Actions.
+          EOF
+
+      - name: Publish JobTomatik v2.00 GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v2.0.0
+          target_commitish: main
+          name: JobTomatik v2.00
+          body_path: release/RELEASE_NOTES.md
+          make_latest: true
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          files: |
+            release/JobTomatik-v2.00.apk
+            release/JobTomatik-v2.00.sha256
+            release/BUILD-INFO.txt
+            release/APK-BADGING.txt
+
+      - name: Report release publication
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `✅ JobTomatik v2.00 was compiled and published as GitHub Release \`v2.0.0\`.\n\nRun: ${runUrl}`,
+            });
