@@ -1,3 +1,5 @@
+"""Regression coverage for auth, warnings, and release metadata."""
+
 import json
 import re
 import warnings
