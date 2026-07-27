@@ -56,7 +56,7 @@ jobs:
       GREENHOUSE_PILOT_READINESS_MARKDOWN_PATH: evidence-ci/greenhouse-pilot-readiness.md
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v7
