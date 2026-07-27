@@ -11,25 +11,28 @@ const TABS = [
 
 export default function MobileNav() {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-50 md:hidden safe-area-pb">
-      <div className="flex items-stretch h-16">
+    <nav className="mobile-tabbar fixed bottom-0 left-0 right-0 border-t z-50 md:hidden safe-area-pb" aria-label="Mobile navigation">
+      <div className="flex items-stretch h-17 px-1">
         {TABS.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             end={to === '/'}
             className={({ isActive }) =>
-              `flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                isActive ? 'text-tomato-600' : 'text-gray-400'
+              `relative flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+                isActive ? 'text-white' : 'text-gray-400'
               }`
             }
           >
             {({ isActive }) => (
               <>
-                <div className={`p-1 rounded-lg transition-colors ${isActive ? 'bg-tomato-50' : ''}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-                <span className="text-[10px] font-medium">{label}</span>
+                {isActive && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-tomato-500 shadow-[0_0_14px_rgba(47,107,255,.8)]" />}
+                <span className={`inline-flex h-8 w-10 items-center justify-center rounded-xl transition-all ${
+                  isActive ? 'bg-tomato-600/20 text-tomato-400 ring-1 ring-tomato-400/25' : ''
+                }`}>
+                  <Icon className="w-5 h-5" aria-hidden="true" />
+                </span>
+                <span className="text-[10px] font-semibold tracking-wide">{label}</span>
               </>
             )}
           </NavLink>
