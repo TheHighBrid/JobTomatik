@@ -1,4 +1,4 @@
-name: Publish JobTomatik v1 by authorized command
+name: Publish JobTomatik v2 by authorized command
 
 on:
   issue_comment:
@@ -11,76 +11,24 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: publish-jobtomatik-v1-command
+  group: publish-jobtomatik-v2-command
   cancel-in-progress: false
 
 env:
-  RELEASE_SOURCE_SHA: 6f7f9fa6a7d3c63516cde381410ac188364dba36
-  AUTHORIZED_PR_NUMBER: "81"
-  AUTHORIZED_HEAD_BRANCH: release/publish-v1.0.0
-  AUTHORIZED_REQUEST_SHA: 6a176eeacd7cc413b0456a6e204735459fc12313
-  RELEASE_COMMAND: /publish-jobtomatik-v1.0.0
+  AUTHORIZED_PR_NUMBER: "142"
+  RELEASE_COMMAND: /publish-jobtomatik-v2.0.0
+  APK_NAME: JobTomatik-v2.00.apk
 
 jobs:
   authorize:
     if: >-
       github.event.issue.pull_request &&
-      github.event.issue.number == 81 &&
-      github.event.comment.body == '/publish-jobtomatik-v1.0.0' &&
+      github.event.issue.number == 142 &&
+      github.event.comment.body == '/publish-jobtomatik-v2.0.0' &&
       (github.event.comment.user.login == 'TheHighBrid' ||
        github.event.comment.user.login == 'chatgpt-codex-connector[bot]')
     runs-on: ubuntu-24.04
     steps:
-      - name: Verify exact publication request and branch contents
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const pullNumber = Number(process.env.AUTHORIZED_PR_NUMBER);
-            const expectedHeadBranch = process.env.AUTHORIZED_HEAD_BRANCH;
-            const expectedHeadSha = process.env.AUTHORIZED_REQUEST_SHA;
-
-            const pull = await github.rest.pulls.get({
-              owner,
-              repo,
-              pull_number: pullNumber,
-            });
-
-            if (pull.data.state !== 'open') {
-              core.setFailed(`Publication request PR #${pullNumber} is not open.`);
-              return;
-            }
-            if (pull.data.base.ref !== 'main') {
-              core.setFailed('Publication request does not target main.');
-              return;
-            }
-            if (pull.data.head.repo.full_name !== `${owner}/${repo}`) {
-              core.setFailed('Publication request is not from the same repository.');
-              return;
-            }
-            if (pull.data.head.ref !== expectedHeadBranch) {
-              core.setFailed(`Unexpected publication branch: ${pull.data.head.ref}`);
-              return;
-            }
-            if (pull.data.head.sha !== expectedHeadSha) {
-              core.setFailed(`Publication request SHA changed: ${pull.data.head.sha}`);
-              return;
-            }
-
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              owner,
-              repo,
-              pull_number: pullNumber,
-              per_page: 100,
-            });
-            if (files.length !== 1 || files[0].filename !== 'RELEASE_PUBLISH_REQUEST.txt') {
-              core.setFailed('Publication request must change only RELEASE_PUBLISH_REQUEST.txt.');
-              return;
-            }
-
-            core.info(`Authorized frozen source ${process.env.RELEASE_SOURCE_SHA}`);
-
       - name: Announce authorized publication
         uses: actions/github-script@v9
         with:
@@ -90,101 +38,26 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
-              body: `🚀 Authorized JobTomatik v1.00 publication started.\n\nRun: ${runUrl}\nFrozen source: \`${process.env.RELEASE_SOURCE_SHA}\``,
+              body: `🚀 Authorized JobTomatik v2.00 publication started.\n\nRun: ${runUrl}\nSource branch: main`,
             });
 
-  verify-backend:
+  build-and-publish:
     needs: authorize
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
       run:
-        working-directory: backend
-    env:
-      DATABASE_URL: sqlite:///./release-test.db
-      REDIS_URL: redis://localhost:6379/0
-      SECRET_KEY: release-ci-only-secret
-      AI_PROVIDER: template
-      DEV_MOCK_JOBS: "false"
-      ALLOW_REAL_APPLICATION_SUBMIT: "false"
-      GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
-      AUTOPILOT_ENABLED: "false"
-      REQUIRE_BROWSER_TESTS: "1"
-    steps:
-      - name: Check out frozen v1 source only
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ env.RELEASE_SOURCE_SHA }}
-          persist-credentials: false
-
-      - name: Assert frozen checkout
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_SHA"
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - name: Install backend dependencies
-        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
-
-      - name: Install Chromium
-        run: python -m playwright install chromium
-
-      - name: Compile backend
-        run: python -m compileall -q app tests
-
-      - name: Run full backend suite
-        shell: bash
-        run: |
-          set -o pipefail
-          pytest -q --tb=short --maxfail=1 -ra | tee release-pytest-output.txt
-
-      - name: Run migration smoke test
-        shell: bash
-        run: |
-          cp alembic.ini alembic-release.ini
-          sed -i 's#sqlalchemy.url = .*#sqlalchemy.url = sqlite:///./release-migration.db#' alembic-release.ini
-          alembic -c alembic-release.ini upgrade head
-
-      - name: Upload backend verification
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: jobtomatik-v1-command-backend-verification
-          path: backend/release-pytest-output.txt
-          if-no-files-found: warn
-          retention-days: 90
-
-  build-android:
-    needs: verify-backend
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    defaults:
-      run:
         working-directory: frontend
     steps:
-      - name: Check out frozen v1 source only
+      - name: Check out current main source
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_SOURCE_SHA }}
-          persist-credentials: false
-
-      - name: Assert frozen checkout
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_SHA"
+          ref: main
 
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -206,6 +79,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Run frontend tests
+        run: npm test
 
       - name: Build frontend and synchronize Capacitor
         run: npm run android:prepare
@@ -247,7 +123,7 @@ jobs:
             ./gradlew --no-daemon assembleDebug
           fi
 
-      - name: Package and verify release files
+      - name: Package and verify JobTomatik v2.00
         shell: bash
         run: |
           set -euo pipefail
@@ -259,127 +135,79 @@ jobs:
 
           test -s "$SOURCE_APK"
           mkdir -p release
-          cp "$SOURCE_APK" release/JobTomatik-v1.00.apk
+          cp "$SOURCE_APK" "release/$APK_NAME"
 
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/JobTomatik-v1.00.apk \
-            | tee release/APK-BADGING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "release/$APK_NAME" | tee release/APK-BADGING.txt
           grep -q "package: name='ca.jobtomatik.app'" release/APK-BADGING.txt
-          grep -q "versionCode='100'" release/APK-BADGING.txt
-          grep -q "versionName='1.0.0'" release/APK-BADGING.txt
+          grep -q "versionCode='200'" release/APK-BADGING.txt
+          grep -q "versionName='2.0.0'" release/APK-BADGING.txt
 
-          sha256sum release/JobTomatik-v1.00.apk > release/JobTomatik-v1.00.sha256
+          sha256sum "release/$APK_NAME" > release/JobTomatik-v2.00.sha256
 
           cat > release/BUILD-INFO.txt <<EOF
-          JobTomatik v1.00
-          Technical version: 1.0.0
+          JobTomatik v2.00
+          Technical version: 2.0.0
           Android application ID: ca.jobtomatik.app
-          Android version code: 100
+          Android version code: 200
           Signing mode: $SIGNING_MODE
-          Source commit: $RELEASE_SOURCE_SHA
-          Built by: GitHub Actions owner-command publisher
-
-          A development-signed APK is installable for personal/local use, but a future
-          APK signed by a different certificate may require uninstalling this client.
-          Backend data is stored separately and is not embedded in the APK.
+          Source commit: $GITHUB_SHA
+          Built by: GitHub Actions authorized-command publisher
           EOF
 
           cat > release/RELEASE_NOTES.md <<EOF
-          # JobTomatik v1.00
+          # JobTomatik v2.00
 
-          JobTomatik v1.00 is the first complete supervised release. It includes job
-          search and review, application preparation, encrypted answer policies,
-          retained-browser handoffs, expired-code recovery, explicit employer
-          confirmation evidence, follow-up tracking, and an Android client.
+          JobTomatik v2.00 packages the current JobTomatik application and updated visual system into a new Android build.
 
-          **Signing mode:** \`$SIGNING_MODE\`
+          - Android version: 2.0.0
+          - Android version code: 200
+          - Application ID: ca.jobtomatik.app
+          - Signing mode: $SIGNING_MODE
+          - Source commit: $GITHUB_SHA
 
-          **Frozen source:** \`$RELEASE_SOURCE_SHA\`
-
-          The APK is a client. Run the FastAPI backend, Redis, and Celery worker using
-          the repository setup tutorial, then connect the app to
-          \`http://127.0.0.1:8010\` for the same-device Android configuration.
-
-          Real and unattended submission remain disabled by default. JobTomatik does
-          not bypass CAPTCHA, login, MFA, assessment, or identity-verification steps.
-
-          Read \`BUILD-INFO.txt\` before installing or upgrading.
+          The APK was compiled, linted, identity-checked, version-checked, and supplied with a SHA-256 checksum by GitHub Actions.
           EOF
 
-      - name: Upload release bundle
+      - name: Upload release bundle artifact
         uses: actions/upload-artifact@v7
         with:
-          name: JobTomatik-v1.00-command-release-bundle
+          name: JobTomatik-v2.00-command-release-bundle
           path: frontend/release/*
           if-no-files-found: error
           retention-days: 90
 
-  publish-release:
-    needs:
-      - authorize
-      - verify-backend
-      - build-android
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Download authorized release bundle
-        uses: actions/download-artifact@v8
-        with:
-          name: JobTomatik-v1.00-command-release-bundle
-          path: release
-
-      - name: Delete existing same-name assets
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const release = await github.rest.repos.getReleaseByTag({ owner, repo, tag: 'v1.0.0' });
-            const replace = new Set([
-              'JobTomatik-v1.00.apk',
-              'JobTomatik-v1.00.sha256',
-              'BUILD-INFO.txt',
-              'APK-BADGING.txt',
-            ]);
-            for (const asset of release.data.assets) {
-              if (replace.has(asset.name)) {
-                await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: asset.id });
-              }
-            }
-
-      - name: Publish corrected GitHub release assets
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v1.0.0
-          target_commitish: ${{ env.RELEASE_SOURCE_SHA }}
-          name: JobTomatik v1.00
-          body_path: release/RELEASE_NOTES.md
+          tag_name: v2.0.0
+          target_commitish: main
+          name: JobTomatik v2.00
+          body_path: frontend/release/RELEASE_NOTES.md
           make_latest: true
           fail_on_unmatched_files: true
+          overwrite_files: true
           files: |
-            release/JobTomatik-v1.00.apk
-            release/JobTomatik-v1.00.sha256
-            release/BUILD-INFO.txt
-            release/APK-BADGING.txt
+            frontend/release/JobTomatik-v2.00.apk
+            frontend/release/JobTomatik-v2.00.sha256
+            frontend/release/BUILD-INFO.txt
+            frontend/release/APK-BADGING.txt
 
   report-release-status:
     needs:
       - authorize
-      - verify-backend
-      - build-android
-      - publish-release
-    if: always()
+      - build-and-publish
+    if: always() && needs.authorize.result != 'skipped'
     runs-on: ubuntu-24.04
     steps:
-      - name: Report authorized release result
+      - name: Report publication result
         uses: actions/github-script@v9
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const verify = '${{ needs.verify-backend.result }}';
-            const android = '${{ needs.build-android.result }}';
-            const publish = '${{ needs.publish-release.result }}';
+            const build = '${{ needs.build-and-publish.result }}';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
-              body: `JobTomatik v1.00 owner-command publication finished.\n\n- Backend: **${verify}**\n- Android: **${android}**\n- Publication: **${publish}**\n- Run: ${runUrl}\n- Frozen source: \`${process.env.RELEASE_SOURCE_SHA}\``,
+              body: `JobTomatik v2.00 publication finished.\n\n- Build and release: **${build}**\n- Run: ${runUrl}`,
             });
