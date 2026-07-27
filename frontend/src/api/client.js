@@ -148,7 +148,7 @@ export const createFollowup = (appId, data) => api.post(`/applications/${appId}/
 export const listFollowups = (appId) => api.get(`/applications/${appId}/followups`)
 export const listSubmissionEvidence = (appId) => api.get(`/applications/${appId}/evidence`)
 
-// Greenhouse supervised-submission approvals
+// Platform-aware supervised-submission approvals
 export const getSupervisedSubmissionPreflight = (appId) =>
   api.get(`/supervised-submissions/applications/${appId}/preflight`)
 export const listSupervisedSubmissionApprovals = (appId) =>
@@ -170,11 +170,15 @@ export const listSubmissionEvidenceReviews = (appId) =>
 export const exportSupervisedPilotRecord = (appId) =>
   api.get(`/applications/${appId}/supervised-pilot-record`)
 
-// Canonical Greenhouse pilot ledger
-export const ingestSupervisedPilotRecord = (appId) =>
+// Platform-isolated pilot ledgers. Callers must choose the reviewed platform.
+export const ingestGreenhouseSupervisedPilotRecord = (appId) =>
   api.post(`/greenhouse-pilot-ledger/applications/${appId}/ingest`)
 export const getGreenhousePilotLedgerReadiness = () =>
   api.get('/greenhouse-pilot-ledger/readiness')
+export const ingestLeverSupervisedPilotRecord = (appId) =>
+  api.post(`/lever-pilot-ledger/applications/${appId}/ingest`)
+export const getLeverPilotLedgerReadiness = () =>
+  api.get('/lever-pilot-ledger/readiness')
 
 // Resumable manual handoffs
 export const listApplicationHandoffs = (appId) => api.get(`/handoffs/application/${appId}/sessions`)
