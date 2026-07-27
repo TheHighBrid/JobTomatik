@@ -42,9 +42,9 @@ class Settings(BaseSettings):
     application_browser_profile_dir: str = "browser_profiles/jobtomatik-operator"
     application_browser_headless: bool = True
     application_browser_executable: str = ""
-    # Give visible local-browser sessions enough time for password entry, MFA,
-    # consent screens, and the Apply navigation step without racing the operator.
-    application_target_human_wait_seconds: int = 900
+    # Keep target resolution nonblocking for headless and solo-worker deployments.
+    # A positive value is an explicit opt-in that occupies the current worker task.
+    application_target_human_wait_seconds: int = 0
 
     # Defense-in-depth gate for any non-dry-run application attempt.
     # Keep disabled until the active adapter has passed supervised certification.
