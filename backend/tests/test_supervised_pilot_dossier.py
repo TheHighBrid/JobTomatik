@@ -39,7 +39,7 @@ def _fixture(db_session, tmp_path, *, greenhouse=True):
         url=(
             "https://job-boards.greenhouse.io/dossier/jobs/123"
             if greenhouse
-            else "https://jobs.lever.co/dossier/123"
+            else "https://example.workdayjobs.com/en-US/jobs/job/123"
         ),
         raw_data={"application_method": "external_url"},
     )
@@ -188,11 +188,11 @@ def test_dossier_digest_changes_when_exact_payload_changes(db_session, tmp_path)
     assert before["dossier_sha256"] != after["dossier_sha256"]
 
 
-def test_dossier_rejects_non_greenhouse_application(db_session, tmp_path):
+def test_dossier_rejects_unregistered_supervised_platform(db_session, tmp_path):
     user, job, application = _fixture(db_session, tmp_path, greenhouse=False)
     db_session.commit()
 
-    with pytest.raises(SupervisedPilotDossierError, match="only for Greenhouse"):
+    with pytest.raises(SupervisedPilotDossierError, match="registered supervised platforms"):
         build_supervised_pilot_dossier(db_session, application, user, job)
 
 
