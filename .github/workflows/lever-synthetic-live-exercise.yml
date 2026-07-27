@@ -7,7 +7,10 @@ on:
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/app/services/lever_certification.py"
+      - "backend/app/services/lever_pilot_ingestion.py"
       - "backend/scripts/certify_lever_live.py"
+      - "backend/scripts/export_lever_phase_a_record.py"
+      - "backend/tests/test_lever_phase_a_export.py"
       - ".github/workflows/lever-synthetic-live-exercise.yml"
   schedule:
     - cron: "41 13 * * 1"
@@ -33,6 +36,8 @@ jobs:
       AI_PROVIDER: template
       DEV_MOCK_JOBS: "false"
       ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      LEVER_SUPERVISED_PILOT_ENABLED: "false"
+      AUTOPILOT_ENABLED: "false"
 
     steps:
       - name: Check out repository
@@ -74,6 +79,8 @@ jobs:
               raise SystemExit('No current PointClickCare Lever job was available.')
           selected = preferred[0]
           open('lever-synthetic-url.txt', 'w').write(selected['applyUrl'])
+          open('lever-synthetic-employer.txt', 'w').write('PointClickCare')
+          open('lever-synthetic-role.txt', 'w').write(str(selected.get('text') or '').strip())
           print(selected.get('text'))
           print(selected['applyUrl'])
           PY
@@ -100,7 +107,13 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          from app.config import get_settings
+
           report = json.load(open('lever-synthetic-live.json'))
+          settings = get_settings()
+          assert settings.allow_real_application_submit is False
+          assert settings.lever_supervised_pilot_enabled is False
+          assert settings.autopilot_enabled is False
           assert report['final_submit_clicked'] is False
           assert report['passed'] is True
           inspections = [item for item in report['reports'] if item.get('mode') == 'inspect']
@@ -120,6 +133,19 @@ jobs:
           )
           PY
 
+      - name: Export reviewable Phase A candidate row
+        if: steps.live_exercise.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          python scripts/export_lever_phase_a_record.py \
+            --report lever-synthetic-live.json \
+            --output lever-phase-a-record.csv \
+            --run-id "github-actions-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --operator "github-actions" \
+            --source-reference "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --employer "$(cat lever-synthetic-employer.txt)" \
+            --role "$(cat lever-synthetic-role.txt)"
+
       - name: Upload synthetic live certification evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -129,7 +155,10 @@ jobs:
             backend/lever-synthetic-live.json
             backend/lever-synthetic-output.txt
             backend/lever-synthetic-url.txt
+            backend/lever-synthetic-employer.txt
+            backend/lever-synthetic-role.txt
             backend/lever-synthetic-resume.pdf
+            backend/lever-phase-a-record.csv
           if-no-files-found: warn
           retention-days: 30
 
