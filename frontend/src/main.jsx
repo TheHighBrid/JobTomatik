@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import App from './App'
 import './index.css'
+import './theme/compat.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,7 +23,20 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         position="top-right"
         toastOptions={{
           duration: 4000,
-          style: { borderRadius: '10px', fontSize: '14px' },
+          style: {
+            border: '1px solid #36537d',
+            borderRadius: '14px',
+            background: '#111a2e',
+            color: '#f8fafc',
+            boxShadow: '0 18px 55px rgba(0, 0, 0, 0.32)',
+            fontSize: '14px',
+          },
+          success: {
+            iconTheme: { primary: '#32c985', secondary: '#081220' },
+          },
+          error: {
+            iconTheme: { primary: '#ff6574', secondary: '#081220' },
+          },
         }}
       />
     </QueryClientProvider>
