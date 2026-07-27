@@ -1,7 +1,7 @@
 """Platform-aware safety layer for independent submission-evidence review.
 
 The established Greenhouse review service remains the source of truth for generic
-review invariants.  This module adds exact Lever platform, payload, adapter, and
+review invariants. This module adds exact Lever platform, payload, adapter, and
 target-identity checks before accepted evidence may confirm an application or enter
 the Lever pilot ledger.
 """
@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import Any, Dict, Mapping, Optional
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
@@ -39,6 +40,14 @@ LEVER_REQUIRED_IDENTITY_FIELDS = (
     "posting_metadata_hash",
     "identity_hash",
 )
+LEVER_STRONG_EVIDENCE_TYPES = {
+    "confirmation_page",
+    "success_banner",
+    "external_application_id",
+    "portal_history",
+    "confirmation_email",
+    "email_provider_receipt",
+}
 
 
 def _canonical_json(value: Any) -> str:
@@ -67,6 +76,50 @@ def _approval_target_identity(approval: SubmissionApproval) -> Dict[str, Any]:
     return dict(identity) if isinstance(identity, Mapping) else {}
 
 
+def _concrete_confirmation_signal(snapshot: Mapping[str, Any]) -> bool:
+    return bool(
+        snapshot.get("evidence_type") in LEVER_STRONG_EVIDENCE_TYPES
+        and (
+            snapshot.get("confirmation_text_present")
+            or snapshot.get("external_application_id")
+            or snapshot.get("screenshot_path")
+            or snapshot.get("html_snapshot_path")
+        )
+    )
+
+
+def _lever_final_url_blockers(
+    snapshot: Mapping[str, Any],
+    identity: Mapping[str, Any],
+) -> list[str]:
+    final_url = str(snapshot.get("final_url") or "").strip()
+    parsed = urlparse(final_url)
+    host = str(parsed.hostname or "").lower()
+    path_parts = [part for part in parsed.path.split("/") if part]
+
+    expected_site = str(identity.get("site") or "").strip()
+    expected_posting_id = str(identity.get("posting_id") or "").strip()
+    expected_region = str(identity.get("region") or "").strip()
+    expected_host = "jobs.eu.lever.co" if expected_region == "eu" else "jobs.lever.co"
+    observed_site = path_parts[0] if path_parts else None
+    _, observed_posting_id, observed_region = parse_lever_job_url(final_url)
+
+    blockers: list[str] = []
+    if host != expected_host or observed_site != expected_site or observed_region != expected_region:
+        blockers.append("lever_evidence_final_url_site_or_region_mismatch")
+        return blockers
+
+    if observed_posting_id == expected_posting_id:
+        return blockers
+
+    # Lever may redirect to /<site>/thank-you after a successful submission. Match
+    # the worker gate: allow that route only when the exact approval identity is
+    # already present and the evidence contains a concrete strong confirmation.
+    if not _concrete_confirmation_signal(snapshot):
+        blockers.append("lever_evidence_final_url_posting_mismatch")
+    return blockers
+
+
 def _lever_evidence_blockers(
     approval: SubmissionApproval,
     evidence: SubmissionEvidence,
@@ -87,11 +140,19 @@ def _lever_evidence_blockers(
         blockers.append("lever_evidence_adapter_mismatch")
 
     expected_adapter_version = str(approval_metadata.get("adapter_version") or "").strip()
-    if not expected_adapter_version or str(metadata.get("adapter_version") or "").strip() != expected_adapter_version:
+    if (
+        not expected_adapter_version
+        or str(metadata.get("adapter_version") or "").strip() != expected_adapter_version
+    ):
         blockers.append("lever_evidence_adapter_version_mismatch")
 
-    if str(evidence.payload_hash or "").strip() != str(approval.combined_payload_hash or "").strip():
+    expected_payload_hash = str(approval.combined_payload_hash or "").strip()
+    if str(evidence.payload_hash or "").strip() != expected_payload_hash:
         blockers.append("lever_evidence_payload_hash_mismatch")
+    if str(metadata.get("combined_payload_hash") or "").strip() != expected_payload_hash:
+        blockers.append("lever_evidence_metadata_payload_hash_mismatch")
+    if str(metadata.get("approval_reference") or "").strip() != str(approval.reference or "").strip():
+        blockers.append("lever_evidence_approval_reference_mismatch")
 
     for field in LEVER_REQUIRED_IDENTITY_FIELDS:
         expected = str(identity.get(field) or "").strip()
@@ -100,16 +161,7 @@ def _lever_evidence_blockers(
         if not expected or observed != expected:
             blockers.append(f"lever_evidence_{observed_key}_mismatch")
 
-    final_url = str(snapshot.get("final_url") or "").strip()
-    observed_site, observed_posting_id, observed_region = parse_lever_job_url(final_url)
-    expected_site = str(identity.get("site") or "").strip()
-    expected_posting_id = str(identity.get("posting_id") or "").strip()
-    expected_region = str(identity.get("region") or "").strip()
-    if observed_site != expected_site or observed_region != expected_region:
-        blockers.append("lever_evidence_final_url_site_or_region_mismatch")
-    if observed_posting_id and observed_posting_id != expected_posting_id:
-        blockers.append("lever_evidence_final_url_posting_mismatch")
-
+    blockers.extend(_lever_final_url_blockers(snapshot, identity))
     return list(dict.fromkeys(blockers))
 
 
