@@ -12,9 +12,11 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, Mapping, Optional
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,12 @@ from app.config import get_settings
 from app.models.application import Application, ApplicationEvent
 from app.models.job import Job
 from app.models.user import User
+from app.services.ats_lever import (
+    LEVER_ADAPTER_VERSION,
+    LEVER_EU_JOBS_HOST,
+    LEVER_GLOBAL_JOBS_HOST,
+    parse_lever_job_url,
+)
 from app.services.greenhouse_pilot import (
     DRY_RUN_MODE,
     SUCCESS_STATUSES,
@@ -38,6 +46,11 @@ LEVER_PLATFORM = "lever"
 PHASE_A_REQUIRED_RECORDS = 30
 PHASE_B_REQUIRED_RECORDS = 10
 VALID_REGIONS = {"global", "eu"}
+PHASE_A_SUCCESS_PAIRS = {
+    ("ready_to_submit", "dry_run_passed"),
+    ("manual_challenge_handoff", "needs_review"),
+}
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 class LeverPilotIngestionError(ValueError):
@@ -117,6 +130,109 @@ def _optional_int(value: Any) -> Optional[int]:
     return int(text) if text else None
 
 
+def _phase_a_outcome_qualifies(record: Mapping[str, Any]) -> bool:
+    state = str(record.get("pre_submit_state") or "").strip()
+    status = str(record.get("final_status") or "").strip()
+    return (state, status) in PHASE_A_SUCCESS_PAIRS
+
+
+def _validate_sha256(value: Any, *, field: str) -> str:
+    text = str(value or "").strip()
+    if not _SHA256_RE.fullmatch(text):
+        raise LeverPilotIngestionError(f"{field} must be a 64-character hexadecimal SHA-256")
+    return text.lower()
+
+
+def _expected_lever_url(site: str, posting_id: str, region: str) -> str:
+    host = LEVER_EU_JOBS_HOST if region == "eu" else LEVER_GLOBAL_JOBS_HOST
+    return f"https://{host}/{site}/{posting_id}/apply"
+
+
+def _validate_exact_lever_target(record: Mapping[str, Any]) -> None:
+    site = str(record.get("site") or "").strip()
+    posting_id = str(record.get("posting_id") or "").strip()
+    region = str(record.get("region") or "").strip().lower()
+    canonical_url = str(record.get("canonical_application_url") or "").strip()
+
+    if not site or not posting_id or region not in VALID_REGIONS or not canonical_url:
+        raise LeverPilotIngestionError(
+            "Lever records require site, posting_id, region, and canonical_application_url"
+        )
+
+    expected_url = _expected_lever_url(site, posting_id, region)
+    parsed = urlparse(canonical_url)
+    expected_host = LEVER_EU_JOBS_HOST if region == "eu" else LEVER_GLOBAL_JOBS_HOST
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() != expected_host
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port is not None
+        or parsed.query
+        or parsed.fragment
+        or canonical_url.rstrip("/") != expected_url
+    ):
+        raise LeverPilotIngestionError(
+            "Lever canonical_application_url must exactly match the claimed site, posting_id, and region"
+        )
+
+    observed_site, observed_posting_id, observed_region = parse_lever_job_url(canonical_url)
+    if (
+        observed_site != site
+        or observed_posting_id != posting_id
+        or observed_region != region
+    ):
+        raise LeverPilotIngestionError(
+            "Lever canonical_application_url target identity does not match the claimed record identity"
+        )
+
+    application_url = str(record.get("application_url") or "").strip()
+    if application_url and application_url.rstrip("/") != expected_url:
+        raise LeverPilotIngestionError(
+            "Lever application_url must match canonical_application_url and the claimed target identity"
+        )
+    board_token = str(record.get("board_token") or "").strip()
+    job_id = str(record.get("job_id") or "").strip()
+    if board_token and board_token != site:
+        raise LeverPilotIngestionError("Lever board_token must match site")
+    if job_id and job_id != posting_id:
+        raise LeverPilotIngestionError("Lever job_id must match posting_id")
+
+
+def validate_phase_a_record(record: Mapping[str, Any]) -> None:
+    """Validate integrity and target identity for one immutable Phase A record."""
+
+    if record.get("mode") != DRY_RUN_MODE:
+        raise LeverPilotIngestionError("Lever Phase A records must use dry_run mode")
+    if record.get("final_submit_clicked") is not False:
+        raise LeverPilotIngestionError("Lever Phase A records must record final_submit_clicked=false")
+    if str(record.get("adapter_version") or "").strip() != LEVER_ADAPTER_VERSION:
+        raise LeverPilotIngestionError(
+            "Lever Phase A adapter_version must be explicitly recorded as "
+            f"{LEVER_ADAPTER_VERSION}"
+        )
+    if not str(record.get("operator") or "").strip():
+        raise LeverPilotIngestionError("Lever Phase A records require operator")
+    if not str(record.get("source_reference") or "").strip():
+        raise LeverPilotIngestionError("Lever Phase A records require immutable source_reference")
+    _validate_sha256(record.get("artifact_sha256"), field="artifact_sha256")
+    _validate_exact_lever_target(record)
+
+    if str(record.get("approval_reference") or "").strip():
+        raise LeverPilotIngestionError("Lever Phase A records cannot contain approval_reference")
+    if str(record.get("confirmation_evidence_reference") or "").strip():
+        raise LeverPilotIngestionError(
+            "Lever Phase A records cannot contain confirmation_evidence_reference"
+        )
+
+    qualifies = record.get("qualifies_for_dry_run_matrix") is True
+    if qualifies and not _phase_a_outcome_qualifies(record):
+        raise LeverPilotIngestionError(
+            "Lever Phase A record cannot qualify unless its pre-submit state and final status "
+            "represent a successful dry-run outcome"
+        )
+
+
 def validate_lever_record(record: Mapping[str, Any]) -> None:
     try:
         validate_record(record)
@@ -124,29 +240,14 @@ def validate_lever_record(record: Mapping[str, Any]) -> None:
         raise LeverPilotIngestionError(str(exc)) from exc
 
     platform = str(record.get("platform") or record.get("adapter") or "").strip().lower()
-    if platform != LEVER_PLATFORM or str(record.get("adapter") or "").strip().lower() != LEVER_PLATFORM:
+    adapter = str(record.get("adapter") or "").strip().lower()
+    if platform != LEVER_PLATFORM or adapter != LEVER_PLATFORM:
         raise LeverPilotIngestionError("Lever ledger accepts Lever records only")
 
-    site = str(record.get("site") or record.get("board_token") or "").strip()
-    posting_id = str(record.get("posting_id") or record.get("job_id") or "").strip()
-    region = str(record.get("region") or "").strip().lower()
-    canonical_url = str(
-        record.get("canonical_application_url") or record.get("application_url") or ""
-    ).strip()
-    if not site or not posting_id or region not in VALID_REGIONS or not canonical_url:
-        raise LeverPilotIngestionError(
-            "Lever records require site, posting_id, region, and canonical_application_url"
-        )
+    _validate_exact_lever_target(record)
 
     if record.get("mode") == DRY_RUN_MODE:
-        if record.get("final_submit_clicked") is not False:
-            raise LeverPilotIngestionError("Lever Phase A records must record final_submit_clicked=false")
-        source_reference = str(record.get("source_reference") or "").strip()
-        artifact_sha256 = str(record.get("artifact_sha256") or "").strip()
-        if not source_reference or len(artifact_sha256) != 64:
-            raise LeverPilotIngestionError(
-                "Lever Phase A records require immutable source_reference and artifact_sha256"
-            )
+        validate_phase_a_record(record)
 
     if record.get("mode") == SUPERVISED_MODE:
         required = (
@@ -170,16 +271,20 @@ def validate_lever_record(record: Mapping[str, Any]) -> None:
             )
 
 
-def validate_phase_b_record(record: Mapping[str, Any], *, line_number: Optional[int] = None) -> None:
+def validate_phase_b_record(
+    record: Mapping[str, Any],
+    *,
+    line_number: Optional[int] = None,
+) -> None:
     """Require one runtime-ledger record to be a Lever supervised Phase B record."""
 
-    validate_lever_record(record)
     location = f" at line {line_number}" if line_number is not None else ""
     if record.get("mode") != SUPERVISED_MODE:
         raise LeverPilotIngestionError(
             "Lever runtime ledger accepts supervised Phase B records only"
             f"{location}; observed mode {record.get('mode')!r}."
         )
+    validate_lever_record(record)
     approval_reference = str(record.get("approval_reference") or "").strip()
     if not approval_reference.startswith("lvsup-"):
         raise LeverPilotIngestionError(
@@ -266,8 +371,8 @@ def _atomic_write_ledger(path: Path, records: list[Dict[str, Any]]) -> None:
 def load_phase_a_baseline(path: Path) -> list[Dict[str, Any]]:
     """Load an optional immutable Lever Phase A index.
 
-    A missing file represents zero collected evidence, not readiness. Once rows are
-    present, every row must carry an immutable artifact digest and exact target.
+    Missing evidence counts as zero. Integrity or target-identity defects fail closed.
+    Failed or incomplete dry runs remain visible but never qualify for readiness gates.
     """
 
     if not path.is_file():
@@ -277,6 +382,8 @@ def load_phase_a_baseline(path: Path) -> list[Dict[str, Any]]:
         reader = csv.DictReader(handle)
         for line_number, row in enumerate(reader, start=2):
             try:
+                pre_submit_state = str(row.get("pre_submit_state") or "").strip() or None
+                final_status = str(row.get("final_status") or "").strip() or None
                 record: Dict[str, Any] = {
                     "schema_version": "1.0",
                     "run_id": str(row.get("run_id") or "").strip(),
@@ -293,10 +400,10 @@ def load_phase_a_baseline(path: Path) -> list[Dict[str, Any]]:
                     "application_url": str(row.get("application_url") or "").strip(),
                     "canonical_application_url": str(row.get("application_url") or "").strip(),
                     "adapter": LEVER_PLATFORM,
-                    "adapter_version": str(row.get("adapter_version") or "1.1.0").strip(),
+                    "adapter_version": str(row.get("adapter_version") or "").strip(),
                     "operator": str(row.get("operator") or "").strip() or None,
                     "source_reference": str(row.get("source_reference") or "").strip(),
-                    "artifact_sha256": str(row.get("artifact_sha256") or "").strip(),
+                    "artifact_sha256": str(row.get("artifact_sha256") or "").strip().lower(),
                     "approval_reference": None,
                     "controls_discovered": _optional_int(row.get("controls_discovered")),
                     "controls_filled": _optional_int(row.get("controls_filled")),
@@ -307,20 +414,21 @@ def load_phase_a_baseline(path: Path) -> list[Dict[str, Any]]:
                     "validation_errors": [],
                     "handoff_reason": str(row.get("handoff_reason") or "").strip() or None,
                     "handoff_boundary": str(row.get("handoff_boundary") or "").strip() or None,
-                    "pre_submit_state": str(row.get("pre_submit_state") or "ready_to_submit"),
+                    "pre_submit_state": pre_submit_state,
                     "final_url": str(row.get("application_url") or "").strip(),
                     "final_submit_clicked": False,
                     "confirmation_evidence_type": None,
                     "confirmation_evidence_reference": None,
-                    "final_status": str(row.get("final_status") or "dry_run_passed"),
+                    "final_status": final_status,
                     "duplicate_guard_verified": None,
                     "duplicate_submission_detected": False,
                     "reviewed_by": None,
                     "review_reference": None,
-                    "qualifies_for_dry_run_matrix": True,
+                    "qualifies_for_dry_run_matrix": (pre_submit_state, final_status)
+                    in PHASE_A_SUCCESS_PAIRS,
                     "synthetic_profile": True,
-                    "error": None,
-                    "notes": None,
+                    "error": str(row.get("error") or "").strip() or None,
+                    "notes": str(row.get("notes") or "").strip() or None,
                 }
                 validate_lever_record(record)
             except (TypeError, ValueError, LeverPilotIngestionError) as exc:
@@ -341,6 +449,10 @@ def build_readiness_summary(records: Iterable[Mapping[str, Any]]) -> Dict[str, A
         for record in values
         if record.get("mode") == DRY_RUN_MODE
         and record.get("qualifies_for_dry_run_matrix") is True
+        and _phase_a_outcome_qualifies(record)
+    ]
+    nonqualifying_dry = [
+        record for record in values if record.get("mode") == DRY_RUN_MODE and record not in dry
     ]
     sites = {
         str(record.get("site") or "").strip().lower()
@@ -398,6 +510,7 @@ def build_readiness_summary(records: Iterable[Mapping[str, Any]]) -> Dict[str, A
         "canonical_maturity": "dry_run",
         "record_count": len(values),
         "qualifying_dry_run_count": len(dry),
+        "nonqualifying_dry_run_count": len(nonqualifying_dry),
         "distinct_site_count": len(sites),
         "regions_covered": sorted(regions),
         "supervised_record_count": len(supervised),
@@ -426,6 +539,7 @@ def render_readiness_markdown(payload: Mapping[str, Any]) -> str:
         "## Progress",
         "",
         f"- Qualifying Phase A dry runs: **{summary.get('qualifying_dry_run_count', 0)}/30**",
+        f"- Non-qualifying Phase A rows: **{summary.get('nonqualifying_dry_run_count', 0)}**",
         f"- Distinct Lever sites: **{summary.get('distinct_site_count', 0)}/30**",
         f"- Regions covered: **{', '.join(summary.get('regions_covered') or []) or 'none'}**",
         f"- Confirmed supervised submissions: **{summary.get('supervised_confirmed_count', 0)}/10**",
@@ -446,7 +560,9 @@ def render_readiness_markdown(payload: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _load_combined(paths: Dict[str, Path]) -> tuple[list[Dict[str, Any]], list[Dict[str, Any]], list[Dict[str, Any]]]:
+def _load_combined(
+    paths: Dict[str, Path],
+) -> tuple[list[Dict[str, Any]], list[Dict[str, Any]], list[Dict[str, Any]]]:
     baseline = load_phase_a_baseline(paths["baseline"])
     runtime = load_ledger(paths["ledger"])
     combined = merge_records(baseline, runtime)
@@ -565,5 +681,6 @@ __all__ = [
     "load_phase_a_baseline",
     "read_lever_pilot_readiness",
     "validate_lever_record",
+    "validate_phase_a_record",
     "validate_phase_b_record",
 ]
