@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardCheck,
+  ExternalLink,
+  Fingerprint,
   Hash,
   Loader2,
   LockKeyhole,
@@ -22,30 +24,24 @@ import {
   queueSupervisedSubmission,
   revokeSupervisedSubmissionApproval,
 } from '../api/client'
-
-
-const BLOCKER_LABELS = {
-  global_live_submit_disabled: 'The global real-submission switch is off.',
-  greenhouse_supervised_pilot_disabled: 'The Greenhouse supervised-pilot switch is off.',
-  unsupported_platform: 'This application is not a supported Greenhouse target.',
-  application_not_ready_to_apply: 'The application is not in the ready-to-apply state.',
-  unresolved_manual_reviews: 'Resolve every open manual-review task first.',
-  missing_application_url: 'The exact application URL is missing.',
-  missing_submission_idempotency_key: 'The duplicate-prevention key is missing.',
-  resume_missing_or_unreadable: 'The selected résumé is missing or unreadable.',
-}
+import {
+  getSupervisedPlatformConfig,
+  readLeverTargetIdentity,
+  shortHash,
+  supervisedBlockerLabel,
+} from '../supervisedPlatforms'
 
 const TERMINAL_STATUSES = new Set(['consumed', 'revoked', 'expired'])
 
 function ShortHash({ label, value }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3" title={value || undefined}>
       <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
         <Hash className="h-3.5 w-3.5" />
         {label}
       </div>
       <code className="mt-1 block break-all text-[11px] leading-relaxed text-gray-700">
-        {value || 'Unavailable'}
+        {shortHash(value)}
       </code>
     </div>
   )
@@ -65,9 +61,68 @@ function ApprovalStatus({ status }) {
   )
 }
 
+function LeverTargetIdentity({ preflight }) {
+  const identity = readLeverTargetIdentity(preflight)
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-blue-950">
+          <Fingerprint className="h-4 w-4" />
+          Exact Lever target identity
+        </div>
+        <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${identity.verified ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+          {identity.verified ? 'Official metadata verified' : 'Identity not verified'}
+        </span>
+      </div>
+
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-lg border border-blue-100 bg-white p-2.5">
+          <dt className="font-semibold uppercase tracking-wide text-blue-500">Site</dt>
+          <dd className="mt-1 break-all text-slate-800">{identity.site || 'Unavailable'}</dd>
+        </div>
+        <div className="rounded-lg border border-blue-100 bg-white p-2.5">
+          <dt className="font-semibold uppercase tracking-wide text-blue-500">Posting ID</dt>
+          <dd className="mt-1 break-all font-mono text-slate-800">{identity.postingId || 'Unavailable'}</dd>
+        </div>
+        <div className="rounded-lg border border-blue-100 bg-white p-2.5">
+          <dt className="font-semibold uppercase tracking-wide text-blue-500">Region</dt>
+          <dd className="mt-1 uppercase text-slate-800">{identity.region || 'Unavailable'}</dd>
+        </div>
+        <div className="rounded-lg border border-blue-100 bg-white p-2.5">
+          <dt className="font-semibold uppercase tracking-wide text-blue-500">Adapter</dt>
+          <dd className="mt-1 text-slate-800">Lever {identity.adapterVersion || 'version unavailable'}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-2 rounded-lg border border-blue-100 bg-white p-2.5 text-xs">
+        <div className="font-semibold uppercase tracking-wide text-blue-500">Canonical apply URL</div>
+        {identity.canonicalUrl ? (
+          <a
+            href={identity.canonicalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 inline-flex items-start gap-1 break-all text-blue-700 hover:underline"
+          >
+            {identity.canonicalUrl}
+            <ExternalLink className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+          </a>
+        ) : (
+          <div className="mt-1 text-slate-500">Unavailable</div>
+        )}
+      </div>
+
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <ShortHash label="Target identity" value={identity.targetIdentityHash} />
+        <ShortHash label="Official posting metadata" value={identity.postingMetadataHash} />
+      </div>
+    </div>
+  )
+}
+
 export default function SupervisedSubmissionPanel({ application }) {
   const applicationId = application?.id
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const [confirmEmployer, setConfirmEmployer] = useState('')
   const [confirmRole, setConfirmRole] = useState('')
   const [confirmUrl, setConfirmUrl] = useState('')
@@ -85,13 +140,14 @@ export default function SupervisedSubmissionPanel({ application }) {
   })
 
   const preflight = preflightQuery.data
-  const isGreenhouse = preflight?.platform === 'greenhouse'
+  const platformConfig = getSupervisedPlatformConfig(preflight?.platform)
+  const supportsSupervisedSubmission = Boolean(platformConfig)
 
   const approvalsQuery = useQuery({
     queryKey: ['supervised-approvals', applicationId],
     queryFn: () => listSupervisedSubmissionApprovals(applicationId),
     select: (response) => response.data,
-    enabled: Boolean(applicationId && isGreenhouse),
+    enabled: Boolean(applicationId && supportsSupervisedSubmission),
     retry: false,
   })
 
@@ -109,14 +165,14 @@ export default function SupervisedSubmissionPanel({ application }) {
     setConfirmFinalSubmit(false)
     setReviewedHashes(false)
     setNotes('')
-  }, [applicationId, preflight?.combined_payload_hash])
+  }, [applicationId, preflight?.combined_payload_hash, preflight?.target_identity_hash])
 
   const refreshAll = async () => {
     await Promise.all([
-      qc.invalidateQueries({ queryKey: ['supervised-preflight', applicationId] }),
-      qc.invalidateQueries({ queryKey: ['supervised-approvals', applicationId] }),
-      qc.invalidateQueries({ queryKey: ['application', String(applicationId)] }),
-      qc.invalidateQueries({ queryKey: ['application', applicationId] }),
+      queryClient.invalidateQueries({ queryKey: ['supervised-preflight', applicationId] }),
+      queryClient.invalidateQueries({ queryKey: ['supervised-approvals', applicationId] }),
+      queryClient.invalidateQueries({ queryKey: ['application', String(applicationId)] }),
+      queryClient.invalidateQueries({ queryKey: ['application', applicationId] }),
     ])
   }
 
@@ -165,13 +221,13 @@ export default function SupervisedSubmissionPanel({ application }) {
       <div className="card p-5">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Checking supervised-submission boundary…
+          Checking supervised-submission boundary...
         </div>
       </div>
     )
   }
 
-  if (preflightQuery.isError || !isGreenhouse) return null
+  if (preflightQuery.isError || !supportsSupervisedSubmission) return null
 
   const exactConfirmationsMatch = (
     confirmEmployer === preflight.employer
@@ -194,6 +250,8 @@ export default function SupervisedSubmissionPanel({ application }) {
     && reviewedHashes
     && !queueSubmission.isPending
   )
+  const livePanelTitle = `${preflight.platform_display_name || platformConfig.displayName} supervised submission`
+  const visibleApprovals = approvals.filter((approval) => !TERMINAL_STATUSES.has(approval.status) || approval === latestApproval)
 
   return (
     <section className="card overflow-hidden border border-slate-200">
@@ -202,10 +260,10 @@ export default function SupervisedSubmissionPanel({ application }) {
           <div>
             <div className="flex items-center gap-2">
               <LockKeyhole className="h-5 w-5 text-emerald-300" />
-              <h2 className="font-semibold">Greenhouse supervised submission</h2>
+              <h2 className="font-semibold">{livePanelTitle}</h2>
             </div>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-300">
-              A live attempt requires two disabled-by-default feature flags and one short-lived approval bound to this exact payload.
+              A live attempt requires two disabled-by-default feature flags and one short-lived approval bound to this exact platform, target, and payload.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -243,7 +301,7 @@ export default function SupervisedSubmissionPanel({ application }) {
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-gray-600">Greenhouse pilot switch</span>
+                <span className="text-gray-600">{platformConfig.pilotSwitchLabel}</span>
                 <span className={preflight.platform_pilot_enabled ? 'font-semibold text-emerald-700' : 'font-semibold text-gray-500'}>
                   {preflight.platform_pilot_enabled ? 'Enabled' : 'Disabled'}
                 </span>
@@ -262,6 +320,8 @@ export default function SupervisedSubmissionPanel({ application }) {
           </div>
         </div>
 
+        {preflight.platform === 'lever' && <LeverTargetIdentity preflight={preflight} />}
+
         {!preflight.ready && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
@@ -270,7 +330,7 @@ export default function SupervisedSubmissionPanel({ application }) {
             </div>
             <ul className="mt-2 space-y-1 text-xs text-amber-800">
               {preflight.blockers.map((blocker) => (
-                <li key={blocker}>• {BLOCKER_LABELS[blocker] || blocker.replaceAll('_', ' ')}</li>
+                <li key={blocker}>• {supervisedBlockerLabel(blocker, preflight.platform)}</li>
               ))}
             </ul>
           </div>
@@ -312,6 +372,7 @@ export default function SupervisedSubmissionPanel({ application }) {
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                   <span>Issued {new Date(latestApproval.approved_at).toLocaleString()}</span>
                   <span>Expires {new Date(latestApproval.expires_at).toLocaleString()}</span>
+                  <span>{latestApproval.platform}</span>
                 </div>
               </div>
               {activeApproval && (
@@ -374,7 +435,7 @@ export default function SupervisedSubmissionPanel({ application }) {
                   className="input min-h-[72px] resize-none"
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Why this exact application is approved for the supervised pilot"
+                  placeholder={`Why this exact ${platformConfig.displayName} application is approved for the supervised pilot`}
                   maxLength={2000}
                 />
               </div>
@@ -387,7 +448,7 @@ export default function SupervisedSubmissionPanel({ application }) {
                 className="mt-0.5 h-4 w-4 rounded border-red-300"
               />
               <span className="text-xs leading-relaxed text-red-800">
-                I explicitly approve a supervised final-submit attempt for this exact employer, role, URL, résumé, cover letter, and answer-policy payload. I understand challenges and uncertain confirmation still stop for review.
+                I explicitly approve a supervised final-submit attempt for this exact platform, employer, role, URL, résumé, cover letter, and answer-policy payload. I understand challenges and uncertain confirmation still stop for review.
               </span>
             </label>
             <button
@@ -419,7 +480,7 @@ export default function SupervisedSubmissionPanel({ application }) {
                 className="mt-0.5 h-4 w-4 rounded border-emerald-300"
               />
               <span className="text-xs leading-relaxed text-gray-700">
-                I rechecked the target and all displayed hashes. No unresolved question, legal declaration, assessment, CAPTCHA, MFA, login, or identity boundary should be automated.
+                I rechecked the platform, exact target identity, and all displayed hashes. No unresolved question, legal declaration, assessment, CAPTCHA, MFA, login, or identity boundary should be automated.
               </span>
             </label>
             <button
@@ -434,6 +495,12 @@ export default function SupervisedSubmissionPanel({ application }) {
             {approvalExpiredLocally && (
               <p className="text-center text-xs font-medium text-red-700">This approval has expired. Refresh and issue a new approval.</p>
             )}
+          </div>
+        )}
+
+        {visibleApprovals.length > 1 && (
+          <div className="text-xs text-gray-500">
+            {visibleApprovals.length} approval records are attached to this exact application. Only one active approval can be queued.
           </div>
         )}
 
