@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class UserCreate(BaseModel):
@@ -22,6 +23,8 @@ class UserUpdate(BaseModel):
 
 
 class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     email: str
     full_name: Optional[str]
@@ -36,11 +39,10 @@ class UserOut(BaseModel):
     email_signature: Optional[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class UserProfile(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     full_name: Optional[str]
     email: str
     phone: Optional[str]
@@ -51,9 +53,6 @@ class UserProfile(BaseModel):
     resume_filename: Optional[str]
     profile_data: Optional[Dict[str, Any]]
     job_preferences: Optional[Dict[str, Any]]
-
-    class Config:
-        from_attributes = True
 
 
 class Token(BaseModel):

@@ -1,10 +1,12 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HandoffSessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     public_id: str
     application_id: int
     manual_review_id: int
@@ -27,9 +29,6 @@ class HandoffSessionOut(BaseModel):
     handoff_metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: Optional[datetime]
-
-    class Config:
-        from_attributes = True
 
 
 class HandoffIssuedOut(BaseModel):
@@ -85,6 +84,8 @@ class HandoffCancelRequest(BaseModel):
 
 
 class HandoffSessionEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     handoff_session_id: int
     application_id: int
@@ -92,9 +93,6 @@ class HandoffSessionEventOut(BaseModel):
     actor_type: str
     payload: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class HandoffDetailOut(HandoffSessionOut):
