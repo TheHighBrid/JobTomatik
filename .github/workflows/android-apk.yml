@@ -68,7 +68,7 @@ jobs:
         shell: bash
         run: |
           chmod +x android/gradlew
-          grep -q 'distributionUrl=https\\://services.gradle.org/distributions/gradle-9.6.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
+          grep -q 'distributionUrl=https\\://services.gradle.org/distributions/gradle-9.5.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
           grep -q 'validateDistributionUrl=true' android/gradle/wrapper/gradle-wrapper.properties
           ! grep -q '/tmp/gradle' android/gradle/wrapper/gradle-wrapper.properties
           cd android
