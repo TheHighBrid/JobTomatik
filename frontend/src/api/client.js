@@ -3,7 +3,7 @@ import axios from 'axios'
 import { safeLocalStorage } from '../storage'
 import { normalizeApiBaseUrl } from './url'
 
-const DEFAULT_API_URL = import.meta.env?.VITE_API_URL || 'http://127.0.0.1:8010'
+const DEFAULT_API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8010'
 const API_URL_STORAGE_KEY = 'jobtomatik_api_url'
 
 export { normalizeApiBaseUrl }
