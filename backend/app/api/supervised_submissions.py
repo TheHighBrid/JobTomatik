@@ -1,4 +1,5 @@
 from typing import List
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from app.database import get_db
 from app.models.application import Application
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval
+from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
 from app.schemas.supervised_submission import (
     SupervisedApprovalCreate,
@@ -17,6 +19,10 @@ from app.schemas.supervised_submission import (
     SupervisedSubmitQueued,
 )
 from app.services.application_integrity import submission_is_closed
+from app.services.submission_integrity import (
+    SubmissionAttemptReservationError,
+    reserve_submission_attempt,
+)
 from app.services.supervised_submission import (
     SupervisedSubmissionApprovalError,
     approval_safe_dict,
@@ -70,6 +76,27 @@ def _approval_error(db: Session, exc: Exception) -> HTTPException:
     # changes and must remain auditable even though the request is rejected.
     db.commit()
     return HTTPException(status_code=409, detail=str(exc))
+
+
+def _queued_attempt_payload(
+    application: Application,
+    approval: SubmissionApproval,
+    attempt: SubmissionAttempt,
+    *,
+    created: bool,
+) -> dict:
+    return {
+        "task_id": attempt.task_id,
+        "status": "queued" if created else attempt.status,
+        "application_id": application.id,
+        "approval_reference": approval.reference,
+        "attempt_reference": attempt.reference,
+        "attempt_number": attempt.attempt_number,
+        "idempotency_key": application.submission_idempotency_key,
+        "idempotent": not created,
+        "duplicate_final_action_prevented": not created,
+        "dry_run": False,
+    }
 
 
 @router.get(
@@ -193,11 +220,38 @@ async def queue_supervised_submission(
 ):
     application, user, job = _owned_records(db, application_id, current_user.id)
     _require_open_submission(application)
+
+    existing_attempt = (
+        db.query(SubmissionAttempt)
+        .filter(
+            SubmissionAttempt.application_id == application.id,
+            SubmissionAttempt.approval_reference == reference,
+        )
+        .first()
+    )
+    if existing_attempt:
+        approval = (
+            db.query(SubmissionApproval)
+            .filter(
+                SubmissionApproval.application_id == application.id,
+                SubmissionApproval.reference == reference,
+            )
+            .first()
+        )
+        if not approval:
+            raise HTTPException(status_code=409, detail="Submission approval not found")
+        return _queued_attempt_payload(
+            application,
+            approval,
+            existing_attempt,
+            created=False,
+        )
+
     target_metadata = await resolve_supervised_target_metadata(job)
     if target_metadata:
         persist_supervised_target_metadata(job, target_metadata)
     try:
-        validate_supervised_approval(
+        approval = validate_supervised_approval(
             db,
             application,
             user,
@@ -206,21 +260,52 @@ async def queue_supervised_submission(
             consume=False,
             target_metadata=target_metadata,
         )
-        # Persist the latest exact target metadata before the worker reads it.
+        task_id = str(uuid4())
+        attempt, created = reserve_submission_attempt(
+            db,
+            application,
+            approval,
+            task_id=task_id,
+        )
         db.commit()
-    except SupervisedSubmissionApprovalError as exc:
+    except (SupervisedSubmissionApprovalError, SubmissionAttemptReservationError) as exc:
         raise _approval_error(db, exc)
 
-    task = submit_application_task.delay(
-        application_id,
-        dry_run=False,
-        approval_reference=reference,
+    if created:
+        try:
+            submit_application_task.apply_async(
+                args=[application_id],
+                kwargs={
+                    "dry_run": False,
+                    "approval_reference": reference,
+                    "attempt_reference": attempt.reference,
+                },
+                task_id=attempt.task_id,
+            )
+        except Exception as exc:
+            db = next(get_db())
+            try:
+                persisted = db.query(SubmissionAttempt).filter(
+                    SubmissionAttempt.id == attempt.id
+                ).first()
+                if persisted:
+                    persisted.status = "blocked"
+                    persisted.attempt_metadata = {
+                        **dict(persisted.attempt_metadata or {}),
+                        "block_reason": "queue_publish_uncertain",
+                        "publish_error": f"{type(exc).__name__}: {str(exc)[:300]}",
+                    }
+                    db.commit()
+            finally:
+                db.close()
+            raise HTTPException(
+                status_code=503,
+                detail="Submission queue publication was uncertain; a new approval is required.",
+            )
+
+    return _queued_attempt_payload(
+        application,
+        approval,
+        attempt,
+        created=created,
     )
-    return {
-        "task_id": task.id,
-        "status": "queued",
-        "application_id": application.id,
-        "approval_reference": reference,
-        "idempotency_key": application.submission_idempotency_key,
-        "dry_run": False,
-    }
