@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "campaign_day": 4,
+  "mission": "answer_policy_vault_completion_audit",
+  "branch": "agent/day-04-answer-policy-readiness",
+  "controls": {
+    "encrypted_primary_answers": true,
+    "encrypted_answer_labels": true,
+    "encrypted_fallback_answers": true,
+    "provenance_recorded": true,
+    "confidence_recorded": true,
+    "explicit_consent_metadata_recorded": true,
+    "optional_expiry_enforced": true,
+    "same_priority_conflicts_fail_closed": true,
+    "unknown_questions_fail_closed": true,
+    "ai_suggestions_require_confirmation": true,
+    "material_edits_revoke_authorization": true,
+    "user_facing_blockers_report": true
+  },
+  "minimum_profiles": {
+    "profile_fields": [
+      "full_name",
+      "email",
+      "phone",
+      "address",
+      "resume_path"
+    ],
+    "countries": [
+      "CA",
+      "US",
+      "GB",
+      "GENERIC"
+    ],
+    "platforms": [
+      "greenhouse",
+      "lever",
+      "ashby",
+      "generic"
+    ]
+  },
+  "verification_cases": [
+    "missing_profile_field",
+    "missing_required_policy",
+    "complete_canada_greenhouse_pack",
+    "encrypted_round_trip",
+    "low_confidence_rejection",
+    "unknown_provenance_rejection",
+    "ai_suggestion_without_confirmation",
+    "expired_policy",
+    "same_priority_conflict",
+    "material_edit_revokes_consent",
+    "corrupt_ciphertext"
+  ],
+  "release_gate": "pending_pull_request_ci",
+  "verified_head": null,
+  "merge_commit": null
+}
