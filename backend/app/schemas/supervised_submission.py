@@ -76,5 +76,9 @@ class SupervisedSubmitQueued(BaseModel):
     status: str
     application_id: int
     approval_reference: str
+    attempt_reference: str
+    attempt_number: int
     idempotency_key: str
+    idempotent: bool = False
+    duplicate_final_action_prevented: bool = False
     dry_run: bool = False

@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "campaign_day": 5,
+  "mission": "duplicate_and_idempotency_assault",
+  "branch": "agent/day-05-idempotency-assault",
+  "controls": {
+    "user_scoped_posting_identity_aliases": true,
+    "verified_platform_posting_identity": true,
+    "source_external_id_identity": true,
+    "canonical_source_listing_identity": true,
+    "contextual_employer_target_identity": true,
+    "tracking_parameter_normalization": true,
+    "exact_approval_binding_hash": true,
+    "durable_queue_attempt_reservation": true,
+    "atomic_single_worker_claim": true,
+    "consumed_approval_final_action_replay_blocked": true,
+    "confirmation_evidence_receipt_deduplication": true,
+    "live_exception_final_action_retry_suppressed": true
+  },
+  "binding_fields": [
+    "applicant",
+    "application",
+    "employer",
+    "role",
+    "posting_identity",
+    "canonical_application_url",
+    "profile_snapshot_hash",
+    "resume_hash",
+    "cover_letter_hash",
+    "answer_payload_hash",
+    "adapter_version",
+    "target_identity_hash",
+    "approval_reference",
+    "approval_timestamps",
+    "submission_idempotency_key"
+  ],
+  "replay_matrix": [
+    "request_replay",
+    "double_click",
+    "duplicate_queue_message",
+    "two_worker_claim_race",
+    "worker_restart",
+    "timeout_after_attempt_claim",
+    "changed_url_same_verified_posting",
+    "same_url_changed_posting",
+    "confirmation_email_replay",
+    "confirmation_receipt_cross_application_conflict",
+    "documents_answers_adapter_context_drift",
+    "succeeded_attempt_replay"
+  ],
+  "expected_terminal_duplicate_count": 0,
+  "observed_terminal_duplicate_count": 0,
+  "backend_test_result": {
+    "passed": 480,
+    "skipped": 59,
+    "failed": 0,
+    "duration_seconds": 126.85
+  },
+  "verified_workflows": [
+    "Backend tests",
+    "CodeQL security analysis",
+    "Greenhouse supervised approval certification",
+    "Post-merge stabilization",
+    "Reproducible verification",
+    "Submission evidence review certification"
+  ],
+  "verified_parent_commit": "785272b1f9263a33313cc2b2e97b6faddb917b49",
+  "release_gate": "passed_on_verified_parent_commit",
+  "final_exact_head_gate": "pending_documentation_lock_ci",
+  "verified_head": null,
+  "merge_commit": null
+}
