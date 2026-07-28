@@ -176,8 +176,16 @@ def _attach_handoff_session(
     result.pop("handoff_snapshot", None)
 
 
+def _install_day6_safety() -> None:
+    # Imported lazily to avoid a module-cycle while this compatibility layer binds
+    # its original application-task wrapper.
+    from app.services.handoff_safety_integration import install_handoff_safety_integration
+
+    install_handoff_safety_integration()
+
+
 def install_handoff_task_integration() -> None:
-    """Install idempotent handoff and confirmation-target extensions."""
+    """Install idempotent handoff, target, and Day 6 safety extensions."""
     global _INSTALLED, _ORIGINAL
 
     # These compatibility layers must be available even when the review wrapper
@@ -185,6 +193,7 @@ def install_handoff_task_integration() -> None:
     install_handoff_confirmation_target_support()
     install_application_target_handoff_support()
     if _INSTALLED:
+        _install_day6_safety()
         return
 
     from app.tasks import applications as application_tasks
@@ -204,3 +213,4 @@ def install_handoff_task_integration() -> None:
 
     application_tasks._create_result_review_tasks = wrapped_create_result_review_tasks
     _INSTALLED = True
+    _install_day6_safety()
