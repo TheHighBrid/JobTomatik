@@ -30,6 +30,7 @@ def _env_int(name: str, default: int, minimum: int = 0) -> int:
 
 @dataclass(frozen=True)
 class OperationsSettings:
+    global_kill_switch: bool
     autopilot_enabled: bool
     default_daily_cap: int
     default_weekly_cap: int
@@ -45,6 +46,9 @@ class OperationsSettings:
 @lru_cache
 def get_operations_settings() -> OperationsSettings:
     return OperationsSettings(
+        # False means normal bounded operation. True is the emergency stop and blocks
+        # scheduled, live-submit, and retained-handoff execution before browser work.
+        global_kill_switch=_env_bool("AUTOMATION_GLOBAL_KILL_SWITCH", False),
         autopilot_enabled=_env_bool("AUTOPILOT_ENABLED", False),
         default_daily_cap=_env_int("AUTOPILOT_DEFAULT_DAILY_CAP", 5, 1),
         default_weekly_cap=_env_int("AUTOPILOT_DEFAULT_WEEKLY_CAP", 20, 1),
