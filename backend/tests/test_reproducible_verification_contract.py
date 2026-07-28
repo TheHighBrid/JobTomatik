@@ -73,6 +73,9 @@ def test_verification_modes_and_fail_safe_environment_are_explicit() -> None:
         "bootstrap",
         "toolchain",
         "fast",
+        "backend-tests",
+        "migration",
+        "safety",
         "backend",
         "frontend",
         "deployment",
@@ -97,8 +100,19 @@ def test_reproducible_workflow_executes_every_verification_lane() -> None:
     assert 'python-version: "3.11"' in workflow
     assert 'node-version: "20"' in workflow
     assert 'java-version: "21"' in workflow
-    for mode in ("fast", "backend", "frontend", "deployment", "android"):
+    for mode in (
+        "fast",
+        "backend-tests",
+        "migration",
+        "safety",
+        "frontend",
+        "deployment",
+        "android",
+    ):
         assert f"bash scripts/verify.sh {mode}" in workflow
+    assert "Run full backend and browser tests" in workflow
+    assert "Run migration smoke test" in workflow
+    assert "Verify safety and adapter maturity" in workflow
     assert "Assert every reproducibility gate passed" in workflow
 
 
