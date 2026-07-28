@@ -8,11 +8,16 @@ on:
       - "backend/app/services/lever_pilot_ledger_boundary.py"
       - "backend/scripts/certify_lever_pilot_readiness.py"
       - "backend/scripts/export_lever_phase_a_record.py"
+      - "backend/evidence/lever-phase-a-baseline.csv"
+      - "backend/evidence/lever-phase-a-sources.csv"
+      - "backend/evidence/lever-pilot-readiness.json"
+      - "backend/evidence/lever-pilot-readiness.md"
       - "backend/tests/test_lever_phase_a_export.py"
       - "backend/tests/test_lever_phase_a_readiness_validation.py"
       - "backend/tests/test_lever_pilot_certification.py"
       - "frontend/src/supervisedPlatforms.js"
       - "frontend/test/supervised-platforms.test.js"
+      - "docs/operations/lever-controlled-pilot-evidence.md"
       - ".github/workflows/lever-phase-a-certification.yml"
   push:
     branches:
@@ -22,11 +27,16 @@ on:
       - "backend/app/services/lever_pilot_ledger_boundary.py"
       - "backend/scripts/certify_lever_pilot_readiness.py"
       - "backend/scripts/export_lever_phase_a_record.py"
+      - "backend/evidence/lever-phase-a-baseline.csv"
+      - "backend/evidence/lever-phase-a-sources.csv"
+      - "backend/evidence/lever-pilot-readiness.json"
+      - "backend/evidence/lever-pilot-readiness.md"
       - "backend/tests/test_lever_phase_a_export.py"
       - "backend/tests/test_lever_phase_a_readiness_validation.py"
       - "backend/tests/test_lever_pilot_certification.py"
       - "frontend/src/supervisedPlatforms.js"
       - "frontend/test/supervised-platforms.test.js"
+      - "docs/operations/lever-controlled-pilot-evidence.md"
       - ".github/workflows/lever-phase-a-certification.yml"
 
 permissions:
@@ -81,17 +91,92 @@ jobs:
             tests/test_lever_pilot_certification.py \
             --junitxml=lever-phase-a-pytest.xml
 
-      - name: Certify empty evidence remains zero and fail-safe
+      - name: Verify committed Phase A evidence and provenance
         working-directory: backend
         run: |
           mkdir -p evidence-ci
+          python - <<'PY'
+          import csv
+          import json
+          import re
+          from pathlib import Path
+
+          from app.services.lever_pilot_ingestion import (
+              load_phase_a_baseline,
+              read_lever_pilot_readiness,
+              render_readiness_markdown,
+          )
+
+          baseline_path = Path('evidence/lever-phase-a-baseline.csv')
+          sources_path = Path('evidence/lever-phase-a-sources.csv')
+          readiness_json_path = Path('evidence/lever-pilot-readiness.json')
+          readiness_markdown_path = Path('evidence/lever-pilot-readiness.md')
+          missing_runtime_ledger = Path('evidence-ci/missing-phase-b.jsonl')
+
+          records = load_phase_a_baseline(baseline_path)
+          assert records, 'At least one retained Lever Phase A record is required.'
+          assert all(record['mode'] == 'dry_run' for record in records)
+          assert all(record['final_submit_clicked'] is False for record in records)
+          assert all(record['synthetic_profile'] is True for record in records)
+
+          with sources_path.open(encoding='utf-8', newline='') as handle:
+              sources = list(csv.DictReader(handle))
+          assert sources, 'Lever Phase A provenance cannot be empty.'
+          assert sum(int(row['retained_record_count']) for row in sources) == len(records)
+          assert len({row['workflow_run_id'] for row in sources}) == len(sources)
+          assert len({row['artifact_id'] for row in sources}) == len(sources)
+          assert all(row['workflow_run_id'].isdigit() for row in sources)
+          assert all(row['artifact_id'].isdigit() for row in sources)
+          assert all(re.fullmatch(r'[0-9a-f]{64}', row['artifact_digest']) for row in sources)
+
+          source_run_ids = {row['workflow_run_id'] for row in sources}
+          for record in records:
+              match = re.fullmatch(
+                  r'https://github\.com/TheHighBrid/JobTomatik/actions/runs/(\d+)',
+                  record['source_reference'],
+              )
+              assert match, record['source_reference']
+              assert match.group(1) in source_run_ids
+
+          readiness = read_lever_pilot_readiness(
+              baseline_path=baseline_path,
+              ledger_path=missing_runtime_ledger,
+          )
+          committed_json = json.loads(readiness_json_path.read_text(encoding='utf-8'))
+          committed_markdown = readiness_markdown_path.read_text(encoding='utf-8')
+          assert readiness == committed_json
+          assert render_readiness_markdown(readiness) == committed_markdown
+
+          summary = readiness['summary']
+          assert readiness['baseline_record_count'] == len(records)
+          assert readiness['runtime_record_count'] == 0
+          assert summary['qualifying_dry_run_count'] == len(records)
+          assert summary['supervised_confirmed_count'] == 0
+          assert summary['canonical_maturity'] == 'dry_run'
+          assert summary['supervised_pilot_evidence_complete'] is False
+          assert summary['promotion_ready'] is False
+          assert summary['gates']['explicit_separate_promotion_approval'] is False
+
+          Path('evidence-ci/lever-pilot-readiness.json').write_text(
+              json.dumps(readiness, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          Path('evidence-ci/lever-pilot-readiness.md').write_text(
+              render_readiness_markdown(readiness),
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Certify retained evidence without threshold claims
+        working-directory: backend
+        run: |
           python scripts/certify_lever_pilot_readiness.py \
-            --baseline evidence-ci/missing-phase-a.csv \
+            --baseline evidence/lever-phase-a-baseline.csv \
             --ledger evidence-ci/missing-phase-b.jsonl \
             --json-output evidence-ci/lever-pilot-certification.json \
             --markdown-output evidence-ci/lever-pilot-certification.md
 
-      - name: Assert Phase A cannot enable live execution or promote maturity
+      - name: Assert evidence cannot enable live execution or promote maturity
         working-directory: backend
         run: |
           python - <<'PY'
@@ -108,12 +193,13 @@ jobs:
           assert settings.enable_resumable_handoffs is False
           assert report['passed'] is True
           assert report['safety']['browser_opened'] is False
+          assert report['safety']['network_contacted'] is False
           assert report['safety']['approval_issued'] is False
           assert report['safety']['submission_queued'] is False
           assert report['safety']['final_submit_clicked'] is False
           assert report['safety']['maturity_promoted'] is False
           assert summary['canonical_maturity'] == 'dry_run'
-          assert summary['qualifying_dry_run_count'] == 0
+          assert summary['qualifying_dry_run_count'] >= 1
           assert summary['supervised_confirmed_count'] == 0
           assert summary['promotion_ready'] is False
           PY
@@ -138,6 +224,8 @@ jobs:
           name: lever-phase-a-certification
           path: |
             backend/lever-phase-a-pytest.xml
+            backend/evidence-ci/lever-pilot-readiness.json
+            backend/evidence-ci/lever-pilot-readiness.md
             backend/evidence-ci/lever-pilot-certification.json
             backend/evidence-ci/lever-pilot-certification.md
           if-no-files-found: error
