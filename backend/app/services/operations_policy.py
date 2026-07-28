@@ -76,8 +76,6 @@ def is_quiet_hour(now: datetime, start_hour: int, end_hour: int) -> bool:
 
 
 def _period_counts(db, user_id: int, now: datetime) -> tuple[int, int]:
-    # Caps are rolling operating windows. Calendar-day or calendar-week boundaries
-    # would allow a burst immediately after midnight or the start of a new week.
     day_start = now - timedelta(days=1)
     week_start = now - timedelta(days=7)
     daily = (
@@ -164,6 +162,7 @@ def _circuit_breaker_state(
         oldest = cluster[-1]["created_at"]
         if newest - oldest <= window and now < newest + breaker:
             reason_counts = Counter(item["reason_code"] for item in incidents)
+            platform_counts = Counter(item["platform"] for item in incidents)
             return {
                 "scope": "platform" if platform else "user",
                 "platform": platform,
@@ -174,6 +173,7 @@ def _circuit_breaker_state(
                 "tripped_at": newest.isoformat(),
                 "retry_after": (newest + breaker).isoformat(),
                 "reason_counts": dict(sorted(reason_counts.items())),
+                "platform_counts": dict(sorted(platform_counts.items())),
                 "application_ids": sorted({item["application_id"] for item in incidents}),
                 "operator_reason_code": (
                     "platform_failure_cluster" if platform else "user_failure_cluster"
@@ -220,6 +220,20 @@ def evaluate_circuit_breaker_policy(
         breaker_minutes=operations.circuit_breaker_minutes,
     )
     if global_state:
+        # When a specific target is being evaluated, a cluster confined to another
+        # adapter must not freeze this platform. A user-wide breaker requires failures
+        # spanning at least two platforms. Scheduler-level checks without a URL retain
+        # the conservative historical behavior.
+        if platform and len(global_state.get("platform_counts") or {}) < 2:
+            return AutomationDecision(
+                True,
+                "circuit_breaker_closed",
+                "The active failure cluster is isolated to another platform.",
+                {
+                    "platform": platform,
+                    "isolated_cluster": global_state,
+                },
+            )
         return AutomationDecision(
             False,
             "circuit_breaker_open",
