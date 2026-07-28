@@ -1,9 +1,13 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from app.models.answer_policy import AnswerPolicyMode, AnswerPolicyScope
+from app.models.answer_policy import (
+    AnswerPolicyMode,
+    AnswerPolicyProvenance,
+    AnswerPolicyScope,
+)
 
 
 class AnswerPolicyCreate(BaseModel):
@@ -18,6 +22,10 @@ class AnswerPolicyCreate(BaseModel):
     allow_autofill: bool = False
     confirmed: bool = False
     is_active: bool = True
+    provenance: AnswerPolicyProvenance = AnswerPolicyProvenance.user_provided
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    source_metadata: Dict[str, Any] = Field(default_factory=dict)
+    expires_at: Optional[datetime] = None
 
 
 class AnswerPolicyUpdate(BaseModel):
@@ -31,6 +39,10 @@ class AnswerPolicyUpdate(BaseModel):
     allow_autofill: Optional[bool] = None
     confirmed: Optional[bool] = None
     is_active: Optional[bool] = None
+    provenance: Optional[AnswerPolicyProvenance] = None
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    source_metadata: Optional[Dict[str, Any]] = None
+    expires_at: Optional[datetime] = None
 
 
 class AnswerPolicyOut(BaseModel):
@@ -48,6 +60,13 @@ class AnswerPolicyOut(BaseModel):
     allow_autofill: bool
     is_active: bool
     confirmed_at: Optional[datetime]
+    provenance: str
+    confidence: float
+    consent_metadata: Dict[str, Any]
+    source_metadata: Dict[str, Any]
+    expires_at: Optional[datetime]
+    is_expired: bool
+    encryption_valid: bool
     version: int
     created_at: datetime
     updated_at: Optional[datetime]
@@ -74,3 +93,19 @@ class AnswerPolicyBulkResult(BaseModel):
     policies: List[AnswerPolicyOut]
     created: int
     updated: int
+
+
+class AnswerPolicyReadinessReport(BaseModel):
+    country_code: str
+    platform: str
+    target_url: str
+    company: str
+    ready_for_unattended: bool
+    completeness_score: float
+    required_profile_fields: List[Dict[str, Any]]
+    required_policies: List[Dict[str, Any]]
+    blockers: List[Dict[str, Any]]
+    conflicts: List[Dict[str, Any]]
+    summary: Dict[str, int]
+    guarantees: List[str]
+    generated_at: datetime
