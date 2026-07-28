@@ -34,5 +34,21 @@
     "manual_status_reconciliation",
     "unguarded_state_write_ast_scan"
   ],
-  "release_gate": "pending_pull_request_ci"
+  "verified_parent_commit": "23857d438baee042c60718b981f34c8a3d543cbc",
+  "backend_test_result": {
+    "passed": 459,
+    "skipped": 59,
+    "failed": 0,
+    "duration_seconds": 173.65
+  },
+  "verified_workflows": [
+    "Backend tests",
+    "CodeQL security analysis",
+    "Duplicate replay and crash recovery certification",
+    "Post-merge stabilization",
+    "Reproducible verification",
+    "Submission evidence review certification"
+  ],
+  "release_gate": "passed_on_verified_parent_commit",
+  "final_exact_head_gate": "pending_documentation_lock_ci"
 }
