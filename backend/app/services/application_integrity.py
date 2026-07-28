@@ -14,7 +14,8 @@ from app.models.application import (
     ManualReviewTask,
 )
 from app.models.handoff import ACTIVE_HANDOFF_STATUSES, ManualHandoffSession
-from app.services.application_state import normalize_state
+from app.services.application_attempt_integrity import install_application_attempt_result_guard
+from app.services.application_state import normalize_state, transition_application_state
 from app.services.handoff_session import cancel_handoff_session
 
 
@@ -74,6 +75,7 @@ def install_closed_application_task_gate() -> None:
     """
 
     global _TASK_GATE_INSTALLED, _TASK_GATE_ORIGINAL_RUN
+    install_application_attempt_result_guard()
     if _TASK_GATE_INSTALLED:
         return
 
@@ -112,8 +114,9 @@ def reconcile_user_reported_status(
 ) -> List[ManualHandoffSession]:
     """Close submission machinery when a user records a terminal lifecycle status.
 
-    This is an explicit user status reconciliation, not employer confirmation evidence.
-    Employer-confirmed flows continue to use the submission-evidence pipeline.
+    A user-reported status is authoritative for queue closure, but it is not employer
+    confirmation evidence. Therefore it must never fabricate ``submitted`` or
+    ``confirmed`` automation states. Only the evidence pipeline may enter those states.
     """
 
     status_value = _value(status)
@@ -122,15 +125,23 @@ def reconcile_user_reported_status(
 
     now = datetime.utcnow()
     current_state = normalize_state(application.automation_state)
-    target_state = current_state
 
     if status_value in _SUBMISSION_RECORDED_STATUSES:
         application.applied_at = application.applied_at or now
-        if current_state not in {
-            ApplicationAutomationState.submitted.value,
-            ApplicationAutomationState.confirmed.value,
-        }:
-            target_state = ApplicationAutomationState.submitted.value
+        db.add(
+            ApplicationEvent(
+                application_id=application.id,
+                event_type="application_status_reconciled",
+                from_state=current_state,
+                to_state=current_state,
+                payload={
+                    "status": status_value,
+                    "source": "user_status_update",
+                    "submission_evidence_created": False,
+                    "automation_state_inferred": False,
+                },
+            )
+        )
     elif (
         status_value == ApplicationStatus.withdrawn.value
         and current_state not in {
@@ -139,21 +150,33 @@ def reconcile_user_reported_status(
             ApplicationAutomationState.withdrawn.value,
         }
     ):
-        target_state = ApplicationAutomationState.withdrawn.value
-
-    if target_state != current_state:
-        application.automation_state = target_state
-        db.add(ApplicationEvent(
-            application_id=application.id,
-            event_type="application_status_reconciled",
-            from_state=current_state,
-            to_state=target_state,
-            payload={
+        transition_application_state(
+            db,
+            application,
+            ApplicationAutomationState.withdrawn,
+            "application_status_reconciled",
+            {
                 "status": status_value,
                 "source": "user_status_update",
                 "submission_evidence_created": False,
+                "automation_state_inferred": False,
             },
-        ))
+        )
+    else:
+        db.add(
+            ApplicationEvent(
+                application_id=application.id,
+                event_type="application_status_reconciled",
+                from_state=current_state,
+                to_state=current_state,
+                payload={
+                    "status": status_value,
+                    "source": "user_status_update",
+                    "submission_evidence_created": False,
+                    "automation_state_inferred": False,
+                },
+            )
+        )
 
     reviews = (
         db.query(ManualReviewTask)

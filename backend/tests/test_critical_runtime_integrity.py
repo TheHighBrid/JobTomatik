@@ -201,7 +201,9 @@ def test_manual_applied_status_closes_reviews_handoff_and_all_retry_paths(
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["status"] == ApplicationStatus.applied.value
-    assert payload["automation_state"] == ApplicationAutomationState.submitted.value
+    # The status closes duplicate submission work, but it does not manufacture
+    # employer evidence or advance JobTomatik beyond its last verified checkpoint.
+    assert payload["automation_state"] == ApplicationAutomationState.needs_review.value
     assert payload["applied_at"] is not None
     assert terminated == [handoff.public_id]
 
@@ -230,7 +232,7 @@ def test_manual_applied_status_closes_reviews_handoff_and_all_retry_paths(
     )
     assert stale_worker_result["idempotent"] is True
     assert stale_worker_result["already_submitted"] is True
-    assert stale_worker_result["state"] == ApplicationAutomationState.submitted.value
+    assert stale_worker_result["state"] == ApplicationAutomationState.needs_review.value
 
     supervised = auth_client.get(
         f"/api/supervised-submissions/applications/{application.id}/preflight"
