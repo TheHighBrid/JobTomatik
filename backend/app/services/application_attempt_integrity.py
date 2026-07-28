@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from app.services.application_state import (
     ApplicationAttemptCheckpointLost,
@@ -13,7 +13,7 @@ from app.services.application_state import (
 
 logger = logging.getLogger(__name__)
 _INSTALLED = False
-_ORIGINAL_RECORD_RESULT_EVIDENCE = None
+_ORIGINAL_RECORD_RESULT_EVIDENCE: Callable[..., None] | None = None
 
 
 def install_application_attempt_result_guard() -> None:
@@ -24,6 +24,9 @@ def install_application_attempt_result_guard() -> None:
     This wrapper validates the persisted state and attempt counter immediately before
     any returned evidence is recorded. A mismatch raises into Celery's retry path; the
     retry then observes the newer authoritative state and exits idempotently.
+
+    Both the primary application worker and the retained-handoff worker import the
+    evidence recorder, so both references are replaced with the same guard.
     """
 
     global _INSTALLED, _ORIGINAL_RECORD_RESULT_EVIDENCE
@@ -31,6 +34,7 @@ def install_application_attempt_result_guard() -> None:
         return
 
     from app.tasks import applications as application_tasks
+    from app.tasks import handoffs as handoff_tasks
 
     _ORIGINAL_RECORD_RESULT_EVIDENCE = application_tasks._record_result_evidence
 
@@ -54,9 +58,11 @@ def install_application_attempt_result_guard() -> None:
             raise ApplicationAttemptCheckpointLost(
                 "Application attempt checkpoint changed before result persistence"
             )
+        assert _ORIGINAL_RECORD_RESULT_EVIDENCE is not None
         _ORIGINAL_RECORD_RESULT_EVIDENCE(db, checked, result)
 
     application_tasks._record_result_evidence = guarded_record_result_evidence
+    handoff_tasks._record_result_evidence = guarded_record_result_evidence
     _INSTALLED = True
 
 
