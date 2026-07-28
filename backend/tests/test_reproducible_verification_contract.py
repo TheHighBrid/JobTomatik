@@ -86,12 +86,14 @@ def test_verification_modes_and_fail_safe_environment_are_explicit() -> None:
 
     for assignment in (
         "ALLOW_REAL_APPLICATION_SUBMIT=false",
-        "GREENHOUSE_SUPERVISED_PILOT_ENABLED=false",
-        "LEVER_SUPERVISED_PILOT_ENABLED=false",
         "AUTOPILOT_ENABLED=false",
         "ENABLE_RESUMABLE_HANDOFFS=false",
     ):
         assert f"export {assignment}" in script
+
+    assert "GREENHOUSE_SUPERVISED_PILOT_ENABLED=false" in script
+    assert "LEVER_SUPERVISED_PILOT_ENABLED=false" in script
+    assert "verification-pytest-output.txt" in script
 
 
 def test_reproducible_workflow_executes_every_verification_lane() -> None:
@@ -111,6 +113,7 @@ def test_reproducible_workflow_executes_every_verification_lane() -> None:
     ):
         assert f"bash scripts/verify.sh {mode}" in workflow
     assert "Run full backend and browser tests" in workflow
+    assert "Upload backend verification report" in workflow
     assert "Run migration smoke test" in workflow
     assert "Verify safety and adapter maturity" in workflow
     assert "Assert every reproducibility gate passed" in workflow
