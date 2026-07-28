@@ -2,8 +2,10 @@
   "schema_version": "1.0",
   "campaign_day": 2,
   "captured_at": "2026-07-28T00:00:00-04:00",
+  "completed_at": "2026-07-28T07:00:00-04:00",
   "mission": "one_command_clean_reproduction",
   "branch": "agent/day-02-one-command-verification",
+  "verified_head_sha": "3107c8d68231f7525e409bf1113e35506043bd7a",
   "canonical_toolchain": {
     "python_major_minor": "3.11",
     "node_major": "20",
@@ -17,6 +19,9 @@
     "bootstrap",
     "toolchain",
     "fast",
+    "backend-tests",
+    "migration",
+    "safety",
     "backend",
     "frontend",
     "deployment",
@@ -31,17 +36,30 @@
     "android",
     "release-gate"
   ],
-  "safety_defaults_forced": {
-    "ALLOW_REAL_APPLICATION_SUBMIT": false,
-    "GREENHOUSE_SUPERVISED_PILOT_ENABLED": false,
-    "LEVER_SUPERVISED_PILOT_ENABLED": false,
-    "AUTOPILOT_ENABLED": false,
-    "ENABLE_RESUMABLE_HANDOFFS": false
+  "verified_results": {
+    "backend_browser_tests_passed": 430,
+    "backend_browser_test_duration_seconds": 235.05,
+    "warnings": 1,
+    "migration_smoke": "passed",
+    "safety_and_maturity": "passed",
+    "frontend_tests_and_build": "passed",
+    "deployment_configuration": "passed",
+    "android_lint_assembly_identity_version": "passed",
+    "aggregate_release_gate": "passed"
+  },
+  "safety_contract": {
+    "outer_real_submission_disabled": true,
+    "scheduled_autopilot_disabled": true,
+    "live_resumable_handoffs_disabled": true,
+    "platform_pilot_values_test_controlled": true,
+    "dedicated_safety_gate_verifies_platform_pilots_disabled": true,
+    "adapter_maturity_changed": false
   },
   "known_drift_corrected": [
     "Android CI Node 22 aligned to canonical Node 20",
     "README Gradle 8.11.1 corrected to 9.5.1",
-    "README Android Gradle Plugin 8.7.2 corrected to 8.13.2"
+    "README Android Gradle Plugin 8.7.2 corrected to 8.13.2",
+    "Verification workflow environment aligned with application configuration regression expectations"
   ],
-  "release_gate": "pending_pull_request_ci"
+  "release_gate": "passed"
 }
