@@ -38,31 +38,16 @@ def _target_url(job: Job) -> str:
     return str(raw.get("selected_apply_url") or job.url or "").strip()
 
 
-def _record_block(
-    db,
-    application: Application,
-    user: User,
-    job: Job,
-    *,
-    platform: str,
-    approval_reference: Optional[str],
-    reason: str,
-) -> None:
+def _record_block(db, application, user, job, *, platform, approval_reference, reason):
     payload = {
         "approval_reference": approval_reference,
         "platform": platform,
         "reason": reason[:500],
     }
-    recent = (
-        db.query(ApplicationEvent)
-        .filter(
-            ApplicationEvent.application_id == application.id,
-            ApplicationEvent.event_type == "supervised_submission_blocked",
-        )
-        .order_by(ApplicationEvent.id.desc())
-        .limit(10)
-        .all()
-    )
+    recent = db.query(ApplicationEvent).filter(
+        ApplicationEvent.application_id == application.id,
+        ApplicationEvent.event_type == "supervised_submission_blocked",
+    ).order_by(ApplicationEvent.id.desc()).limit(10).all()
     if any(
         (item.payload or {}).get("approval_reference") == approval_reference
         and (item.payload or {}).get("platform") == platform
@@ -92,7 +77,7 @@ def _record_block(
     ))
 
 
-def _attempt_for_reference(db, application_id: int, attempt_reference: Optional[str]):
+def _attempt_for_reference(db, application_id, attempt_reference):
     if not attempt_reference:
         return None
     return db.query(SubmissionAttempt).filter(
@@ -101,19 +86,39 @@ def _attempt_for_reference(db, application_id: int, attempt_reference: Optional[
     ).first()
 
 
-def _attempt_for_approval(db, application_id: int, approval_reference: str):
-    return (
-        db.query(SubmissionAttempt)
-        .filter(
-            SubmissionAttempt.application_id == application_id,
-            SubmissionAttempt.approval_reference == approval_reference,
-        )
-        .order_by(SubmissionAttempt.id.desc())
-        .first()
-    )
+def _attempt_for_approval(db, application_id, approval_reference):
+    return db.query(SubmissionAttempt).filter(
+        SubmissionAttempt.application_id == application_id,
+        SubmissionAttempt.approval_reference == approval_reference,
+    ).order_by(SubmissionAttempt.id.desc()).first()
 
 
-def _finalize_after_result(application_tasks, application_id: int, attempt_reference: str, result):
+def _blocked_result(
+    application,
+    *,
+    platform,
+    reason,
+    approval_reference=None,
+    attempt_reference=None,
+    approval_required=True,
+):
+    return {
+        "success": False,
+        "dry_run": False,
+        "application_id": application.id,
+        "requires_manual_review": False,
+        "approval_required": approval_required,
+        "attempt_required": True,
+        "approval_reference": approval_reference,
+        "attempt_reference": attempt_reference,
+        "automatic_retry_allowed": False,
+        "supervised_platform_supported": bool(platform),
+        "platform": platform,
+        "error": reason,
+    }
+
+
+def _finalize_after_result(application_tasks, application_id, attempt_reference, result):
     db = application_tasks.SessionLocal()
     try:
         attempt = _attempt_for_reference(db, application_id, attempt_reference)
@@ -154,7 +159,7 @@ def _finalize_after_result(application_tasks, application_id: int, attempt_refer
         db.close()
 
 
-def _finalize_uncertain(application_tasks, application_id: int, attempt_reference: str, exc: Exception):
+def _finalize_uncertain(application_tasks, application_id, attempt_reference, exc):
     db = application_tasks.SessionLocal()
     try:
         attempt = _attempt_for_reference(db, application_id, attempt_reference)
@@ -175,31 +180,6 @@ def _finalize_uncertain(application_tasks, application_id: int, attempt_referenc
         raise
     finally:
         db.close()
-
-
-def _blocked_result(
-    application: Application,
-    *,
-    platform: str,
-    reason: str,
-    approval_reference: Optional[str] = None,
-    attempt_reference: Optional[str] = None,
-    approval_required: bool = True,
-) -> dict:
-    return {
-        "success": False,
-        "dry_run": False,
-        "application_id": application.id,
-        "requires_manual_review": False,
-        "approval_required": approval_required,
-        "attempt_required": True,
-        "approval_reference": approval_reference,
-        "attempt_reference": attempt_reference,
-        "automatic_retry_allowed": False,
-        "supervised_platform_supported": bool(platform),
-        "platform": platform,
-        "error": reason,
-    }
 
 
 def install_supervised_submission_task_gate() -> None:
@@ -283,7 +263,6 @@ def install_supervised_submission_task_gate() -> None:
                     application,
                     platform=platform,
                     reason=reason,
-                    approval_required=True,
                 )
 
             approval = db.query(SubmissionApproval).filter(
@@ -310,8 +289,45 @@ def install_supervised_submission_task_gate() -> None:
                     approval_reference=approval_reference,
                 )
 
-            # The queue keeps its historical .delay(...) call shape. The committed
-            # reservation is therefore derived from the immutable approval reference.
+            # Refresh and validate approval payload before checking the queue attempt.
+            # This preserves truthful drift/revocation reporting for stale direct calls,
+            # while a valid approval still cannot reach a browser without a reservation.
+            if policy.requires_exact_target_identity:
+                target_metadata = application_tasks._run_async(
+                    resolve_supervised_target_metadata(job)
+                )
+                if target_metadata:
+                    persist_supervised_target_metadata(job, target_metadata)
+            try:
+                validate_supervised_approval(
+                    db,
+                    application,
+                    user,
+                    job,
+                    reference=approval_reference,
+                    consume=False,
+                    target_metadata=target_metadata,
+                )
+            except SupervisedSubmissionApprovalError as exc:
+                reason = str(exc)
+                _record_block(
+                    db,
+                    application,
+                    user,
+                    job,
+                    platform=platform,
+                    approval_reference=approval_reference,
+                    reason=reason,
+                )
+                db.commit()
+                return _blocked_result(
+                    application,
+                    platform=platform,
+                    reason=reason,
+                    approval_reference=approval_reference,
+                    attempt_reference=attempt_reference,
+                )
+
             if not attempt_reference:
                 reserved = _attempt_for_approval(db, application.id, approval_reference)
                 attempt_reference = reserved.reference if reserved else None
@@ -354,42 +370,38 @@ def install_supervised_submission_task_gate() -> None:
                     "error": "Submission attempt reservation is missing or no longer claimable.",
                 }
 
-            if policy.requires_exact_target_identity:
-                target_metadata = application_tasks._run_async(
-                    resolve_supervised_target_metadata(job)
+            if policy.requires_exact_target_identity and (
+                not target_metadata or not target_metadata.get("verified")
+            ):
+                blockers = list((target_metadata or {}).get("blockers") or [])
+                reason = (
+                    f"{policy.display_name} live submission target verification failed "
+                    "before approval consumption: "
+                    + ", ".join(blockers or ["exact_target_identity_unverified"])
                 )
-                if target_metadata:
-                    persist_supervised_target_metadata(job, target_metadata)
-                if not target_metadata or not target_metadata.get("verified"):
-                    blockers = list((target_metadata or {}).get("blockers") or [])
-                    reason = (
-                        f"{policy.display_name} live submission target verification "
-                        "failed before approval consumption: "
-                        + ", ".join(blockers or ["exact_target_identity_unverified"])
-                    )
-                    finalize_submission_attempt(
-                        db,
-                        claimed_attempt,
-                        status=SubmissionAttemptStatus.blocked,
-                        result={"reason": reason, "automatic_retry_allowed": False},
-                    )
-                    _record_block(
-                        db,
-                        application,
-                        user,
-                        job,
-                        platform=platform,
-                        approval_reference=approval_reference,
-                        reason=reason,
-                    )
-                    db.commit()
-                    return _blocked_result(
-                        application,
-                        platform=platform,
-                        reason=reason,
-                        approval_reference=approval_reference,
-                        attempt_reference=attempt_reference,
-                    )
+                finalize_submission_attempt(
+                    db,
+                    claimed_attempt,
+                    status=SubmissionAttemptStatus.blocked,
+                    result={"reason": reason, "automatic_retry_allowed": False},
+                )
+                _record_block(
+                    db,
+                    application,
+                    user,
+                    job,
+                    platform=platform,
+                    approval_reference=approval_reference,
+                    reason=reason,
+                )
+                db.commit()
+                return _blocked_result(
+                    application,
+                    platform=platform,
+                    reason=reason,
+                    approval_reference=approval_reference,
+                    attempt_reference=attempt_reference,
+                )
 
             try:
                 approval = validate_supervised_approval(
