@@ -130,3 +130,7 @@ def test_android_workflow_and_readme_use_canonical_versions() -> None:
     assert "Gradle 8.11.1" not in readme
     assert "Android Gradle Plugin 8.7.2" not in readme
     assert "bash scripts/verify.sh full" in readme
+    assert (
+        "Platform pilot settings remain available to configuration regression tests"
+        in readme
+    )
