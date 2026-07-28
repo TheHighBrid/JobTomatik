@@ -159,6 +159,11 @@ def install_submission_integrity_guards() -> None:
         return result
 
     def guarded_issue_approval(db, application, user, job, **kwargs):
+        active = active_submission_attempt(db, application.id)
+        if active:
+            raise supervised_submission.SupervisedSubmissionApprovalError(
+                f"Application already has active submission attempt {active.reference}."
+            )
         approval = original_issue_approval(db, application, user, job, **kwargs)
         db.flush()
         approval.approval_metadata = {
@@ -182,9 +187,6 @@ def install_submission_integrity_guards() -> None:
     target_integration.initialize_application_target = guarded_initialize_application_target
     target_integration.record_application_target = guarded_record_application_target
 
-    supervised_submission.build_supervised_preflight = guarded_preflight
-    supervised_submission.issue_supervised_approval = guarded_issue_approval
-    supervised_submission.validate_supervised_approval = guarded_validate_approval
     supervised_api.build_supervised_preflight = guarded_preflight
     supervised_api.issue_supervised_approval = guarded_issue_approval
     supervised_api.validate_supervised_approval = guarded_validate_approval
