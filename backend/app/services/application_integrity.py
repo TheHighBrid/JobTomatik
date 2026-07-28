@@ -14,6 +14,7 @@ from app.models.application import (
     ManualReviewTask,
 )
 from app.models.handoff import ACTIVE_HANDOFF_STATUSES, ManualHandoffSession
+from app.services.application_attempt_integrity import install_application_attempt_result_guard
 from app.services.application_state import normalize_state, transition_application_state
 from app.services.handoff_session import cancel_handoff_session
 
@@ -74,6 +75,7 @@ def install_closed_application_task_gate() -> None:
     """
 
     global _TASK_GATE_INSTALLED, _TASK_GATE_ORIGINAL_RUN
+    install_application_attempt_result_guard()
     if _TASK_GATE_INSTALLED:
         return
 
