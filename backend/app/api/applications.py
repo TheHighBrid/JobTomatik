@@ -66,16 +66,16 @@ def _require_live_submit_enabled(dry_run: bool) -> None:
         raise HTTPException(status_code=409, detail=LIVE_SUBMIT_BLOCKED_DETAIL)
 
 
-def _application_idempotency_key(
-    user_id: int,
-    job_id: int,
-    aliases=None,
-) -> str:
+def _application_idempotency_key(user_id: int, job_id: int, aliases=None) -> str:
     return build_application_idempotency_key(
         user_id,
         aliases or [],
         fallback_job_id=job_id,
     )
+
+
+def _exact_job_duplicate(data: ApplicationCreate, existing: Application) -> bool:
+    return existing.job_id == data.job_id and not data.idempotency_key
 
 
 @router.post("", response_model=ApplicationOut, status_code=201)
@@ -95,6 +95,8 @@ async def create_application(
         aliases,
     )
     if existing_identity:
+        if _exact_job_duplicate(data, existing_identity):
+            raise HTTPException(status_code=400, detail="Application already exists for this job")
         return _load_application(db, existing_identity.id)
 
     idempotency_key = data.idempotency_key or _application_idempotency_key(
@@ -102,23 +104,24 @@ async def create_application(
         data.job_id,
         aliases,
     )
-    existing_by_key = (
-        db.query(Application)
-        .filter(Application.submission_idempotency_key == idempotency_key)
-        .first()
-    )
+    existing_by_key = db.query(Application).filter(
+        Application.submission_idempotency_key == idempotency_key
+    ).first()
     if existing_by_key:
-        if existing_by_key.user_id == current_user.id:
+        if (
+            data.idempotency_key
+            and existing_by_key.user_id == current_user.id
+            and existing_by_key.job_id == data.job_id
+        ):
             return _load_application(db, existing_by_key.id)
-        raise HTTPException(status_code=400, detail="Application idempotency key is already in use")
+        raise HTTPException(status_code=400, detail="Application already exists for this job")
 
-    existing = (
-        db.query(Application)
-        .filter(Application.user_id == current_user.id, Application.job_id == data.job_id)
-        .first()
-    )
+    existing = db.query(Application).filter(
+        Application.user_id == current_user.id,
+        Application.job_id == data.job_id,
+    ).first()
     if existing:
-        return _load_application(db, existing.id)
+        raise HTTPException(status_code=400, detail="Application already exists for this job")
 
     app = Application(
         user_id=current_user.id,
@@ -146,12 +149,12 @@ async def create_application(
             aliases,
         )
         if not existing:
-            existing = (
-                db.query(Application)
-                .filter(Application.submission_idempotency_key == idempotency_key)
-                .first()
-            )
+            existing = db.query(Application).filter(
+                Application.submission_idempotency_key == idempotency_key
+            ).first()
         if existing and existing.user_id == current_user.id:
+            if _exact_job_duplicate(data, existing):
+                raise HTTPException(status_code=400, detail="Application already exists for this job")
             return _load_application(db, existing.id)
         raise HTTPException(status_code=409, detail="Duplicate application request")
 
@@ -251,8 +254,6 @@ async def bulk_submit_applications(
         except (IntegrityError, DuplicateSubmissionIdentityError):
             continue
 
-    # Workers use separate database connections. Commit every application before
-    # publishing task messages so a fast worker cannot observe a missing row.
     db.commit()
 
     queued = []
@@ -269,11 +270,7 @@ async def bulk_submit_applications(
             "dry_run": dry_run,
         })
 
-    return {
-        "queued": queued,
-        "count": len(queued),
-        "dry_run": dry_run,
-    }
+    return {"queued": queued, "count": len(queued), "dry_run": dry_run}
 
 
 @router.get("", response_model=List[ApplicationOut])
@@ -297,8 +294,9 @@ async def list_applications(
     )
     if status:
         query = query.filter(Application.status == status)
-    query = query.order_by(Application.created_at.desc())
-    return query.offset((page - 1) * per_page).limit(per_page).all()
+    return query.order_by(Application.created_at.desc()).offset(
+        (page - 1) * per_page
+    ).limit(per_page).all()
 
 
 @router.get("/stats")
@@ -350,7 +348,8 @@ async def update_application(
     db: Session = Depends(get_db),
 ):
     app = db.query(Application).filter(
-        Application.id == app_id, Application.user_id == current_user.id
+        Application.id == app_id,
+        Application.user_id == current_user.id,
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -402,15 +401,11 @@ async def update_application(
         ))
 
     db.commit()
-
-    # The database transition is authoritative. Browser cleanup is best effort so
-    # a stale/missing local process cannot prevent the user from closing a record.
     for session in sessions_to_terminate:
         try:
             terminate_retained_browser(session)
         except BrowserHandoffUnavailable:
             pass
-
     return _load_application(db, app_id)
 
 
@@ -421,7 +416,8 @@ async def generate_cover_letter(
     db: Session = Depends(get_db),
 ):
     app = db.query(Application).filter(
-        Application.id == app_id, Application.user_id == current_user.id
+        Application.id == app_id,
+        Application.user_id == current_user.id,
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -437,7 +433,8 @@ async def submit_application(
     db: Session = Depends(get_db),
 ):
     app = db.query(Application).filter(
-        Application.id == app_id, Application.user_id == current_user.id
+        Application.id == app_id,
+        Application.user_id == current_user.id,
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -473,7 +470,8 @@ async def list_manual_reviews(
     db: Session = Depends(get_db),
 ):
     app = db.query(Application).filter(
-        Application.id == app_id, Application.user_id == current_user.id
+        Application.id == app_id,
+        Application.user_id == current_user.id,
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -494,7 +492,8 @@ async def resolve_manual_review(
     db: Session = Depends(get_db),
 ):
     app = db.query(Application).filter(
-        Application.id == app_id, Application.user_id == current_user.id
+        Application.id == app_id,
+        Application.user_id == current_user.id,
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -520,7 +519,8 @@ async def list_submission_evidence(
     db: Session = Depends(get_db),
 ):
     app = db.query(Application).filter(
-        Application.id == app_id, Application.user_id == current_user.id
+        Application.id == app_id,
+        Application.user_id == current_user.id,
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -539,7 +539,8 @@ async def list_application_events(
     db: Session = Depends(get_db),
 ):
     app = db.query(Application).filter(
-        Application.id == app_id, Application.user_id == current_user.id
+        Application.id == app_id,
+        Application.user_id == current_user.id,
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -559,7 +560,8 @@ async def create_followup(
     db: Session = Depends(get_db),
 ):
     app = db.query(Application).filter(
-        Application.id == app_id, Application.user_id == current_user.id
+        Application.id == app_id,
+        Application.user_id == current_user.id,
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -585,7 +587,8 @@ async def list_followups(
     db: Session = Depends(get_db),
 ):
     app = db.query(Application).filter(
-        Application.id == app_id, Application.user_id == current_user.id
+        Application.id == app_id,
+        Application.user_id == current_user.id,
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
