@@ -31,7 +31,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_ENVIRONMENT: test
   DATABASE_URL: sqlite:///./jobtomatik-verification.db
   REDIS_URL: redis://localhost:6379/0
   SECRET_KEY: jobtomatik-reproducible-verification-secret-2026
