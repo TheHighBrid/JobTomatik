@@ -63,7 +63,7 @@ def normalize_legacy_synthetic_policy_fixtures(monkeypatch, request):
     if request.node.path.name not in _LEGACY_SYNTHETIC_POLICY_TESTS:
         return
 
-    from app.services import control_engine
+    from app.services import control_aria, control_engine, control_native
 
     original = control_engine.resolve_control_policy
 
@@ -90,6 +90,16 @@ def normalize_legacy_synthetic_policy_fixtures(monkeypatch, request):
     monkeypatch.setattr(
         control_engine,
         "resolve_control_policy",
+        resolve_with_trusted_fixture_metadata,
+    )
+    monkeypatch.setattr(
+        control_native,
+        "resolve_runtime_policy",
+        resolve_with_trusted_fixture_metadata,
+    )
+    monkeypatch.setattr(
+        control_aria,
+        "resolve_runtime_policy",
         resolve_with_trusted_fixture_metadata,
     )
 
