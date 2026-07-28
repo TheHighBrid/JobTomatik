@@ -30,7 +30,10 @@ Android SDK packages and Docker remain host-level prerequisites.
 |---|---|
 | `toolchain` | Validate and print canonical toolchain versions |
 | `fast` | Compile backend, run focused safety tests, run frontend runtime tests, verify maturity and fail-safe defaults |
-| `backend` | Run the complete backend/browser suite, Alembic migration smoke test, and safety manifest |
+| `backend-tests` | Run the complete backend and browser test suite while retaining a pytest report |
+| `migration` | Run the Alembic migration smoke test only |
+| `safety` | Verify all live gates are disabled and adapter maturity remains canonical |
+| `backend` | Run backend tests, migration smoke test, and safety manifest |
 | `frontend` | Run frontend tests and production build |
 | `deployment` | Render Docker Compose and verify fail-safe defaults |
 | `android` | Prepare Capacitor, run Gradle lint and assembly, and verify APK identity/version |
@@ -44,15 +47,15 @@ bash scripts/verify.sh full --install
 
 ## Safety behaviour
 
-Every mode forces these values off:
+The verification process globally disables real submission, scheduled autopilot, and live resumable handoffs:
 
 ```env
 ALLOW_REAL_APPLICATION_SUBMIT=false
-GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
-LEVER_SUPERVISED_PILOT_ENABLED=false
 AUTOPILOT_ENABLED=false
 ENABLE_RESUMABLE_HANDOFFS=false
 ```
+
+Platform pilot variables remain available to internal configuration regression tests, but the dedicated `safety` gate explicitly runs with both Greenhouse and Lever pilot flags set to `false` and verifies their resolved settings. The outer real-submission gate remains disabled throughout the test suite.
 
 Verification never issues approvals, opens a real-submission path, promotes adapter maturity, or clicks final submit.
 
@@ -66,7 +69,7 @@ Verification never issues approvals, opens a real-submission path, promotes adap
 4. deployment configuration;
 5. Android lint, build, and APK verification.
 
-The release-gate job passes only when every lane succeeds.
+The backend lane uploads `verification-pytest-output.txt` on success or failure. The release-gate job passes only when every lane succeeds.
 
 ## Canonical toolchain
 
