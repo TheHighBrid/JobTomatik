@@ -289,7 +289,7 @@ bash scripts/verify.sh full --install
 
 The reproducible CI gate runs the same subsystem modes independently and requires every lane to pass. The canonical contract is Python 3.11, Node.js 20, Temurin Java 21, Gradle 9.5.1, Android Gradle Plugin 8.13.2, Android API 35, and Build Tools 35.0.0.
 
-All verification modes force real submission, supervised pilots, autopilot, and live resumable handoffs off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `200`, and version name `2.0.0`.
+Verification keeps real submission, scheduled autopilot, and live resumable handoffs disabled. Platform pilot settings remain available to configuration regression tests, then the dedicated safety gate explicitly verifies both pilots are off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `200`, and version name `2.0.0`.
 
 ## Repository guide
 
