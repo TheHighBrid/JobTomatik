@@ -105,10 +105,11 @@ def install_handoff_safety_integration() -> None:
 
             safe_metadata = dict(metadata or {})
             dry_run = bool(safe_metadata.get("dry_run", True))
+            resolved_url = _target_url(application, job, current_url)
             execution = evaluate_execution_safety(
                 db,
                 user,
-                url=_target_url(application, job, current_url),
+                url=resolved_url,
                 dry_run=dry_run,
                 requires_handoff=True,
             )
@@ -125,7 +126,7 @@ def install_handoff_safety_integration() -> None:
                 application,
                 job,
                 review,
-                current_url=current_url,
+                current_url=resolved_url,
                 current_fingerprint=current_fingerprint,
                 target_resolution_only=bool(safe_metadata.get("target_resolution_only")),
             )
@@ -140,7 +141,7 @@ def install_handoff_safety_integration() -> None:
                 browser_process_id=browser_process_id,
                 browser_profile_path=browser_profile_path,
                 active_page_hint=active_page_hint,
-                current_url=current_url,
+                current_url=resolved_url,
                 current_fingerprint=current_fingerprint,
                 storage_state_path=storage_state_path,
                 storage_state_hash=storage_state_hash,
