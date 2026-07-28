@@ -33,7 +33,7 @@ concurrency:
 env:
   DATABASE_URL: sqlite:///./jobtomatik-verification.db
   REDIS_URL: redis://localhost:6379/0
-  SECRET_KEY: jobtomatik-reproducible-verification-secret-2026
+  SECRET_KEY: jobtomatik-development-secret
   AI_PROVIDER: template
   DEV_MOCK_JOBS: "false"
   ALLOW_REAL_APPLICATION_SUBMIT: "false"
