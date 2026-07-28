@@ -33,7 +33,6 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   PYTHON_BIN=python
 fi
 
-export APP_ENVIRONMENT=test
 export DATABASE_URL="${DATABASE_URL:-sqlite:///./jobtomatik-verification.db}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
 export SECRET_KEY="${SECRET_KEY:-jobtomatik-verification-secret-key-2026}"
