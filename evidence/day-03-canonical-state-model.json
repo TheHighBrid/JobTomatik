@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "campaign_day": 3,
+  "mission": "canonical_autonomy_state_model_audit",
+  "branch": "agent/day-03-canonical-state-model",
+  "canonical_service": "backend/app/services/application_state.py",
+  "states": [
+    "preparing",
+    "ready_to_apply",
+    "applying",
+    "needs_review",
+    "submission_uncertain",
+    "submitted",
+    "confirmed",
+    "failed",
+    "withdrawn"
+  ],
+  "invariants": {
+    "terminal_submission_states_require_sufficient_evidence": true,
+    "submission_uncertain_requires_evidence_to_advance": true,
+    "direct_runtime_automation_state_writes_allowed_outside_state_service": false,
+    "browser_result_must_match_active_attempt_checkpoint": true,
+    "manual_pipeline_status_fabricates_automation_submission_state": false,
+    "stale_live_or_unknown_attempt_target": "submission_uncertain",
+    "stale_dry_run_target": "needs_review"
+  },
+  "verification_cases": [
+    "complete_transition_matrix",
+    "uncertain_without_evidence",
+    "uncertain_with_sufficient_evidence",
+    "stale_worker_replay",
+    "partial_transaction_rollback",
+    "crash_between_submit_action_and_evidence_capture",
+    "manual_status_reconciliation",
+    "unguarded_state_write_ast_scan"
+  ],
+  "release_gate": "pending_pull_request_ci"
+}
