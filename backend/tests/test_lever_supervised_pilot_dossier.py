@@ -102,6 +102,13 @@ def _readiness():
                     "thirty_qualifying_dry_runs": True,
                     "thirty_distinct_lever_sites": True,
                     "global_and_eu_hosts_covered": True,
+                    "all_phase_a_records_have_successful_matching_inspection": True,
+                    "ten_supervised_confirmed_submissions": False,
+                    "zero_false_submitted_records": True,
+                    "zero_duplicate_submissions": True,
+                    "all_uncertain_outcomes_remain_uncertain": True,
+                    "all_success_evidence_independently_reviewed": True,
+                    "all_evidence_hashes_match_consumed_approvals": True,
                 },
             }
         }
@@ -146,6 +153,13 @@ def test_lever_dossier_is_read_only_exact_target_and_sanitized(
         "target_identity_hash": "7" * 64,
         "target_identity_verified": True,
     }
+    assert dossier["preflight"]["technical_ready"] is True
+    assert dossier["preflight"]["structural_blockers"] == []
+    assert dossier["preflight"]["execution_ready"] is False
+    assert set(dossier["preflight"]["execution_blockers"]) == {
+        "global_live_submit_disabled",
+        "lever_supervised_pilot_disabled",
+    }
     assert dossier["kill_switches"]["platform_flag_name"] == "LEVER_SUPERVISED_PILOT_ENABLED"
     assert dossier["kill_switches"]["platform_flag_enabled"] is False
     assert dossier["kill_switches"]["direct_submit_action_in_dossier"] is False
@@ -153,6 +167,7 @@ def test_lever_dossier_is_read_only_exact_target_and_sanitized(
     assert dossier["pilot_progress"]["phase_a_regions_covered"] == ["eu", "global"]
     assert dossier["pilot_progress"]["phase_a_complete"] is True
     assert dossier["pilot_progress"]["phase_b_remaining"] == 6
+    assert dossier["pilot_progress"]["phase_b_complete"] is False
     assert dossier["download_filename"].startswith("lever-phase-b-dossier-")
     assert len(dossier["dossier_sha256"]) == 64
 
