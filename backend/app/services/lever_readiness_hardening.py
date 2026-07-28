@@ -13,7 +13,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional
 
-from app.services.greenhouse_pilot import SUCCESS_STATUSES, SUPERVISED_MODE, UNCERTAIN_STATUS
+from app.services.greenhouse_pilot import (
+    SUCCESS_STATUSES,
+    SUPERVISED_MODE,
+    UNCERTAIN_STATUS,
+)
 
 PHASE_A_READY_PAIR = ("ready_to_submit", "dry_run_passed")
 PHASE_A_BOUNDARY_PAIR = ("manual_challenge_handoff", "needs_review")
@@ -57,7 +61,9 @@ def _record_keys(record: Mapping[str, Any]) -> list[tuple[str, str]]:
         if value:
             values.append((name, value))
     site = str(record.get("site") or record.get("board_token") or "").strip().lower()
-    posting_id = str(record.get("posting_id") or record.get("job_id") or "").strip().lower()
+    posting_id = str(
+        record.get("posting_id") or record.get("job_id") or ""
+    ).strip().lower()
     region = str(record.get("region") or "").strip().lower()
     if site and posting_id and region:
         values.append(("target_identity", f"{region}:{site}:{posting_id}"))
@@ -73,6 +79,10 @@ def _duplicate_indexes(records: Iterable[Mapping[str, Any]]) -> set[int]:
         if record.get("duplicate_submission_detected") is True
         or any(counts[key] > 1 for key in _record_keys(record))
     }
+
+
+def record_hash_mismatch(record: Mapping[str, Any]) -> bool:
+    return record.get("evidence_payload_hash") != record.get("combined_payload_hash")
 
 
 def harden_lever_readiness(
@@ -110,12 +120,7 @@ def harden_lever_readiness(
     inspection_failures = [
         row
         for row in phase_a
-        if (
-            str(row.get("pre_submit_state") or "").strip(),
-            str(row.get("final_status") or "").strip(),
-        )
-        == PHASE_A_READY_PAIR
-        and not _truthy(row.get("official_posting_inspection_passed"))
+        if not _truthy(row.get("official_posting_inspection_passed"))
     ]
     sites = {
         str(row.get("site") or "").strip().lower()
@@ -128,8 +133,12 @@ def harden_lever_readiness(
         if str(row.get("region") or "").strip()
     }
 
-    phase_b = [row for row in _phase_b_rows(ledger_path) if row.get("mode") == SUPERVISED_MODE]
-    raw_successes = [row for row in phase_b if row.get("final_status") in SUCCESS_STATUSES]
+    phase_b = [
+        row for row in _phase_b_rows(ledger_path) if row.get("mode") == SUPERVISED_MODE
+    ]
+    raw_successes = [
+        row for row in phase_b if row.get("final_status") in SUCCESS_STATUSES
+    ]
     duplicate_indexes = _duplicate_indexes(raw_successes)
     false_submitted = [
         row
@@ -166,15 +175,18 @@ def harden_lever_readiness(
 
     gates.update(
         {
-            "thirty_qualifying_dry_runs": len(qualifying) >= PHASE_A_REQUIRED_RECORDS,
+            "thirty_qualifying_dry_runs": len(qualifying)
+            >= PHASE_A_REQUIRED_RECORDS,
             "thirty_distinct_lever_sites": len(sites) >= PHASE_A_REQUIRED_RECORDS,
             "global_and_eu_hosts_covered": VALID_REGIONS.issubset(regions),
             "all_phase_a_records_have_successful_matching_inspection": not inspection_failures,
-            "ten_supervised_confirmed_submissions": len(safe_successes) >= PHASE_B_REQUIRED_RECORDS,
+            "ten_supervised_confirmed_submissions": len(safe_successes)
+            >= PHASE_B_REQUIRED_RECORDS,
             "zero_false_submitted_records": not false_submitted,
             "zero_duplicate_submissions": not duplicate_indexes,
             "all_uncertain_outcomes_remain_uncertain": not uncertain_violations,
-            "all_success_evidence_independently_reviewed": bool(raw_successes) and not unreviewed,
+            "all_success_evidence_independently_reviewed": bool(raw_successes)
+            and not unreviewed,
             "all_evidence_hashes_match_consumed_approvals": not hash_mismatches,
             "explicit_separate_promotion_approval": False,
         }
@@ -198,16 +210,16 @@ def harden_lever_readiness(
             "gates": gates,
         }
     )
-    required = [value for key, value in gates.items() if key != "explicit_separate_promotion_approval"]
+    required = [
+        value
+        for key, value in gates.items()
+        if key != "explicit_separate_promotion_approval"
+    ]
     summary["supervised_pilot_evidence_complete"] = all(required)
     summary["promotion_ready"] = all(gates.values())
     payload["summary"] = summary
     payload["readiness_hardening_version"] = "1.0"
     return payload
-
-
-def record_hash_mismatch(record: Mapping[str, Any]) -> bool:
-    return record.get("evidence_payload_hash") != record.get("combined_payload_hash")
 
 
 __all__ = ["harden_lever_readiness"]
