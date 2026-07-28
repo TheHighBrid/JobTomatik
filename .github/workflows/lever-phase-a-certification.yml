@@ -44,88 +44,9 @@ on:
       - ".github/workflows/lever-phase-a-certification.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  one-time-root-hardening:
-    if: ${{ github.event_name == 'pull_request' && github.actor != 'github-actions[bot]' }}
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Check out pull request branch
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-
-      - name: Harden root Phase A qualification
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          service = Path('backend/app/services/lever_pilot_ingestion.py')
-          text = service.read_text(encoding='utf-8')
-          old_pairs = '''PHASE_A_SUCCESS_PAIRS = {
-              ("ready_to_submit", "dry_run_passed"),
-              ("manual_challenge_handoff", "needs_review"),
-          }'''
-          new_pairs = '''PHASE_A_SUCCESS_PAIRS = {
-              ("ready_to_submit", "dry_run_passed"),
-          }'''
-          if old_pairs not in text:
-              raise SystemExit('Expected Phase A success-pair block was not found')
-          text = text.replace(old_pairs, new_pairs, 1)
-
-          old_qualification = '''                    "reviewed_by": None,
-                              "review_reference": None,
-                              "qualifies_for_dry_run_matrix": (pre_submit_state, final_status)
-                              in PHASE_A_SUCCESS_PAIRS,
-                              "synthetic_profile": True,'''
-          new_qualification = '''                    "reviewed_by": None,
-                              "review_reference": None,
-                              "official_posting_inspection_passed": str(
-                                  row.get("official_posting_inspection_passed") or ""
-                              ).strip().lower()
-                              in {"1", "true", "yes", "on"},
-                              "qualifies_for_dry_run_matrix": (
-                                  (pre_submit_state, final_status) in PHASE_A_SUCCESS_PAIRS
-                                  and str(
-                                      row.get("official_posting_inspection_passed") or ""
-                                  ).strip().lower()
-                                  in {"1", "true", "yes", "on"}
-                              ),
-                              "synthetic_profile": True,'''
-          if old_qualification not in text:
-              raise SystemExit('Expected Phase A qualification block was not found')
-          text = text.replace(old_qualification, new_qualification, 1)
-          service.write_text(text, encoding='utf-8')
-
-          tests = Path('backend/tests/test_lever_phase_a_readiness_validation.py')
-          test_text = tests.read_text(encoding='utf-8')
-          test_text = test_text.replace(
-              '    "artifact_sha256",\n    "pre_submit_state",',
-              '    "artifact_sha256",\n    "official_posting_inspection_passed",\n    "pre_submit_state",',
-              1,
-          )
-          test_text = test_text.replace(
-              '        "artifact_sha256": "a" * 64,\n        "pre_submit_state":',
-              '        "artifact_sha256": "a" * 64,\n        "official_posting_inspection_passed": "true",\n        "pre_submit_state":',
-              1,
-          )
-          if 'test_ready_pair_without_successful_inspection_does_not_qualify' not in test_text:
-              test_text += '''\n\ndef test_ready_pair_without_successful_inspection_does_not_qualify(tmp_path):\n    path = tmp_path / "phase-a.csv"\n    _write(path, [_row(official_posting_inspection_passed="false")])\n\n    records = load_phase_a_baseline(path)\n    summary = build_readiness_summary(records)\n\n    assert records[0]["official_posting_inspection_passed"] is False\n    assert records[0]["qualifies_for_dry_run_matrix"] is False\n    assert summary["qualifying_dry_run_count"] == 0\n'''
-          tests.write_text(test_text, encoding='utf-8')
-          PY
-
-      - name: Commit root ingestion gate
-        run: |
-          git config user.name "jobtomatik-safety-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add \
-            backend/app/services/lever_pilot_ingestion.py \
-            backend/tests/test_lever_phase_a_readiness_validation.py
-          git commit -m "Enforce Phase A inspection at ingestion root"
-          git push origin HEAD:${{ github.head_ref }}
-
   phase-a-evidence-boundary:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
