@@ -35,7 +35,7 @@ fi
 
 export DATABASE_URL="${DATABASE_URL:-sqlite:///./jobtomatik-verification.db}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
-export SECRET_KEY="${SECRET_KEY:-jobtomatik-verification-secret-key-2026}"
+export SECRET_KEY="${SECRET_KEY:-jobtomatik-development-secret}"
 export AI_PROVIDER=template
 export DEV_MOCK_JOBS=false
 export ALLOW_REAL_APPLICATION_SUBMIT=false
