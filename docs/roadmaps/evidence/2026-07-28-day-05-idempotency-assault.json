@@ -49,9 +49,24 @@
     "succeeded_attempt_replay"
   ],
   "expected_terminal_duplicate_count": 0,
-  "release_gate": "pending_pull_request_ci",
+  "observed_terminal_duplicate_count": 0,
+  "backend_test_result": {
+    "passed": 480,
+    "skipped": 59,
+    "failed": 0,
+    "duration_seconds": 126.85
+  },
+  "verified_workflows": [
+    "Backend tests",
+    "CodeQL security analysis",
+    "Greenhouse supervised approval certification",
+    "Post-merge stabilization",
+    "Reproducible verification",
+    "Submission evidence review certification"
+  ],
+  "verified_parent_commit": "785272b1f9263a33313cc2b2e97b6faddb917b49",
+  "release_gate": "passed_on_verified_parent_commit",
+  "final_exact_head_gate": "pending_documentation_lock_ci",
   "verified_head": null,
-  "backend_test_result": null,
-  "verified_workflows": [],
   "merge_commit": null
 }
