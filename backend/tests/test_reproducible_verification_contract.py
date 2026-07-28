@@ -52,6 +52,7 @@ def test_canonical_toolchain_matches_repository_files() -> None:
 
     assert toolchain["JOBTOMATIK_PYTHON_MAJOR_MINOR"] == "3.11"
     assert toolchain["JOBTOMATIK_NODE_MAJOR"] == "20"
+    assert toolchain["JOBTOMATIK_NODE_MIN_VERSION"] == "20.19.0"
     assert toolchain["JOBTOMATIK_JAVA_MAJOR"] == "21"
     assert (
         f"gradle-{toolchain['JOBTOMATIK_GRADLE_VERSION']}-bin.zip" in wrapper
@@ -96,11 +97,34 @@ def test_verification_modes_and_fail_safe_environment_are_explicit() -> None:
     assert "verification-pytest-output.txt" in script
 
 
+def test_clean_install_and_selected_python_are_used_consistently() -> None:
+    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
+
+    assert '"$PYTHON_BIN" -m playwright install --with-deps chromium' in script
+    assert '"$PYTHON_BIN" -m alembic -c alembic-verification.ini upgrade head' in script
+    assert "require_command alembic" not in script
+    assert "JOBTOMATIK_NODE_MIN_VERSION" in script
+
+
+def test_deployment_gate_reads_repository_defaults_without_safe_overrides() -> None:
+    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
+
+    for variable in (
+        "ALLOW_REAL_APPLICATION_SUBMIT",
+        "GREENHOUSE_SUPERVISED_PILOT_ENABLED",
+        "LEVER_SUPERVISED_PILOT_ENABLED",
+        "ENABLE_RESUMABLE_HANDOFFS",
+        "AUTOPILOT_ENABLED",
+    ):
+        assert f"-u {variable}" in script
+        assert f'{variable}: \"false\"' in script
+
+
 def test_reproducible_workflow_executes_every_verification_lane() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
     assert 'python-version: "3.11"' in workflow
-    assert 'node-version: "20"' in workflow
+    assert 'node-version: "20.19.0"' in workflow
     assert 'java-version: "21"' in workflow
     for mode in (
         "fast",
@@ -117,6 +141,13 @@ def test_reproducible_workflow_executes_every_verification_lane() -> None:
     assert "Run migration smoke test" in workflow
     assert "Verify safety and adapter maturity" in workflow
     assert "Assert every reproducibility gate passed" in workflow
+
+
+def test_workflow_triggers_cover_every_file_validated_by_contract_tests() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert workflow.count('- "README.md"') == 2
+    assert workflow.count('- ".github/workflows/android-apk.yml"') == 2
 
 
 def test_android_workflow_and_readme_use_canonical_versions() -> None:
