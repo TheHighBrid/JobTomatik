@@ -23,6 +23,7 @@ FIELDS = [
     "operator",
     "source_reference",
     "artifact_sha256",
+    "official_posting_inspection_passed",
     "pre_submit_state",
     "final_status",
 ]
@@ -44,6 +45,7 @@ def _row(**overrides):
         "operator": "github-actions:TheHighBrid",
         "source_reference": "actions-run:123:artifact:lever-phase-a-1",
         "artifact_sha256": "a" * 64,
+        "official_posting_inspection_passed": "true",
         "pre_submit_state": "ready_to_submit",
         "final_status": "dry_run_passed",
     }
@@ -129,3 +131,15 @@ def test_explicit_success_with_exact_identity_counts(tmp_path):
     assert summary["qualifying_dry_run_count"] == 1
     assert summary["distinct_site_count"] == 1
     assert summary["regions_covered"] == ["global"]
+
+
+def test_ready_pair_without_successful_inspection_does_not_qualify(tmp_path):
+    path = tmp_path / "phase-a.csv"
+    _write(path, [_row(official_posting_inspection_passed="false")])
+
+    records = load_phase_a_baseline(path)
+    summary = build_readiness_summary(records)
+
+    assert records[0]["official_posting_inspection_passed"] is False
+    assert records[0]["qualifies_for_dry_run_matrix"] is False
+    assert summary["qualifying_dry_run_count"] == 0
