@@ -39,8 +39,6 @@ export SECRET_KEY="${SECRET_KEY:-jobtomatik-verification-secret-key-2026}"
 export AI_PROVIDER=template
 export DEV_MOCK_JOBS=false
 export ALLOW_REAL_APPLICATION_SUBMIT=false
-export GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
-export LEVER_SUPERVISED_PILOT_ENABLED=false
 export AUTOPILOT_ENABLED=false
 export ENABLE_RESUMABLE_HANDOFFS=false
 export REQUIRE_BROWSER_TESTS="${REQUIRE_BROWSER_TESTS:-1}"
@@ -142,10 +140,20 @@ backend_fast() {
 }
 
 backend_full() {
+  local report_path="$ROOT_DIR/backend/verification-pytest-output.txt"
+  local status
+
   step "Compile backend"
   (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m compileall -q app tests)
   step "Run full backend and browser suite"
-  (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m pytest -q --tb=short --maxfail=5 -ra)
+
+  set +e
+  (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m pytest -q --tb=short --maxfail=5 -ra >"$report_path" 2>&1)
+  status=$?
+  set -e
+
+  cat "$report_path"
+  return "$status"
 }
 
 migration_smoke() {
@@ -172,7 +180,14 @@ frontend_full() {
 
 safety_manifest() {
   step "Verify fail-safe settings and canonical adapter maturity"
-  (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" - <<'PY'
+  (
+    cd "$ROOT_DIR/backend"
+    ALLOW_REAL_APPLICATION_SUBMIT=false \
+    GREENHOUSE_SUPERVISED_PILOT_ENABLED=false \
+    LEVER_SUPERVISED_PILOT_ENABLED=false \
+    AUTOPILOT_ENABLED=false \
+    ENABLE_RESUMABLE_HANDOFFS=false \
+    "$PYTHON_BIN" - <<'PY'
 from app.config import get_settings
 from app.services.ats_manifest import ats_certification_manifest
 from app.services.operations_policy import operations_readiness_manifest
