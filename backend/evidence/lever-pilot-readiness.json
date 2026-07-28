@@ -1,13 +1,13 @@
 {
-  "baseline_record_count": 1,
-  "baseline_sha256": "1b2c47f062ad746d1b5e4f3110fca470817eec59b3511d9d938a0a3753993f8b",
-  "ledger_record_count": 1,
-  "ledger_sha256": "072cc472be647ab098c69146f57a986c81f79b08cdceb68dbd20e4a5d0c7608f",
+  "baseline_record_count": 2,
+  "baseline_sha256": "2914f4ccce76794295758d4acbf55ac514907fd9904d7f8f6f03d1dabeb998a4",
+  "ledger_record_count": 2,
+  "ledger_sha256": "658a8c9bd44c7964c730abb40746e410512cbb68578619de1dd77d8be488b60c",
   "runtime_ledger_sha256": null,
   "runtime_record_count": 0,
   "summary": {
     "canonical_maturity": "dry_run",
-    "distinct_site_count": 1,
+    "distinct_site_count": 2,
     "duplicate_submission_count": 0,
     "false_submitted_count": 0,
     "gates": {
@@ -15,7 +15,7 @@
       "all_success_evidence_independently_reviewed": false,
       "all_uncertain_outcomes_remain_uncertain": true,
       "explicit_separate_promotion_approval": false,
-      "global_and_eu_hosts_covered": false,
+      "global_and_eu_hosts_covered": true,
       "ten_supervised_confirmed_submissions": false,
       "thirty_distinct_lever_sites": false,
       "thirty_qualifying_dry_runs": false,
@@ -26,9 +26,10 @@
     "payload_hash_mismatch_count": 0,
     "platform": "lever",
     "promotion_ready": false,
-    "qualifying_dry_run_count": 1,
-    "record_count": 1,
+    "qualifying_dry_run_count": 2,
+    "record_count": 2,
     "regions_covered": [
+      "eu",
       "global"
     ],
     "schema_version": "1.0",
