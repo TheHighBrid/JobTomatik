@@ -59,14 +59,17 @@ usage() {
 Usage: bash scripts/verify.sh [mode] [--install]
 
 Modes:
-  toolchain   Validate and print the canonical toolchain.
-  bootstrap   Install backend, Playwright Chromium, and frontend dependencies.
-  fast        Pre-commit gate: toolchain, compile, focused safety tests, frontend tests.
-  backend     Full backend/browser suite, migration smoke test, and safety manifest.
-  frontend    Frontend runtime tests and production build.
-  deployment  Docker Compose rendering and fail-safe default verification.
-  android     Capacitor synchronization, Gradle lint, APK assembly, identity/version checks.
-  full        Run backend, frontend, deployment, and Android gates in dependency order.
+  toolchain      Validate and print the canonical toolchain.
+  bootstrap      Install backend, Playwright Chromium, and frontend dependencies.
+  fast           Pre-commit gate: toolchain, compile, focused safety tests, frontend tests.
+  backend-tests  Full backend and browser test suite only.
+  migration      Alembic migration smoke test only.
+  safety         Fail-safe settings and canonical adapter maturity only.
+  backend        Backend tests, migration smoke test, and safety manifest.
+  frontend       Frontend runtime tests and production build.
+  deployment     Docker Compose rendering and fail-safe default verification.
+  android        Capacitor synchronization, Gradle lint, APK assembly, identity/version checks.
+  full           Run backend, frontend, deployment, and Android gates in dependency order.
 
 Add --install to install Python/Playwright/npm dependencies before the selected mode.
 EOF
@@ -154,7 +157,7 @@ migration_smoke() {
     's#sqlalchemy.url = .*#sqlalchemy.url = sqlite:///./jobtomatik-migration-verification.db#' \
     "$ROOT_DIR/backend/alembic-verification.ini"
   rm -f "$ROOT_DIR/backend/alembic-verification.ini.bak"
-  (cd "$ROOT_DIR/backend" && alembic -c alembic-verification.ini upgrade head)
+  (cd "$ROOT_DIR/backend" && DATABASE_URL=sqlite:///./jobtomatik-migration-verification.db alembic -c alembic-verification.ini upgrade head)
 }
 
 frontend_tests() {
@@ -248,6 +251,21 @@ case "$MODE" in
     check_base_toolchain
     backend_fast
     frontend_tests
+    safety_manifest
+    ;;
+  backend-tests)
+    $INSTALL_DEPS && bootstrap
+    check_base_toolchain
+    backend_full
+    ;;
+  migration)
+    $INSTALL_DEPS && bootstrap
+    check_base_toolchain
+    migration_smoke
+    ;;
+  safety)
+    $INSTALL_DEPS && bootstrap
+    check_base_toolchain
     safety_manifest
     ;;
   backend)
