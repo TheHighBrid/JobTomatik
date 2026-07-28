@@ -1,9 +1,9 @@
-"""Technical roster for the Greenhouse supervised pilot.
+"""Technical roster for supervised ATS pilots.
 
 The roster never ranks jobs, chooses an employer, issues an approval, or queues a
-submission. It lists the authenticated user's Greenhouse applications in stable
-creation order and separates structural blockers from the two disabled-by-default
-execution flags. The user still selects and approves each exact application.
+submission. It lists applications in stable creation order and separates structural
+blockers from disabled-by-default execution flags. The user still selects and approves
+each exact application.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ PHASE_B_TARGET = 10
 EXECUTION_FLAG_BLOCKERS = {
     "global_live_submit_disabled",
     "greenhouse_supervised_pilot_disabled",
+    "lever_supervised_pilot_disabled",
 }
 settings = get_settings()
 
