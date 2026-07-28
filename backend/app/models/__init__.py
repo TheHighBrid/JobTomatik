@@ -12,6 +12,11 @@ from app.models.handoff import HandoffSessionEvent, ManualHandoffSession
 from app.models.notification import Notification
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_evidence_review import SubmissionEvidenceReview
+from app.models.submission_integrity import (
+    SubmissionAttempt,
+    SubmissionEvidenceReceipt,
+    SubmissionIdentityAlias,
+)
 
 __all__ = [
     "User",
@@ -27,4 +32,7 @@ __all__ = [
     "Notification",
     "SubmissionApproval",
     "SubmissionEvidenceReview",
+    "SubmissionIdentityAlias",
+    "SubmissionAttempt",
+    "SubmissionEvidenceReceipt",
 ]
