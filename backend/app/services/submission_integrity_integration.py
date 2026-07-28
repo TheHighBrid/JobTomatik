@@ -5,6 +5,8 @@ from app.models.job import Job
 from app.services.application_state import create_manual_review_task
 from app.services.submission_integrity import (
     DuplicateSubmissionIdentityError,
+    active_submission_attempt,
+    approval_submission_binding_hash,
     build_submission_identity_aliases,
     claim_submission_identity_aliases,
     prepare_submission_evidence_receipt,
@@ -16,19 +18,25 @@ _INSTALLED = False
 
 
 def install_submission_integrity_guards() -> None:
-    """Install replay guards after task modules have imported their service references."""
+    """Install replay guards after task and API modules imported their references."""
 
     global _INSTALLED
     if _INSTALLED:
         return
 
+    from app.api import supervised_submissions as supervised_api
     from app.services import application_state
     from app.services import application_target_task_integration as target_integration
+    from app.services import supervised_submission
+    from app.services import supervised_submission_integration as supervised_integration
     from app.tasks import applications as application_tasks
 
     original_record_evidence = application_state.record_submission_evidence
     original_initialize_target = target_integration.initialize_application_target
     original_record_target = target_integration.record_application_target
+    original_preflight = supervised_submission.build_supervised_preflight
+    original_issue_approval = supervised_submission.issue_supervised_approval
+    original_validate_approval = supervised_submission.validate_supervised_approval
 
     def guarded_record_submission_evidence(
         db,
@@ -141,10 +149,46 @@ def install_submission_integrity_guards() -> None:
         _claim_target_aliases(db, application.id, target)
         return target
 
+    def guarded_preflight(db, application, user, job, **kwargs):
+        result = original_preflight(db, application, user, job, **kwargs)
+        active = active_submission_attempt(db, application.id)
+        if active:
+            blocker = f"active_submission_attempt:{active.reference}:{active.status}"
+            result["blockers"] = list(dict.fromkeys([*result.get("blockers", []), blocker]))
+            result["ready"] = False
+        return result
+
+    def guarded_issue_approval(db, application, user, job, **kwargs):
+        approval = original_issue_approval(db, application, user, job, **kwargs)
+        db.flush()
+        approval.approval_metadata = {
+            **dict(approval.approval_metadata or {}),
+            "submission_binding_hash": approval_submission_binding_hash(approval),
+        }
+        return approval
+
+    def guarded_validate_approval(db, application, user, job, **kwargs):
+        approval = original_validate_approval(db, application, user, job, **kwargs)
+        expected = approval_submission_binding_hash(approval)
+        stored = str((approval.approval_metadata or {}).get("submission_binding_hash") or "")
+        if stored and stored != expected:
+            raise supervised_submission.SupervisedSubmissionApprovalMismatch(
+                "Approved submission binding changed"
+            )
+        return approval
+
     application_state.record_submission_evidence = guarded_record_submission_evidence
     application_tasks.record_submission_evidence = guarded_record_submission_evidence
     target_integration.initialize_application_target = guarded_initialize_application_target
     target_integration.record_application_target = guarded_record_application_target
+
+    supervised_submission.build_supervised_preflight = guarded_preflight
+    supervised_submission.issue_supervised_approval = guarded_issue_approval
+    supervised_submission.validate_supervised_approval = guarded_validate_approval
+    supervised_api.build_supervised_preflight = guarded_preflight
+    supervised_api.issue_supervised_approval = guarded_issue_approval
+    supervised_api.validate_supervised_approval = guarded_validate_approval
+    supervised_integration.validate_supervised_approval = guarded_validate_approval
     _INSTALLED = True
 
 
