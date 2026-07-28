@@ -10,15 +10,10 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import api from '../api/client'
+import { shortHash } from '../supervisedPlatforms'
 
 function label(value) {
   return String(value || '').replaceAll('_', ' ')
-}
-
-function shortHash(value) {
-  const text = String(value || '')
-  if (!text) return 'not available'
-  return `${text.slice(0, 12)}…${text.slice(-8)}`
 }
 
 function Gate({ ok, children }) {
@@ -32,6 +27,38 @@ function Gate({ ok, children }) {
         ? <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
         : <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />}
       <span>{children}</span>
+    </div>
+  )
+}
+
+function HashRow({ name, value }) {
+  return (
+    <div className="flex justify-between gap-3" title={value || undefined}>
+      <dt>{name}</dt>
+      <dd className="font-mono">{shortHash(value)}</dd>
+    </div>
+  )
+}
+
+function LeverIdentity({ target }) {
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-950">
+      <div className="flex items-center gap-2 font-semibold">
+        <Fingerprint className="h-4 w-4" /> Exact Lever identity
+      </div>
+      <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+        <div><dt className="text-blue-600">Site</dt><dd className="break-all font-medium">{target.site || 'Unavailable'}</dd></div>
+        <div><dt className="text-blue-600">Posting ID</dt><dd className="break-all font-mono">{target.posting_id || 'Unavailable'}</dd></div>
+        <div><dt className="text-blue-600">Region</dt><dd className="font-medium uppercase">{target.region || 'Unavailable'}</dd></div>
+        <div><dt className="text-blue-600">Adapter</dt><dd className="font-medium">Lever {target.adapter_version || 'version unavailable'}</dd></div>
+      </dl>
+      <div className="mt-2 break-all rounded-md bg-white p-2 text-[11px] text-slate-700">
+        {target.canonical_application_url || target.application_url}
+      </div>
+      <dl className="mt-2 space-y-1.5 text-[11px] text-slate-700">
+        <HashRow name="Target identity" value={target.target_identity_hash} />
+        <HashRow name="Posting metadata" value={target.posting_metadata_hash} />
+      </dl>
     </div>
   )
 }
@@ -51,7 +78,7 @@ export default function SupervisedPilotDossierPanel({ applicationId, enabled = t
     return (
       <section className="card border border-indigo-200 p-5">
         <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Loader2 className="h-4 w-4 animate-spin" /> Building sanitized Phase B dossier…
+          <Loader2 className="h-4 w-4 animate-spin" /> Building sanitized Phase B dossier...
         </div>
       </section>
     )
@@ -75,12 +102,17 @@ export default function SupervisedPilotDossierPanel({ applicationId, enabled = t
     URL.revokeObjectURL(url)
   }
 
+  const platform = String(data.target.platform || '').toLowerCase()
+  const platformName = platform === 'lever' ? 'Lever' : 'Greenhouse'
   const structuralReady = data.preflight.technical_ready
   const payloadComplete = Boolean(
     data.exact_payload.resume_hash
     && data.exact_payload.combined_payload_hash
     && data.application_state.duplicate_prevention_key_present
   )
+  const phaseATargetDescription = platform === 'lever'
+    ? `${data.pilot_progress.phase_a_distinct_sites || 0} sites across ${(data.pilot_progress.phase_a_regions_covered || []).join(' and ') || 'no regions'}`
+    : `${data.pilot_progress.phase_a_distinct_employers} employers`
 
   return (
     <section className="card overflow-hidden border border-indigo-200">
@@ -89,7 +121,7 @@ export default function SupervisedPilotDossierPanel({ applicationId, enabled = t
           <div>
             <div className="flex items-center gap-2">
               <FileKey2 className="h-5 w-5" />
-              <h2 className="font-semibold">Phase B candidate dossier</h2>
+              <h2 className="font-semibold">{platformName} Phase B candidate dossier</h2>
             </div>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-indigo-200">
               One deterministic, sanitized snapshot for this exact application. It contains hashes and safety state, never raw profile answers, and exposes no approval or submit action.
@@ -119,14 +151,16 @@ export default function SupervisedPilotDossierPanel({ applicationId, enabled = t
             </div>
             <code className="mt-2 block break-all text-[11px] text-slate-700">{data.dossier_sha256}</code>
             <div className="mt-2 text-[11px] text-slate-500">
-              Re-fetch before approval. A changed digest means the payload or retained evidence changed.
+              Re-fetch before approval. A changed digest means the payload, exact target, or retained evidence changed.
             </div>
           </div>
         </div>
 
+        {platform === 'lever' && <LeverIdentity target={data.target} />}
+
         <div className="grid gap-2 md:grid-cols-2">
           <Gate ok={data.pilot_progress.phase_a_complete}>
-            Phase A baseline: {data.pilot_progress.phase_a_qualifying_dry_runs} dry runs across {data.pilot_progress.phase_a_distinct_employers} employers
+            Phase A baseline: {data.pilot_progress.phase_a_qualifying_dry_runs} dry runs across {phaseATargetDescription}
           </Gate>
           <Gate ok={structuralReady}>
             {structuralReady ? 'Technical preflight is clear' : `${data.preflight.structural_blockers.length} structural blocker(s) remain`}
@@ -160,10 +194,10 @@ export default function SupervisedPilotDossierPanel({ applicationId, enabled = t
               <ShieldCheck className="h-4 w-4" /> Exact payload hashes
             </div>
             <dl className="mt-2 space-y-1.5">
-              <div className="flex justify-between gap-3"><dt>Combined</dt><dd className="font-mono">{shortHash(data.exact_payload.combined_payload_hash)}</dd></div>
-              <div className="flex justify-between gap-3"><dt>Résumé</dt><dd className="font-mono">{shortHash(data.exact_payload.resume_hash)}</dd></div>
-              <div className="flex justify-between gap-3"><dt>Cover letter</dt><dd className="font-mono">{shortHash(data.exact_payload.cover_letter_hash)}</dd></div>
-              <div className="flex justify-between gap-3"><dt>Answers</dt><dd className="font-mono">{shortHash(data.exact_payload.answer_payload_hash)}</dd></div>
+              <HashRow name="Combined" value={data.exact_payload.combined_payload_hash} />
+              <HashRow name="Résumé" value={data.exact_payload.resume_hash} />
+              <HashRow name="Cover letter" value={data.exact_payload.cover_letter_hash} />
+              <HashRow name="Answers" value={data.exact_payload.answer_payload_hash} />
             </dl>
           </div>
           <div className="rounded-lg border border-slate-200 p-3 text-xs text-slate-600">

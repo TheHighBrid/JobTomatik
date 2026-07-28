@@ -8,6 +8,7 @@ import {
 } from '../api/client'
 import ManualHandoffPanel from '../components/ManualHandoffPanel'
 import SupervisedSubmissionPanel from '../components/SupervisedSubmissionPanel'
+import SupervisedPilotDossierPanel from '../components/SupervisedPilotDossierPanel'
 import SubmissionEvidenceReviewPanel from '../components/SubmissionEvidenceReviewPanel'
 import StatusBadge from '../components/StatusBadge'
 import {
@@ -15,6 +16,10 @@ import {
   FileText, ExternalLink, AlertCircle, CheckCircle2, LockKeyhole, Route
 } from 'lucide-react'
 import { format, addDays } from 'date-fns'
+import {
+  detectSupervisedPlatform,
+  getSupervisedPlatformConfig,
+} from '../supervisedPlatforms'
 
 const STATUSES = ['pending', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn']
 const TERMINAL_TASK_STATUSES = new Set(['SUCCESS', 'FAILURE', 'REVOKED'])
@@ -25,14 +30,6 @@ const HANDOFF_REVIEW_REASONS = new Set([
   'anti_bot_challenge',
   'application_target_required',
 ])
-
-function isGreenhouseUrl(value) {
-  try {
-    return new URL(value || '').hostname.toLowerCase().includes('greenhouse.io')
-  } catch {
-    return /greenhouse\.io/i.test(String(value || ''))
-  }
-}
 
 function isLinkedInUrl(value) {
   try {
@@ -254,7 +251,9 @@ export default function ApplicationDetail() {
 
   const job = app.job
   const effectiveTargetUrl = app.application_target_url || job?.url
-  const greenhouseApplication = isGreenhouseUrl(effectiveTargetUrl)
+  const supervisedPlatform = detectSupervisedPlatform(effectiveTargetUrl)
+  const supervisedPlatformConfig = getSupervisedPlatformConfig(supervisedPlatform)
+  const supervisedApplication = Boolean(supervisedPlatformConfig)
   const applicationFinished = isFinishedApplication(app)
   const activeManualReview = [...(app.manual_reviews || [])]
     .filter((review) => ['open', 'in_progress'].includes(review.status))
@@ -338,7 +337,7 @@ export default function ApplicationDetail() {
                 {targetStatus === 'requires_human'
                   ? 'Waiting for one Apply click in the retained JobTomatik browser.'
                   : targetStatus === 'resolving'
-                    ? 'Resolving the employer destination now…'
+                    ? 'Resolving the employer destination now...'
                     : 'Not resolved yet.'}
               </div>
             )}
@@ -390,6 +389,9 @@ export default function ApplicationDetail() {
         <ManualHandoffPanel applicationId={Number(id)} />
       )}
       {!applicationFinished && <SupervisedSubmissionPanel application={app} />}
+      {!applicationFinished && supervisedPlatform === 'lever' && (
+        <SupervisedPilotDossierPanel applicationId={Number(id)} />
+      )}
       <SubmissionEvidenceReviewPanel application={app} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -408,7 +410,7 @@ export default function ApplicationDetail() {
             <label className="label">Notes</label>
             <textarea
               className="input min-h-[100px] resize-none"
-              placeholder="Add notes, contact info, interview details…"
+              placeholder="Add notes, contact info, interview details..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
@@ -418,7 +420,7 @@ export default function ApplicationDetail() {
             disabled={updateMut.isPending}
             className="btn-primary w-full"
           >
-            {updateMut.isPending ? 'Saving…' : 'Save Changes'}
+            {updateMut.isPending ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
 
@@ -456,17 +458,19 @@ export default function ApplicationDetail() {
             </button>
           )}
 
-          {!applicationFinished && greenhouseApplication && (
+          {!applicationFinished && supervisedApplication && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-relaxed text-slate-600">
               <div className="flex items-center gap-2 font-semibold text-slate-800">
                 <LockKeyhole className="h-4 w-4" />
-                Direct Greenhouse live submit is locked
+                Direct {supervisedPlatformConfig.displayName} live submit is locked
               </div>
-              <p className="mt-1">Use the supervised panel above. It requires exact confirmations, payload hashes, two feature flags, and a one-time approval.</p>
+              <p className="mt-1">
+                Use the supervised panel above. It requires exact platform and target confirmation, payload hashes, two feature flags, and a one-time approval.
+              </p>
             </div>
           )}
 
-          {!applicationFinished && !greenhouseApplication && (
+          {!applicationFinished && !supervisedApplication && (
             <button
               onClick={() => handleSubmit(false)}
               disabled={submissionBusy}
@@ -535,7 +539,7 @@ export default function ApplicationDetail() {
             disabled={!followupEmail || followupMut.isPending}
             className="btn-primary w-full"
           >
-            {followupMut.isPending ? 'Scheduling…' : 'Schedule Follow-up Email'}
+            {followupMut.isPending ? 'Scheduling...' : 'Schedule Follow-up Email'}
           </button>
         </div>
 

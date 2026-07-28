@@ -48,8 +48,8 @@ def test_form_filler_v3_compiles_without_escape_sequence_warnings():
         compile(source, str(path), "exec")
 
 
-def test_release_version_metadata_is_consistent():
-    release_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+def test_web_package_and_android_release_tracks_are_consistent():
+    web_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
     package = json.loads(
         (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
     )
@@ -59,11 +59,14 @@ def test_release_version_metadata_is_consistent():
     android_gradle = (
         REPO_ROOT / "frontend" / "android" / "app" / "build.gradle"
     ).read_text(encoding="utf-8")
-    android_match = re.search(r'versionName\s+"([^"]+)"', android_gradle)
+    android_name = re.search(r'versionName\s+"([^"]+)"', android_gradle)
+    android_code = re.search(r"versionCode\s+(\d+)", android_gradle)
 
-    assert android_match is not None
-    assert release_version == "1.0.0"
-    assert package["version"] == release_version
-    assert package_lock["version"] == release_version
-    assert package_lock["packages"][""]["version"] == release_version
-    assert android_match.group(1) == release_version
+    assert android_name is not None
+    assert android_code is not None
+    assert web_version == "1.0.0"
+    assert package["version"] == web_version
+    assert package_lock["version"] == web_version
+    assert package_lock["packages"][""]["version"] == web_version
+    assert android_name.group(1) == "2.0.0"
+    assert android_code.group(1) == "200"

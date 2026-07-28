@@ -18,6 +18,10 @@ from app.services.greenhouse_pilot_ingestion import (
     GreenhousePilotIngestionError,
     read_greenhouse_pilot_readiness,
 )
+from app.services.lever_pilot_ledger_boundary import (
+    LeverPilotIngestionError,
+    read_lever_pilot_readiness,
+)
 from app.services.supervised_pilot_dossier import (
     SupervisedPilotDossierError,
     build_supervised_pilot_dossier,
@@ -32,11 +36,25 @@ from app.services.supervised_pilot_roster import build_supervised_pilot_roster
 router = APIRouter(prefix="/supervised-pilot", tags=["supervised-pilot"])
 
 
-def _readiness_or_none():
+def _greenhouse_readiness_or_none():
     try:
         return read_greenhouse_pilot_readiness()
     except GreenhousePilotIngestionError:
         return None
+
+
+def _lever_readiness_or_none():
+    try:
+        return read_lever_pilot_readiness()
+    except LeverPilotIngestionError:
+        return None
+
+
+def _readiness_by_platform():
+    return {
+        "greenhouse": _greenhouse_readiness_or_none(),
+        "lever": _lever_readiness_or_none(),
+    }
 
 
 def _owned_application_records(
@@ -96,7 +114,7 @@ def supervised_pilot_roster(
     return build_supervised_pilot_roster(
         db,
         current_user,
-        readiness=_readiness_or_none(),
+        readiness=_greenhouse_readiness_or_none(),
     )
 
 
@@ -120,7 +138,7 @@ def supervised_pilot_application_dossier(
             application,
             current_user,
             job,
-            readiness=_readiness_or_none(),
+            readiness=_readiness_by_platform(),
         )
     except SupervisedPilotDossierError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
