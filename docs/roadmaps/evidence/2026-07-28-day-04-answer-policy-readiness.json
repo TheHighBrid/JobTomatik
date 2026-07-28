@@ -49,9 +49,32 @@
     "expired_policy",
     "same_priority_conflict",
     "material_edit_revokes_consent",
-    "corrupt_ciphertext"
+    "corrupt_ciphertext",
+    "synthetic_greenhouse_consent_metadata",
+    "public_greenhouse_full_form_dry_run"
   ],
-  "release_gate": "pending_pull_request_ci",
-  "verified_head": null,
+  "backend_test_result": {
+    "passed": 469,
+    "skipped": 59,
+    "failed": 0,
+    "duration_seconds": 97.46
+  },
+  "verified_workflows": [
+    "Android APK",
+    "Backend tests",
+    "CodeQL security analysis",
+    "Frontend build",
+    "Greenhouse adapter certification",
+    "Greenhouse Phase B roster certification",
+    "Greenhouse pilot ledger ingestion certification",
+    "Greenhouse supervised approval certification",
+    "Greenhouse synthetic live exercise",
+    "Post-merge stabilization",
+    "Reproducible verification",
+    "Submission evidence review certification"
+  ],
+  "verified_parent_commit": "b705a9120cbc55efd5dd6abd2623ea4a9129c4ff",
+  "release_gate": "passed_on_verified_parent_commit",
+  "final_exact_head_gate": "pending_documentation_lock_ci",
   "merge_commit": null
 }
