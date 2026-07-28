@@ -1,13 +1,18 @@
-from datetime import datetime
-from typing import List
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models.answer_policy import ApplicantAnswerPolicy, AnswerPolicyMode, AnswerPolicyScope
+from app.models.answer_policy import (
+    ApplicantAnswerPolicy,
+    AnswerPolicyMode,
+    AnswerPolicyProvenance,
+    AnswerPolicyScope,
+)
 from app.models.user import User
 from app.schemas.answer_policy import (
     AnswerPolicyBulkResult,
@@ -15,9 +20,11 @@ from app.schemas.answer_policy import (
     AnswerPolicyCatalogItem,
     AnswerPolicyCreate,
     AnswerPolicyOut,
+    AnswerPolicyReadinessReport,
     AnswerPolicyUpdate,
 )
 from app.services.answer_policy import (
+    MIN_AUTOFILL_CONFIDENCE,
     QUESTION_CATALOG,
     clean_fallback_answers,
     encrypt_policy_fallbacks,
@@ -25,8 +32,17 @@ from app.services.answer_policy import (
     get_catalog_item,
     serialize_policy,
 )
+from app.services.answer_policy_readiness import build_answer_policy_readiness
 
 router = APIRouter(prefix="/profile/answer-policies", tags=["answer-policies"])
+
+
+def _naive_utc(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
 
 
 def _metadata_for_policy(canonical_key: str, match_phrases: List[str]) -> tuple[str, str]:
@@ -50,6 +66,9 @@ def _validate_policy_payload(
     scope_value: str,
     allow_autofill: bool,
     confirmed: bool,
+    provenance: str,
+    confidence: float,
+    expires_at: Optional[datetime],
 ) -> None:
     if scope != AnswerPolicyScope.global_scope.value and not scope_value.strip():
         raise HTTPException(status_code=400, detail="Platform and company policies require a scope value.")
@@ -64,6 +83,39 @@ def _validate_policy_payload(
     if allow_autofill and not confirmed:
         raise HTTPException(status_code=400, detail="Autofill requires explicit user confirmation.")
 
+    if allow_autofill and confidence < MIN_AUTOFILL_CONFIDENCE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Autofill requires confidence of at least {MIN_AUTOFILL_CONFIDENCE:.2f}.",
+        )
+
+    if allow_autofill and provenance == AnswerPolicyProvenance.unknown.value:
+        raise HTTPException(status_code=400, detail="Autofill requires known answer provenance.")
+
+    expiry = _naive_utc(expires_at)
+    if expiry is not None and expiry <= datetime.utcnow() and (allow_autofill or confirmed):
+        raise HTTPException(status_code=400, detail="An expired policy cannot be confirmed or authorized.")
+
+
+def _consent_metadata(
+    *,
+    confirmed: bool,
+    allow_autofill: bool,
+    provenance: str,
+    confidence: float,
+    previous: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if not confirmed:
+        return {}
+    return {
+        **dict(previous or {}),
+        "confirmation_method": "authenticated_answer_policy_api",
+        "autofill_authorized": bool(allow_autofill),
+        "provenance_reviewed": provenance,
+        "confidence_reviewed": float(confidence),
+        "recorded_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+    }
+
 
 def _policy_out(policy: ApplicantAnswerPolicy) -> AnswerPolicyOut:
     return AnswerPolicyOut(**serialize_policy(policy))
@@ -73,6 +125,27 @@ def _policy_out(policy: ApplicantAnswerPolicy) -> AnswerPolicyOut:
 async def get_answer_policy_catalog(current_user: User = Depends(get_current_user)):
     del current_user
     return [AnswerPolicyCatalogItem(**item) for item in QUESTION_CATALOG]
+
+
+@router.get("/readiness", response_model=AnswerPolicyReadinessReport)
+async def get_answer_policy_readiness(
+    country_code: str = Query("CA", min_length=2, max_length=12),
+    platform: str = Query("", max_length=50),
+    target_url: str = Query("", max_length=2000),
+    company: str = Query("", max_length=255),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return AnswerPolicyReadinessReport(
+        **build_answer_policy_readiness(
+            db,
+            current_user,
+            country_code=country_code,
+            platform=platform,
+            target_url=target_url,
+            company=company,
+        )
+    )
 
 
 @router.get("", response_model=List[AnswerPolicyOut])
@@ -101,6 +174,7 @@ async def create_answer_policy(
     mode = data.mode.value
     scope = data.scope.value
     scope_value = data.scope_value.strip().lower()
+    provenance = data.provenance.value
 
     _validate_policy_payload(
         mode=mode,
@@ -110,6 +184,9 @@ async def create_answer_policy(
         scope_value=scope_value,
         allow_autofill=data.allow_autofill,
         confirmed=data.confirmed,
+        provenance=provenance,
+        confidence=data.confidence,
+        expires_at=data.expires_at,
     )
 
     policy = ApplicantAnswerPolicy(
@@ -127,6 +204,16 @@ async def create_answer_policy(
         allow_autofill=data.allow_autofill,
         is_active=data.is_active,
         confirmed_at=datetime.utcnow() if data.confirmed else None,
+        provenance=provenance,
+        confidence=data.confidence,
+        source_metadata=dict(data.source_metadata or {}),
+        expires_at=data.expires_at,
+        consent_metadata=_consent_metadata(
+            confirmed=data.confirmed,
+            allow_autofill=data.allow_autofill,
+            provenance=provenance,
+            confidence=data.confidence,
+        ),
     )
     db.add(policy)
     try:
@@ -160,37 +247,73 @@ async def update_answer_policy(
         raise HTTPException(status_code=404, detail="Answer policy not found")
 
     updates = data.model_dump(exclude_unset=True)
-    answer_changed = "answer_value" in updates or "answer_label" in updates
+    material_fields = {
+        "answer_value",
+        "answer_label",
+        "fallback_answers",
+        "match_phrases",
+        "mode",
+        "scope",
+        "scope_value",
+        "provenance",
+        "confidence",
+        "source_metadata",
+        "expires_at",
+    }
+    material_changed = any(field in updates for field in material_fields)
+
     if "answer_value" in updates:
         policy.encrypted_value = encrypt_policy_value(updates.pop("answer_value"))
     if "answer_label" in updates:
         policy.encrypted_label = encrypt_policy_value(updates.pop("answer_label"))
     if "fallback_answers" in updates:
-        policy.encrypted_fallbacks = encrypt_policy_fallbacks(
-            updates.pop("fallback_answers")
-        )
-        answer_changed = True
+        policy.encrypted_fallbacks = encrypt_policy_fallbacks(updates.pop("fallback_answers"))
     if "match_phrases" in updates:
-        policy.match_phrases = [phrase.strip() for phrase in updates.pop("match_phrases") if phrase.strip()]
+        policy.match_phrases = [
+            phrase.strip() for phrase in updates.pop("match_phrases") if phrase.strip()
+        ]
     if "mode" in updates:
         policy.mode = updates.pop("mode").value
     if "scope" in updates:
         policy.scope = updates.pop("scope").value
     if "scope_value" in updates:
         policy.scope_value = updates.pop("scope_value").strip().lower()
+    if "provenance" in updates:
+        policy.provenance = updates.pop("provenance").value
+    if "source_metadata" in updates:
+        policy.source_metadata = dict(updates.pop("source_metadata") or {})
+
     confirmed = updates.pop("confirmed", None)
+    allow_autofill_was_set = "allow_autofill" in updates
 
     for field, value in updates.items():
         setattr(policy, field, value)
 
-    if answer_changed and confirmed is not True:
+    if material_changed and confirmed is not True:
         policy.confirmed_at = None
         policy.allow_autofill = False
+        policy.consent_metadata = {}
     elif confirmed is True:
         policy.confirmed_at = datetime.utcnow()
+        policy.consent_metadata = _consent_metadata(
+            confirmed=True,
+            allow_autofill=bool(policy.allow_autofill),
+            provenance=policy.provenance,
+            confidence=float(policy.confidence),
+            previous=policy.consent_metadata,
+        )
     elif confirmed is False:
         policy.confirmed_at = None
         policy.allow_autofill = False
+        policy.consent_metadata = {}
+    elif allow_autofill_was_set and policy.confirmed_at:
+        policy.consent_metadata = _consent_metadata(
+            confirmed=True,
+            allow_autofill=bool(policy.allow_autofill),
+            provenance=policy.provenance,
+            confidence=float(policy.confidence),
+            previous=policy.consent_metadata,
+        )
 
     serialized = serialize_policy(policy)
     _validate_policy_payload(
@@ -201,6 +324,9 @@ async def update_answer_policy(
         scope_value=policy.scope_value or "",
         allow_autofill=bool(policy.allow_autofill),
         confirmed=bool(policy.confirmed_at),
+        provenance=policy.provenance,
+        confidence=float(policy.confidence),
+        expires_at=policy.expires_at,
     )
 
     policy.version = (policy.version or 1) + 1
@@ -235,6 +361,7 @@ async def bulk_upsert_answer_policies(
         mode = item.mode.value
         scope = item.scope.value
         scope_value = item.scope_value.strip().lower()
+        provenance = item.provenance.value
         unique_key = (item.canonical_key, scope, scope_value)
         if unique_key in request_keys:
             raise HTTPException(
@@ -251,6 +378,9 @@ async def bulk_upsert_answer_policies(
             scope_value=scope_value,
             allow_autofill=item.allow_autofill,
             confirmed=item.confirmed,
+            provenance=provenance,
+            confidence=item.confidence,
+            expires_at=item.expires_at,
         )
 
         policy = (
@@ -275,6 +405,16 @@ async def bulk_upsert_answer_policies(
             policy.allow_autofill = item.allow_autofill
             policy.is_active = item.is_active
             policy.confirmed_at = datetime.utcnow() if item.confirmed else None
+            policy.provenance = provenance
+            policy.confidence = item.confidence
+            policy.source_metadata = dict(item.source_metadata or {})
+            policy.expires_at = item.expires_at
+            policy.consent_metadata = _consent_metadata(
+                confirmed=item.confirmed,
+                allow_autofill=item.allow_autofill,
+                provenance=provenance,
+                confidence=item.confidence,
+            )
             policy.version = (policy.version or 1) + 1
         else:
             created += 1
@@ -293,6 +433,16 @@ async def bulk_upsert_answer_policies(
                 allow_autofill=item.allow_autofill,
                 is_active=item.is_active,
                 confirmed_at=datetime.utcnow() if item.confirmed else None,
+                provenance=provenance,
+                confidence=item.confidence,
+                source_metadata=dict(item.source_metadata or {}),
+                expires_at=item.expires_at,
+                consent_metadata=_consent_metadata(
+                    confirmed=item.confirmed,
+                    allow_autofill=item.allow_autofill,
+                    provenance=provenance,
+                    confidence=item.confidence,
+                ),
             )
             db.add(policy)
         saved.append(policy)
@@ -338,7 +488,26 @@ async def confirm_answer_policy(
     ):
         raise HTTPException(status_code=400, detail="Add an answer before confirming this policy.")
 
+    _validate_policy_payload(
+        mode=policy.mode,
+        answer_value=serialized.get("answer_value"),
+        answer_label=serialized.get("answer_label"),
+        scope=policy.scope,
+        scope_value=policy.scope_value or "",
+        allow_autofill=bool(policy.allow_autofill),
+        confirmed=True,
+        provenance=policy.provenance,
+        confidence=float(policy.confidence),
+        expires_at=policy.expires_at,
+    )
     policy.confirmed_at = datetime.utcnow()
+    policy.consent_metadata = _consent_metadata(
+        confirmed=True,
+        allow_autofill=bool(policy.allow_autofill),
+        provenance=policy.provenance,
+        confidence=float(policy.confidence),
+        previous=policy.consent_metadata,
+    )
     policy.version = (policy.version or 1) + 1
     db.commit()
     db.refresh(policy)
