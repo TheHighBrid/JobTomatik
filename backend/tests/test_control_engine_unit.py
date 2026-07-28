@@ -23,6 +23,11 @@ def _policy(key, answer, *, phrases=None, policy_id=1):
         "allow_autofill": True,
         "is_active": True,
         "confirmed_at": "2026-07-15T10:00:00",
+        "provenance": "user_provided",
+        "confidence": 1.0,
+        "consent_metadata": {"autofill_authorized": True},
+        "is_expired": False,
+        "encryption_valid": True,
     }
 
 
