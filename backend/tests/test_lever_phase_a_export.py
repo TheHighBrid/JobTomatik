@@ -16,16 +16,16 @@ POSTING_ID = "12345678-1234-1234-1234-123456789abc"
 LEVER_URL = f"https://jobs.eu.lever.co/exportco/{POSTING_ID}/apply"
 
 
-def _report(*, clicked=False, outcome="ready_to_submit"):
+def _report(*, clicked=False, outcome="ready_to_submit", inspection_passed=True):
     return {
         "certification": "lever_supervised_live_dry_run",
         "final_submit_clicked": clicked,
-        "passed": not clicked,
+        "passed": not clicked and inspection_passed,
         "reports": [
             {
                 "url": LEVER_URL,
                 "mode": "inspect",
-                "passed": True,
+                "passed": inspection_passed,
                 "adapter": "lever",
                 "adapter_version": LEVER_ADAPTER_VERSION,
                 "final_submit_clicked": False,
@@ -50,13 +50,11 @@ def _report(*, clicked=False, outcome="ready_to_submit"):
     }
 
 
-def test_exported_phase_a_candidate_is_canonical_and_never_mutates_baseline(tmp_path):
+def _build(tmp_path, report):
     report_path = tmp_path / "lever-report.json"
-    report_path.write_text(json.dumps(_report()), encoding="utf-8")
-    candidate_path = tmp_path / "lever-phase-a-candidate.csv"
-
-    record = build_phase_a_candidate(
-        _report(),
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    return build_phase_a_candidate(
+        report,
         report_path=report_path,
         run_id="gha-123",
         operator="github-actions",
@@ -65,6 +63,11 @@ def test_exported_phase_a_candidate_is_canonical_and_never_mutates_baseline(tmp_
         role="Risk Analyst",
         completed_at="2026-07-27T20:00:00+00:00",
     )
+
+
+def test_exported_phase_a_candidate_is_canonical_and_never_mutates_baseline(tmp_path):
+    record = _build(tmp_path, _report())
+    candidate_path = tmp_path / "lever-phase-a-candidate.csv"
     export_phase_a_candidate(candidate_path, record)
 
     loaded = load_phase_a_baseline(candidate_path)
@@ -81,27 +84,29 @@ def test_exported_phase_a_candidate_is_canonical_and_never_mutates_baseline(tmp_
         row = next(csv.DictReader(handle))
     assert row["pre_submit_state"] == "ready_to_submit"
     assert row["final_status"] == "dry_run_passed"
+    assert row["official_posting_inspection_passed"] == "True"
+    assert row["controls_skipped"] == "4"
     assert len(row["artifact_sha256"]) == 64
 
 
 def test_export_fails_closed_when_any_final_submit_click_is_observed(tmp_path):
     report = _report(clicked=True)
-    report_path = tmp_path / "unsafe-report.json"
-    report_path.write_text(json.dumps(report), encoding="utf-8")
 
     with pytest.raises(LeverPhaseAExportError, match="final_submit_clicked=false"):
-        build_phase_a_candidate(
-            report,
-            report_path=report_path,
-            run_id="gha-unsafe",
-            operator="github-actions",
-            source_reference="https://github.com/example/actions/runs/unsafe",
-            employer="Export Co",
-            role="Risk Analyst",
-        )
+        _build(tmp_path, report)
 
 
-def test_manual_challenge_candidate_uses_needs_review_outcome(tmp_path):
+@pytest.mark.parametrize("inspection_mode", ["missing", "failed"])
+def test_export_requires_one_successful_matching_official_inspection(tmp_path, inspection_mode):
+    report = _report(inspection_passed=inspection_mode != "failed")
+    if inspection_mode == "missing":
+        report["reports"] = [item for item in report["reports"] if item["mode"] != "inspect"]
+
+    with pytest.raises(LeverPhaseAExportError, match="inspection"):
+        _build(tmp_path, report)
+
+
+def test_manual_challenge_candidate_is_boundary_only_evidence(tmp_path):
     report = _report(outcome="manual_challenge_handoff")
     exercise = report["reports"][1]
     exercise["review_items"] = [
@@ -110,20 +115,11 @@ def test_manual_challenge_candidate_uses_needs_review_outcome(tmp_path):
             "details": {"handoff_stage": "post_fill_pre_action"},
         }
     ]
-    report_path = tmp_path / "handoff-report.json"
-    report_path.write_text(json.dumps(report), encoding="utf-8")
 
-    record = build_phase_a_candidate(
-        report,
-        report_path=report_path,
-        run_id="gha-handoff",
-        operator="github-actions",
-        source_reference="https://github.com/example/actions/runs/handoff",
-        employer="Export Co",
-        role="Risk Analyst",
-    )
+    record = _build(tmp_path, report)
 
     assert record["pre_submit_state"] == "manual_challenge_handoff"
     assert record["final_status"] == "needs_review"
     assert record["handoff_reason"] == "captcha_detected"
     assert record["handoff_boundary"] == "post_fill_pre_action"
+    assert "does not advance the Phase A gate" in record["notes"]
