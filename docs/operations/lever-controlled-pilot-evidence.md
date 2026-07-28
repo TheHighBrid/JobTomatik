@@ -4,9 +4,10 @@ This document tracks evidence only for issue #86, proposed PR 6. It does not ena
 
 ## Current retained evidence
 
-The committed Phase A baseline currently contains one artifact-backed dry run:
+The committed Phase A baseline currently contains two artifact-backed dry runs.
 
-- Employer: PointClickCare
+### PointClickCare
+
 - Role: (Canada) - Junior Site Reliability Engineer
 - Lever site: `pointclickcare`
 - Posting ID: `218d6a04-8e57-4034-84a8-2393e07f66d0`
@@ -18,13 +19,26 @@ The committed Phase A baseline currently contains one artifact-backed dry run:
 - Result: declared CAPTCHA handoff at `post_fill_pre_action`
 - Final submit clicked: `false`
 
-The record qualifies for the Phase A matrix because the adapter reached a declared manual challenge boundary without clicking final submit. It does not count as a real application or a Phase B submission.
+### Lever
+
+- Role: API Engineer
+- Lever site: `lever`
+- Posting ID: `065f4538-7347-4207-909f-4ea68f63b4af`
+- Region: `eu`
+- Workflow run: `30337038142`
+- Artifact ID: `8679562746`
+- Artifact digest: `c72bf99c62394393ef98100f3c5deee2b6bdcaa839d163bd0d9dc03a60d711e2`
+- Certification report digest: `6ca77acba08e6e909157ede3483414d648cee6263a0af4c769ae77a1b1efa6e6`
+- Result: declared CAPTCHA handoff at `post_fill_pre_action`
+- Final submit clicked: `false`
+
+Both records qualify for the Phase A matrix because the adapter reached a declared manual challenge boundary without clicking final submit. Neither record counts as a real application or a Phase B submission.
 
 ## Current readiness
 
-- Phase A qualifying dry runs: 1 of 30
-- Distinct Lever sites: 1 of 30
-- Regions: global only; EU coverage is still missing
+- Phase A qualifying dry runs: 2 of 30
+- Distinct Lever sites: 2 of 30
+- Regions: global and EU covered
 - Phase B confirmed supervised submissions: 0 of 10
 - Canonical Lever maturity: `dry_run`
 - Pilot evidence complete: false
