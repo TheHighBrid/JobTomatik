@@ -24,12 +24,19 @@ from app.services.lever_pilot_ingestion import (
     read_lever_pilot_readiness as _read_lever_pilot_readiness,
     validate_phase_b_record,
 )
+from app.services.lever_readiness_hardening import harden_lever_readiness
 
 
 def _runtime_ledger_path(value: Optional[str | Path]) -> Path:
     if value is not None:
         return Path(value)
     return configured_paths()["ledger"]
+
+
+def _baseline_path(value: Optional[str | Path]) -> Path:
+    if value is not None:
+        return Path(value)
+    return configured_paths()["baseline"]
 
 
 def validate_phase_b_runtime_ledger(path: Path) -> list[Dict[str, Any]]:
@@ -66,10 +73,17 @@ def read_lever_pilot_readiness(
     baseline_path: Optional[str | Path] = None,
     ledger_path: Optional[str | Path] = None,
 ) -> Dict[str, Any]:
-    validate_phase_b_runtime_ledger(_runtime_ledger_path(ledger_path))
-    return _read_lever_pilot_readiness(
-        baseline_path=baseline_path,
-        ledger_path=ledger_path,
+    runtime_path = _runtime_ledger_path(ledger_path)
+    baseline = _baseline_path(baseline_path)
+    validate_phase_b_runtime_ledger(runtime_path)
+    readiness = _read_lever_pilot_readiness(
+        baseline_path=baseline,
+        ledger_path=runtime_path,
+    )
+    return harden_lever_readiness(
+        readiness,
+        baseline_path=baseline,
+        ledger_path=runtime_path,
     )
 
 
@@ -85,14 +99,15 @@ def ingest_confirmed_lever_application(
     summary_markdown_path: Optional[str | Path] = None,
 ) -> Dict[str, Any]:
     runtime_path = _runtime_ledger_path(ledger_path)
+    baseline = _baseline_path(baseline_path)
     validate_phase_b_runtime_ledger(runtime_path)
     result = _ingest_confirmed_lever_application(
         db,
         application,
         user,
         job,
-        baseline_path=baseline_path,
-        ledger_path=ledger_path,
+        baseline_path=baseline,
+        ledger_path=runtime_path,
         summary_json_path=summary_json_path,
         summary_markdown_path=summary_markdown_path,
     )
@@ -102,6 +117,13 @@ def ingest_confirmed_lever_application(
             "Lever Phase B ingestion produced a non-supervised record"
         )
     validate_phase_b_runtime_ledger(runtime_path)
+    hardened = harden_lever_readiness(
+        {"summary": result.get("summary") or {}},
+        baseline_path=baseline,
+        ledger_path=runtime_path,
+    )
+    result["summary"] = hardened["summary"]
+    result["readiness_hardening_version"] = hardened["readiness_hardening_version"]
     return result
 
 
