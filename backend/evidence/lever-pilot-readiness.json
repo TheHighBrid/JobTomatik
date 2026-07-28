@@ -13,7 +13,7 @@
     "false_submitted_count": 0,
     "gates": {
       "all_evidence_hashes_match_consumed_approvals": true,
-      "all_phase_a_records_have_successful_matching_inspection": true,
+      "all_phase_a_records_have_successful_matching_inspection": false,
       "all_success_evidence_independently_reviewed": false,
       "all_uncertain_outcomes_remain_uncertain": true,
       "explicit_separate_promotion_approval": false,
@@ -27,7 +27,7 @@
     "manual_challenge_boundary_count": 2,
     "nonqualifying_dry_run_count": 2,
     "payload_hash_mismatch_count": 0,
-    "phase_a_inspection_failure_count": 0,
+    "phase_a_inspection_failure_count": 2,
     "platform": "lever",
     "promotion_ready": false,
     "qualifying_dry_run_count": 0,
