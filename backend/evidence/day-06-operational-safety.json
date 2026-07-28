@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "campaign_day": 6,
+  "mission": "kill_switches_handoffs_and_circuit_breakers",
+  "branch": "agent/day-06-kill-switch-handoff-breakers",
+  "controls": {
+    "global_emergency_kill_switch": true,
+    "autopilot_kill_switch": true,
+    "platform_kill_switch": true,
+    "real_submit_kill_switch": true,
+    "resumable_handoff_kill_switch": true,
+    "typed_human_boundary_matrix": true,
+    "retained_handoff_target_binding": true,
+    "stale_session_expiry": true,
+    "platform_scoped_failure_breaker": true,
+    "cross_platform_user_breaker": true,
+    "operator_reason_codes": true
+  },
+  "handoff_matrix": {
+    "resumable_browser": [
+      "captcha_detected",
+      "mfa_required",
+      "login_required",
+      "anti_bot_challenge",
+      "application_target_required"
+    ],
+    "manual_only": [
+      "assessment_required",
+      "legal_answer_missing",
+      "sensitive_answer_missing",
+      "ambiguous_question",
+      "unsupported_control"
+    ],
+    "evidence_review": [
+      "submission_confirmation_uncertain"
+    ]
+  },
+  "breaker_defaults": {
+    "failure_threshold": 3,
+    "failure_window_minutes": 60,
+    "breaker_minutes": 120
+  },
+  "expected_results": {
+    "unsafe_resume_count": 0,
+    "false_submitted_count": 0,
+    "cross_platform_freeze_from_single_platform_cluster": 0
+  },
+  "observed_results": null,
+  "verified_head": null,
+  "verified_workflows": [],
+  "release_gate": "pending_pull_request_ci",
+  "merge_commit": null
+}
