@@ -47,7 +47,6 @@ permissions:
   contents: write
 
 jobs:
-  # BEGIN ONE-TIME ROOT HARDENING
   one-time-root-hardening:
     if: ${{ github.event_name == 'pull_request' && github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-22.04
@@ -58,7 +57,7 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Harden root ingestion and restore workflow
+      - name: Harden root Phase A qualification
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -115,20 +114,6 @@ jobs:
           if 'test_ready_pair_without_successful_inspection_does_not_qualify' not in test_text:
               test_text += '''\n\ndef test_ready_pair_without_successful_inspection_does_not_qualify(tmp_path):\n    path = tmp_path / "phase-a.csv"\n    _write(path, [_row(official_posting_inspection_passed="false")])\n\n    records = load_phase_a_baseline(path)\n    summary = build_readiness_summary(records)\n\n    assert records[0]["official_posting_inspection_passed"] is False\n    assert records[0]["qualifies_for_dry_run_matrix"] is False\n    assert summary["qualifying_dry_run_count"] == 0\n'''
           tests.write_text(test_text, encoding='utf-8')
-
-          workflow = Path('.github/workflows/lever-phase-a-certification.yml')
-          workflow_text = workflow.read_text(encoding='utf-8')
-          start_marker = '  # BEGIN ONE-TIME ROOT HARDENING\n'
-          end_marker = '  # END ONE-TIME ROOT HARDENING\n'
-          start = workflow_text.index(start_marker)
-          end = workflow_text.index(end_marker, start) + len(end_marker)
-          workflow_text = workflow_text[:start] + workflow_text[end:]
-          workflow_text = workflow_text.replace(
-              'permissions:\n  contents: write',
-              'permissions:\n  contents: read',
-              1,
-          )
-          workflow.write_text(workflow_text, encoding='utf-8')
           PY
 
       - name: Commit root ingestion gate
@@ -137,11 +122,9 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add \
             backend/app/services/lever_pilot_ingestion.py \
-            backend/tests/test_lever_phase_a_readiness_validation.py \
-            .github/workflows/lever-phase-a-certification.yml
+            backend/tests/test_lever_phase_a_readiness_validation.py
           git commit -m "Enforce Phase A inspection at ingestion root"
           git push origin HEAD:${{ github.head_ref }}
-  # END ONE-TIME ROOT HARDENING
 
   phase-a-evidence-boundary:
     runs-on: ubuntu-24.04
