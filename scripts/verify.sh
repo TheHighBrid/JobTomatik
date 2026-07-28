@@ -33,7 +33,7 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   PYTHON_BIN=python
 fi
 
-export APP_ENV=test
+export APP_ENVIRONMENT=test
 export DATABASE_URL="${DATABASE_URL:-sqlite:///./jobtomatik-verification.db}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
 export SECRET_KEY="${SECRET_KEY:-jobtomatik-verification-secret-key-2026}"
@@ -133,6 +133,7 @@ backend_fast() {
   (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m compileall -q app tests)
   step "Run focused backend safety tests"
   (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m pytest -q --tb=short \
+    tests/test_reproducible_verification_contract.py \
     tests/test_ats_maturity.py \
     tests/test_operations_policy.py \
     tests/test_supervised_submission_approval.py)
@@ -181,7 +182,6 @@ adapters = {item["name"]: item for item in ats["adapters"]}
 assert settings.allow_real_application_submit is False
 assert settings.greenhouse_supervised_pilot_enabled is False
 assert settings.lever_supervised_pilot_enabled is False
-assert settings.autopilot_enabled is False
 assert settings.enable_resumable_handoffs is False
 assert operations["real_submission_enabled"] is False
 assert operations["autopilot_enabled"] is False
