@@ -48,7 +48,6 @@ PHASE_B_REQUIRED_RECORDS = 10
 VALID_REGIONS = {"global", "eu"}
 PHASE_A_SUCCESS_PAIRS = {
     ("ready_to_submit", "dry_run_passed"),
-    ("manual_challenge_handoff", "needs_review"),
 }
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -424,8 +423,17 @@ def load_phase_a_baseline(path: Path) -> list[Dict[str, Any]]:
                     "duplicate_submission_detected": False,
                     "reviewed_by": None,
                     "review_reference": None,
-                    "qualifies_for_dry_run_matrix": (pre_submit_state, final_status)
-                    in PHASE_A_SUCCESS_PAIRS,
+                    "official_posting_inspection_passed": str(
+                        row.get("official_posting_inspection_passed") or ""
+                    ).strip().lower()
+                    in {"1", "true", "yes", "on"},
+                    "qualifies_for_dry_run_matrix": (
+                        (pre_submit_state, final_status) in PHASE_A_SUCCESS_PAIRS
+                        and str(
+                            row.get("official_posting_inspection_passed") or ""
+                        ).strip().lower()
+                        in {"1", "true", "yes", "on"}
+                    ),
                     "synthetic_profile": True,
                     "error": str(row.get("error") or "").strip() or None,
                     "notes": str(row.get("notes") or "").strip() or None,

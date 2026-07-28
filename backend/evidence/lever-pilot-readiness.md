@@ -4,17 +4,17 @@ Canonical maturity remains `dry_run`.
 
 ## Progress
 
-- Qualifying Phase A dry runs: **2/30**
-- Non-qualifying Phase A rows: **0**
-- Distinct Lever sites: **2/30**
-- Regions covered: **eu, global**
+- Qualifying Phase A dry runs: **0/30**
+- Non-qualifying Phase A rows: **2**
+- Distinct Lever sites: **0/30**
+- Regions covered: **none**
 - Confirmed supervised submissions: **0/10**
 
 ## Gates
 
 - [ ] `thirty_qualifying_dry_runs`
 - [ ] `thirty_distinct_lever_sites`
-- [x] `global_and_eu_hosts_covered`
+- [ ] `global_and_eu_hosts_covered`
 - [ ] `ten_supervised_confirmed_submissions`
 - [x] `zero_false_submitted_records`
 - [x] `zero_duplicate_submissions`
@@ -22,6 +22,7 @@ Canonical maturity remains `dry_run`.
 - [ ] `all_success_evidence_independently_reviewed`
 - [x] `all_evidence_hashes_match_consumed_approvals`
 - [ ] `explicit_separate_promotion_approval`
+- [ ] `all_phase_a_records_have_successful_matching_inspection`
 
 **Pilot evidence complete:** `False`
 **Promotion ready:** `False`

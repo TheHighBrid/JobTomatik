@@ -32,6 +32,7 @@ FIELDNAMES = [
     "operator",
     "source_reference",
     "artifact_sha256",
+    "official_posting_inspection_passed",
     "controls_discovered",
     "controls_filled",
     "controls_skipped",
@@ -62,7 +63,26 @@ def _matching_inspection(report: Mapping[str, Any], url: str) -> Mapping[str, An
         if item.get("mode") == "inspect"
         and str(item.get("url") or "").rstrip("/") == url.rstrip("/")
     ]
-    return inspections[0] if inspections else {}
+    if len(inspections) != 1:
+        raise LeverPhaseAExportError(
+            "Exactly one matching official-posting inspection is required"
+        )
+    inspection = inspections[0]
+    if inspection.get("passed") is not True:
+        raise LeverPhaseAExportError(
+            "The matching official-posting inspection did not pass"
+        )
+    if inspection.get("adapter") != "lever":
+        raise LeverPhaseAExportError("The matching inspection must use the Lever adapter")
+    if str(inspection.get("adapter_version") or "") != LEVER_ADAPTER_VERSION:
+        raise LeverPhaseAExportError(
+            f"The matching inspection must use Lever adapter {LEVER_ADAPTER_VERSION}"
+        )
+    if inspection.get("final_submit_clicked") is not False:
+        raise LeverPhaseAExportError(
+            "The matching inspection must record final_submit_clicked=false"
+        )
+    return inspection
 
 
 def _matching_exercise(report: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -109,22 +129,34 @@ def build_phase_a_candidate(
     elif outcome == "manual_challenge_handoff":
         final_status = "needs_review"
     else:
-        raise LeverPhaseAExportError("The exercise outcome does not qualify for Phase A")
+        raise LeverPhaseAExportError("The exercise outcome is not retained Phase A evidence")
 
     review_items = list(exercise.get("review_items") or [])
+    challenge_codes = {
+        "captcha_detected",
+        "mfa_required",
+        "login_required",
+        "anti_bot_challenge",
+    }
     handoff = next(
         (
             item
             for item in review_items
-            if item.get("reason_code")
-            in {"captcha_detected", "mfa_required", "login_required", "anti_bot_challenge"}
+            if item.get("reason_code") in challenge_codes
         ),
         None,
     )
     upload_evidence = list(exercise.get("upload_evidence") or [])
     verified_uploads = sum(1 for item in upload_evidence if item.get("verification") == "passed")
     validation_errors = list(exercise.get("validation_errors") or [])
+    blocking_review_items = [
+        item for item in review_items if item.get("reason_code") not in challenge_codes
+    ]
     dom = dict(inspection.get("dom") or {})
+    controls_discovered = int(dom.get("visible_control_count") or 0)
+    controls_filled = int(exercise.get("fields_filled") or 0)
+    controls_blocked = len(validation_errors) + len(blocking_review_items)
+    controls_skipped = max(0, controls_discovered - controls_filled - controls_blocked)
     timestamp = completed_at or datetime.now(timezone.utc).isoformat()
 
     required_text = {
@@ -151,10 +183,11 @@ def build_phase_a_candidate(
         "operator": str(operator).strip(),
         "source_reference": str(source_reference).strip(),
         "artifact_sha256": _sha256(report_path),
-        "controls_discovered": int(dom.get("visible_control_count") or 0),
-        "controls_filled": int(exercise.get("fields_filled") or 0),
-        "controls_skipped": 0,
-        "controls_blocked": len(validation_errors),
+        "official_posting_inspection_passed": True,
+        "controls_discovered": controls_discovered,
+        "controls_filled": controls_filled,
+        "controls_skipped": controls_skipped,
+        "controls_blocked": controls_blocked,
         "policies_used": int(exercise.get("control_evidence_count") or 0),
         "uploads_verified": verified_uploads,
         "handoff_reason": handoff.get("reason_code") if handoff else "",
@@ -162,7 +195,11 @@ def build_phase_a_candidate(
         "pre_submit_state": outcome,
         "final_status": final_status,
         "error": str(exercise.get("error") or ""),
-        "notes": "Synthetic candidate dry run; canonical baseline requires separate review.",
+        "notes": (
+            "Synthetic ready-to-submit dry run; canonical baseline requires separate review."
+            if outcome == "ready_to_submit"
+            else "Synthetic manual-challenge boundary coverage; does not advance the Phase A gate."
+        ),
     }
 
 
@@ -173,8 +210,16 @@ def export_phase_a_candidate(output_path: Path, record: Mapping[str, Any]) -> No
         writer.writeheader()
         writer.writerow({name: record.get(name, "") for name in FIELDNAMES})
     loaded = load_phase_a_baseline(output_path)
-    if len(loaded) != 1 or loaded[0].get("qualifies_for_dry_run_matrix") is not True:
+    if len(loaded) != 1:
         raise LeverPhaseAExportError("Exported Phase A candidate failed canonical validation")
+    pair = (record.get("pre_submit_state"), record.get("final_status"))
+    if pair not in {
+        ("ready_to_submit", "dry_run_passed"),
+        ("manual_challenge_handoff", "needs_review"),
+    }:
+        raise LeverPhaseAExportError("Exported Phase A candidate has an invalid outcome pair")
+    if record.get("official_posting_inspection_passed") is not True:
+        raise LeverPhaseAExportError("Exported Phase A candidate lacks a successful inspection")
 
 
 def main() -> int:

@@ -34,8 +34,14 @@ _PROFILE_PATTERNS = (
     r"cover\s*letter",
 )
 _PLACEHOLDER_OPTIONS = {
-    "", "select", "select one", "choose", "choose one", "please select",
-    "please choose", "--",
+    "",
+    "select",
+    "select one",
+    "choose",
+    "choose one",
+    "please select",
+    "please choose",
+    "--",
 }
 
 
@@ -47,11 +53,18 @@ def _is_profile_or_upload(descriptor: str, control_type: str) -> bool:
     normalized = _normalize(descriptor)
     if control_type == "file":
         return True
-    return any(re.search(pattern, normalized, flags=re.IGNORECASE) for pattern in _PROFILE_PATTERNS)
+    return any(
+        re.search(pattern, normalized, flags=re.IGNORECASE)
+        for pattern in _PROFILE_PATTERNS
+    )
 
 
 def _find_option(options: Iterable[str], phrases: Iterable[str]) -> Optional[str]:
-    values = [(normalize_text(option), option) for option in options if normalize_text(option)]
+    values = [
+        (normalize_text(option), option)
+        for option in options
+        if normalize_text(option)
+    ]
     for phrase in phrases:
         target = normalize_text(phrase)
         for candidate, original in values:
@@ -70,44 +83,139 @@ def choose_synthetic_answer(
     question = _normalize(descriptor)
     selected: Optional[str] = None
 
-    if any(term in question for term in (
-        "gender", "race", "ethnicity", "veteran", "disability", "pronoun",
-        "sexual orientation", "gender identity", "lgbtq",
-    )):
-        selected = _find_option(options, (
-            "prefer not to disclose", "prefer not to say", "do not wish", "decline",
-        ))
-    elif any(term in question for term in (
-        "current location", "where are you located", "where are you based", "location",
-    )):
+    if any(
+        term in question
+        for term in (
+            "gender",
+            "race",
+            "ethnicity",
+            "veteran",
+            "disability",
+            "pronoun",
+            "sexual orientation",
+            "gender identity",
+            "lgbtq",
+        )
+    ):
+        selected = _find_option(
+            options,
+            (
+                "prefer not to disclose",
+                "prefer not to say",
+                "do not wish",
+                "decline",
+            ),
+        )
+    elif any(
+        term in question
+        for term in (
+            "current location",
+            "where are you located",
+            "where are you based",
+            "location",
+        )
+    ):
         selected = _find_option(options, ("Ottawa", "Canada")) or SYNTHETIC_LOCATION
-    elif any(term in question for term in (
-        "authorized to work", "legally authorized", "work authorization",
-    )):
+    elif any(
+        term in question
+        for term in (
+            "authorized to work",
+            "legally authorized",
+            "work authorization",
+        )
+    ):
         selected = _find_option(options, ("Yes",))
-    elif any(term in question for term in (
-        "sponsorship", "restriction", "non compete", "conflict of interest",
-        "previously worked", "previously employed",
-    )):
+    elif any(
+        term in question
+        for term in (
+            "sponsorship",
+            "restriction",
+            "non compete",
+            "conflict of interest",
+            "previously worked",
+            "previously employed",
+        )
+    ):
         selected = _find_option(options, ("No",))
-    elif any(term in question for term in (
-        "consent", "certify", "agree", "privacy", "terms", "accurate",
-    )):
+    elif any(
+        term in question
+        for term in (
+            "consent",
+            "certify",
+            "agree",
+            "privacy",
+            "terms",
+            "accurate",
+        )
+    ):
         selected = _find_option(options, ("Yes", "I agree", "Agree")) or "Yes"
     elif any(term in question for term in ("hear about", "source", "referral")):
         selected = _find_option(options, ("LinkedIn", "Other"))
 
     if selected is None:
-        selected = _find_option(options, (
-            "Not applicable", "No", "Prefer not to disclose", "Other", "Yes",
-        ))
+        selected = _find_option(
+            options,
+            (
+                "Not applicable",
+                "No",
+                "Prefer not to disclose",
+                "Other",
+                "Yes",
+            ),
+        )
     if selected is None and options:
         # Certification-only policy generated from the exact DOM inventory. Runtime
         # application behavior never uses this fallback.
         selected = options[0]
     if selected is None:
-        selected = "Yes" if control_type in {"checkbox", "checkbox_group"} else SYNTHETIC_TEXT_RESPONSE
+        selected = (
+            "Yes"
+            if control_type in {"checkbox", "checkbox_group"}
+            else SYNTHETIC_TEXT_RESPONSE
+        )
     return selected
+
+
+def _synthetic_policy(
+    policy_id: int,
+    *,
+    canonical_key: str,
+    category: str,
+    sensitivity: str,
+    answer: str,
+    descriptor: str,
+) -> Dict[str, Any]:
+    return {
+        "id": policy_id,
+        "canonical_key": canonical_key,
+        "category": category,
+        "sensitivity": sensitivity,
+        "mode": "answer",
+        "answer_value": answer,
+        "answer_label": answer,
+        "fallback_answers": [],
+        "match_phrases": [descriptor],
+        "scope": "platform",
+        "scope_value": "lever.co",
+        "allow_autofill": True,
+        "is_active": True,
+        "confirmed_at": SYNTHETIC_CONFIRMATION_TIMESTAMP,
+        "provenance": "verified_import",
+        "confidence": 1.0,
+        "consent_metadata": {
+            "confirmation_method": "synthetic_certification_fixture",
+            "autofill_authorized": True,
+            "synthetic_only": True,
+            "recorded_at": SYNTHETIC_CONFIRMATION_TIMESTAMP,
+        },
+        "source_metadata": {
+            "source": "lever_hosted_dom",
+            "synthetic_certification_only": True,
+        },
+        "expires_at": None,
+        "is_expired": False,
+        "encryption_valid": True,
+    }
 
 
 async def _control_options(surface: Any, element: Any, control_type: str) -> List[str]:
@@ -130,7 +238,9 @@ async def _control_options(surface: Any, element: Any, control_type: str) -> Lis
                     }).filter(Boolean);
                 }"""
             )
-            options.extend(str(value).strip() for value in values if str(value).strip())
+            options.extend(
+                str(value).strip() for value in values if str(value).strip()
+            )
         except Exception:
             pass
     elif control_type == "combobox":
@@ -150,7 +260,7 @@ async def inspect_lever_application_dom(surface: Any) -> Dict[str, Any]:
     records: List[Dict[str, Any]] = []
     seen: set[Tuple[str, str]] = set()
     selector = (
-        'input:not([type="hidden"]):not([type="submit"]):not([type="button"]),' 
+        'input:not([type="hidden"]):not([type="submit"]):not([type="button"]),'
         'textarea,select,[role="combobox"],[role="radio"],[role="checkbox"]'
     )
     for element in await surface.query_selector_all(selector):
@@ -184,14 +294,16 @@ async def inspect_lever_application_dom(surface: Any) -> Dict[str, Any]:
             if signature in seen:
                 continue
             seen.add(signature)
-            records.append({
-                "descriptor": descriptor,
-                "control_type": control_type,
-                "required": required,
-                "options": await _control_options(surface, element, control_type),
-                "name": await element.get_attribute("name") or "",
-                "id": await element.get_attribute("id") or "",
-            })
+            records.append(
+                {
+                    "descriptor": descriptor,
+                    "control_type": control_type,
+                    "required": required,
+                    "options": await _control_options(surface, element, control_type),
+                    "name": await element.get_attribute("name") or "",
+                    "id": await element.get_attribute("id") or "",
+                }
+            )
         except Exception:
             continue
 
@@ -200,8 +312,10 @@ async def inspect_lever_application_dom(surface: Any) -> Dict[str, Any]:
         "visible_control_count": len(records),
         "required_control_count": sum(1 for record in records if record["required"]),
         "required_custom_controls": [
-            record for record in records
-            if record["required"] and not _is_profile_or_upload(
+            record
+            for record in records
+            if record["required"]
+            and not _is_profile_or_upload(
                 record["descriptor"], record["control_type"]
             )
         ],
@@ -211,7 +325,9 @@ async def inspect_lever_application_dom(surface: Any) -> Dict[str, Any]:
 
 def build_synthetic_profile(dom_inventory: Dict[str, Any]) -> Dict[str, Any]:
     policies: List[Dict[str, Any]] = []
-    for policy_id, record in enumerate(dom_inventory.get("required_custom_controls") or [], start=1):
+    for policy_id, record in enumerate(
+        dom_inventory.get("required_custom_controls") or [], start=1
+    ):
         descriptor = str(record.get("descriptor") or "").strip()
         if not descriptor:
             continue
@@ -221,51 +337,51 @@ def build_synthetic_profile(dom_inventory: Dict[str, Any]) -> Dict[str, Any]:
             list(record.get("options") or []),
             control_type=str(record.get("control_type") or "text"),
         )
-        policies.append({
-            "id": policy_id,
-            "canonical_key": (
-                classification.get("canonical_key")
-                if classification.get("canonical_key") != "custom.unclassified"
-                else f"custom.lever_synthetic_{policy_id}"
-            ),
-            "category": classification.get("category") or "synthetic_certification",
-            "sensitivity": classification.get("sensitivity") or "synthetic",
-            "mode": "answer",
-            "answer_value": answer,
-            "answer_label": answer,
-            "match_phrases": [descriptor],
-            "scope": "platform",
-            "scope_value": "lever.co",
-            "allow_autofill": True,
-            "is_active": True,
-            "confirmed_at": SYNTHETIC_CONFIRMATION_TIMESTAMP,
-        })
+        canonical_key = classification.get("canonical_key")
+        if canonical_key == "custom.unclassified":
+            canonical_key = f"custom.lever_synthetic_{policy_id}"
+        policies.append(
+            _synthetic_policy(
+                policy_id,
+                canonical_key=str(canonical_key),
+                category=str(
+                    classification.get("category") or "synthetic_certification"
+                ),
+                sensitivity=str(
+                    classification.get("sensitivity") or "synthetic"
+                ),
+                answer=answer,
+                descriptor=descriptor,
+            )
+        )
 
     # Lever's current-location widget is commonly a required ARIA combobox. It is
     # included explicitly if the DOM inventory classified it as a profile-like field.
-    if not any("location" in normalize_text(policy["match_phrases"][0]) for policy in policies):
-        location_control = next((
-            record for record in dom_inventory.get("controls") or []
-            if record.get("required")
-            and record.get("control_type") == "combobox"
-            and "location" in normalize_text(record.get("descriptor"))
-        ), None)
+    if not any(
+        "location" in normalize_text(policy["match_phrases"][0])
+        for policy in policies
+    ):
+        location_control = next(
+            (
+                record
+                for record in dom_inventory.get("controls") or []
+                if record.get("required")
+                and record.get("control_type") == "combobox"
+                and "location" in normalize_text(record.get("descriptor"))
+            ),
+            None,
+        )
         if location_control:
-            policies.append({
-                "id": len(policies) + 1,
-                "canonical_key": "custom.current_location",
-                "category": "location",
-                "sensitivity": "standard",
-                "mode": "answer",
-                "answer_value": SYNTHETIC_LOCATION,
-                "answer_label": SYNTHETIC_LOCATION,
-                "match_phrases": [location_control["descriptor"]],
-                "scope": "platform",
-                "scope_value": "lever.co",
-                "allow_autofill": True,
-                "is_active": True,
-                "confirmed_at": SYNTHETIC_CONFIRMATION_TIMESTAMP,
-            })
+            policies.append(
+                _synthetic_policy(
+                    len(policies) + 1,
+                    canonical_key="custom.current_location",
+                    category="location",
+                    sensitivity="standard",
+                    answer=SYNTHETIC_LOCATION,
+                    descriptor=str(location_control["descriptor"]),
+                )
+            )
 
     return {
         "full_name": "Avery Certification",
@@ -311,7 +427,9 @@ def write_synthetic_resume(path: str) -> str:
     return str(target)
 
 
-async def build_synthetic_profile_for_page(surface: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+async def build_synthetic_profile_for_page(
+    surface: Any,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     inventory = await inspect_lever_application_dom(surface)
     profile = build_synthetic_profile(inventory)
     metadata = {

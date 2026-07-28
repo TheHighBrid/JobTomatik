@@ -9,6 +9,7 @@ def _readiness(*, phase_a=False, phase_b=False, duplicate_count=0):
         "thirty_qualifying_dry_runs": phase_a,
         "thirty_distinct_lever_sites": phase_a,
         "global_and_eu_hosts_covered": phase_a,
+        "all_phase_a_records_have_successful_matching_inspection": phase_a,
         "ten_supervised_confirmed_submissions": phase_b,
         "zero_false_submitted_records": True,
         "zero_duplicate_submissions": duplicate_count == 0,
@@ -58,8 +59,14 @@ def test_phase_thresholds_are_opt_in_and_fail_closed_when_missing():
     assert phase_a["passed"] is False
     assert phase_a["checks"]["phase_a_has_thirty_qualifying_dry_runs"] is False
     assert phase_a["checks"]["phase_a_covers_global_and_eu"] is False
+    assert (
+        phase_a["checks"][
+            "phase_a_all_candidates_have_successful_matching_inspection"
+        ]
+        is False
+    )
     assert phase_b["passed"] is False
-    assert phase_b["checks"]["phase_b_has_ten_confirmed_submissions"] is False
+    assert phase_b["checks"]["phase_b_has_ten_safe_confirmed_submissions"] is False
 
 
 def test_completed_evidence_still_cannot_self_authorize_promotion():

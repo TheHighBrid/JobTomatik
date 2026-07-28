@@ -61,16 +61,31 @@ def build_certification_report(
                 "phase_a_covers_global_and_eu": bool(
                     gates.get("global_and_eu_hosts_covered")
                 ),
+                "phase_a_all_candidates_have_successful_matching_inspection": bool(
+                    gates.get("all_phase_a_records_have_successful_matching_inspection")
+                ),
             }
         )
     if require_phase_b:
         checks.update(
             {
-                "phase_b_has_ten_confirmed_submissions": bool(
+                "phase_b_has_ten_safe_confirmed_submissions": bool(
                     gates.get("ten_supervised_confirmed_submissions")
                 ),
                 "phase_b_successes_are_independently_reviewed": bool(
                     gates.get("all_success_evidence_independently_reviewed")
+                ),
+                "phase_b_has_no_false_submission_evidence": bool(
+                    gates.get("zero_false_submitted_records")
+                ),
+                "phase_b_has_no_duplicate_outcomes": bool(
+                    gates.get("zero_duplicate_submissions")
+                ),
+                "phase_b_uncertain_outcomes_remain_uncertain": bool(
+                    gates.get("all_uncertain_outcomes_remain_uncertain")
+                ),
+                "phase_b_payload_hashes_match": bool(
+                    gates.get("all_evidence_hashes_match_consumed_approvals")
                 ),
             }
         )

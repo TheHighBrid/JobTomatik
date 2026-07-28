@@ -21,6 +21,14 @@ def policy(key, answer, phrase, policy_id):
         "allow_autofill": True,
         "is_active": True,
         "confirmed_at": "2026-07-15T00:00:00Z",
+        "provenance": "verified_import",
+        "confidence": 1.0,
+        "consent_metadata": {
+            "autofill_authorized": True,
+            "synthetic_only": True,
+        },
+        "is_expired": False,
+        "encryption_valid": True,
     }
 
 

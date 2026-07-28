@@ -87,6 +87,20 @@ check_base_toolchain() {
   node_major="${node_version%%.*}"
   [[ "$node_major" == "$JOBTOMATIK_NODE_MAJOR" ]] || \
     fail "Node $JOBTOMATIK_NODE_MAJOR.x is required; found $node_version."
+  "$PYTHON_BIN" - "$node_version" "$JOBTOMATIK_NODE_MIN_VERSION" <<'PY' || \
+    fail "Node $JOBTOMATIK_NODE_MIN_VERSION or newer is required; found $node_version."
+import re
+import sys
+
+
+def version(value: str) -> tuple[int, int, int]:
+    match = re.match(r"^(\d+)\.(\d+)\.(\d+)", value)
+    if not match:
+        raise SystemExit(1)
+    return tuple(int(part) for part in match.groups())
+
+raise SystemExit(0 if version(sys.argv[1]) >= version(sys.argv[2]) else 1)
+PY
 
   printf 'Python: %s\n' "$($PYTHON_BIN --version 2>&1)"
   printf 'Node:   %s\n' "$(node --version)"
@@ -122,8 +136,8 @@ bootstrap() {
   check_base_toolchain
   step "Install backend dependencies"
   "$PYTHON_BIN" -m pip install -r "$ROOT_DIR/backend/requirements.txt"
-  step "Install Playwright Chromium"
-  "$PYTHON_BIN" -m playwright install chromium
+  step "Install Playwright Chromium and Linux system dependencies"
+  "$PYTHON_BIN" -m playwright install --with-deps chromium
   step "Install frontend dependencies"
   (cd "$ROOT_DIR/frontend" && npm ci)
 }
@@ -134,6 +148,7 @@ backend_fast() {
   step "Run focused backend safety tests"
   (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m pytest -q --tb=short \
     tests/test_reproducible_verification_contract.py \
+    tests/test_control_policy_vault_safety.py \
     tests/test_ats_maturity.py \
     tests/test_operations_policy.py \
     tests/test_supervised_submission_approval.py)
@@ -158,13 +173,13 @@ backend_full() {
 
 migration_smoke() {
   step "Run Alembic migration smoke test"
-  require_command alembic
   cp "$ROOT_DIR/backend/alembic.ini" "$ROOT_DIR/backend/alembic-verification.ini"
   sed -i.bak \
     's#sqlalchemy.url = .*#sqlalchemy.url = sqlite:///./jobtomatik-migration-verification.db#' \
     "$ROOT_DIR/backend/alembic-verification.ini"
   rm -f "$ROOT_DIR/backend/alembic-verification.ini.bak"
-  (cd "$ROOT_DIR/backend" && DATABASE_URL=sqlite:///./jobtomatik-migration-verification.db alembic -c alembic-verification.ini upgrade head)
+  (cd "$ROOT_DIR/backend" && DATABASE_URL=sqlite:///./jobtomatik-migration-verification.db \
+    "$PYTHON_BIN" -m alembic -c alembic-verification.ini upgrade head)
 }
 
 frontend_tests() {
@@ -218,15 +233,30 @@ PY
 }
 
 deployment_check() {
-  step "Validate Docker Compose configuration"
+  step "Validate repository Docker Compose defaults"
   require_command docker
-  (cd "$ROOT_DIR" && docker compose config --quiet)
   local rendered
-  rendered="$(cd "$ROOT_DIR" && docker compose config)"
+  local -a clean_env=(
+    env
+    -u ALLOW_REAL_APPLICATION_SUBMIT
+    -u GREENHOUSE_SUPERVISED_PILOT_ENABLED
+    -u LEVER_SUPERVISED_PILOT_ENABLED
+    -u ENABLE_RESUMABLE_HANDOFFS
+    -u AUTOPILOT_ENABLED
+  )
+
+  (cd "$ROOT_DIR" && "${clean_env[@]}" docker compose config --quiet)
+  rendered="$(cd "$ROOT_DIR" && "${clean_env[@]}" docker compose config)"
   grep -Fq 'ALLOW_REAL_APPLICATION_SUBMIT: "false"' <<<"$rendered" || \
-    fail "Compose does not preserve ALLOW_REAL_APPLICATION_SUBMIT=false."
+    fail "Compose default does not preserve ALLOW_REAL_APPLICATION_SUBMIT=false."
+  grep -Fq 'GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"' <<<"$rendered" || \
+    fail "Compose default does not preserve GREENHOUSE_SUPERVISED_PILOT_ENABLED=false."
+  grep -Fq 'LEVER_SUPERVISED_PILOT_ENABLED: "false"' <<<"$rendered" || \
+    fail "Compose default does not preserve LEVER_SUPERVISED_PILOT_ENABLED=false."
+  grep -Fq 'ENABLE_RESUMABLE_HANDOFFS: "false"' <<<"$rendered" || \
+    fail "Compose default does not preserve ENABLE_RESUMABLE_HANDOFFS=false."
   grep -Fq 'AUTOPILOT_ENABLED: "false"' <<<"$rendered" || \
-    fail "Compose does not preserve AUTOPILOT_ENABLED=false."
+    fail "Compose default does not preserve AUTOPILOT_ENABLED=false."
 }
 
 android_check() {
