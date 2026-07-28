@@ -33,7 +33,7 @@ from app.services.supervised_platforms import get_supervised_platform_policy
 from app.services.supervised_submission import build_supervised_preflight
 
 
-DOSSIER_VERSION = "1.1.0"
+DOSSIER_VERSION = "1.2.0"
 MANDATORY_STOP_REASONS = [
     "captcha_detected",
     "anti_bot_challenge",
@@ -44,6 +44,13 @@ MANDATORY_STOP_REASONS = [
     "ambiguous_legal_or_consent_boundary",
 ]
 SUPPORTED_DOSSIER_PLATFORMS = {"greenhouse", "lever"}
+_LEVER_PHASE_B_SAFETY_GATES = (
+    "zero_false_submitted_records",
+    "zero_duplicate_submissions",
+    "all_uncertain_outcomes_remain_uncertain",
+    "all_success_evidence_independently_reviewed",
+    "all_evidence_hashes_match_consumed_approvals",
+)
 
 
 class SupervisedPilotDossierError(ValueError):
@@ -90,10 +97,23 @@ def _pilot_progress(
         sites = int(summary.get("distinct_site_count") or 0)
         regions = sorted(str(value) for value in summary.get("regions_covered") or [])
         gates = dict(summary.get("gates") or {})
-        phase_a_complete = bool(
-            gates.get("thirty_qualifying_dry_runs", dry_runs >= 30)
-            and gates.get("thirty_distinct_lever_sites", sites >= 30)
-            and gates.get("global_and_eu_hosts_covered", {"global", "eu"}.issubset(regions))
+        phase_a_gate_names = (
+            "thirty_qualifying_dry_runs",
+            "thirty_distinct_lever_sites",
+            "global_and_eu_hosts_covered",
+            "all_phase_a_records_have_successful_matching_inspection",
+        )
+        phase_a_gate_state = {
+            name: gates.get(name) is True for name in phase_a_gate_names
+        }
+        phase_b_gate_state = {
+            name: gates.get(name) is True for name in _LEVER_PHASE_B_SAFETY_GATES
+        }
+        phase_a_complete = all(phase_a_gate_state.values())
+        phase_b_complete = bool(
+            confirmed >= 10
+            and gates.get("ten_supervised_confirmed_submissions") is True
+            and all(phase_b_gate_state.values())
         )
         return {
             "phase_a_qualifying_dry_runs": dry_runs,
@@ -101,10 +121,24 @@ def _pilot_progress(
             "phase_a_distinct_sites": sites,
             "phase_a_regions_covered": regions,
             "phase_a_complete": phase_a_complete,
+            "phase_a_gate_state": phase_a_gate_state,
+            "phase_a_manual_challenge_boundaries": int(
+                summary.get("manual_challenge_boundary_count") or 0
+            ),
+            "phase_a_inspection_failures": int(
+                summary.get("phase_a_inspection_failure_count") or 0
+            ),
             "phase_b_confirmed_records": confirmed,
+            "phase_b_raw_confirmed_records": int(
+                summary.get("raw_supervised_confirmed_count") or confirmed
+            ),
             "phase_b_target": 10,
             "phase_b_remaining": max(0, 10 - confirmed),
-            "phase_b_complete": confirmed >= 10,
+            "phase_b_complete": phase_b_complete,
+            "phase_b_safety_gate_state": phase_b_gate_state,
+            "phase_b_safety_blockers": sorted(
+                name for name, passed in phase_b_gate_state.items() if not passed
+            ),
             "readiness_available": bool(summary),
         }
 
@@ -372,5 +406,6 @@ __all__ = [
     "MANDATORY_STOP_REASONS",
     "SUPPORTED_DOSSIER_PLATFORMS",
     "SupervisedPilotDossierError",
+    "_pilot_progress",
     "build_supervised_pilot_dossier",
 ]
