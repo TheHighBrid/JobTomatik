@@ -8,6 +8,7 @@ Phase A dry-run evidence, while the runtime JSONL is Phase B supervised evidence
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -22,6 +23,7 @@ from app.services.lever_pilot_ingestion import (
     configured_paths,
     ingest_confirmed_lever_application as _ingest_confirmed_lever_application,
     read_lever_pilot_readiness as _read_lever_pilot_readiness,
+    render_readiness_markdown,
     validate_phase_b_record,
 )
 from app.services.lever_readiness_hardening import harden_lever_readiness
@@ -37,6 +39,26 @@ def _baseline_path(value: Optional[str | Path]) -> Path:
     if value is not None:
         return Path(value)
     return configured_paths()["baseline"]
+
+
+def _summary_path(
+    value: Optional[str | Path],
+    key: str,
+) -> Path:
+    if value is not None:
+        return Path(value)
+    return configured_paths()[key]
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(content, encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def validate_phase_b_runtime_ledger(path: Path) -> list[Dict[str, Any]]:
@@ -100,6 +122,8 @@ def ingest_confirmed_lever_application(
 ) -> Dict[str, Any]:
     runtime_path = _runtime_ledger_path(ledger_path)
     baseline = _baseline_path(baseline_path)
+    json_path = _summary_path(summary_json_path, "summary_json")
+    markdown_path = _summary_path(summary_markdown_path, "summary_markdown")
     validate_phase_b_runtime_ledger(runtime_path)
     result = _ingest_confirmed_lever_application(
         db,
@@ -108,8 +132,8 @@ def ingest_confirmed_lever_application(
         job,
         baseline_path=baseline,
         ledger_path=runtime_path,
-        summary_json_path=summary_json_path,
-        summary_markdown_path=summary_markdown_path,
+        summary_json_path=json_path,
+        summary_markdown_path=markdown_path,
     )
     record = result.get("record") if isinstance(result, dict) else None
     if not isinstance(record, dict) or record.get("mode") != SUPERVISED_MODE:
@@ -117,14 +141,22 @@ def ingest_confirmed_lever_application(
             "Lever Phase B ingestion produced a non-supervised record"
         )
     validate_phase_b_runtime_ledger(runtime_path)
-    hardened = harden_lever_readiness(
-        {"summary": result.get("summary") or {}},
+    hardened_result = harden_lever_readiness(
+        result,
         baseline_path=baseline,
         ledger_path=runtime_path,
     )
-    result["summary"] = hardened["summary"]
-    result["readiness_hardening_version"] = hardened["readiness_hardening_version"]
-    return result
+    readiness_payload = {
+        key: value
+        for key, value in hardened_result.items()
+        if key not in {"added", "record"}
+    }
+    _atomic_write(
+        json_path,
+        json.dumps(readiness_payload, indent=2, sort_keys=True, default=str) + "\n",
+    )
+    _atomic_write(markdown_path, render_readiness_markdown(readiness_payload))
+    return hardened_result
 
 
 __all__ = [
