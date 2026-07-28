@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
-from app.database import SessionLocal, get_db
+from app.database import get_db
 from app.models.application import Application
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval
@@ -73,8 +73,6 @@ def _require_open_submission(application: Application) -> None:
 
 
 def _approval_error(db: Session, exc: Exception) -> HTTPException:
-    # Expiry, metadata drift, and payload-change invalidations are deliberate state
-    # changes and must remain auditable even though the request is rejected.
     db.commit()
     return HTTPException(status_code=409, detail=str(exc))
 
@@ -98,44 +96,6 @@ def _queued_attempt_payload(
         "duplicate_final_action_prevented": not created,
         "dry_run": False,
     }
-
-
-def _persist_published_task_id(attempt_id: int, task_id: str) -> None:
-    recovery_db = SessionLocal()
-    try:
-        attempt = recovery_db.query(SubmissionAttempt).filter(
-            SubmissionAttempt.id == attempt_id
-        ).first()
-        if attempt and attempt.task_id != task_id:
-            attempt.task_id = task_id
-            recovery_db.commit()
-    except Exception:
-        recovery_db.rollback()
-        raise
-    finally:
-        recovery_db.close()
-
-
-def _mark_queue_publication_uncertain(attempt_id: int, exc: Exception) -> None:
-    recovery_db = SessionLocal()
-    try:
-        attempt = recovery_db.query(SubmissionAttempt).filter(
-            SubmissionAttempt.id == attempt_id
-        ).first()
-        if attempt:
-            attempt.status = "blocked"
-            attempt.attempt_metadata = {
-                **dict(attempt.attempt_metadata or {}),
-                "block_reason": "queue_publish_uncertain",
-                "automatic_retry_allowed": False,
-                "publish_error": f"{type(exc).__name__}: {str(exc)[:300]}",
-            }
-            recovery_db.commit()
-    except Exception:
-        recovery_db.rollback()
-        raise
-    finally:
-        recovery_db.close()
 
 
 @router.get(
@@ -260,31 +220,18 @@ async def queue_supervised_submission(
     application, user, job = _owned_records(db, application_id, current_user.id)
     _require_open_submission(application)
 
-    existing_attempt = (
-        db.query(SubmissionAttempt)
-        .filter(
-            SubmissionAttempt.application_id == application.id,
-            SubmissionAttempt.approval_reference == reference,
-        )
-        .first()
-    )
+    existing_attempt = db.query(SubmissionAttempt).filter(
+        SubmissionAttempt.application_id == application.id,
+        SubmissionAttempt.approval_reference == reference,
+    ).first()
     if existing_attempt:
-        approval = (
-            db.query(SubmissionApproval)
-            .filter(
-                SubmissionApproval.application_id == application.id,
-                SubmissionApproval.reference == reference,
-            )
-            .first()
-        )
+        approval = db.query(SubmissionApproval).filter(
+            SubmissionApproval.application_id == application.id,
+            SubmissionApproval.reference == reference,
+        ).first()
         if not approval:
             raise HTTPException(status_code=409, detail="Submission approval not found")
-        return _queued_attempt_payload(
-            application,
-            approval,
-            existing_attempt,
-            created=False,
-        )
+        return _queued_attempt_payload(application, approval, existing_attempt, created=False)
 
     target_metadata = await resolve_supervised_target_metadata(job)
     if target_metadata:
@@ -299,13 +246,13 @@ async def queue_supervised_submission(
             consume=False,
             target_metadata=target_metadata,
         )
-        reserved_task_id = "reserved-" + str(uuid4())
         attempt, created = reserve_submission_attempt(
             db,
             application,
             approval,
-            task_id=reserved_task_id,
+            task_id="reserved-" + str(uuid4()),
         )
+        # The reservation is authoritative and visible before any queue message exists.
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -326,24 +273,32 @@ async def queue_supervised_submission(
 
     if created:
         try:
+            # Keep the established queue API contract. The worker derives the committed
+            # attempt from this immutable approval reference before consuming it.
             task = submit_application_task.delay(
                 application_id,
                 dry_run=False,
                 approval_reference=reference,
             )
-            published_task_id = str(task.id)
-            _persist_published_task_id(attempt.id, published_task_id)
-            attempt.task_id = published_task_id
+            attempt.task_id = str(task.id)
+            db.commit()
         except Exception as exc:
-            _mark_queue_publication_uncertain(attempt.id, exc)
+            db.rollback()
+            persisted = db.query(SubmissionAttempt).filter(
+                SubmissionAttempt.id == attempt.id
+            ).first()
+            if persisted:
+                persisted.status = "blocked"
+                persisted.attempt_metadata = {
+                    **dict(persisted.attempt_metadata or {}),
+                    "block_reason": "queue_publish_uncertain",
+                    "automatic_retry_allowed": False,
+                    "publish_error": f"{type(exc).__name__}: {str(exc)[:300]}",
+                }
+                db.commit()
             raise HTTPException(
                 status_code=503,
                 detail="Submission queue publication was uncertain; a new approval is required.",
             )
 
-    return _queued_attempt_payload(
-        application,
-        approval,
-        attempt,
-        created=created,
-    )
+    return _queued_attempt_payload(application, approval, attempt, created=created)
