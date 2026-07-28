@@ -65,8 +65,8 @@
     "Submission evidence review certification"
   ],
   "verified_parent_commit": "785272b1f9263a33313cc2b2e97b6faddb917b49",
-  "release_gate": "passed_on_verified_parent_commit",
-  "final_exact_head_gate": "pending_documentation_lock_ci",
-  "verified_head": null,
-  "merge_commit": null
+  "release_gate": "passed_on_final_exact_head",
+  "final_exact_head_gate": "passed",
+  "verified_head": "65904f455400588f5e0530aed3785c3eb891e48d",
+  "merge_commit": "7be184a6fab2548f3b2f7b0a147176df3c7c2540"
 }
