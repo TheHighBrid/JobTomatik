@@ -34,7 +34,6 @@
     "manual_status_reconciliation",
     "unguarded_state_write_ast_scan"
   ],
-  "verified_parent_commit": "23857d438baee042c60718b981f34c8a3d543cbc",
   "backend_test_result": {
     "passed": 459,
     "skipped": 59,
@@ -49,6 +48,10 @@
     "Reproducible verification",
     "Submission evidence review certification"
   ],
-  "release_gate": "passed_on_verified_parent_commit",
-  "final_exact_head_gate": "pending_documentation_lock_ci"
+  "verified_parent_commit": "23857d438baee042c60718b981f34c8a3d543cbc",
+  "final_exact_head_commit": "d7683921a6e32fbcc16497f66a0a55adb91bca68",
+  "merge_commit": "e5d848e76d192bd1153486c6cf9e40e78ac218a7",
+  "release_gate": "passed",
+  "final_exact_head_gate": "passed",
+  "record_finalized_at": "2026-07-28T18:45:00Z"
 }
