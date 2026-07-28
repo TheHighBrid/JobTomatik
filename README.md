@@ -252,40 +252,51 @@ No keystore path, key, or password is committed to this repository.
 
 ## Test and verify
 
-### Backend
+The canonical toolchain is declared in `.jobtomatik-toolchain.env` and enforced by `scripts/verify.sh`.
+
+From a clean checkout, install dependencies once:
 
 ```bash
-cd backend
-python -m pip install -r requirements.txt
-python -m playwright install chromium
-pytest -q
-python -m compileall -q app tests
+bash scripts/verify.sh bootstrap
 ```
 
-### Frontend
+Run the fast pre-commit gate:
 
 ```bash
-cd frontend
-npm ci
-npm run build
+bash scripts/verify.sh fast
 ```
 
-### Android
+Run one subsystem:
 
 ```bash
-cd frontend
-npm run android:prepare
-cd android
-./gradlew --no-daemon lintDebug assembleDebug
+bash scripts/verify.sh backend
+bash scripts/verify.sh frontend
+bash scripts/verify.sh deployment
+bash scripts/verify.sh android
 ```
 
-The Android CI toolchain uses Node.js 20, Temurin Java 21, Gradle 8.11.1, Android Gradle Plugin 8.7.2, Android API 35, and Build Tools 35.0.0.
+Run the complete release verification path in deterministic dependency order:
+
+```bash
+bash scripts/verify.sh full
+```
+
+Use `--install` to install dependencies immediately before a selected mode, for example:
+
+```bash
+bash scripts/verify.sh full --install
+```
+
+The reproducible CI gate runs the same subsystem modes independently and requires every lane to pass. The canonical contract is Python 3.11, Node.js 20, Temurin Java 21, Gradle 9.5.1, Android Gradle Plugin 8.13.2, Android API 35, and Build Tools 35.0.0.
+
+Verification keeps real submission, scheduled autopilot, and live resumable handoffs disabled. Platform pilot settings remain available to configuration regression tests, then the dedicated safety gate explicitly verifies both pilots are off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `200`, and version name `2.0.0`.
 
 ## Repository guide
 
 ```text
 backend/                 FastAPI, Celery, Playwright, policies, evidence, tests
 frontend/                React client and Capacitor Android project
+scripts/verify.sh        Canonical local and CI verification entry point
 docs/SETUP_TUTORIAL.md   Complete installation and operating tutorial
 evidence/                Pilot and certification records
 .github/workflows/       CI, Android build, stabilization, and release automation
