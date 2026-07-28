@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List
@@ -11,6 +12,7 @@ from sqlalchemy import func
 
 from app.config import get_settings
 from app.models.application import Application, ManualReviewReason, ManualReviewTask
+from app.models.job import Job
 from app.services.operations_settings import get_operations_settings
 
 
@@ -93,7 +95,12 @@ def _period_counts(db, user_id: int, now: datetime) -> tuple[int, int]:
     return int(daily), int(weekly)
 
 
-def _failure_timestamps(db, user_id: int, now: datetime, lookback_minutes: int) -> List[datetime]:
+def _failure_incidents(
+    db,
+    user_id: int,
+    now: datetime,
+    lookback_minutes: int,
+) -> List[Dict[str, Any]]:
     cutoff = now - timedelta(minutes=lookback_minutes)
     blocking_reasons = {
         ManualReviewReason.automation_error.value,
@@ -102,8 +109,15 @@ def _failure_timestamps(db, user_id: int, now: datetime, lookback_minutes: int) 
         ManualReviewReason.submission_confirmation_uncertain.value,
     }
     rows = (
-        db.query(ManualReviewTask.created_at)
+        db.query(
+            ManualReviewTask.created_at,
+            ManualReviewTask.reason_code,
+            Application.id,
+            Application.application_target_url,
+            Job.url,
+        )
         .join(Application, ManualReviewTask.application_id == Application.id)
+        .join(Job, Application.job_id == Job.id)
         .filter(
             Application.user_id == user_id,
             ManualReviewTask.reason_code.in_(blocking_reasons),
@@ -112,7 +126,18 @@ def _failure_timestamps(db, user_id: int, now: datetime, lookback_minutes: int) 
         .order_by(ManualReviewTask.created_at.desc())
         .all()
     )
-    return [row[0] for row in rows if row[0] is not None]
+    incidents: List[Dict[str, Any]] = []
+    for created_at, reason_code, application_id, target_url, job_url in rows:
+        if created_at is None:
+            continue
+        url = str(target_url or job_url or "")
+        incidents.append({
+            "created_at": created_at,
+            "reason_code": str(reason_code),
+            "application_id": int(application_id),
+            "platform": platform_key_for_url(url),
+        })
+    return incidents
 
 
 def _circuit_breaker_state(
@@ -123,34 +148,114 @@ def _circuit_breaker_state(
     threshold: int,
     failure_window_minutes: int,
     breaker_minutes: int,
+    platform: str | None = None,
 ) -> Dict[str, Any] | None:
-    timestamps = _failure_timestamps(db, user_id, now, breaker_minutes)
-    if len(timestamps) < threshold:
+    incidents = _failure_incidents(db, user_id, now, breaker_minutes)
+    if platform:
+        incidents = [item for item in incidents if item["platform"] == platform]
+    if len(incidents) < threshold:
         return None
+
     window = timedelta(minutes=failure_window_minutes)
     breaker = timedelta(minutes=breaker_minutes)
-    for index in range(0, len(timestamps) - threshold + 1):
-        cluster = timestamps[index : index + threshold]
-        newest, oldest = cluster[0], cluster[-1]
+    for index in range(0, len(incidents) - threshold + 1):
+        cluster = incidents[index : index + threshold]
+        newest = cluster[0]["created_at"]
+        oldest = cluster[-1]["created_at"]
         if newest - oldest <= window and now < newest + breaker:
+            reason_counts = Counter(item["reason_code"] for item in incidents)
             return {
-                "failure_count": len(timestamps),
+                "scope": "platform" if platform else "user",
+                "platform": platform,
+                "failure_count": len(incidents),
                 "threshold": threshold,
+                "failure_window_minutes": failure_window_minutes,
+                "breaker_minutes": breaker_minutes,
                 "tripped_at": newest.isoformat(),
                 "retry_after": (newest + breaker).isoformat(),
+                "reason_counts": dict(sorted(reason_counts.items())),
+                "application_ids": sorted({item["application_id"] for item in incidents}),
+                "operator_reason_code": (
+                    "platform_failure_cluster" if platform else "user_failure_cluster"
+                ),
             }
     return None
 
 
+def evaluate_circuit_breaker_policy(
+    db,
+    user_id: int,
+    *,
+    url: str | None = None,
+    now: datetime | None = None,
+) -> AutomationDecision:
+    operations = get_operations_settings()
+    current = now or datetime.utcnow()
+    platform = platform_key_for_url(url or "") if url else None
+
+    if platform:
+        platform_state = _circuit_breaker_state(
+            db,
+            user_id,
+            current,
+            threshold=operations.failure_threshold,
+            failure_window_minutes=operations.failure_window_minutes,
+            breaker_minutes=operations.circuit_breaker_minutes,
+            platform=platform,
+        )
+        if platform_state:
+            return AutomationDecision(
+                False,
+                "platform_circuit_breaker_open",
+                f"Automation is paused for {platform} after clustered operational failures.",
+                platform_state,
+            )
+
+    global_state = _circuit_breaker_state(
+        db,
+        user_id,
+        current,
+        threshold=operations.failure_threshold,
+        failure_window_minutes=operations.failure_window_minutes,
+        breaker_minutes=operations.circuit_breaker_minutes,
+    )
+    if global_state:
+        return AutomationDecision(
+            False,
+            "circuit_breaker_open",
+            "Automation is paused after clustered operational failures.",
+            global_state,
+        )
+
+    return AutomationDecision(
+        True,
+        "circuit_breaker_closed",
+        "No active clustered-failure circuit breaker applies.",
+        {"platform": platform},
+    )
+
+
 def evaluate_platform_policy(url: str) -> AutomationDecision:
+    operations = get_operations_settings()
     platform = platform_key_for_url(url)
+    if operations.global_kill_switch:
+        return AutomationDecision(
+            False,
+            "global_kill_switch_active",
+            "All automated execution is stopped by the emergency kill switch.",
+            {"platform": platform, "operator_reason_code": "emergency_stop"},
+        )
     disabled = disabled_platforms()
     if platform in disabled or "all" in disabled:
         return AutomationDecision(
             False,
             "platform_disabled",
             f"Scheduled automation is not enabled for platform in the current profile: {platform}",
-            {"platform": platform, "disabled_platforms": sorted(disabled)},
+            {
+                "platform": platform,
+                "disabled_platforms": sorted(disabled),
+                "operator_reason_code": "platform_kill_switch",
+            },
         )
     return AutomationDecision(True, "platform_allowed", "Platform is enabled", {"platform": platform})
 
@@ -160,6 +265,13 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
     now = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
 
+    if operations.global_kill_switch:
+        return AutomationDecision(
+            False,
+            "global_kill_switch_active",
+            "All automated execution is stopped by the emergency kill switch.",
+            {"operator_reason_code": "emergency_stop"},
+        )
     if not operations.autopilot_enabled:
         return AutomationDecision(
             False,
@@ -207,21 +319,9 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
             },
         )
 
-    circuit = _circuit_breaker_state(
-        db,
-        user.id,
-        now,
-        threshold=operations.failure_threshold,
-        failure_window_minutes=operations.failure_window_minutes,
-        breaker_minutes=operations.circuit_breaker_minutes,
-    )
-    if circuit:
-        return AutomationDecision(
-            False,
-            "circuit_breaker_open",
-            "Scheduled applications are paused after repeated automation failures.",
-            circuit,
-        )
+    circuit = evaluate_circuit_breaker_policy(db, user.id, now=now)
+    if not circuit.allowed:
+        return circuit
 
     return AutomationDecision(
         True,
@@ -244,9 +344,11 @@ def operations_readiness_manifest() -> Dict[str, Any]:
     core = get_settings()
     operations = get_operations_settings()
     return {
-        "version": "1.0.0",
+        "version": "1.1.0",
+        "global_kill_switch": operations.global_kill_switch,
         "autopilot_enabled": operations.autopilot_enabled,
         "real_submission_enabled": core.allow_real_application_submit,
+        "resumable_handoffs_enabled": core.enable_resumable_handoffs,
         "defaults": {
             "daily_cap": operations.default_daily_cap,
             "weekly_cap": operations.default_weekly_cap,
@@ -257,13 +359,16 @@ def operations_readiness_manifest() -> Dict[str, Any]:
         },
         "disabled_platforms": sorted(disabled_platforms()),
         "invariants": {
+            "global_kill_switch_defaults_inactive": operations.global_kill_switch is False,
             "autopilot_defaults_off": operations.autopilot_enabled is False,
             "real_submission_defaults_off": core.allow_real_application_submit is False,
+            "resumable_handoffs_default_off": core.enable_resumable_handoffs is False,
             "user_auto_search_requires_explicit_opt_in": True,
             "user_auto_apply_requires_explicit_opt_in": True,
             "quiet_hours_enforced_before_search_or_apply": True,
             "daily_and_weekly_caps_enforced_before_application_creation": True,
             "repeated_failures_open_circuit_breaker": True,
+            "platform_failure_clusters_are_isolated": True,
             "disabled_platforms_are_skipped": True,
             "job_not_marked_applied_until_submission_evidence": True,
         },
