@@ -63,8 +63,17 @@ _ALLOWED_TRANSITIONS = {
     ApplicationAutomationState.withdrawn.value: set(),
 }
 
+_EVIDENCE_REQUIRED_STATES = {
+    ApplicationAutomationState.submitted.value,
+    ApplicationAutomationState.confirmed.value,
+}
+
 
 class InvalidApplicationTransition(ValueError):
+    pass
+
+
+class ApplicationAttemptCheckpointLost(RuntimeError):
     pass
 
 
@@ -72,6 +81,36 @@ def normalize_state(value: Any) -> str:
     if isinstance(value, ApplicationAutomationState):
         return value.value
     return str(value or ApplicationAutomationState.preparing.value)
+
+
+def application_state_transition_manifest() -> Dict[str, Any]:
+    """Return the canonical transition graph used by runtime checks and documentation."""
+
+    return {
+        "states": [state.value for state in ApplicationAutomationState],
+        "allowed_transitions": {
+            source: sorted(targets)
+            for source, targets in sorted(_ALLOWED_TRANSITIONS.items())
+        },
+        "evidence_required_states": sorted(_EVIDENCE_REQUIRED_STATES),
+        "terminal_states": sorted(
+            state
+            for state, targets in _ALLOWED_TRANSITIONS.items()
+            if not targets
+        ),
+    }
+
+
+def has_sufficient_submission_evidence(db: Session, application_id: int) -> bool:
+    return (
+        db.query(SubmissionEvidence.id)
+        .filter(
+            SubmissionEvidence.application_id == application_id,
+            SubmissionEvidence.is_sufficient.is_(True),
+        )
+        .first()
+        is not None
+    )
 
 
 def transition_application_state(
@@ -85,6 +124,13 @@ def transition_application_state(
 ) -> ApplicationEvent:
     current = normalize_state(application.automation_state)
     target = normalize_state(new_state)
+
+    if target in _EVIDENCE_REQUIRED_STATES:
+        if not application.id or not has_sufficient_submission_evidence(db, application.id):
+            raise InvalidApplicationTransition(
+                f"Invalid application transition: {current} -> {target}; "
+                "sufficient submission evidence is required"
+            )
 
     if current == target and allow_same:
         event = ApplicationEvent(
@@ -111,6 +157,52 @@ def transition_application_state(
     )
     db.add(event)
     return event
+
+
+def claim_application_attempt_result(
+    db: Session,
+    application_id: int,
+    attempt_number: int,
+) -> Optional[Application]:
+    """Lock and validate the checkpoint before a worker persists an external result.
+
+    Browser work happens outside the database transaction. Recovery or another worker
+    may move the application after that work starts. A late result is accepted only
+    while the same attempt number is still the active ``applying`` checkpoint.
+    """
+
+    application = (
+        db.query(Application)
+        .filter(Application.id == application_id)
+        .with_for_update()
+        .populate_existing()
+        .first()
+    )
+    if not application:
+        return None
+
+    state = normalize_state(application.automation_state)
+    recorded_attempt = int(application.submission_attempt_count or 0)
+    if (
+        state == ApplicationAutomationState.applying.value
+        and recorded_attempt == int(attempt_number)
+    ):
+        return application
+
+    db.add(
+        ApplicationEvent(
+            application_id=application.id,
+            event_type="stale_application_worker_result_discarded",
+            from_state=state,
+            to_state=state,
+            payload={
+                "worker_attempt": int(attempt_number),
+                "active_attempt": recorded_attempt,
+                "reason": "attempt_checkpoint_changed",
+            },
+        )
+    )
+    return None
 
 
 def create_manual_review_task(
@@ -300,15 +392,3 @@ def record_submission_evidence(
     )
     db.add(evidence)
     return evidence
-
-
-def has_sufficient_submission_evidence(db: Session, application_id: int) -> bool:
-    return (
-        db.query(SubmissionEvidence.id)
-        .filter(
-            SubmissionEvidence.application_id == application_id,
-            SubmissionEvidence.is_sufficient.is_(True),
-        )
-        .first()
-        is not None
-    )
