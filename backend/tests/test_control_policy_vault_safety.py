@@ -8,7 +8,7 @@ from app.services.control_policy import resolve_control_policy
 def _policy(*, policy_id=1, answer="Yes"):
     return {
         "id": policy_id,
-        "canonical_key": "authorized_to_work",
+        "canonical_key": "work_authorization",
         "category": "work_authorization",
         "sensitivity": "legal",
         "mode": "answer",
