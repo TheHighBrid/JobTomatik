@@ -63,7 +63,7 @@ jobs:
           import httpx
 
           response = httpx.get(
-              'https://api.eu.lever.co/v0/postings/lever',
+              'https://api.lever.co/v0/postings/pointclickcare',
               params={'mode': 'json', 'limit': 12},
               timeout=25,
               follow_redirects=True,
@@ -76,10 +76,10 @@ jobs:
               and 'talent community' not in str(job.get('text') or '').lower()
           ]
           if not preferred:
-              raise SystemExit('No current EU Lever job was available.')
+              raise SystemExit('No current PointClickCare Lever job was available.')
           selected = preferred[0]
           open('lever-synthetic-url.txt', 'w').write(selected['applyUrl'])
-          open('lever-synthetic-employer.txt', 'w').write('Lever')
+          open('lever-synthetic-employer.txt', 'w').write('PointClickCare')
           open('lever-synthetic-role.txt', 'w').write(str(selected.get('text') or '').strip())
           print(selected.get('text'))
           print(selected['applyUrl'])
