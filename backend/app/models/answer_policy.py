@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -18,6 +18,13 @@ class AnswerPolicyScope(str, enum.Enum):
     global_scope = "global"
     platform = "platform"
     company = "company"
+
+
+class AnswerPolicyProvenance(str, enum.Enum):
+    user_provided = "user_provided"
+    verified_import = "verified_import"
+    ai_suggested = "ai_suggested"
+    unknown = "unknown"
 
 
 class ApplicantAnswerPolicy(Base):
@@ -47,6 +54,16 @@ class ApplicantAnswerPolicy(Base):
     allow_autofill = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
     confirmed_at = Column(DateTime(timezone=True))
+    provenance = Column(
+        String(40),
+        nullable=False,
+        default=AnswerPolicyProvenance.user_provided.value,
+        index=True,
+    )
+    confidence = Column(Float, nullable=False, default=1.0)
+    consent_metadata = Column(JSON, default=dict)
+    source_metadata = Column(JSON, default=dict)
+    expires_at = Column(DateTime(timezone=True), index=True)
     version = Column(Integer, nullable=False, default=1)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

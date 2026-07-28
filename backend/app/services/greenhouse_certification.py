@@ -221,12 +221,28 @@ def _synthetic_policy(
         "mode": "answer",
         "answer_value": answer,
         "answer_label": answer,
+        "fallback_answers": [],
         "match_phrases": match_phrases,
         "scope": "platform",
         "scope_value": "greenhouse",
         "allow_autofill": True,
         "is_active": True,
         "confirmed_at": SYNTHETIC_CONFIRMATION_TIMESTAMP,
+        "provenance": "verified_import",
+        "confidence": 1.0,
+        "consent_metadata": {
+            "confirmation_method": "synthetic_certification_fixture",
+            "autofill_authorized": True,
+            "synthetic_only": True,
+            "recorded_at": SYNTHETIC_CONFIRMATION_TIMESTAMP,
+        },
+        "source_metadata": {
+            "source": "greenhouse_public_schema",
+            "synthetic_certification_only": True,
+        },
+        "expires_at": None,
+        "is_expired": False,
+        "encryption_valid": True,
     }
 
 

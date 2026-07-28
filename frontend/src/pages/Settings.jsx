@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { Bell, Cpu, Key, Wifi, Loader2, Rocket, Shield } from 'lucide-react'
 import ApiBaseUrlField from '../components/ApiBaseUrlField'
+import AnswerPolicyReadinessPanel from '../components/AnswerPolicyReadinessPanel'
 import AnswerPolicyVault from '../components/AnswerPolicyVault'
 import { getSettings, updateSettings } from '../api/client'
 
@@ -175,6 +176,7 @@ export default function Settings() {
       </Section>
 
       <Section title="Answer Policy Vault" icon={Shield}>
+        <AnswerPolicyReadinessPanel />
         <AnswerPolicyVault />
       </Section>
 

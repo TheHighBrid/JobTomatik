@@ -78,20 +78,40 @@ def _safe_migrate(eng):
             policy_cols = {
                 c["name"] for c in sa_inspect(eng).get_columns("applicant_answer_policies")
             }
-            if "encrypted_fallbacks" not in policy_cols:
-                conn.execute(
-                    text(
-                        "ALTER TABLE applicant_answer_policies "
-                        "ADD COLUMN encrypted_fallbacks TEXT"
+            policy_additions = {
+                "encrypted_fallbacks": "TEXT",
+                "provenance": "VARCHAR(40) DEFAULT 'user_provided' NOT NULL",
+                "confidence": "FLOAT DEFAULT 1.0 NOT NULL",
+                "consent_metadata": "JSON",
+                "source_metadata": "JSON",
+                "expires_at": "TIMESTAMP",
+            }
+            for column_name, definition in policy_additions.items():
+                if column_name not in policy_cols:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE applicant_answer_policies "
+                            f"ADD COLUMN {column_name} {definition}"
+                        )
                     )
+                    conn.commit()
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_answer_policy_provenance "
+                    "ON applicant_answer_policies (provenance)"
                 )
-                conn.commit()
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_answer_policy_expires_at "
+                    "ON applicant_answer_policies (expires_at)"
+                )
+            )
+            conn.commit()
         except Exception as exc:
             conn.rollback()
-            logger.exception(
-                "Failed additive migration for applicant_answer_policies.encrypted_fallbacks"
-            )
-            failures.append(("applicant_answer_policies.encrypted_fallbacks", exc))
+            logger.exception("Failed additive migration for applicant_answer_policies")
+            failures.append(("applicant_answer_policies", exc))
 
         try:
             app_cols = {c["name"] for c in sa_inspect(eng).get_columns("applications")}

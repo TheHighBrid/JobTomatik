@@ -100,6 +100,8 @@ export const deleteResume = () => api.delete('/profile/resume')
 
 // Answer policy vault
 export const getAnswerPolicyCatalog = () => api.get('/profile/answer-policies/catalog')
+export const getAnswerPolicyReadiness = (params = {}) =>
+  api.get('/profile/answer-policies/readiness', { params })
 export const listAnswerPolicies = () => api.get('/profile/answer-policies')
 export const createAnswerPolicy = (data) => api.post('/profile/answer-policies', data)
 export const bulkUpsertAnswerPolicies = (data) => api.post('/profile/answer-policies/bulk', data)
