@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_ENV: test
+  APP_ENVIRONMENT: test
   DATABASE_URL: sqlite:///./jobtomatik-verification.db
   REDIS_URL: redis://localhost:6379/0
   SECRET_KEY: jobtomatik-reproducible-verification-secret-2026
@@ -100,8 +100,14 @@ jobs:
       - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
 
-      - name: Run backend, browser, migration, and safety gates
-        run: bash scripts/verify.sh backend
+      - name: Run full backend and browser tests
+        run: bash scripts/verify.sh backend-tests
+
+      - name: Run migration smoke test
+        run: bash scripts/verify.sh migration
+
+      - name: Verify safety and adapter maturity
+        run: bash scripts/verify.sh safety
 
   frontend-build:
     runs-on: ubuntu-22.04
