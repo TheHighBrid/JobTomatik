@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0",
+  "captured_on": "2026-07-28",
+  "timezone": "America/Montreal",
+  "campaign": {
+    "issue": 154,
+    "roadmap_pull_request": 153,
+    "planned_day": 1,
+    "mission": "Freeze the truthful baseline"
+  },
+  "repository": {
+    "full_name": "TheHighBrid/JobTomatik",
+    "default_branch": "main",
+    "main_commit": "063fec7f51c2a71dce5b5ad3c3ef38b1c4df9ce9",
+    "main_commit_source_pull_request": 151,
+    "main_source_head_commit": "e391fc4ea4207fe7206034ee7ffb752ce211e7de",
+    "visibility": "public"
+  },
+  "adapter_maturity": {
+    "greenhouse": "dry_run",
+    "lever": "dry_run",
+    "ashby": "dry_run",
+    "smartrecruiters": "detect_only",
+    "workday": "detect_only",
+    "autonomous_adapters": []
+  },
+  "fail_safe_defaults": {
+    "ALLOW_REAL_APPLICATION_SUBMIT": false,
+    "GREENHOUSE_SUPERVISED_PILOT_ENABLED": false,
+    "LEVER_SUPERVISED_PILOT_ENABLED": false,
+    "AUTOPILOT_ENABLED": false,
+    "ENABLE_RESUMABLE_HANDOFFS": false,
+    "DEV_MOCK_JOBS": false,
+    "AUTOPILOT_DEFAULT_DAILY_CAP": 5,
+    "AUTOPILOT_DEFAULT_WEEKLY_CAP": 20,
+    "AUTOPILOT_FAILURE_THRESHOLD": 3,
+    "AUTOPILOT_FAILURE_WINDOW_MINUTES": 60,
+    "AUTOPILOT_CIRCUIT_BREAKER_MINUTES": 120
+  },
+  "lever_controlled_pilot": {
+    "source_branch": "evidence/issue-86-lever-controlled-pilot-pr6",
+    "source_pull_request": 152,
+    "source_head_commit": "81a8ea7f33cd06a5885c068c5d532ea2bcdc584e",
+    "canonical_maturity": "dry_run",
+    "qualifying_dry_runs": 2,
+    "required_qualifying_dry_runs": 30,
+    "distinct_sites": 2,
+    "regions_covered": [
+      "eu",
+      "global"
+    ],
+    "supervised_confirmed_submissions": 0,
+    "required_supervised_confirmed_submissions": 10,
+    "duplicate_submission_count": 0,
+    "false_submitted_count": 0,
+    "promotion_ready": false,
+    "pilot_evidence_complete": false,
+    "baseline_sha256": "2914f4ccce76794295758d4acbf55ac514907fd9904d7f8f6f03d1dabeb998a4",
+    "ledger_sha256": "658a8c9bd44c7964c730abb40746e410512cbb68578619de1dd77d8be488b60c"
+  },
+  "open_pull_requests": [
+    {
+      "number": 152,
+      "title": "Accumulate retained Lever controlled-pilot evidence",
+      "head_commit": "81a8ea7f33cd06a5885c068c5d532ea2bcdc584e",
+      "draft": true,
+      "mergeable": true,
+      "classification": "evidence_only",
+      "must_not_promote_maturity": true,
+      "visible_workflow_runs": {
+        "successful": 4,
+        "failed": 0,
+        "names": [
+          "Lever Phase A evidence certification",
+          "CodeQL security analysis",
+          "Backend tests",
+          "Post-merge stabilization"
+        ]
+      }
+    },
+    {
+      "number": 153,
+      "title": "Add 42-day JobTomatik bounded-autonomy execution roadmap",
+      "head_commit": "fa17f5d570a14197bfd6cadf34c1120e19126d81",
+      "draft": false,
+      "mergeable": true,
+      "classification": "planning_and_execution_tracking",
+      "visible_workflow_runs": {
+        "successful": 1,
+        "failed": 0,
+        "names": [
+          "CodeQL security analysis"
+        ]
+      }
+    }
+  ],
+  "active_roadmap_issues": [
+    {
+      "number": 13,
+      "role": "master bounded-autonomy architecture and release gates"
+    },
+    {
+      "number": 154,
+      "role": "42-day execution tracker"
+    },
+    {
+      "number": 86,
+      "role": "Lever supervised-pilot implementation and evidence plan"
+    },
+    {
+      "number": 24,
+      "role": "Greenhouse supervised submission certification pilot"
+    }
+  ],
+  "verification": {
+    "main_merge_source_pr_reported_full_gate_green": true,
+    "main_merge_commit_pr_workflow_runs_returned_by_connector": 0,
+    "pr_152_visible_workflows_green": true,
+    "pr_153_visible_workflows_green": true,
+    "numeric_test_case_counts_available_from_connector": false,
+    "note": "No numeric test-case total is recorded because the connector exposed workflow conclusions and PR validation summaries, not full job logs or pytest totals. This field must be enriched only from reproducible CI artifacts or a clean local run."
+  },
+  "known_blockers": [
+    "No adapter is certified_autonomous.",
+    "Lever Phase A is 2/30 and Phase B is 0/10.",
+    "Greenhouse canonical maturity remains dry_run pending its controlled certification evidence.",
+    "Ashby canonical maturity remains dry_run pending a formal promotion dossier.",
+    "SmartRecruiters and Workday remain detect_only.",
+    "Real submission, supervised pilot flags, autopilot, and live resumable handoffs remain disabled by default.",
+    "Numeric test-case counts still require a reproducible CI artifact or clean local execution."
+  ],
+  "invariants": [
+    "Never infer sensitive, demographic, consent, work-authorization, sponsorship, or legal answers.",
+    "Never bypass CAPTCHA, anti-bot, MFA, assessment, or identity verification.",
+    "Never mark an uncertain outcome submitted.",
+    "Never retry a consumed final-submit approval.",
+    "Never promote adapter maturity in the same evidence-only change.",
+    "Never permit unattended final submission through an adapter below certified_autonomous."
+  ],
+  "source_references": [
+    "README.md at main commit 063fec7f51c2a71dce5b5ad3c3ef38b1c4df9ce9",
+    ".env.example at main commit 063fec7f51c2a71dce5b5ad3c3ef38b1c4df9ce9",
+    "backend/tests/test_ats_maturity.py at main commit 063fec7f51c2a71dce5b5ad3c3ef38b1c4df9ce9",
+    "backend/evidence/lever-pilot-readiness.json at PR #152 head 81a8ea7f33cd06a5885c068c5d532ea2bcdc584e",
+    "PR #151 validation summary",
+    "PR #152 metadata and workflow runs",
+    "PR #153 metadata and workflow runs",
+    "Issues #13, #24, #86, and #154"
+  ]
+}
