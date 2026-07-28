@@ -17,6 +17,7 @@ from app.models.handoff import ACTIVE_HANDOFF_STATUSES, ManualHandoffSession
 from app.services.application_attempt_integrity import install_application_attempt_result_guard
 from app.services.application_state import normalize_state, transition_application_state
 from app.services.handoff_session import cancel_handoff_session
+from app.services.submission_integrity_integration import install_submission_integrity_guards
 
 
 _SUBMISSION_RECORDED_STATUSES = {
@@ -76,6 +77,7 @@ def install_closed_application_task_gate() -> None:
 
     global _TASK_GATE_INSTALLED, _TASK_GATE_ORIGINAL_RUN
     install_application_attempt_result_guard()
+    install_submission_integrity_guards()
     if _TASK_GATE_INSTALLED:
         return
 
