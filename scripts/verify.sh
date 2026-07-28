@@ -148,12 +148,13 @@ backend_full() {
 
 migration_smoke() {
   step "Run Alembic migration smoke test"
+  require_command alembic
   cp "$ROOT_DIR/backend/alembic.ini" "$ROOT_DIR/backend/alembic-verification.ini"
   sed -i.bak \
     's#sqlalchemy.url = .*#sqlalchemy.url = sqlite:///./jobtomatik-migration-verification.db#' \
     "$ROOT_DIR/backend/alembic-verification.ini"
   rm -f "$ROOT_DIR/backend/alembic-verification.ini.bak"
-  (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m alembic -c alembic-verification.ini upgrade head)
+  (cd "$ROOT_DIR/backend" && alembic -c alembic-verification.ini upgrade head)
 }
 
 frontend_tests() {
