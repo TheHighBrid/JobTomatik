@@ -4,11 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from app.models.application import (
-    Application,
-    ApplicationAutomationState,
-    ApplicationEvent,
-)
+from app.models.application import Application, ApplicationAutomationState, ApplicationEvent
 from app.models.job import Job
 from app.models.notification import Notification, NotificationType
 from app.models.submission_approval import SubmissionApproval
@@ -67,54 +63,57 @@ def _record_block(
         .limit(10)
         .all()
     )
-    duplicate = any(
+    if any(
         (item.payload or {}).get("approval_reference") == approval_reference
         and (item.payload or {}).get("platform") == platform
         and (item.payload or {}).get("reason") == payload["reason"]
         for item in recent
-    )
-    if duplicate:
+    ):
         return
-    db.add(
-        ApplicationEvent(
-            application_id=application.id,
-            event_type="supervised_submission_blocked",
-            from_state=application.automation_state,
-            to_state=application.automation_state,
-            payload=payload,
-        )
-    )
-    db.add(
-        Notification(
-            user_id=user.id,
-            type=NotificationType.system,
-            title=f"Supervised submission blocked: {job.title}",
-            message=reason[:1000],
-            data={
-                "application_id": application.id,
-                "job_id": job.id,
-                "platform": platform,
-                "approval_reference": approval_reference,
-                "reason": "supervised_approval_blocked",
-            },
-        )
-    )
+    db.add(ApplicationEvent(
+        application_id=application.id,
+        event_type="supervised_submission_blocked",
+        from_state=application.automation_state,
+        to_state=application.automation_state,
+        payload=payload,
+    ))
+    db.add(Notification(
+        user_id=user.id,
+        type=NotificationType.system,
+        title=f"Supervised submission blocked: {job.title}",
+        message=reason[:1000],
+        data={
+            "application_id": application.id,
+            "job_id": job.id,
+            "platform": platform,
+            "approval_reference": approval_reference,
+            "reason": "supervised_approval_blocked",
+        },
+    ))
 
 
 def _attempt_for_reference(db, application_id: int, attempt_reference: Optional[str]):
     if not attempt_reference:
         return None
+    return db.query(SubmissionAttempt).filter(
+        SubmissionAttempt.application_id == application_id,
+        SubmissionAttempt.reference == attempt_reference,
+    ).first()
+
+
+def _attempt_for_approval(db, application_id: int, approval_reference: str):
     return (
         db.query(SubmissionAttempt)
         .filter(
             SubmissionAttempt.application_id == application_id,
-            SubmissionAttempt.reference == attempt_reference,
+            SubmissionAttempt.approval_reference == approval_reference,
         )
+        .order_by(SubmissionAttempt.id.desc())
         .first()
     )
 
 
-def _finalize_attempt_after_result(application_tasks, application_id: int, attempt_reference: str, result):
+def _finalize_after_result(application_tasks, application_id: int, attempt_reference: str, result):
     db = application_tasks.SessionLocal()
     try:
         attempt = _attempt_for_reference(db, application_id, attempt_reference)
@@ -129,10 +128,9 @@ def _finalize_attempt_after_result(application_tasks, application_id: int, attem
             status = SubmissionAttemptStatus.succeeded
         elif state == ApplicationAutomationState.submission_uncertain.value:
             status = SubmissionAttemptStatus.uncertain
-        elif isinstance(result, dict) and result.get("requires_manual_review"):
-            status = SubmissionAttemptStatus.uncertain
-        elif isinstance(result, dict) and result.get("success"):
-            # A live success without an accepted terminal state is intentionally uncertain.
+        elif isinstance(result, dict) and (
+            result.get("requires_manual_review") or result.get("success")
+        ):
             status = SubmissionAttemptStatus.uncertain
         else:
             status = SubmissionAttemptStatus.failed
@@ -156,7 +154,7 @@ def _finalize_attempt_after_result(application_tasks, application_id: int, attem
         db.close()
 
 
-def _finalize_attempt_uncertain(application_tasks, application_id: int, attempt_reference: str, exc: Exception):
+def _finalize_uncertain(application_tasks, application_id: int, attempt_reference: str, exc: Exception):
     db = application_tasks.SessionLocal()
     try:
         attempt = _attempt_for_reference(db, application_id, attempt_reference)
@@ -179,14 +177,33 @@ def _finalize_attempt_uncertain(application_tasks, application_id: int, attempt_
         db.close()
 
 
-def install_supervised_submission_task_gate() -> None:
-    """Require one exact approval and one durable attempt for every live worker run.
+def _blocked_result(
+    application: Application,
+    *,
+    platform: str,
+    reason: str,
+    approval_reference: Optional[str] = None,
+    attempt_reference: Optional[str] = None,
+    approval_required: bool = True,
+) -> dict:
+    return {
+        "success": False,
+        "dry_run": False,
+        "application_id": application.id,
+        "requires_manual_review": False,
+        "approval_required": approval_required,
+        "attempt_required": True,
+        "approval_reference": approval_reference,
+        "attempt_reference": attempt_reference,
+        "automatic_retry_allowed": False,
+        "supervised_platform_supported": bool(platform),
+        "platform": platform,
+        "error": reason,
+    }
 
-    The queue reserves an attempt before publishing. The worker atomically claims that
-    reservation before consuming the approval. A second worker, Celery replay, process
-    restart, or timeout retry observes the persisted attempt and exits idempotently
-    before browser navigation or a final action.
-    """
+
+def install_supervised_submission_task_gate() -> None:
+    """Require one exact approval and one durable attempt for every live worker run."""
 
     global _INSTALLED, _ORIGINAL_RUN
     if _INSTALLED:
@@ -207,17 +224,13 @@ def install_supervised_submission_task_gate() -> None:
             return _ORIGINAL_RUN(application_id, dry_run=True)
 
         db = application_tasks.SessionLocal()
-        claimed_attempt = None
         target_metadata = None
         platform = ""
         consumed_reference = approval_reference
         try:
-            application = (
-                db.query(Application)
-                .filter(Application.id == application_id)
-                .with_for_update()
-                .first()
-            )
+            application = db.query(Application).filter(
+                Application.id == application_id
+            ).with_for_update().first()
             if not application:
                 return {"error": "Application not found"}
             job = db.query(Job).filter(Job.id == application.job_id).first()
@@ -242,21 +255,19 @@ def install_supervised_submission_task_gate() -> None:
                     reason=reason,
                 )
                 db.commit()
-                return {
-                    "success": False,
-                    "dry_run": False,
-                    "application_id": application.id,
-                    "requires_manual_review": False,
-                    "approval_required": False,
-                    "supervised_platform_supported": False,
-                    "platform": platform,
-                    "error": reason,
-                }
+                return _blocked_result(
+                    application,
+                    platform=platform,
+                    reason=reason,
+                    approval_reference=approval_reference,
+                    attempt_reference=attempt_reference,
+                    approval_required=False,
+                )
 
-            if not approval_reference or not attempt_reference:
+            if not approval_reference:
                 reason = (
-                    f"{policy.display_name} live submission requires both a short-lived "
-                    "exact-payload approval and a durable queue attempt reservation."
+                    f"{policy.display_name} live submission requires a short-lived, "
+                    "exact-payload approval from the supervised submission API."
                 )
                 _record_block(
                     db,
@@ -264,31 +275,22 @@ def install_supervised_submission_task_gate() -> None:
                     user,
                     job,
                     platform=platform,
-                    approval_reference=approval_reference,
+                    approval_reference=None,
                     reason=reason,
                 )
                 db.commit()
-                return {
-                    "success": False,
-                    "dry_run": False,
-                    "application_id": application.id,
-                    "requires_manual_review": False,
-                    "approval_required": True,
-                    "attempt_required": True,
-                    "supervised_platform_supported": True,
-                    "platform": platform,
-                    "error": reason,
-                }
-
-            approval = (
-                db.query(SubmissionApproval)
-                .filter(
-                    SubmissionApproval.application_id == application.id,
-                    SubmissionApproval.user_id == user.id,
-                    SubmissionApproval.reference == approval_reference,
+                return _blocked_result(
+                    application,
+                    platform=platform,
+                    reason=reason,
+                    approval_required=True,
                 )
-                .first()
-            )
+
+            approval = db.query(SubmissionApproval).filter(
+                SubmissionApproval.application_id == application.id,
+                SubmissionApproval.user_id == user.id,
+                SubmissionApproval.reference == approval_reference,
+            ).first()
             if not approval:
                 reason = "Submission approval not found"
                 _record_block(
@@ -301,14 +303,36 @@ def install_supervised_submission_task_gate() -> None:
                     reason=reason,
                 )
                 db.commit()
-                return {
-                    "success": False,
-                    "dry_run": False,
-                    "application_id": application.id,
-                    "approval_required": True,
-                    "attempt_reference": attempt_reference,
-                    "error": reason,
-                }
+                return _blocked_result(
+                    application,
+                    platform=platform,
+                    reason=reason,
+                    approval_reference=approval_reference,
+                )
+
+            # The queue keeps its historical .delay(...) call shape. The committed
+            # reservation is therefore derived from the immutable approval reference.
+            if not attempt_reference:
+                reserved = _attempt_for_approval(db, application.id, approval_reference)
+                attempt_reference = reserved.reference if reserved else None
+            if not attempt_reference:
+                reason = "No durable submission attempt was reserved before queue publication."
+                _record_block(
+                    db,
+                    application,
+                    user,
+                    job,
+                    platform=platform,
+                    approval_reference=approval_reference,
+                    reason=reason,
+                )
+                db.commit()
+                return _blocked_result(
+                    application,
+                    platform=platform,
+                    reason=reason,
+                    approval_reference=approval_reference,
+                )
 
             claimed_attempt, claimed = claim_submission_attempt(
                 db,
@@ -359,20 +383,13 @@ def install_supervised_submission_task_gate() -> None:
                         reason=reason,
                     )
                     db.commit()
-                    return {
-                        "success": False,
-                        "dry_run": False,
-                        "application_id": application.id,
-                        "requires_manual_review": False,
-                        "approval_required": True,
-                        "approval_reference": approval_reference,
-                        "attempt_reference": attempt_reference,
-                        "automatic_retry_allowed": False,
-                        "supervised_platform_supported": True,
-                        "platform": platform,
-                        "target_verification": target_metadata or {},
-                        "error": reason,
-                    }
+                    return _blocked_result(
+                        application,
+                        platform=platform,
+                        reason=reason,
+                        approval_reference=approval_reference,
+                        attempt_reference=attempt_reference,
+                    )
 
             try:
                 approval = validate_supervised_approval(
@@ -402,19 +419,13 @@ def install_supervised_submission_task_gate() -> None:
                     reason=reason,
                 )
                 db.commit()
-                return {
-                    "success": False,
-                    "dry_run": False,
-                    "application_id": application.id,
-                    "requires_manual_review": False,
-                    "approval_required": True,
-                    "approval_reference": approval_reference,
-                    "attempt_reference": attempt_reference,
-                    "automatic_retry_allowed": False,
-                    "supervised_platform_supported": True,
-                    "platform": platform,
-                    "error": reason,
-                }
+                return _blocked_result(
+                    application,
+                    platform=platform,
+                    reason=reason,
+                    approval_reference=approval_reference,
+                    attempt_reference=attempt_reference,
+                )
 
             db.commit()
             consumed_reference = approval.reference
@@ -428,15 +439,7 @@ def install_supervised_submission_task_gate() -> None:
             with supervised_target_scope(target_metadata):
                 result = _ORIGINAL_RUN(application_id, dry_run=False)
         except Exception as exc:
-            _finalize_attempt_uncertain(
-                application_tasks,
-                application_id,
-                attempt_reference,
-                exc,
-            )
-            # The inner Celery task may already have scheduled a framework retry. That
-            # replay carries the same attempt reference and is rejected above before a
-            # browser or final action. Return a truthful uncertain result to this run.
+            _finalize_uncertain(application_tasks, application_id, attempt_reference, exc)
             return {
                 "success": False,
                 "dry_run": False,
@@ -450,12 +453,7 @@ def install_supervised_submission_task_gate() -> None:
                 "error": "The live worker failed after claiming the one-time attempt; automatic final-action retry is suppressed.",
             }
 
-        _finalize_attempt_after_result(
-            application_tasks,
-            application_id,
-            attempt_reference,
-            result,
-        )
+        _finalize_after_result(application_tasks, application_id, attempt_reference, result)
         if isinstance(result, dict):
             result.setdefault("approval_reference", consumed_reference)
             result.setdefault("attempt_reference", attempt_reference)
