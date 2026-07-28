@@ -37,8 +37,6 @@ env:
   AI_PROVIDER: template
   DEV_MOCK_JOBS: "false"
   ALLOW_REAL_APPLICATION_SUBMIT: "false"
-  GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
-  LEVER_SUPERVISED_PILOT_ENABLED: "false"
   AUTOPILOT_ENABLED: "false"
   ENABLE_RESUMABLE_HANDOFFS: "false"
 
@@ -101,6 +99,15 @@ jobs:
 
       - name: Run full backend and browser tests
         run: bash scripts/verify.sh backend-tests
+
+      - name: Upload backend verification report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reproducible-verification-backend
+          path: backend/verification-pytest-output.txt
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Run migration smoke test
         run: bash scripts/verify.sh migration
