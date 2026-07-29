@@ -271,8 +271,12 @@ async def perform_handoff_action(
         else:
             raise BrowserHandoffError(f"Unsupported browser handoff action: {action}")
         await page.wait_for_timeout(settle_ms)
+        binding = dict((session.handoff_metadata or {}).get("target_binding") or {})
         try:
-            require_bound_handoff_url(session, page.url)
+            if binding:
+                require_bound_handoff_url(session, page.url)
+            else:
+                require_browser_entry_allowed(page.url)
         except OperationalSafetyViolation as exc:
             raise BrowserHandoffError(f"[{exc.code}] {exc}") from exc
 
