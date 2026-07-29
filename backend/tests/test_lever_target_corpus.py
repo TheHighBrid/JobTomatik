@@ -14,7 +14,7 @@ from app.services.lever_target_corpus import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CORPUS_PATH = ROOT / "backend/evidence/lever-phase-a-target-corpus.csv"
+CORPUS_PATH = ROOT / "backend/evidence/lever-phase-a-target-corpus"
 
 
 def _rows():
