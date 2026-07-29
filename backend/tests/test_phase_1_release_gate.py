@@ -1,5 +1,7 @@
 import csv
 import json
+import re
+import subprocess
 from pathlib import Path
 
 from app.services.ats_manifest import ats_certification_manifest
@@ -115,6 +117,24 @@ def test_lever_phase_2_freeze_starts_truthfully_at_zero_of_thirty(tmp_path):
     assert freeze["promotion"]["real_submission_allowed"] is False
 
 
+def test_frozen_lever_inputs_match_exact_git_blob_identities():
+    freeze = _json(FREEZE_PATH)
+    locked = freeze["locked_input_blobs"]
+
+    assert set(locked) == set(freeze["canonical_inputs"])
+    assert all(re.fullmatch(r"[0-9a-f]{40}", sha) for sha in locked.values())
+
+    for relative_path, expected_sha in locked.items():
+        source = ROOT / relative_path
+        assert source.is_file(), relative_path
+        actual_sha = subprocess.check_output(
+            ["git", "hash-object", str(source)],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+        assert actual_sha == expected_sha, relative_path
+
+
 def test_phase_2_daily_targets_restart_from_zero_without_phantom_credit():
     freeze = _json(FREEZE_PATH)
 
@@ -166,6 +186,7 @@ def test_phase_1_workflow_covers_measurement_and_clean_release_contracts():
     assert "bash scripts/verify.sh fast" in workflow
     assert "bash scripts/verify.sh safety" in workflow
     assert "qualifying_dry_run_count'] == 0" in workflow
+    assert "PYTHONPATH: ." in workflow
     assert "AUTOPILOT_ENABLED: \"false\"" in workflow
     assert "ALLOW_REAL_APPLICATION_SUBMIT: \"false\"" in workflow
     assert "ENABLE_RESUMABLE_HANDOFFS: \"false\"" in workflow
