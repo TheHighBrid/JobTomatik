@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.models.application import Application, ManualReviewTask
 from app.models.handoff import ManualHandoffSession
 from app.models.job import Job
@@ -42,6 +44,45 @@ def _records(db, session: ManualHandoffSession):
             metadata={"operator_reason_code": "handoff_records_missing"},
         )
     return application, review, job, user
+
+
+def _ensure_target_binding(
+    session: ManualHandoffSession,
+    application: Application,
+    review: ManualReviewTask,
+    job: Job,
+) -> None:
+    """Backfill a missing Day 6 binding from authoritative legacy records.
+
+    Existing retained sessions can predate the binding field. The migration never
+    trusts client input: it derives identity only from the persisted application,
+    review, job, and target URL, then records that the migration occurred.
+    """
+
+    metadata = dict(session.handoff_metadata or {})
+    if metadata.get("target_binding"):
+        return
+    resolved_url = _target_url(application, job, session.current_url)
+    if not resolved_url:
+        raise OperationalSafetyViolation(
+            "handoff_binding_migration_failed",
+            "A legacy retained handoff has no authoritative target URL to bind.",
+            metadata={"operator_reason_code": "handoff_target_unverifiable"},
+        )
+    session.current_url = resolved_url
+    metadata["target_binding"] = build_handoff_target_binding(
+        application,
+        job,
+        review,
+        current_url=resolved_url,
+        current_fingerprint=session.current_fingerprint,
+        target_resolution_only=bool(metadata.get("target_resolution_only")),
+    )
+    metadata["target_binding_migration"] = {
+        "source": "authoritative_legacy_records",
+        "migrated_at": datetime.utcnow().isoformat(),
+    }
+    session.handoff_metadata = metadata
 
 
 def _raise_handoff_conflict(exc: OperationalSafetyViolation):
@@ -160,6 +201,7 @@ def install_handoff_safety_integration() -> None:
         ):
             try:
                 application, review, job, _user = _records(db, session)
+                _ensure_target_binding(session, application, review, job)
                 require_handoff_target_binding(
                     session,
                     application,
@@ -180,6 +222,7 @@ def install_handoff_safety_integration() -> None:
         def guarded_begin_handoff_resume(db, session):
             try:
                 application, review, job, user = _records(db, session)
+                _ensure_target_binding(session, application, review, job)
                 dry_run = bool((session.handoff_metadata or {}).get("dry_run", True))
                 execution = evaluate_execution_safety(
                     db,
