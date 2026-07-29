@@ -1,5 +1,6 @@
 import csv
 import json
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import pytest
@@ -14,6 +15,7 @@ from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.models.user import User
 from app.services.application_state import record_submission_evidence
+from app.services import lever_pilot_ingestion
 from app.services.lever_pilot_ingestion import load_phase_a_baseline
 from app.services.lever_pilot_ledger_boundary import (
     LeverPilotIngestionError,
@@ -339,3 +341,43 @@ def test_phase_a_rows_require_immutable_artifact_digest_and_exact_target(tmp_pat
     path.write_text(text, encoding="utf-8")
     with pytest.raises(LeverPilotIngestionError, match="artifact_sha256"):
         load_phase_a_baseline(path)
+
+def test_hardening_and_summary_persistence_use_the_ingestion_lock_snapshot(
+    db_session, tmp_path, monkeypatch
+):
+    user, job, application = _confirmed_fixture(db_session)
+    paths = _paths(tmp_path)
+    original_lock = lever_pilot_ingestion._ledger_lock
+    original_harden = lever_pilot_ingestion.harden_lever_readiness
+    state = {"inside_lock": False, "hardened": False}
+
+    @contextmanager
+    def observed_lock(path, *, exclusive):
+        with original_lock(path, exclusive=exclusive):
+            state["inside_lock"] = True
+            try:
+                yield
+            finally:
+                state["inside_lock"] = False
+
+    def observed_harden(readiness, *, baseline_path, ledger_path):
+        assert state["inside_lock"] is True
+        state["hardened"] = True
+        return original_harden(
+            readiness, baseline_path=baseline_path, ledger_path=ledger_path
+        )
+
+    monkeypatch.setattr(lever_pilot_ingestion, "_ledger_lock", observed_lock)
+    monkeypatch.setattr(lever_pilot_ingestion, "harden_lever_readiness", observed_harden)
+    result = ingest_confirmed_lever_application(
+        db_session, application, user, job, **paths
+    )
+    assert state["hardened"] is True
+    persisted = json.loads(paths["summary_json_path"].read_text(encoding="utf-8"))
+    expected = {
+        key: value for key, value in result.items() if key not in {"added", "record"}
+    }
+    assert persisted == expected
+    assert persisted["runtime_record_count"] == result["runtime_record_count"]
+    assert persisted["runtime_ledger_sha256"] == result["runtime_ledger_sha256"]
+    assert persisted["ledger_sha256"] == result["ledger_sha256"]

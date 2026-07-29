@@ -98,7 +98,7 @@ def harden_lever_readiness(
     gates = dict(summary.get("gates") or {})
 
     phase_a = _phase_a_rows(baseline_path)
-    qualifying = [
+    phase_a_candidates = [
         row
         for row in phase_a
         if (
@@ -106,7 +106,11 @@ def harden_lever_readiness(
             str(row.get("final_status") or "").strip(),
         )
         == PHASE_A_READY_PAIR
-        and _truthy(row.get("official_posting_inspection_passed"))
+    ]
+    qualifying = [
+        row
+        for row in phase_a_candidates
+        if _truthy(row.get("official_posting_inspection_passed"))
     ]
     boundary_only = [
         row
@@ -119,7 +123,7 @@ def harden_lever_readiness(
     ]
     inspection_failures = [
         row
-        for row in phase_a
+        for row in phase_a_candidates
         if not _truthy(row.get("official_posting_inspection_passed"))
     ]
     sites = {
@@ -139,7 +143,8 @@ def harden_lever_readiness(
     raw_successes = [
         row for row in phase_b if row.get("final_status") in SUCCESS_STATUSES
     ]
-    duplicate_indexes = _duplicate_indexes(raw_successes)
+    duplicate_indexes = _duplicate_indexes(phase_b)
+    duplicate_record_ids = {id(phase_b[index]) for index in duplicate_indexes}
     false_submitted = [
         row
         for row in raw_successes
@@ -165,8 +170,8 @@ def harden_lever_readiness(
     ]
     safe_successes = [
         row
-        for index, row in enumerate(raw_successes)
-        if index not in duplicate_indexes
+        for row in raw_successes
+        if id(row) not in duplicate_record_ids
         and row not in false_submitted
         and row not in unreviewed
         and row not in hash_mismatches

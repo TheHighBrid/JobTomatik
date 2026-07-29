@@ -14,6 +14,7 @@ from app.services.operational_safety import (
     classify_handoff_reason,
     evaluate_execution_safety,
     require_handoff_target_binding,
+    rebind_resolved_handoff_target,
 )
 
 
@@ -200,15 +201,29 @@ def install_handoff_safety_integration() -> None:
             verification,
         ):
             try:
-                application, review, job, _user = _records(db, session)
+                application, review, job, user = _records(db, session)
                 _ensure_target_binding(session, application, review, job)
-                require_handoff_target_binding(
-                    session,
-                    application,
-                    job,
-                    review,
-                    current_url=verification.get("current_url") or session.current_url,
-                )
+                current_url = verification.get("current_url") or session.current_url
+                binding = dict((session.handoff_metadata or {}).get("target_binding") or {})
+                if binding.get("target_resolution_only"):
+                    rebind_resolved_handoff_target(
+                        db,
+                        session,
+                        application,
+                        job,
+                        review,
+                        user,
+                        resolved_url=current_url,
+                        current_fingerprint=verification.get("current_fingerprint"),
+                    )
+                else:
+                    require_handoff_target_binding(
+                        session,
+                        application,
+                        job,
+                        review,
+                        current_url=current_url,
+                    )
             except OperationalSafetyViolation as exc:
                 _raise_handoff_conflict(exc)
             return original_mark_ready(

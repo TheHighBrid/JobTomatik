@@ -16,6 +16,7 @@ from app.services.greenhouse_phone_widget import (
     install_greenhouse_phone_widget_compat,
 )
 from app.services.supervised_runtime import current_supervised_target
+from app.services.operational_safety import require_browser_entry_allowed
 
 
 install_greenhouse_aria_id_compat()
@@ -31,7 +32,14 @@ def _dry_run_requested(args, kwargs) -> bool:
     return True
 
 
+def _job_url_requested(args, kwargs) -> str:
+    if "job_url" in kwargs:
+        return str(kwargs.get("job_url") or "")
+    return str(args[0] if args else "")
+
+
 async def fill_and_submit_application(*args, **kwargs):
+    require_browser_entry_allowed(_job_url_requested(args, kwargs))
     # A live supervised worker binds the exact approved target only for the
     # duration of its own task call. Explicit kwargs remain authoritative.
     if "supervised_target" not in kwargs:
