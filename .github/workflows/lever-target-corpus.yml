@@ -1,0 +1,118 @@
+name: Lever target corpus certification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/app/services/lever_target_corpus.py"
+      - "backend/scripts/certify_lever_target_corpus.py"
+      - "backend/evidence/lever-phase-a-target-corpus.csv"
+      - "backend/evidence/lever-phase-a-target-corpus-report.json"
+      - "backend/evidence/lever-phase-a-target-corpus-report.md"
+      - "backend/tests/test_lever_target_corpus.py"
+      - "docs/operations/lever-phase-a-target-corpus-lock.json"
+      - "docs/operations/lever-phase-a-target-corpus.md"
+      - ".github/workflows/lever-target-corpus.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/services/lever_target_corpus.py"
+      - "backend/scripts/certify_lever_target_corpus.py"
+      - "backend/evidence/lever-phase-a-target-corpus.csv"
+      - "backend/evidence/lever-phase-a-target-corpus-report.json"
+      - "backend/evidence/lever-phase-a-target-corpus-report.md"
+      - "backend/tests/test_lever_target_corpus.py"
+      - "docs/operations/lever-phase-a-target-corpus-lock.json"
+      - "docs/operations/lever-phase-a-target-corpus.md"
+      - ".github/workflows/lever-target-corpus.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  certify-corpus:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./lever-target-corpus.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: lever-target-corpus-development-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      AUTOPILOT_ENABLED: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      LEVER_SUPERVISED_PILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Compile corpus tooling
+        run: |
+          python -m py_compile \
+            backend/app/services/lever_target_corpus.py \
+            backend/scripts/certify_lever_target_corpus.py \
+            backend/tests/test_lever_target_corpus.py
+
+      - name: Run corpus regression suite
+        working-directory: backend
+        run: |
+          pytest -q --tb=short -ra tests/test_lever_target_corpus.py \
+            --junitxml=lever-target-corpus.xml
+
+      - name: Regenerate corpus certification
+        working-directory: backend
+        run: |
+          mkdir -p corpus-ci
+          python scripts/certify_lever_target_corpus.py \
+            --corpus evidence/lever-phase-a-target-corpus.csv \
+            --json-output corpus-ci/lever-phase-a-target-corpus-report.json \
+            --markdown-output corpus-ci/lever-phase-a-target-corpus-report.md
+
+      - name: Verify committed reports and safety boundaries
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          generated = json.loads(Path('corpus-ci/lever-phase-a-target-corpus-report.json').read_text())
+          committed = json.loads(Path('evidence/lever-phase-a-target-corpus-report.json').read_text())
+          assert generated == committed
+          assert Path('corpus-ci/lever-phase-a-target-corpus-report.md').read_text() == Path('evidence/lever-phase-a-target-corpus-report.md').read_text()
+          summary = generated['summary']
+          assert summary['active_reviewed_posting_count'] == 40
+          assert summary['distinct_viable_site_count'] == 39
+          assert summary['viable_region_counts'] == {'eu': 7, 'global': 32}
+          assert summary['passed'] is True
+          assert not any(generated['safety'].values())
+          PY
+
+      - name: Verify fail-safe runtime defaults
+        run: bash scripts/verify.sh safety
+
+      - name: Upload corpus certification
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lever-target-corpus-certification
+          path: |
+            backend/lever-target-corpus.xml
+            backend/corpus-ci/lever-phase-a-target-corpus-report.json
+            backend/corpus-ci/lever-phase-a-target-corpus-report.md
+            docs/operations/lever-phase-a-target-corpus-lock.json
+          if-no-files-found: error
+          retention-days: 30
