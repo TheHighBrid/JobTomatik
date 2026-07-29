@@ -58,6 +58,7 @@
     "backend_duration_seconds": 209.58
   },
   "verified_parent_head": "0af4fa0291dc25ff625ec7e49f125254857cf677",
+  "verified_head": "1930ab91fd59e153f83e5de8bf7296488cea34b1",
   "verified_workflows": [
     "Backend tests",
     "CodeQL security analysis",
@@ -69,8 +70,7 @@
     "Reproducible verification",
     "Resumable handoff certification"
   ],
-  "release_gate": "passed_on_verified_parent_head",
-  "final_exact_head_gate": "pending_evidence_lock_ci",
-  "verified_head": null,
-  "merge_commit": null
+  "release_gate": "passed",
+  "final_exact_head_gate": "passed",
+  "merge_commit": "c7b023c36ac089097a9a67fa3db9525893af99b6"
 }
