@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "campaign_day": 7,
+  "date": "2026-07-29",
+  "objective": "reduce ambiguous Phase 2 work without deleting valid roadmap scope",
+  "decisions": [
+    {
+      "type": "retain_issue",
+      "number": 13,
+      "reason": "Master autonomy roadmap remains the product-level source of direction and completion criteria."
+    },
+    {
+      "type": "retain_issue",
+      "number": 154,
+      "reason": "The 42-day campaign tracker remains active through the release window."
+    },
+    {
+      "type": "retain_issue",
+      "number": 86,
+      "reason": "Lever platform evidence, supervised pilot, and future promotion remain broader than Phase A collection."
+    },
+    {
+      "type": "split_execution_queue",
+      "number": 161,
+      "parent_issue": 86,
+      "reason": "Days 8-14 need a bounded queue dedicated to 30 qualifying synthetic Lever dry runs under frozen rules."
+    },
+    {
+      "type": "archive_merged_pull_request",
+      "number": 152,
+      "reason": "The retained-evidence pull request is merged historical evidence, not an open collection branch or promotion gate."
+    },
+    {
+      "type": "archive_superseded_pull_request",
+      "number": 150,
+      "replacement": 151,
+      "reason": "The divergent draft was already closed and explicitly superseded by the merged replacement."
+    },
+    {
+      "type": "retain_completed_phase_1_evidence",
+      "pull_requests": [155, 156, 157, 158, 160],
+      "reason": "Each pull request is the immutable implementation and verification record for one Phase 1 control domain."
+    },
+    {
+      "type": "retain_corrective_evidence",
+      "pull_request": 159,
+      "reason": "This merged correction establishes the hardened 0/30 Lever baseline and remains load-bearing for Phase 2."
+    }
+  ],
+  "issues_closed_today": [],
+  "closure_rationale": "No currently open issue was both obsolete and safely separable from remaining work. The useful surgery was to split #161 and clarify the roles of #13, #154, and #86 rather than manufacture closure statistics.",
+  "phase_2_active_queue": {
+    "issue": 161,
+    "starting_qualifying_count": 0,
+    "required_qualifying_count": 30,
+    "historical_nonqualifying_safety_rows": 2
+  }
+}
