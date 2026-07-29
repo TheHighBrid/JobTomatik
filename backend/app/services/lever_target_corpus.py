@@ -262,18 +262,6 @@ def certify_target_corpus(path: str | Path) -> dict[str, Any]:
             "gates": gates,
             "passed": all(gates.values()),
         },
-        "viable_targets": [
-            {
-                "review_id": row["review_id"],
-                "site": row["site"],
-                "posting_id": row["posting_id"],
-                "region": row["region"],
-                "role": row["role"],
-                "canonical_application_url": row["canonical_application_url"],
-                "review_digest_sha256": row["review_digest_sha256"],
-            }
-            for row in viable
-        ],
         "excluded_targets": [
             {
                 "review_id": row["review_id"],
