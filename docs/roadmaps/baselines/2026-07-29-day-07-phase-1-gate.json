@@ -1,0 +1,181 @@
+{
+  "schema_version": "1.0",
+  "campaign_day": 7,
+  "date": "2026-07-29",
+  "mission": "phase_1_release_gate_and_backlog_surgery",
+  "source_main_commit": "67c5cb0f6fea2c304e80fcaad3dacaa3a5afdd36",
+  "phase": {
+    "number": 1,
+    "name": "Control Plane and Reproducible Baseline",
+    "status": "passed_on_verified_parent_head"
+  },
+  "completed_work": [
+    {
+      "day": 1,
+      "capability": "truthful baseline and campaign control",
+      "evidence": "docs/roadmaps/baselines/2026-07-28-day-01-baseline.json"
+    },
+    {
+      "day": 2,
+      "capability": "one-command clean reproduction",
+      "pull_request": 155,
+      "verified_head": "82e4122183fc9afa24325e1e5a065be5f5824f7c"
+    },
+    {
+      "day": 3,
+      "capability": "canonical state transitions and crash-safe checkpoints",
+      "pull_request": 156,
+      "verified_head": "d7683921a6e32fbcc16497f66a0a55adb91bca68"
+    },
+    {
+      "day": 4,
+      "capability": "answer policy trust, completeness, and blocker reporting",
+      "pull_request": 157,
+      "verified_head": "049f529bd7e862815f0da135c2d919ee544c94bd"
+    },
+    {
+      "day": 5,
+      "capability": "durable submission identity and idempotent replay handling",
+      "pull_request": 158,
+      "verified_head": "65904f455400588f5e0530aed3785c3eb891e48d"
+    },
+    {
+      "day": 6,
+      "capability": "kill switches, secure handoffs, and circuit breakers",
+      "pull_request": 160,
+      "verified_head": "1930ab91fd59e153f83e5de8bf7296488cea34b1",
+      "merge_commit": "c7b023c36ac089097a9a67fa3db9525893af99b6"
+    }
+  ],
+  "corrective_hardening": {
+    "pull_request": 159,
+    "purpose": "harden readiness, reproducibility, and answer-policy safety; correct Lever qualification from 2/30 to 0/30"
+  },
+  "verified_controls": {
+    "clean_reproduction_contract": true,
+    "canonical_application_state_machine": true,
+    "evidence_required_for_terminal_submission_state": true,
+    "stale_worker_rejection": true,
+    "answer_policy_provenance_and_consent": true,
+    "sensitive_and_legal_non_inference": true,
+    "durable_submission_identity": true,
+    "single_worker_attempt_ownership": true,
+    "duplicate_and_replay_protection": true,
+    "global_and_platform_kill_switches": true,
+    "secure_target_bound_handoffs": true,
+    "platform_and_user_circuit_breakers": true
+  },
+  "adapter_maturity": {
+    "greenhouse": "dry_run",
+    "lever": "dry_run",
+    "ashby": "dry_run",
+    "smartrecruiters": "detect_only",
+    "workday": "detect_only"
+  },
+  "autonomous_adapters": [],
+  "safety_defaults": {
+    "AUTOMATION_GLOBAL_KILL_SWITCH": false,
+    "AUTOPILOT_ENABLED": false,
+    "ALLOW_REAL_APPLICATION_SUBMIT": false,
+    "GREENHOUSE_SUPERVISED_PILOT_ENABLED": false,
+    "LEVER_SUPERVISED_PILOT_ENABLED": false,
+    "ENABLE_RESUMABLE_HANDOFFS": false
+  },
+  "phase_2_launch": {
+    "execution_issue": 161,
+    "lever_qualifying_dry_runs": 0,
+    "lever_required_dry_runs": 30,
+    "retained_nonqualifying_manual_boundary_rows": 2,
+    "lever_supervised_confirmed": 0,
+    "lever_required_supervised_confirmed": 10,
+    "measurement_contract": "docs/operations/lever-phase-2-measurement-freeze.json"
+  },
+  "unresolved_risks": [
+    {
+      "id": "R1",
+      "severity": "release_blocking_for_lever_phase_a",
+      "description": "Lever has zero qualifying dry runs under the hardened contract and requires 30 distinct qualifying records."
+    },
+    {
+      "id": "R2",
+      "severity": "release_blocking_for_real_lever_pilot",
+      "description": "Lever has zero independently reviewed supervised real submissions out of ten."
+    },
+    {
+      "id": "R3",
+      "severity": "release_blocking_for_unattended_submission",
+      "description": "No adapter is currently certified_autonomous."
+    },
+    {
+      "id": "R4",
+      "severity": "user_gated",
+      "description": "Real applications, truthful sensitive or legal policy changes, unavoidable security challenges, and adapter promotion still require explicit user action."
+    },
+    {
+      "id": "R5",
+      "severity": "environment_coverage",
+      "description": "Environment-specific browser and device tests may be skipped outside their required execution environments and remain covered by dedicated CI lanes."
+    }
+  ],
+  "backlog_surgery": "docs/roadmaps/2026-07-29-day-07-backlog-surgery.json",
+  "expected_release_results": {
+    "false_submitted_records": 0,
+    "duplicate_terminal_submissions": 0,
+    "unsafe_handoff_resumes": 0,
+    "adapter_promotions": 0,
+    "live_submissions": 0
+  },
+  "observed_release_results": {
+    "false_submitted_records": 0,
+    "duplicate_terminal_submissions": 0,
+    "unsafe_handoff_resumes": 0,
+    "adapter_promotions": 0,
+    "live_submissions": 0,
+    "focused_tests_passed": 39,
+    "focused_tests_failed": 0,
+    "focused_duration_seconds": 4.3,
+    "backend_tests_passed": 523,
+    "backend_tests_skipped": 59,
+    "backend_tests_failed": 0,
+    "backend_duration_seconds": 128.67,
+    "lever_qualifying_dry_runs": 0,
+    "lever_nonqualifying_manual_boundary_rows": 2,
+    "lever_supervised_confirmed": 0,
+    "autonomous_adapter_count": 0
+  },
+  "verified_parent_head": "46ef3d21fa2945d900ca5ead5f836c4404ddcdd9",
+  "verified_workflows": [
+    {
+      "name": "Phase 1 release gate",
+      "run_id": 30415118070,
+      "conclusion": "success",
+      "artifact_digest": "sha256:bc93d23eee7c1708248da48ca57896aa78a2a38db288e89fe16f1343aecfc603"
+    },
+    {
+      "name": "Backend tests",
+      "run_id": 30415118103,
+      "conclusion": "success",
+      "artifact_digest": "sha256:b000c91e42e9ce530b2318cf0e0a9c96d1c65cdf75849e41370d4fa7637e4075"
+    },
+    {
+      "name": "CodeQL security analysis",
+      "run_id": 30415118101,
+      "conclusion": "success"
+    },
+    {
+      "name": "Post-merge stabilization",
+      "run_id": 30415118074,
+      "conclusion": "success",
+      "aggregate_release_gate": "success"
+    },
+    {
+      "name": "Reproducible verification",
+      "run_id": 30415118113,
+      "conclusion": "success",
+      "aggregate_release_gate": "success"
+    }
+  ],
+  "final_exact_head_gate": "pending_evidence_lock_ci",
+  "verified_head": null,
+  "merge_commit": null
+}

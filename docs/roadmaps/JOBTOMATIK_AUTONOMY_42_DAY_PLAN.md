@@ -3,7 +3,7 @@
 **Campaign window:** July 29, 2026 through September 8, 2026  
 **Primary objective:** Ship JobTomatik v2.00 as a hands-off job-discovery, preparation, submission, verification, recovery, and follow-up system for adapters that have passed certification.  
 **Master roadmap:** #13  
-**Current Lever pilot:** #86 and draft PR #152
+**Current Lever pilot:** #86 and Phase 2 evidence queue #161; PR #152 is merged historical evidence
 
 ## Commander’s intent
 
@@ -29,7 +29,7 @@ At campaign start:
 - Ashby: `dry_run`
 - SmartRecruiters: `detect_only`
 - Workday: `detect_only`
-- Lever Phase A: 2 qualifying retained dry runs out of 30
+- Lever Phase A: 0 qualifying retained dry runs out of 30 (2 retained CAPTCHA/manual-boundary rows remain nonqualifying)
 - Lever Phase B: 0 independently reviewed supervised submissions out of 10
 - Real submission defaults: disabled
 - Autopilot default: disabled
@@ -92,7 +92,7 @@ A day is not complete until:
 - [ ] Inventory main, open PRs, open roadmap issues, adapter manifests, evidence ledgers, and release workflows.
 - [ ] Confirm current adapter maturity and flags from code, not README claims alone.
 - [ ] Produce a machine-readable baseline snapshot with commit SHA, test counts, active gates, and known blockers.
-- [ ] Confirm draft PR #152 remains evidence-only and is not represented as promotion-ready.
+- [ ] Confirm merged PR #152 remains historical evidence and is not represented as promotion-ready.
 - [ ] Add a roadmap progress section to #13 linking this plan.
 
 **End-of-day proof:** committed baseline snapshot, green smoke suite, issue update, no maturity change.
@@ -159,7 +159,7 @@ A day is not complete until:
 
 ---
 
-# Phase 2: Complete Lever Phase A, 2/30 to 30/30
+# Phase 2: Complete Lever Phase A, 0/30 to 30/30
 
 ## Day 8, Wednesday August 5: Build the Lever target corpus
 
@@ -170,54 +170,54 @@ A day is not complete until:
 
 **End-of-day proof:** reviewed corpus with at least 30 viable distinct sites.
 
-## Day 9, Thursday August 6: Lever dry runs 3 through 7
+## Day 9, Thursday August 6: Lever dry runs 1 through 5
 
 - [ ] Execute five synthetic Phase A dry runs.
 - [ ] Cover text, textarea, select, résumé upload, and optional cover letter.
 - [ ] Import artifacts only after digest and provenance validation.
 - [ ] Fix any deterministic adapter defect and rerun affected cases.
 
-**Daily target:** readiness 7/30 or higher; `final_submit_clicked=false` for every row.
+**Daily target:** readiness 5/30 or higher; `final_submit_clicked=false` for every row.
 
-## Day 10, Friday August 7: Lever dry runs 8 through 12
+## Day 10, Friday August 7: Lever dry runs 6 through 10
 
 - [ ] Execute five distinct-site dry runs.
 - [ ] Prioritize checkbox, radio, work authorization, sponsorship, and consent controls.
 - [ ] Verify unknown required controls create review tasks rather than guessed answers.
 
-**Daily target:** readiness 12/30 or higher; zero false submitted records.
+**Daily target:** readiness 10/30 or higher; zero false submitted records.
 
-## Day 11, Saturday August 8: Lever dry runs 13 through 17
+## Day 11, Saturday August 8: Lever dry runs 11 through 15
 
 - [ ] Execute five distinct-site dry runs.
 - [ ] Prioritize searchable combobox, multi-select, location autocomplete, and conditional controls.
 - [ ] Capture validation messages and map them back to source answers.
 
-**Daily target:** readiness 17/30 or higher; all uploads hash-verified.
+**Daily target:** readiness 15/30 or higher; all uploads hash-verified.
 
-## Day 12, Sunday August 9: Lever dry runs 18 through 22
+## Day 12, Sunday August 9: Lever dry runs 16 through 20
 
 - [ ] Execute five distinct-site dry runs across global and EU hosts.
 - [ ] Prioritize embedded/customized forms and navigation variants.
 - [ ] Verify canonical site, posting ID, region, and official metadata remain stable.
 
-**Daily target:** readiness 22/30 or higher; no cross-target resume path.
+**Daily target:** readiness 20/30 or higher; no cross-target resume path.
 
-## Day 13, Monday August 10: Lever dry runs 23 through 27
+## Day 13, Monday August 10: Lever dry runs 21 through 25
 
 - [ ] Execute five distinct-site dry runs.
 - [ ] Prioritize CAPTCHA/manual-challenge detection and retained handoff creation.
 - [ ] Validate screenshot, URL, pending action, expiry risk, and resumability metadata.
 
-**Daily target:** readiness 27/30 or higher; all challenge paths remain `needs_review`.
+**Daily target:** readiness 25/30 or higher; all challenge paths remain `needs_review`.
 
-## Day 14, Tuesday August 11: Lever dry runs 28 through 30 and Phase A certification
+## Day 14, Tuesday August 11: Lever dry runs 26 through 30 and Phase A certification
 
-- [ ] Execute the final three or more qualifying distinct-site dry runs.
+- [ ] Execute the final five or more qualifying distinct-site dry runs.
 - [ ] Recalculate readiness from locked evidence inputs.
 - [ ] Run the full exact-head workflow matrix.
 - [ ] Review all 30 records for duplicates, provenance gaps, guessed answers, and false states.
-- [ ] Update PR #152 with final truthful Phase A evidence.
+- [ ] Update issue #161 with final truthful Phase A evidence.
 
 **Gate:** 30 qualifying dry runs, 30 distinct sites where practical, global and EU coverage, zero duplicates, zero false submissions.  
 **Endgame:** Phase A complete while Lever remains `dry_run`.
