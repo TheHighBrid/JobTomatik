@@ -1,9 +1,9 @@
 {
   "baseline_record_count": 2,
-  "baseline_sha256": "1da42d6ddd8192d7a6fe70094f19e4d782643889cd393973aab3a5bb8f025b79",
+  "baseline_sha256": "7599177ada557da65999a5d29146a9cb3e62d00012024c77cad2bc026ae996ab",
   "ledger_record_count": 2,
-  "ledger_sha256": "e9daa35c0d347546f65af3d235467c8973a495afa2cf7bb9e2dc2d98ff41baa9",
-  "readiness_hardening_version": "1.0",
+  "ledger_sha256": "97250f5814b9007115f2d15096c87ea99ca35b147ff40b5936c4ca9e41a03c1c",
+  "readiness_hardening_version": "1.1",
   "runtime_ledger_sha256": null,
   "runtime_record_count": 0,
   "summary": {
@@ -27,6 +27,7 @@
     "manual_challenge_boundary_count": 2,
     "nonqualifying_dry_run_count": 2,
     "payload_hash_mismatch_count": 0,
+    "phase_a_artifact_verification_failure_count": 0,
     "phase_a_inspection_failure_count": 0,
     "platform": "lever",
     "promotion_ready": false,
