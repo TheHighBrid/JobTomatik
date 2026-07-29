@@ -39,6 +39,7 @@ from app.services.greenhouse_pilot import (
     validate_record,
 )
 from app.services.platform_submission_evidence import build_platform_supervised_pilot_record
+from app.services.lever_readiness_hardening import harden_lever_readiness
 
 
 settings = get_settings()
@@ -614,7 +615,12 @@ def read_lever_pilot_readiness(
         paths["ledger"] = Path(ledger_path)
     with _ledger_lock(paths["ledger"], exclusive=False):
         baseline, runtime, combined = _load_combined(paths)
-        return _readiness_payload(paths, baseline, runtime, combined)
+        payload = _readiness_payload(paths, baseline, runtime, combined)
+        return harden_lever_readiness(
+            payload,
+            baseline_path=paths["baseline"],
+            ledger_path=paths["ledger"],
+        )
 
 
 def ingest_confirmed_lever_application(
@@ -654,7 +660,11 @@ def ingest_confirmed_lever_application(
             validate_phase_b_record(runtime_record)
         if added:
             _atomic_write_ledger(paths["ledger"], updated_runtime)
-        payload = _readiness_payload(paths, baseline, updated_runtime, combined)
+        payload = harden_lever_readiness(
+            _readiness_payload(paths, baseline, updated_runtime, combined),
+            baseline_path=paths["baseline"],
+            ledger_path=paths["ledger"],
+        )
         _write_readiness(paths, payload)
 
     if added:

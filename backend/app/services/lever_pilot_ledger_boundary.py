@@ -98,12 +98,7 @@ def read_lever_pilot_readiness(
     runtime_path = _runtime_ledger_path(ledger_path)
     baseline = _baseline_path(baseline_path)
     validate_phase_b_runtime_ledger(runtime_path)
-    readiness = _read_lever_pilot_readiness(
-        baseline_path=baseline,
-        ledger_path=runtime_path,
-    )
-    return harden_lever_readiness(
-        readiness,
+    return _read_lever_pilot_readiness(
         baseline_path=baseline,
         ledger_path=runtime_path,
     )
@@ -141,22 +136,7 @@ def ingest_confirmed_lever_application(
             "Lever Phase B ingestion produced a non-supervised record"
         )
     validate_phase_b_runtime_ledger(runtime_path)
-    hardened_result = harden_lever_readiness(
-        result,
-        baseline_path=baseline,
-        ledger_path=runtime_path,
-    )
-    readiness_payload = {
-        key: value
-        for key, value in hardened_result.items()
-        if key not in {"added", "record"}
-    }
-    _atomic_write(
-        json_path,
-        json.dumps(readiness_payload, indent=2, sort_keys=True, default=str) + "\n",
-    )
-    _atomic_write(markdown_path, render_readiness_markdown(readiness_payload))
-    return hardened_result
+    return result
 
 
 __all__ = [

@@ -28,6 +28,12 @@ _ATS_REASON_TO_CHALLENGE = {
 
 def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
     metadata = dict(session.handoff_metadata or {})
+    if (
+        metadata.get("target_resolution_only") is False
+        and metadata.get("stage") == "ats_application"
+        and metadata.get("resolved_target_url")
+    ):
+        return False
     return (
         session.challenge_type == HandoffChallengeType.navigation.value
         or bool(metadata.get("target_resolution_only"))

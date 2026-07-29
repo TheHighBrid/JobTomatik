@@ -14,6 +14,11 @@ from app.services.ats_base import page_fingerprint
 from app.services.ats_registry import detect_ats_adapter
 from app.services.browser_navigation import detect_blocking_challenge, now_iso
 from app.services.handoff_session import decrypt_handoff_secret
+from app.services.operational_safety import (
+    OperationalSafetyViolation,
+    require_bound_handoff_url,
+    require_browser_entry_allowed,
+)
 from app.services.supervised_target_identity import verify_supervised_browser_target
 
 
@@ -73,6 +78,13 @@ def _require_local_affinity(session: ManualHandoffSession) -> None:
 
 
 async def _connect_local_cdp(session: ManualHandoffSession):
+    metadata = dict(session.handoff_metadata or {})
+    binding = dict(metadata.get("target_binding") or {})
+    safety_url = str(session.current_url or binding.get("expected_url") or "")
+    try:
+        require_browser_entry_allowed(safety_url)
+    except OperationalSafetyViolation as exc:
+        raise BrowserHandoffUnavailable(f"[{exc.code}] {exc}") from exc
     if session.browser_provider != "local_cdp":
         raise BrowserHandoffUnavailable(
             f"Browser provider {session.browser_provider!r} is not available on this node."
@@ -105,6 +117,12 @@ async def _connect_local_cdp(session: ManualHandoffSession):
             (candidate for candidate in pages if session.current_url and candidate.url == session.current_url),
             pages[-1],
         )
+    if binding:
+        try:
+            require_bound_handoff_url(session, page.url)
+        except OperationalSafetyViolation as exc:
+            await playwright.stop()
+            raise BrowserHandoffUnavailable(f"[{exc.code}] {exc}") from exc
     return playwright, browser, context, page
 
 
@@ -253,6 +271,14 @@ async def perform_handoff_action(
         else:
             raise BrowserHandoffError(f"Unsupported browser handoff action: {action}")
         await page.wait_for_timeout(settle_ms)
+        binding = dict((session.handoff_metadata or {}).get("target_binding") or {})
+        try:
+            if binding:
+                require_bound_handoff_url(session, page.url)
+            else:
+                require_browser_entry_allowed(page.url)
+        except OperationalSafetyViolation as exc:
+            raise BrowserHandoffError(f"[{exc.code}] {exc}") from exc
 
         confirmation = await _submission_confirmation_state(page)
         after_verification = await _verify_session_target(

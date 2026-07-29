@@ -180,3 +180,56 @@ def test_ten_fully_safe_phase_b_records_satisfy_only_the_phase_b_gate(tmp_path):
     assert summary["gates"]["all_evidence_hashes_match_consumed_approvals"] is True
     assert summary["supervised_pilot_evidence_complete"] is False
     assert summary["promotion_ready"] is False
+
+def test_historical_boundary_rows_do_not_poison_future_phase_a_certification(tmp_path):
+    baseline = tmp_path / "phase-a.csv"
+    ledger = tmp_path / "phase-b.jsonl"
+    rows = [{
+        "run_id": "historical-captcha",
+        "site": "historical-site",
+        "posting_id": "historical-posting",
+        "region": "global",
+        "pre_submit_state": "manual_challenge_handoff",
+        "final_status": "needs_review",
+        "official_posting_inspection_passed": "false",
+    }]
+    rows.extend({
+        "run_id": f"qualified-{index}",
+        "site": f"qualified-site-{index}",
+        "posting_id": f"posting-{index}",
+        "region": "global" if index % 2 else "eu",
+        "pre_submit_state": "ready_to_submit",
+        "final_status": "dry_run_passed",
+        "official_posting_inspection_passed": "true",
+    } for index in range(30))
+    _write_phase_a(baseline, rows)
+    summary = harden_lever_readiness(
+        _base_readiness(), baseline_path=baseline, ledger_path=ledger
+    )["summary"]
+    assert summary["qualifying_dry_run_count"] == 30
+    assert summary["manual_challenge_boundary_count"] == 1
+    assert summary["phase_a_inspection_failure_count"] == 0
+    assert summary["gates"]["thirty_qualifying_dry_runs"] is True
+    assert summary["gates"]["all_phase_a_records_have_successful_matching_inspection"] is True
+
+
+def test_duplicate_indicator_on_blocked_phase_b_record_fails_duplicate_gate(tmp_path):
+    baseline = tmp_path / "phase-a.csv"
+    ledger = tmp_path / "phase-b.jsonl"
+    records = [_phase_b_record(index) for index in range(10)]
+    blocked = _phase_b_record(99)
+    blocked.update({
+        "final_status": "blocked",
+        "pre_submit_state": "blocked",
+        "duplicate_submission_detected": True,
+    })
+    records.append(blocked)
+    _write_phase_b(ledger, records)
+    summary = harden_lever_readiness(
+        _base_readiness(), baseline_path=baseline, ledger_path=ledger
+    )["summary"]
+    assert summary["raw_supervised_confirmed_count"] == 10
+    assert summary["supervised_confirmed_count"] == 10
+    assert summary["duplicate_submission_count"] == 1
+    assert summary["gates"]["zero_duplicate_submissions"] is False
+    assert summary["supervised_pilot_evidence_complete"] is False

@@ -7,7 +7,7 @@ from app.models.application import Application, ManualReviewReason, ManualReview
 from app.models.handoff import HandoffSessionStatus
 from app.models.job import Job
 from app.models.user import User
-from app.services import operational_safety
+from app.services import browser_handoff, form_filler, operational_safety
 from app.services.handoff_session import (
     HandoffSessionExpired,
     claim_handoff_session,
@@ -18,6 +18,8 @@ from app.services.operational_safety import (
     classify_handoff_reason,
     evaluate_execution_safety,
     operational_safety_manifest,
+    OperationalSafetyViolation,
+    rebind_resolved_handoff_target,
     validate_handoff_target_binding,
 )
 from app.services.operations_policy import evaluate_circuit_breaker_policy
@@ -370,3 +372,95 @@ def test_cross_platform_failure_cluster_opens_user_breaker(db_session, monkeypat
     assert decision.code == "circuit_breaker_open"
     assert set(decision.metadata["platform_counts"]) == {"greenhouse", "lever", "ashby"}
     assert decision.metadata["operator_reason_code"] == "user_failure_cluster"
+
+@pytest.mark.asyncio
+async def test_global_kill_switch_blocks_all_shared_browser_entry_points(monkeypatch):
+    monkeypatch.setenv("AUTOMATION_GLOBAL_KILL_SWITCH", "true")
+    monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "")
+    _reset_operations_settings()
+    called = {"value": False}
+
+    async def unexpected_browser(*args, **kwargs):
+        called["value"] = True
+        return {"success": True}
+
+    monkeypatch.setattr(form_filler, "fill_and_submit_application_with_handoff", unexpected_browser)
+    with pytest.raises(OperationalSafetyViolation) as direct:
+        await form_filler.fill_and_submit_application(job_url=GREENHOUSE_URL, dry_run=True)
+    assert direct.value.code == "global_kill_switch_active"
+    assert called["value"] is False
+
+    retained = SimpleNamespace(current_url=GREENHOUSE_URL, handoff_metadata={})
+    with pytest.raises(browser_handoff.BrowserHandoffUnavailable, match="global_kill_switch_active"):
+        await browser_handoff._connect_local_cdp(retained)
+
+
+@pytest.mark.parametrize(
+    ("first_url", "second_url"),
+    [
+        ("https://boards.greenhouse.io/safeco?gh_jid=123456", "https://boards.greenhouse.io/safeco?gh_jid=999999"),
+        ("https://boards.greenhouse.io/embed/job_app?token=alpha-token", "https://boards.greenhouse.io/embed/job_app?token=beta-token"),
+    ],
+)
+def test_greenhouse_query_posting_ids_are_part_of_handoff_identity(db_session, first_url, second_url):
+    _user, job, application, review = _records(db_session, suffix="greenhouse-query-binding", url=first_url)
+    binding = build_handoff_target_binding(application, job, review, current_url=first_url)
+    session = SimpleNamespace(handoff_metadata={"target_binding": binding}, current_url=first_url)
+    assert validate_handoff_target_binding(
+        session, application, job, review, current_url=first_url + "&utm_source=certification"
+    ).allowed is True
+    mismatch = validate_handoff_target_binding(
+        session, application, job, review, current_url=second_url
+    )
+    assert mismatch.allowed is False
+    assert mismatch.code == "handoff_posting_mismatch"
+
+
+def test_resolved_listing_target_is_rebound_and_rechecked_before_resume(db_session, monkeypatch):
+    listing_url = "https://www.jobbank.gc.ca/jobsearch/jobposting/12345678"
+    user, job, application, review = _records(
+        db_session,
+        suffix="resolved-target-rebind",
+        url=listing_url,
+        reason=ManualReviewReason.application_target_required,
+    )
+    binding = build_handoff_target_binding(
+        application, job, review, current_url=listing_url, target_resolution_only=True
+    )
+    session = SimpleNamespace(
+        current_url=listing_url,
+        current_fingerprint="listing-dom",
+        handoff_metadata={
+            "dry_run": True,
+            "source_listing_url": listing_url,
+            "target_resolution_only": True,
+            "stage": "application_target_resolution",
+            "target_binding": binding,
+        },
+    )
+    monkeypatch.setenv("AUTOMATION_GLOBAL_KILL_SWITCH", "false")
+    monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "lever")
+    _reset_operations_settings()
+    with pytest.raises(OperationalSafetyViolation) as disabled:
+        rebind_resolved_handoff_target(
+            db_session, session, application, job, review, user,
+            resolved_url=LEVER_URL, current_fingerprint="lever-dom",
+        )
+    assert disabled.value.code == "platform_disabled"
+    assert session.handoff_metadata["target_binding"]["target_resolution_only"] is True
+
+    monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "")
+    _reset_operations_settings()
+    rebound = rebind_resolved_handoff_target(
+        db_session, session, application, job, review, user,
+        resolved_url=LEVER_URL, current_fingerprint="lever-dom",
+    )
+    assert rebound.allowed is True
+    assert session.handoff_metadata["target_resolution_only"] is False
+    assert session.handoff_metadata["target_binding"]["platform"] == "lever"
+    wrong = validate_handoff_target_binding(
+        session, application, job, review,
+        current_url="https://jobs.lever.co/safeco/different-posting",
+    )
+    assert wrong.allowed is False
+    assert wrong.code == "handoff_posting_mismatch"

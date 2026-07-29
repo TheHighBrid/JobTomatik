@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Mapping, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
 
 from app.config import get_settings
 from app.models.application import Application, ManualReviewReason, ManualReviewTask
@@ -148,10 +148,21 @@ def _posting_identity(url: str) -> str:
 
     token = ""
     if platform == "greenhouse":
-        for index, part in enumerate(parts):
-            if part.lower() in {"jobs", "job"} and index + 1 < len(parts):
-                token = parts[index + 1]
-        token = token or (parts[-1] if parts else "")
+        query_identifiers: Dict[str, str] = {}
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+            lowered = key.lower()
+            cleaned = str(value or "").strip()
+            if lowered in {"gh_jid", "token"} and cleaned:
+                query_identifiers.setdefault(lowered, cleaned)
+        if query_identifiers.get("gh_jid"):
+            token = f"gh_jid:{query_identifiers['gh_jid']}"
+        elif query_identifiers.get("token"):
+            token = f"token:{query_identifiers['token']}"
+        else:
+            for index, part in enumerate(parts):
+                if part.lower() in {"jobs", "job"} and index + 1 < len(parts):
+                    token = parts[index + 1]
+            token = token or (parts[-1] if parts else "")
     elif platform in {"lever", "ashby", "smartrecruiters"}:
         token = parts[-1] if parts else ""
     elif platform == "workday":
@@ -303,6 +314,156 @@ def require_handoff_target_binding(
     if not decision.allowed:
         raise OperationalSafetyViolation(decision.code, decision.reason, metadata=decision.metadata)
     return decision
+
+
+def require_browser_entry_allowed(url: str) -> AutomationDecision:
+    """Enforce emergency and per-platform switches before browser activity."""
+
+    decision = evaluate_platform_policy(url)
+    if not decision.allowed:
+        raise OperationalSafetyViolation(
+            decision.code,
+            decision.reason,
+            metadata=decision.metadata,
+        )
+    return decision
+
+
+def require_bound_handoff_url(session, current_url: str) -> HandoffBindingDecision:
+    """Validate the retained page against its persisted exact-target binding."""
+
+    active_url = canonicalize_submission_url(current_url or "")
+    require_browser_entry_allowed(active_url)
+    metadata = dict(session.handoff_metadata or {})
+    binding = dict(metadata.get("target_binding") or {})
+    if not binding:
+        raise OperationalSafetyViolation(
+            "handoff_binding_missing",
+            "The retained handoff has no certified target binding.",
+            metadata={"operator_reason_code": "handoff_binding_missing"},
+        )
+    if binding.get("target_resolution_only"):
+        return HandoffBindingDecision(
+            True,
+            "handoff_target_resolution_pending",
+            "The retained browser is still resolving the employer application target.",
+            {
+                "platform": platform_key_for_url(active_url),
+                "posting_identity": _posting_identity(active_url),
+                "target_resolution_only": True,
+            },
+        )
+
+    actual_platform = platform_key_for_url(active_url)
+    expected_platform = str(binding.get("platform") or "")
+    if expected_platform != actual_platform:
+        raise OperationalSafetyViolation(
+            "handoff_platform_mismatch",
+            "The retained browser is no longer on the approved ATS platform.",
+            metadata={
+                "expected_platform": expected_platform,
+                "actual_platform": actual_platform,
+                "operator_reason_code": "wrong_platform_resume",
+            },
+        )
+    expected_posting = str(binding.get("posting_identity") or "")
+    actual_posting = _posting_identity(active_url)
+    if expected_posting and actual_posting != expected_posting:
+        raise OperationalSafetyViolation(
+            "handoff_posting_mismatch",
+            "The retained browser is on a different posting than the approved handoff.",
+            metadata={
+                "expected_posting_identity": expected_posting,
+                "actual_posting_identity": actual_posting,
+                "operator_reason_code": "wrong_posting_resume",
+            },
+        )
+    return HandoffBindingDecision(
+        True,
+        "handoff_browser_url_verified",
+        "The retained browser still matches the rebound ATS target.",
+        {
+            "platform": actual_platform,
+            "posting_identity": actual_posting,
+            "target_resolution_only": False,
+        },
+    )
+
+
+def rebind_resolved_handoff_target(
+    db,
+    session,
+    application: Application,
+    job: Job,
+    review: ManualReviewTask,
+    user,
+    *,
+    resolved_url: str,
+    current_fingerprint: Optional[str] = None,
+) -> HandoffBindingDecision:
+    """Replace a listing-only binding with one validated exact ATS target."""
+
+    canonical = canonicalize_submission_url(resolved_url)
+    metadata = dict(session.handoff_metadata or {})
+    prior_binding = dict(metadata.get("target_binding") or {})
+    source_url = str(
+        metadata.get("source_listing_url")
+        or prior_binding.get("expected_url")
+        or _job_target_url(application, job)
+        or ""
+    ).strip()
+    from app.services.application_target import is_valid_application_target
+
+    if not canonical or not source_url or not is_valid_application_target(source_url, canonical):
+        raise OperationalSafetyViolation(
+            "resolved_application_target_invalid",
+            "The resolved employer target is not a valid continuation of the source listing.",
+            metadata={
+                "source_listing_url": source_url,
+                "resolved_target_url": canonical,
+                "operator_reason_code": "resolved_target_invalid",
+            },
+        )
+    dry_run = bool(metadata.get("dry_run", True))
+    execution = evaluate_execution_safety(
+        db,
+        user,
+        url=canonical,
+        dry_run=dry_run,
+        requires_handoff=True,
+    )
+    if not execution.allowed:
+        raise OperationalSafetyViolation(
+            execution.code,
+            execution.reason,
+            metadata=execution.metadata,
+        )
+
+    session.current_url = canonical
+    if current_fingerprint is not None:
+        session.current_fingerprint = current_fingerprint
+    metadata.update({
+        "resolved_target_url": canonical,
+        "target_resolution_only": False,
+        "stage": "ats_application",
+        "execution_safety": execution.to_dict(),
+        "target_binding": build_handoff_target_binding(
+            application,
+            job,
+            review,
+            current_url=canonical,
+            current_fingerprint=current_fingerprint or session.current_fingerprint,
+            target_resolution_only=False,
+        ),
+    })
+    session.handoff_metadata = metadata
+    return require_handoff_target_binding(
+        session,
+        application,
+        job,
+        review,
+        current_url=canonical,
+    )
 
 
 def evaluate_execution_safety(

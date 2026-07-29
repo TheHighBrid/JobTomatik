@@ -7,10 +7,18 @@ on:
       - "backend/app/services/operations_*.py"
       - "backend/app/services/operational_safety.py"
       - "backend/app/services/handoff_*.py"
+      - "backend/app/services/application_target_handoff.py"
+      - "backend/app/services/browser_handoff.py"
+      - "backend/app/services/form_filler.py"
+      - "backend/app/services/lever_pilot_ingestion.py"
+      - "backend/app/services/lever_pilot_ledger_boundary.py"
+      - "backend/app/services/lever_readiness_hardening.py"
       - "backend/app/tasks/handoffs.py"
       - "backend/tests/test_day06_operational_safety.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_handoff_*.py"
+      - "backend/tests/test_lever_pilot_ingestion.py"
+      - "backend/tests/test_lever_readiness_hardening.py"
       - ".github/workflows/day-06-operational-safety.yml"
   push:
     branches:
@@ -20,10 +28,18 @@ on:
       - "backend/app/services/operations_*.py"
       - "backend/app/services/operational_safety.py"
       - "backend/app/services/handoff_*.py"
+      - "backend/app/services/application_target_handoff.py"
+      - "backend/app/services/browser_handoff.py"
+      - "backend/app/services/form_filler.py"
+      - "backend/app/services/lever_pilot_ingestion.py"
+      - "backend/app/services/lever_pilot_ledger_boundary.py"
+      - "backend/app/services/lever_readiness_hardening.py"
       - "backend/app/tasks/handoffs.py"
       - "backend/tests/test_day06_operational_safety.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_handoff_*.py"
+      - "backend/tests/test_lever_pilot_ingestion.py"
+      - "backend/tests/test_lever_readiness_hardening.py"
       - ".github/workflows/day-06-operational-safety.yml"
   workflow_dispatch:
 
@@ -66,7 +82,7 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install -q --disable-pip-version-check -r requirements.txt
 
-      - name: Compile safety and handoff modules
+      - name: Compile safety handoff and readiness modules
         run: |
           python -m compileall -q \
             app/services/operations_settings.py \
@@ -74,9 +90,15 @@ jobs:
             app/services/operational_safety.py \
             app/services/handoff_safety_integration.py \
             app/services/handoff_integration.py \
+            app/services/application_target_handoff.py \
+            app/services/browser_handoff.py \
+            app/services/form_filler.py \
+            app/services/lever_pilot_ingestion.py \
+            app/services/lever_pilot_ledger_boundary.py \
+            app/services/lever_readiness_hardening.py \
             app/tasks/handoffs.py
 
-      - name: Run kill switch handoff and breaker matrix
+      - name: Run kill switch handoff breaker and readiness matrix
         shell: bash
         run: |
           set +e
@@ -85,6 +107,8 @@ jobs:
             tests/test_operations_policy.py \
             tests/test_handoff_sessions.py \
             tests/test_handoff_api.py \
+            tests/test_lever_pilot_ingestion.py \
+            tests/test_lever_readiness_hardening.py \
             > day06-operational-safety.txt 2>&1
           status=$?
           cat day06-operational-safety.txt
