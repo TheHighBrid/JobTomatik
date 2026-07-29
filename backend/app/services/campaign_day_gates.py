@@ -129,8 +129,12 @@ def build_day_12_22_report(
     )
 
     for day, target in ((16, 2), (17, 4), (18, 6), (19, 8), (20, 10)):
-        passed = confirmed >= target and all(
-            lever_gates.get(name) is True for name in LEVER_PHASE_B_GATES[1:]
+        passed = (
+            phase_a
+            and confirmed >= target
+            and all(
+                lever_gates.get(name) is True for name in LEVER_PHASE_B_GATES[1:]
+            )
         )
         checkpoints.append(
             _checkpoint(
@@ -138,6 +142,7 @@ def build_day_12_22_report(
                 f"Lever supervised submissions through {target}",
                 passed,
                 {
+                    "phase_a_complete": phase_a,
                     "safe_confirmed_submissions": confirmed,
                     "target": target,
                     "phase_b_safety_gates": {
@@ -145,7 +150,8 @@ def build_day_12_22_report(
                         for name in LEVER_PHASE_B_GATES[1:]
                     },
                 },
-                [
+                (["complete Lever Phase A"] if not phase_a else [])
+                + [
                     f"obtain exact user approvals and independently verify {max(0, target - confirmed)} more distinct submissions",
                     *[
                         name
@@ -157,7 +163,9 @@ def build_day_12_22_report(
         )
 
     promotion_passed = (
-        phase_b and lever_gates.get("explicit_separate_promotion_approval") is True
+        phase_a
+        and phase_b
+        and lever_gates.get("explicit_separate_promotion_approval") is True
     )
     checkpoints.append(
         _checkpoint(
@@ -165,6 +173,7 @@ def build_day_12_22_report(
             "Lever promotion decision",
             promotion_passed,
             {
+                "phase_a_complete": phase_a,
                 "phase_b_complete": phase_b,
                 "canonical_maturity": lever.get("canonical_maturity"),
                 "promotion_ready": lever.get("promotion_ready") is True,
@@ -173,7 +182,8 @@ def build_day_12_22_report(
                 )
                 is True,
             },
-            (["complete all Lever Phase B evidence gates"] if not phase_b else [])
+            (["complete Lever Phase A"] if not phase_a else [])
+            + (["complete all Lever Phase B evidence gates"] if not phase_b else [])
             + [
                 "owner approval and a separate maturity-promotion change are required",
             ],
