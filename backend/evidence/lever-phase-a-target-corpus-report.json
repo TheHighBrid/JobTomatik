@@ -1,0 +1,84 @@
+{
+  "corpus_path": "evidence/lever-phase-a-target-corpus",
+  "corpus_sha256": "c2a875d475163da84862a930609c6b98650413f916143fe8dfb519d4e1dc00ef",
+  "excluded_targets": [
+    {
+      "exclusion_reason": "official_page_fetch_error_during_lock_review",
+      "observed_http_status": "fetch_error",
+      "posting_id": "86de813c-7065-40f5-b7fe-5e38ae2ba2e7",
+      "region": "global",
+      "review_id": "D8-014",
+      "role": "Senior Cloud Security Engineer (Remote Canada)",
+      "site": "smiledigitalhealth"
+    },
+    {
+      "exclusion_reason": "official_page_fetch_error_during_lock_review",
+      "observed_http_status": "fetch_error",
+      "posting_id": "99c284d6-6ba0-4e27-be16-4e1e3ea1e0f1",
+      "region": "global",
+      "review_id": "D8-024",
+      "role": "Customer Success Manager",
+      "site": "versapay"
+    },
+    {
+      "exclusion_reason": "official_page_fetch_error_during_lock_review",
+      "observed_http_status": "fetch_error",
+      "posting_id": "e744fdb4-295c-4552-a8cf-54cb83e92714",
+      "region": "global",
+      "review_id": "D8-027",
+      "role": "Customer Success Manager, Scale",
+      "site": "Clearer"
+    },
+    {
+      "exclusion_reason": "official_page_returned_404",
+      "observed_http_status": "404",
+      "posting_id": "d6878126-8dd4-4ea4-aa86-6c613e61faeb",
+      "region": "global",
+      "review_id": "D8-031",
+      "role": "Lead Product Designer (Canada)",
+      "site": "dutch"
+    },
+    {
+      "exclusion_reason": "general_application_not_specific_posting",
+      "observed_http_status": "200",
+      "posting_id": "4b1006af-d0f0-4569-96c7-55257561d297",
+      "region": "eu",
+      "review_id": "D8-044",
+      "role": "General Application - GLOBAL",
+      "site": "lionbridge"
+    }
+  ],
+  "safety": {
+    "application_data_entered": false,
+    "approval_issued": false,
+    "browser_opened_by_certifier": false,
+    "final_submit_clicked": false,
+    "maturity_promoted": false,
+    "network_contacted_by_certifier": false
+  },
+  "schema_version": "1.0",
+  "summary": {
+    "active_reviewed_posting_count": 40,
+    "distinct_viable_site_count": 39,
+    "excluded_posting_count": 5,
+    "gates": {
+      "all_viable_rows_are_active": true,
+      "all_viable_rows_have_official_page_signals": true,
+      "at_least_30_viable_distinct_sites_locked": true,
+      "at_least_40_active_official_postings_reviewed": true,
+      "global_and_eu_hosts_covered": true,
+      "zero_duplicate_viable_sites": true
+    },
+    "passed": true,
+    "regions_covered": [
+      "eu",
+      "global"
+    ],
+    "reviewed_posting_count": 44,
+    "viable_posting_count": 39,
+    "viable_region_counts": {
+      "eu": 7,
+      "global": 32
+    }
+  }
+}

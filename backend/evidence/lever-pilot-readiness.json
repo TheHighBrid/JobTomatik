@@ -2,7 +2,7 @@
   "baseline_record_count": 2,
   "baseline_sha256": "7599177ada557da65999a5d29146a9cb3e62d00012024c77cad2bc026ae996ab",
   "ledger_record_count": 2,
-  "ledger_sha256": "e9daa35c0d347546f65af3d235467c8973a495afa2cf7bb9e2dc2d98ff41baa9",
+  "ledger_sha256": "97250f5814b9007115f2d15096c87ea99ca35b147ff40b5936c4ca9e41a03c1c",
   "readiness_hardening_version": "1.1",
   "runtime_ledger_sha256": null,
   "runtime_record_count": 0,
