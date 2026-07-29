@@ -38,24 +38,24 @@ jobs:
       - name: Reconstruct and verify exact patch
         shell: bash
         run: |
-          python - <<'PY'
-          import base64
-          from pathlib import Path
-
-          allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\r\n\t ")
-          parts = sorted(Path("scripts").glob(".phase2_patch.part*"))
-          encoded = ""
-          for part in parts:
-              content = part.read_text(encoding="utf-8")
-              invalid = [(index, char) for index, char in enumerate(content) if char not in allowed]
-              if invalid:
-                  raise SystemExit(f"invalid base64 character in {part}: {invalid[:10]}")
-              encoded += content
-          clean = "".join(encoded.split())
-          Path("scripts/apply_phase2_integrity_patch.py").write_bytes(
-              base64.b64decode(clean, validate=True)
-          )
-          PY
+          cat > /tmp/phase2-chunks.sha256 <<'EOF'
+          87a95b61348aad5514d732ed7bdc5eef5b6cc0b250865989ba36d850537aa11f  scripts/.phase2_patch.part01
+          09cd629527692ac43ba84ddcb134a3c1eec8aa99b715e3da39b2292f98c1da4c  scripts/.phase2_patch.part02
+          7a17640b1c6ba30acbab9bcc71aeeeb9f9dfb789d110d7248bd6a976855aca7e  scripts/.phase2_patch.part03
+          1de0bf042771e50885ab8c9c3672eba7f8ee9fc1555475730892db6a9ad0ddf1  scripts/.phase2_patch.part04
+          de8ac59d3b9731b07c428a5532351f06bbe3b48be7ebefe89a820625ab8751cb  scripts/.phase2_patch.part05
+          3bd8e4efcda34f228cf3dbb7df70cc796281494e4930846d991e7e6c6985d486  scripts/.phase2_patch.part06_01
+          4d0663f2e7417c4acbe0593fb49daaab1e2f9f103c277aa8a34d3e8f0fbefcfb  scripts/.phase2_patch.part06_02
+          e698dcbf9af0d200309b6b64ba0f460e62e6d6bb71d85b3c07d9738a80f8532a  scripts/.phase2_patch.part06_03
+          f90e3189cabff34a78ad8f01ab6c6f4163afc9b60e5c5015500091620b291f42  scripts/.phase2_patch.part06_04
+          48842fb79bbbbfa82a4f56d67b944c1fdf0a6588486ea1f18520f7945f2280c2  scripts/.phase2_patch.part06_05
+          a3ba755c9f56049961ad16a97eccc119f4b4ea9c85e78798c07f8d8ec84aad6f  scripts/.phase2_patch.part06_06
+          20fe365e3fd6dced5c8fd49c9f2c28d9b522bb505f47f5ed16ce5973dcdde327  scripts/.phase2_patch.part07_01
+          436fa152ce4a0ff8c7ab3d0bbc7ed53f31387771f1543b4629b4ab53252136e4  scripts/.phase2_patch.part07_02
+          3be0dab7cca72ac9fc2291fb5d25855e1dd638ac44e56726fb64fbdac3c4f6b9  scripts/.phase2_patch.part07_03
+          EOF
+          sha256sum --check --strict /tmp/phase2-chunks.sha256
+          cat scripts/.phase2_patch.part* | base64 --decode > scripts/apply_phase2_integrity_patch.py
           echo "b97f0140321f8b5869bdf0ff59787b6858b64887824c485b906ca34c7a802d8d  scripts/apply_phase2_integrity_patch.py" | sha256sum --check --strict
           python -m py_compile scripts/apply_phase2_integrity_patch.py
 
