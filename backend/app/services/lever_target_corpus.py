@@ -67,7 +67,7 @@ def _canonical_review_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         if field == "review_digest_sha256":
             continue
         value: Any = row.get(field, "")
-        if field in {"apply_link_present", "lever_powerered_present", "active", "viable"}:
+        if field in {"apply_link_present", "lever_powered_present", "active", "viable"}:
             value = _truthy(value)
         else:
             value = str(value or "").strip()
