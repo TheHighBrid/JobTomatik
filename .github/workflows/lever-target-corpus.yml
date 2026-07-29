@@ -6,7 +6,7 @@ on:
     paths:
       - "backend/app/services/lever_target_corpus.py"
       - "backend/scripts/certify_lever_target_corpus.py"
-      - "backend/evidence/lever-phase-a-target-corpus.csv"
+      - "backend/evidence/lever-phase-a-target-corpus/**"
       - "backend/evidence/lever-phase-a-target-corpus-report.json"
       - "backend/evidence/lever-phase-a-target-corpus-report.md"
       - "backend/tests/test_lever_target_corpus.py"
@@ -19,7 +19,7 @@ on:
     paths:
       - "backend/app/services/lever_target_corpus.py"
       - "backend/scripts/certify_lever_target_corpus.py"
-      - "backend/evidence/lever-phase-a-target-corpus.csv"
+      - "backend/evidence/lever-phase-a-target-corpus/**"
       - "backend/evidence/lever-phase-a-target-corpus-report.json"
       - "backend/evidence/lever-phase-a-target-corpus-report.md"
       - "backend/tests/test_lever_target_corpus.py"
@@ -78,7 +78,7 @@ jobs:
         run: |
           mkdir -p corpus-ci
           python scripts/certify_lever_target_corpus.py \
-            --corpus evidence/lever-phase-a-target-corpus.csv \
+            --corpus evidence/lever-phase-a-target-corpus \
             --json-output corpus-ci/lever-phase-a-target-corpus-report.json \
             --markdown-output corpus-ci/lever-phase-a-target-corpus-report.md
 
