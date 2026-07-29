@@ -18,7 +18,7 @@
     "global_and_eu_hosts_covered": true,
     "zero_duplicate_viable_sites": true
   },
-  "merge_commit": null,
+  "merge_commit": "83d0e3ed76079251cc5e14fcfa07c4216fa49a9e",
   "mission": "build_and_lock_lever_target_corpus",
   "observed_results": {
     "backend_tests_failed": 0,
@@ -33,6 +33,7 @@
     "phase_a_qualifying_dry_runs": 0
   },
   "phase_a_qualifying_dry_runs_after_day_8": 0,
+  "pull_request": 165,
   "results": {
     "active_official_postings": 40,
     "distinct_viable_sites": 39,
@@ -54,12 +55,12 @@
     "maturity_promoted": false,
     "network_contacted_by_certifier": false
   },
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "source_main_commit": "3b6617313497b01c96db1e088e4a0a1d0101beed",
-  "status": "passed_on_verified_parent_head",
+  "status": "passed",
   "verified_parent_head": "e5e98fdc1a86ccf863c60993c5ce1b9d3d75a3b6",
-  "verified_head": null,
-  "verified_workflows": [
+  "verified_head": "3e374c121429151b98fbca9ebf48ff7f463cef88",
+  "verified_parent_workflows": [
     {
       "artifact_digest": "sha256:4bee0657e4037755bb0d691c1729c27c5b4d711a46b2b901bb87cbce418507c3",
       "conclusion": "success",
@@ -100,5 +101,46 @@
       "run_id": 30420937640
     }
   ],
-  "final_exact_head_gate": "pending_evidence_lock_ci"
+  "verified_workflows": [
+    {
+      "artifact_digest": "sha256:937bfbe7eca819fc55d61e9684d663fc62de1d91525d3f4882f3a72b750704b7",
+      "conclusion": "success",
+      "name": "Lever target corpus certification",
+      "run_id": 30421340810
+    },
+    {
+      "artifact_digest": "sha256:056d105a1acf10b5fb8892f74be075af8c0e5a51102dd7d391b06e1a98696b00",
+      "conclusion": "success",
+      "name": "Backend tests",
+      "run_id": 30421340835
+    },
+    {
+      "conclusion": "success",
+      "name": "Lever adapter certification",
+      "run_id": 30421340790
+    },
+    {
+      "conclusion": "success",
+      "name": "Phase 1 release gate",
+      "run_id": 30421340814
+    },
+    {
+      "conclusion": "success",
+      "name": "CodeQL security analysis",
+      "run_id": 30421340789
+    },
+    {
+      "aggregate_release_gate": "success",
+      "conclusion": "success",
+      "name": "Reproducible verification",
+      "run_id": 30421340794
+    },
+    {
+      "aggregate_release_gate": "success",
+      "conclusion": "success",
+      "name": "Post-merge stabilization",
+      "run_id": 30421340832
+    }
+  ],
+  "final_exact_head_gate": "passed"
 }
