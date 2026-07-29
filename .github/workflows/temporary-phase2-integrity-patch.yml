@@ -38,7 +38,24 @@ jobs:
       - name: Reconstruct and verify exact patch
         shell: bash
         run: |
-          cat scripts/.phase2_patch.part* | tr -d '[:space:]' | base64 --decode > scripts/apply_phase2_integrity_patch.py
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+
+          allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\r\n\t ")
+          parts = sorted(Path("scripts").glob(".phase2_patch.part*"))
+          encoded = ""
+          for part in parts:
+              content = part.read_text(encoding="utf-8")
+              invalid = [(index, char) for index, char in enumerate(content) if char not in allowed]
+              if invalid:
+                  raise SystemExit(f"invalid base64 character in {part}: {invalid[:10]}")
+              encoded += content
+          clean = "".join(encoded.split())
+          Path("scripts/apply_phase2_integrity_patch.py").write_bytes(
+              base64.b64decode(clean, validate=True)
+          )
+          PY
           echo "b97f0140321f8b5869bdf0ff59787b6858b64887824c485b906ca34c7a802d8d  scripts/apply_phase2_integrity_patch.py" | sha256sum --check --strict
           python -m py_compile scripts/apply_phase2_integrity_patch.py
 
