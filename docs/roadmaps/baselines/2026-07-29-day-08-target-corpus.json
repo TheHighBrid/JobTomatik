@@ -1,0 +1,42 @@
+{
+  "branch": "agent/day-08-lever-target-corpus",
+  "campaign_day": 8,
+  "execution_issue": 161,
+  "gates": {
+    "all_viable_rows_are_active": true,
+    "all_viable_rows_have_official_page_signals": true,
+    "at_least_30_viable_distinct_sites_locked": true,
+    "at_least_40_active_official_postings_reviewed": true,
+    "global_and_eu_hosts_covered": true,
+    "zero_duplicate_viable_sites": true
+  },
+  "merge_commit": null,
+  "mission": "build_and_lock_lever_target_corpus",
+  "phase_a_qualifying_dry_runs_after_day_8": 0,
+  "results": {
+    "active_official_postings": 40,
+    "distinct_viable_sites": 39,
+    "excluded_postings": 5,
+    "locked_viable_postings": 39,
+    "path": "backend/evidence/lever-phase-a-target-corpus",
+    "reviewed_postings": 44,
+    "sha256": "c2a875d475163da84862a930609c6b98650413f916143fe8dfb519d4e1dc00ef",
+    "viable_region_counts": {
+      "eu": 7,
+      "global": 32
+    }
+  },
+  "safety": {
+    "application_data_entered": false,
+    "approval_issued": false,
+    "browser_opened_by_certifier": false,
+    "final_submit_clicked": false,
+    "maturity_promoted": false,
+    "network_contacted_by_certifier": false
+  },
+  "schema_version": "1.0",
+  "source_main_commit": "3b6617313497b01c96db1e088e4a0a1d0101beed",
+  "status": "pending_exact_head_ci",
+  "verified_head": null,
+  "verified_workflows": []
+}
