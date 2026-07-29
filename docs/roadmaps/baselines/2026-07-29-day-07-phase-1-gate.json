@@ -7,7 +7,7 @@
   "phase": {
     "number": 1,
     "name": "Control Plane and Reproducible Baseline",
-    "status": "passed_on_verified_parent_head"
+    "status": "passed"
   },
   "completed_work": [
     {
@@ -144,38 +144,39 @@
     "autonomous_adapter_count": 0
   },
   "verified_parent_head": "46ef3d21fa2945d900ca5ead5f836c4404ddcdd9",
+  "verified_head": "bab6c7f92cb7258c4e46983c6e69cf51dffaab3f",
   "verified_workflows": [
     {
       "name": "Phase 1 release gate",
-      "run_id": 30415118070,
+      "run_id": 30415812422,
       "conclusion": "success",
-      "artifact_digest": "sha256:bc93d23eee7c1708248da48ca57896aa78a2a38db288e89fe16f1343aecfc603"
+      "artifact_digest": "sha256:ee05194bb14c8aedd42e0985ed8e3ac19364e8586548d03db7e502fb6fb5409c"
     },
     {
       "name": "Backend tests",
-      "run_id": 30415118103,
+      "run_id": 30415812412,
       "conclusion": "success",
-      "artifact_digest": "sha256:b000c91e42e9ce530b2318cf0e0a9c96d1c65cdf75849e41370d4fa7637e4075"
+      "artifact_digest": "sha256:8c18db5086086c26946443cfd53f3e007418a1d38c0fab2cacfc1fc8b861d568"
     },
     {
       "name": "CodeQL security analysis",
-      "run_id": 30415118101,
+      "run_id": 30415812407,
       "conclusion": "success"
     },
     {
       "name": "Post-merge stabilization",
-      "run_id": 30415118074,
+      "run_id": 30415812387,
       "conclusion": "success",
       "aggregate_release_gate": "success"
     },
     {
       "name": "Reproducible verification",
-      "run_id": 30415118113,
+      "run_id": 30415812397,
       "conclusion": "success",
       "aggregate_release_gate": "success"
     }
   ],
-  "final_exact_head_gate": "pending_evidence_lock_ci",
-  "verified_head": null,
-  "merge_commit": null
+  "final_exact_head_gate": "passed",
+  "pull_request": 163,
+  "merge_commit": "23f7355270d1d43889504481ffb2542ee12aded6"
 }
