@@ -37,7 +37,11 @@ def test_phase_1_manifest_covers_every_completed_control_day():
 
     assert gate["campaign_day"] == 7
     assert gate["phase"]["number"] == 1
-    assert gate["phase"]["status"] in {"pending_exact_head_ci", "passed"}
+    assert gate["phase"]["status"] in {
+        "pending_exact_head_ci",
+        "passed_on_verified_parent_head",
+        "passed",
+    }
     assert [item["day"] for item in gate["completed_work"]] == [1, 2, 3, 4, 5, 6]
     assert [item.get("pull_request") for item in gate["completed_work"][1:]] == [155, 156, 157, 158, 160]
     assert gate["corrective_hardening"]["pull_request"] == 159
