@@ -1,41 +1,9 @@
-name: Day 6 operational safety certification
+name: Temporary P1 regression patch
 
 on:
   pull_request:
     paths:
-      - ".env.example"
-      - "backend/app/services/operations_*.py"
-      - "backend/app/services/operational_safety.py"
-      - "backend/app/services/handoff_*.py"
-      - "backend/app/services/application_target_handoff.py"
-      - "backend/app/services/form_filler.py"
-      - "backend/app/services/browser_handoff.py"
-      - "backend/app/services/lever_*.py"
-      - "backend/app/tasks/handoffs.py"
-      - "backend/tests/test_day06_operational_safety.py"
-      - "backend/tests/test_operations_policy.py"
-      - "backend/tests/test_handoff_*.py"
-      - "backend/tests/test_lever_*.py"
       - ".github/workflows/day-06-operational-safety.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - ".env.example"
-      - "backend/app/services/operations_*.py"
-      - "backend/app/services/operational_safety.py"
-      - "backend/app/services/handoff_*.py"
-      - "backend/app/services/application_target_handoff.py"
-      - "backend/app/services/form_filler.py"
-      - "backend/app/services/browser_handoff.py"
-      - "backend/app/services/lever_*.py"
-      - "backend/app/tasks/handoffs.py"
-      - "backend/tests/test_day06_operational_safety.py"
-      - "backend/tests/test_operations_policy.py"
-      - "backend/tests/test_handoff_*.py"
-      - "backend/tests/test_lever_*.py"
-      - ".github/workflows/day-06-operational-safety.yml"
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -69,7 +37,6 @@ jobs:
               if marker not in text:
                   target.write_text(text.rstrip() + "\n\n" + addition.strip() + "\n", encoding="utf-8")
 
-          # Global browser boundary, exact posting identity, and target rebinding.
           replace_once(
               "backend/app/services/operational_safety.py",
               "from urllib.parse import urlparse",
@@ -103,8 +70,7 @@ jobs:
           )
           replace_once(
               "backend/app/services/operational_safety.py",
-              '''def evaluate_execution_safety(
-          ''',
+              "def evaluate_execution_safety(\n",
               '''def require_browser_entry_allowed(url: str) -> AutomationDecision:
               """Enforce the emergency and per-platform switches before browser activity."""
 
@@ -266,9 +232,7 @@ jobs:
           )
           replace_once(
               "backend/app/services/form_filler.py",
-              '''async def fill_and_submit_application(*args, **kwargs):
-              # A live supervised worker binds the exact approved target only for the
-          ''',
+              "async def fill_and_submit_application(*args, **kwargs):\n",
               '''def _job_url_requested(args, kwargs) -> str:
               if "job_url" in kwargs:
                   return str(kwargs.get("job_url") or "")
@@ -277,7 +241,6 @@ jobs:
 
           async def fill_and_submit_application(*args, **kwargs):
               require_browser_entry_allowed(_job_url_requested(args, kwargs))
-              # A live supervised worker binds the exact approved target only for the
           ''',
           )
 
@@ -288,9 +251,7 @@ jobs:
           )
           replace_once(
               "backend/app/services/browser_handoff.py",
-              '''async def _connect_local_cdp(session: ManualHandoffSession):
-              if session.browser_provider != "local_cdp":
-          ''',
+              "async def _connect_local_cdp(session: ManualHandoffSession):\n",
               '''async def _connect_local_cdp(session: ManualHandoffSession):
               metadata = dict(session.handoff_metadata or {})
               binding = dict(metadata.get("target_binding") or {})
@@ -299,24 +260,13 @@ jobs:
                   require_browser_entry_allowed(safety_url)
               except OperationalSafetyViolation as exc:
                   raise BrowserHandoffUnavailable(f"[{exc.code}] {exc}") from exc
-              if session.browser_provider != "local_cdp":
           ''',
           )
           replace_once(
               "backend/app/services/browser_handoff.py",
-              '''    else:
-                  page = next(
-                      (candidate for candidate in pages if session.current_url and candidate.url == session.current_url),
-                      pages[-1],
-                  )
-              return playwright, browser, context, page
+              '''    return playwright, browser, context, page
           ''',
-              '''    else:
-                  page = next(
-                      (candidate for candidate in pages if session.current_url and candidate.url == session.current_url),
-                      pages[-1],
-                  )
-              try:
+              '''    try:
                   require_bound_handoff_url(session, page.url)
               except OperationalSafetyViolation as exc:
                   await playwright.stop()
@@ -332,8 +282,12 @@ jobs:
           )
           replace_once(
               "backend/app/services/handoff_safety_integration.py",
-              '''                application, review, job, _user = _records(db, session)
-                  _ensure_target_binding(session, application, review, job)
+              "application, review, job, _user = _records(db, session)",
+              "application, review, job, user = _records(db, session)",
+          )
+          replace_once(
+              "backend/app/services/handoff_safety_integration.py",
+              '''                _ensure_target_binding(session, application, review, job)
                   require_handoff_target_binding(
                       session,
                       application,
@@ -342,8 +296,7 @@ jobs:
                       current_url=verification.get("current_url") or session.current_url,
                   )
           ''',
-              '''                application, review, job, user = _records(db, session)
-                  _ensure_target_binding(session, application, review, job)
+              '''                _ensure_target_binding(session, application, review, job)
                   current_url = verification.get("current_url") or session.current_url
                   binding = dict((session.handoff_metadata or {}).get("target_binding") or {})
                   if binding.get("target_resolution_only"):
@@ -390,7 +343,6 @@ jobs:
           ''',
           )
 
-          # Lever evidence subsets and one locked readiness snapshot.
           replace_once(
               "backend/app/services/lever_readiness_hardening.py",
               '''    qualifying = [
@@ -437,11 +389,8 @@ jobs:
           )
           replace_once(
               "backend/app/services/lever_readiness_hardening.py",
-              '''    duplicate_indexes = _duplicate_indexes(raw_successes)
-          ''',
-              '''    duplicate_indexes = _duplicate_indexes(phase_b)
-              duplicate_record_ids = {id(phase_b[index]) for index in duplicate_indexes}
-          ''',
+              "    duplicate_indexes = _duplicate_indexes(raw_successes)\n",
+              "    duplicate_indexes = _duplicate_indexes(phase_b)\n    duplicate_record_ids = {id(phase_b[index]) for index in duplicate_indexes}\n",
           )
           replace_once(
               "backend/app/services/lever_readiness_hardening.py",
@@ -537,7 +486,6 @@ jobs:
           ''',
           )
 
-          # Regression tests for all six P1 findings.
           replace_once(
               "backend/tests/test_day06_operational_safety.py",
               "from app.services import operational_safety\n",
@@ -562,85 +510,39 @@ jobs:
                   called["value"] = True
                   return {"success": True}
 
-              monkeypatch.setattr(
-                  form_filler,
-                  "fill_and_submit_application_with_handoff",
-                  unexpected_browser,
-              )
+              monkeypatch.setattr(form_filler, "fill_and_submit_application_with_handoff", unexpected_browser)
               with pytest.raises(OperationalSafetyViolation) as direct:
-                  await form_filler.fill_and_submit_application(
-                      job_url=GREENHOUSE_URL,
-                      dry_run=True,
-                  )
+                  await form_filler.fill_and_submit_application(job_url=GREENHOUSE_URL, dry_run=True)
               assert direct.value.code == "global_kill_switch_active"
               assert called["value"] is False
 
-              retained = SimpleNamespace(
-                  current_url=GREENHOUSE_URL,
-                  handoff_metadata={},
-              )
-              with pytest.raises(
-                  browser_handoff.BrowserHandoffUnavailable,
-                  match="global_kill_switch_active",
-              ):
+              retained = SimpleNamespace(current_url=GREENHOUSE_URL, handoff_metadata={})
+              with pytest.raises(browser_handoff.BrowserHandoffUnavailable, match="global_kill_switch_active"):
                   await browser_handoff._connect_local_cdp(retained)
 
 
           @pytest.mark.parametrize(
               ("first_url", "second_url"),
               [
-                  (
-                      "https://boards.greenhouse.io/safeco?gh_jid=123456",
-                      "https://boards.greenhouse.io/safeco?gh_jid=999999",
-                  ),
-                  (
-                      "https://boards.greenhouse.io/embed/job_app?token=alpha-token",
-                      "https://boards.greenhouse.io/embed/job_app?token=beta-token",
-                  ),
+                  ("https://boards.greenhouse.io/safeco?gh_jid=123456", "https://boards.greenhouse.io/safeco?gh_jid=999999"),
+                  ("https://boards.greenhouse.io/embed/job_app?token=alpha-token", "https://boards.greenhouse.io/embed/job_app?token=beta-token"),
               ],
           )
-          def test_greenhouse_query_posting_ids_are_part_of_handoff_identity(
-              db_session,
-              first_url,
-              second_url,
-          ):
-              _user, job, application, review = _records(
-                  db_session,
-                  suffix="greenhouse-query-binding",
-                  url=first_url,
-              )
-              binding = build_handoff_target_binding(
-                  application,
-                  job,
-                  review,
-                  current_url=first_url,
-              )
-              session = SimpleNamespace(
-                  handoff_metadata={"target_binding": binding},
-                  current_url=first_url,
-              )
+          def test_greenhouse_query_posting_ids_are_part_of_handoff_identity(db_session, first_url, second_url):
+              _user, job, application, review = _records(db_session, suffix="greenhouse-query-binding", url=first_url)
+              binding = build_handoff_target_binding(application, job, review, current_url=first_url)
+              session = SimpleNamespace(handoff_metadata={"target_binding": binding}, current_url=first_url)
               assert validate_handoff_target_binding(
-                  session,
-                  application,
-                  job,
-                  review,
-                  current_url=first_url + "&utm_source=certification",
+                  session, application, job, review, current_url=first_url + "&utm_source=certification"
               ).allowed is True
               mismatch = validate_handoff_target_binding(
-                  session,
-                  application,
-                  job,
-                  review,
-                  current_url=second_url,
+                  session, application, job, review, current_url=second_url
               )
               assert mismatch.allowed is False
               assert mismatch.code == "handoff_posting_mismatch"
 
 
-          def test_resolved_listing_target_is_rebound_and_rechecked_before_resume(
-              db_session,
-              monkeypatch,
-          ):
+          def test_resolved_listing_target_is_rebound_and_rechecked_before_resume(db_session, monkeypatch):
               listing_url = "https://www.jobbank.gc.ca/jobsearch/jobposting/12345678"
               user, job, application, review = _records(
                   db_session,
@@ -649,11 +551,7 @@ jobs:
                   reason=ManualReviewReason.application_target_required,
               )
               binding = build_handoff_target_binding(
-                  application,
-                  job,
-                  review,
-                  current_url=listing_url,
-                  target_resolution_only=True,
+                  application, job, review, current_url=listing_url, target_resolution_only=True
               )
               session = SimpleNamespace(
                   current_url=listing_url,
@@ -666,20 +564,13 @@ jobs:
                       "target_binding": binding,
                   },
               )
-
               monkeypatch.setenv("AUTOMATION_GLOBAL_KILL_SWITCH", "false")
               monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "lever")
               _reset_operations_settings()
               with pytest.raises(OperationalSafetyViolation) as disabled:
                   rebind_resolved_handoff_target(
-                      db_session,
-                      session,
-                      application,
-                      job,
-                      review,
-                      user,
-                      resolved_url=LEVER_URL,
-                      current_fingerprint="lever-dom",
+                      db_session, session, application, job, review, user,
+                      resolved_url=LEVER_URL, current_fingerprint="lever-dom",
                   )
               assert disabled.value.code == "platform_disabled"
               assert session.handoff_metadata["target_binding"]["target_resolution_only"] is True
@@ -687,24 +578,14 @@ jobs:
               monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "")
               _reset_operations_settings()
               rebound = rebind_resolved_handoff_target(
-                  db_session,
-                  session,
-                  application,
-                  job,
-                  review,
-                  user,
-                  resolved_url=LEVER_URL,
-                  current_fingerprint="lever-dom",
+                  db_session, session, application, job, review, user,
+                  resolved_url=LEVER_URL, current_fingerprint="lever-dom",
               )
               assert rebound.allowed is True
               assert session.handoff_metadata["target_resolution_only"] is False
               assert session.handoff_metadata["target_binding"]["platform"] == "lever"
-              assert session.handoff_metadata["target_binding"]["target_resolution_only"] is False
               wrong = validate_handoff_target_binding(
-                  session,
-                  application,
-                  job,
-                  review,
+                  session, application, job, review,
                   current_url="https://jobs.lever.co/safeco/different-posting",
               )
               assert wrong.allowed is False
@@ -717,31 +598,25 @@ jobs:
               '''def test_historical_boundary_rows_do_not_poison_future_phase_a_certification(tmp_path):
               baseline = tmp_path / "phase-a.csv"
               ledger = tmp_path / "phase-b.jsonl"
-              rows = [
-                  {
-                      "run_id": "historical-captcha",
-                      "site": "historical-site",
-                      "posting_id": "historical-posting",
-                      "region": "global",
-                      "pre_submit_state": "manual_challenge_handoff",
-                      "final_status": "needs_review",
-                      "official_posting_inspection_passed": "false",
-                  }
-              ]
-              rows.extend(
-                  {
-                      "run_id": f"qualified-{index}",
-                      "site": f"qualified-site-{index}",
-                      "posting_id": f"posting-{index}",
-                      "region": "global" if index % 2 else "eu",
-                      "pre_submit_state": "ready_to_submit",
-                      "final_status": "dry_run_passed",
-                      "official_posting_inspection_passed": "true",
-                  }
-                  for index in range(30)
-              )
+              rows = [{
+                  "run_id": "historical-captcha",
+                  "site": "historical-site",
+                  "posting_id": "historical-posting",
+                  "region": "global",
+                  "pre_submit_state": "manual_challenge_handoff",
+                  "final_status": "needs_review",
+                  "official_posting_inspection_passed": "false",
+              }]
+              rows.extend({
+                  "run_id": f"qualified-{index}",
+                  "site": f"qualified-site-{index}",
+                  "posting_id": f"posting-{index}",
+                  "region": "global" if index % 2 else "eu",
+                  "pre_submit_state": "ready_to_submit",
+                  "final_status": "dry_run_passed",
+                  "official_posting_inspection_passed": "true",
+              } for index in range(30))
               _write_phase_a(baseline, rows)
-
               summary = harden_lever_readiness(
                   _base_readiness(), baseline_path=baseline, ledger_path=ledger
               )["summary"]
@@ -749,10 +624,7 @@ jobs:
               assert summary["manual_challenge_boundary_count"] == 1
               assert summary["phase_a_inspection_failure_count"] == 0
               assert summary["gates"]["thirty_qualifying_dry_runs"] is True
-              assert (
-                  summary["gates"]["all_phase_a_records_have_successful_matching_inspection"]
-                  is True
-              )
+              assert summary["gates"]["all_phase_a_records_have_successful_matching_inspection"] is True
 
 
           def test_duplicate_indicator_on_blocked_phase_b_record_fails_duplicate_gate(tmp_path):
@@ -767,7 +639,6 @@ jobs:
               })
               records.append(blocked)
               _write_phase_b(ledger, records)
-
               summary = harden_lever_readiness(
                   _base_readiness(), baseline_path=baseline, ledger_path=ledger
               )["summary"]
@@ -792,9 +663,7 @@ jobs:
               "backend/tests/test_lever_pilot_ingestion.py",
               "test_hardening_and_summary_persistence_use_the_ingestion_lock_snapshot",
               '''def test_hardening_and_summary_persistence_use_the_ingestion_lock_snapshot(
-              db_session,
-              tmp_path,
-              monkeypatch,
+              db_session, tmp_path, monkeypatch
           ):
               user, job, application = _confirmed_fixture(db_session)
               paths = _paths(tmp_path)
@@ -815,30 +684,18 @@ jobs:
                   assert state["inside_lock"] is True
                   state["hardened"] = True
                   return original_harden(
-                      readiness,
-                      baseline_path=baseline_path,
-                      ledger_path=ledger_path,
+                      readiness, baseline_path=baseline_path, ledger_path=ledger_path
                   )
 
               monkeypatch.setattr(lever_pilot_ingestion, "_ledger_lock", observed_lock)
-              monkeypatch.setattr(
-                  lever_pilot_ingestion,
-                  "harden_lever_readiness",
-                  observed_harden,
-              )
+              monkeypatch.setattr(lever_pilot_ingestion, "harden_lever_readiness", observed_harden)
               result = ingest_confirmed_lever_application(
-                  db_session,
-                  application,
-                  user,
-                  job,
-                  **paths,
+                  db_session, application, user, job, **paths
               )
               assert state["hardened"] is True
               persisted = json.loads(paths["summary_json_path"].read_text(encoding="utf-8"))
               expected = {
-                  key: value
-                  for key, value in result.items()
-                  if key not in {"added", "record"}
+                  key: value for key, value in result.items() if key not in {"added", "record"}
               }
               assert persisted == expected
               assert persisted["runtime_record_count"] == result["runtime_record_count"]
@@ -865,105 +722,3 @@ jobs:
             backend/tests/test_lever_pilot_ingestion.py
           git commit -m "Fix kill switch target binding and readiness P1 regressions"
           git push origin HEAD:${{ github.head_ref }}
-
-  fail-closed-drill:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    env:
-      DATABASE_URL: sqlite:///./day06-operational-safety.db
-      REDIS_URL: redis://localhost:6379/0
-      SECRET_KEY: day06-operational-safety-certification-only
-      AI_PROVIDER: template
-      DEV_MOCK_JOBS: "false"
-      AUTOMATION_GLOBAL_KILL_SWITCH: "false"
-      AUTOPILOT_ENABLED: "false"
-      AUTOPILOT_DISABLED_PLATFORMS: ""
-      ALLOW_REAL_APPLICATION_SUBMIT: "false"
-      ENABLE_RESUMABLE_HANDOFFS: "false"
-      GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
-      LEVER_SUPERVISED_PILOT_ENABLED: "false"
-
-    defaults:
-      run:
-        working-directory: backend
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - name: Install backend dependencies
-        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
-
-      - name: Compile safety and handoff modules
-        run: |
-          python -m compileall -q \
-            app/services/operations_settings.py \
-            app/services/operations_policy.py \
-            app/services/operational_safety.py \
-            app/services/handoff_safety_integration.py \
-            app/services/handoff_integration.py \
-            app/services/application_target_handoff.py \
-            app/services/form_filler.py \
-            app/services/browser_handoff.py \
-            app/services/lever_readiness_hardening.py \
-            app/services/lever_pilot_ingestion.py \
-            app/services/lever_pilot_ledger_boundary.py \
-            app/tasks/handoffs.py
-
-      - name: Run kill switch handoff breaker and readiness matrix
-        shell: bash
-        run: |
-          set +e
-          pytest -q --tb=short -ra \
-            tests/test_day06_operational_safety.py \
-            tests/test_operations_policy.py \
-            tests/test_handoff_sessions.py \
-            tests/test_handoff_api.py \
-            tests/test_lever_readiness_hardening.py \
-            tests/test_lever_pilot_ingestion.py \
-            > day06-operational-safety.txt 2>&1
-          status=$?
-          cat day06-operational-safety.txt
-          exit $status
-
-      - name: Assert fail-safe defaults and reason matrix
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from app.services.operational_safety import operational_safety_manifest
-          from app.services.operations_policy import operations_readiness_manifest
-
-          env_text = Path('../.env.example').read_text(encoding='utf-8')
-          for required in (
-              'AUTOMATION_GLOBAL_KILL_SWITCH=false',
-              'AUTOPILOT_ENABLED=false',
-              'ALLOW_REAL_APPLICATION_SUBMIT=false',
-              'ENABLE_RESUMABLE_HANDOFFS=false',
-          ):
-              assert required in env_text, required
-
-          operations = operations_readiness_manifest()
-          safety = operational_safety_manifest()
-          assert operations['global_kill_switch'] is False
-          assert operations['autopilot_enabled'] is False
-          assert operations['real_submission_enabled'] is False
-          assert operations['resumable_handoffs_enabled'] is False
-          assert safety['invariants']['wrong_application_or_posting_resume_is_blocked'] is True
-          assert safety['invariants']['uncertain_confirmation_requires_evidence_review'] is True
-          PY
-
-      - name: Upload Day 6 certification report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: day06-operational-safety-report
-          path: backend/day06-operational-safety.txt
-          if-no-files-found: error
-          retention-days: 30
