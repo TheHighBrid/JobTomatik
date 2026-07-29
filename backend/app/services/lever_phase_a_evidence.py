@@ -108,6 +108,10 @@ def verify_phase_a_row_evidence(
         result["error"] = "CSV target identity does not match the exact Lever application URL"
         return result
 
+    # Artifact verification is independent from whether the retained report
+    # ultimately proves a qualifying exercise and official inspection.
+    result["artifact_verified"] = True
+
     reports = report.get("reports") or []
     if not isinstance(reports, list):
         result["error"] = "retained Phase A artifact reports must be a list"
@@ -151,7 +155,6 @@ def verify_phase_a_row_evidence(
 
     result.update(
         {
-            "artifact_verified": True,
             "exercise_verified": exercise_verified,
             "inspection_verified": inspection_verified,
             "qualifies": bool(
