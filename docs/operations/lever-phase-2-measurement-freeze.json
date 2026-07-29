@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0",
-  "contract_version": "2026-07-29.day7",
+  "schema_version": "1.1",
+  "contract_version": "2026-07-29.day8-fail-closed-amendment",
   "effective_date": "2026-07-29",
   "campaign_phase": 2,
   "platform": "lever",
@@ -10,6 +10,15 @@
   "campaign_tracker_issue": 154,
   "historical_evidence_pr": 152,
   "hardening_pr": 159,
+  "amendment_pr": 165,
+  "amendment": {
+    "previous_contract_version": "2026-07-29.day7",
+    "reason": "The Day 8 full backend suite detected that the locked blob identity referenced an older readiness-hardening implementation than the fail-closed implementation already present on main.",
+    "measurement_impact": "No evidence gains quota credit. The current implementation is stricter: official-posting inspection failures are evaluated only for ready-to-submit dry-run candidates, while duplicate identities are detected across the complete Phase B ledger rather than successes only.",
+    "qualification_count_before": 0,
+    "qualification_count_after": 0,
+    "weakening_allowed": false
+  },
   "starting_point": {
     "qualifying_dry_runs": 0,
     "required_qualifying_dry_runs": 30,
@@ -68,7 +77,7 @@
   "locked_input_blobs": {
     "backend/evidence/lever-phase-a-baseline.csv": "0aba8bbf9aabc4bfe39baef5ed4278c222dc0e85",
     "backend/evidence/lever-phase-a-sources.csv": "46eaeef4cfded10a3cfad7ad0f0e07c6a7dd7e0e",
-    "backend/app/services/lever_readiness_hardening.py": "8bd64c94a2964ef27df28845cdfd56dce569005a",
+    "backend/app/services/lever_readiness_hardening.py": "5d856e726f82bc3576a3026b56d0a791451641f5",
     "backend/scripts/export_lever_phase_a_record.py": "2b5c01ed1879bfd3d2da2483ead81cb9d9eb58f5",
     "backend/scripts/certify_lever_pilot_readiness.py": "5e232f26cf3e50137421a02cb0e7f42d4a76addd",
     ".github/workflows/lever-phase-a-certification.yml": "a2c267965886053e8ff39314325bd7c16486642c"

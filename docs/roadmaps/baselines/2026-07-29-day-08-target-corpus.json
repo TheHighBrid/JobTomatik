@@ -1,0 +1,104 @@
+{
+  "branch": "agent/day-08-lever-target-corpus",
+  "campaign_day": 8,
+  "execution_issue": 161,
+  "freeze_amendment": {
+    "contract_version": "2026-07-29.day8-fail-closed-amendment",
+    "new_readiness_blob": "5d856e726f82bc3576a3026b56d0a791451641f5",
+    "old_readiness_blob": "8bd64c94a2964ef27df28845cdfd56dce569005a",
+    "qualification_count_after": 0,
+    "qualification_count_before": 0,
+    "weakening_allowed": false
+  },
+  "gates": {
+    "all_viable_rows_are_active": true,
+    "all_viable_rows_have_official_page_signals": true,
+    "at_least_30_viable_distinct_sites_locked": true,
+    "at_least_40_active_official_postings_reviewed": true,
+    "global_and_eu_hosts_covered": true,
+    "zero_duplicate_viable_sites": true
+  },
+  "merge_commit": null,
+  "mission": "build_and_lock_lever_target_corpus",
+  "observed_results": {
+    "backend_tests_failed": 0,
+    "backend_tests_passed": 538,
+    "backend_tests_skipped": 59,
+    "corpus_tests_failed": 0,
+    "corpus_tests_passed": 8,
+    "duplicate_viable_sites": 0,
+    "final_submit_clicks": 0,
+    "live_submissions": 0,
+    "maturity_promotions": 0,
+    "phase_a_qualifying_dry_runs": 0
+  },
+  "phase_a_qualifying_dry_runs_after_day_8": 0,
+  "results": {
+    "active_official_postings": 40,
+    "distinct_viable_sites": 39,
+    "excluded_postings": 5,
+    "locked_viable_postings": 39,
+    "path": "backend/evidence/lever-phase-a-target-corpus",
+    "reviewed_postings": 44,
+    "sha256": "c2a875d475163da84862a930609c6b98650413f916143fe8dfb519d4e1dc00ef",
+    "viable_region_counts": {
+      "eu": 7,
+      "global": 32
+    }
+  },
+  "safety": {
+    "application_data_entered": false,
+    "approval_issued": false,
+    "browser_opened_by_certifier": false,
+    "final_submit_clicked": false,
+    "maturity_promoted": false,
+    "network_contacted_by_certifier": false
+  },
+  "schema_version": "1.1",
+  "source_main_commit": "3b6617313497b01c96db1e088e4a0a1d0101beed",
+  "status": "passed_on_verified_parent_head",
+  "verified_parent_head": "e5e98fdc1a86ccf863c60993c5ce1b9d3d75a3b6",
+  "verified_head": null,
+  "verified_workflows": [
+    {
+      "artifact_digest": "sha256:4bee0657e4037755bb0d691c1729c27c5b4d711a46b2b901bb87cbce418507c3",
+      "conclusion": "success",
+      "name": "Lever target corpus certification",
+      "run_id": 30420937662
+    },
+    {
+      "artifact_digest": "sha256:f38ccea9c7ba3a3a013ac6f2aef8ab5d2ee3a0f314f0745b6056426982196771",
+      "conclusion": "success",
+      "name": "Backend tests",
+      "run_id": 30420937620
+    },
+    {
+      "conclusion": "success",
+      "name": "Lever adapter certification",
+      "run_id": 30420937626
+    },
+    {
+      "conclusion": "success",
+      "name": "Phase 1 release gate",
+      "run_id": 30420937643
+    },
+    {
+      "conclusion": "success",
+      "name": "CodeQL security analysis",
+      "run_id": 30420937656
+    },
+    {
+      "aggregate_release_gate": "success",
+      "conclusion": "success",
+      "name": "Reproducible verification",
+      "run_id": 30420937622
+    },
+    {
+      "aggregate_release_gate": "success",
+      "conclusion": "success",
+      "name": "Post-merge stabilization",
+      "run_id": 30420937640
+    }
+  ],
+  "final_exact_head_gate": "pending_evidence_lock_ci"
+}
