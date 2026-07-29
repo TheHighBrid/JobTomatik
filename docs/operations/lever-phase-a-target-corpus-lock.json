@@ -1,0 +1,113 @@
+{
+  "campaign_day": 8,
+  "campaign_tracker_issue": 154,
+  "corpus": {
+    "active_official_postings": 40,
+    "distinct_viable_sites": 39,
+    "excluded_postings": 5,
+    "locked_viable_postings": 39,
+    "path": "backend/evidence/lever-phase-a-target-corpus",
+    "reviewed_postings": 44,
+    "sha256": "c2a875d475163da84862a930609c6b98650413f916143fe8dfb519d4e1dc00ef",
+    "viable_region_counts": {
+      "eu": 7,
+      "global": 32
+    }
+  },
+  "date_local": "2026-07-28",
+  "excluded_targets": [
+    {
+      "exclusion_reason": "official_page_fetch_error_during_lock_review",
+      "observed_http_status": "fetch_error",
+      "posting_id": "86de813c-7065-40f5-b7fe-5e38ae2ba2e7",
+      "region": "global",
+      "review_id": "D8-014",
+      "role": "Senior Cloud Security Engineer (Remote Canada)",
+      "site": "smiledigitalhealth"
+    },
+    {
+      "exclusion_reason": "official_page_fetch_error_during_lock_review",
+      "observed_http_status": "fetch_error",
+      "posting_id": "99c284d6-6ba0-4e27-be16-4e1e3ea1e0f1",
+      "region": "global",
+      "review_id": "D8-024",
+      "role": "Customer Success Manager",
+      "site": "versapay"
+    },
+    {
+      "exclusion_reason": "official_page_fetch_error_during_lock_review",
+      "observed_http_status": "fetch_error",
+      "posting_id": "e744fdb4-295c-4552-a8cf-54cb83e92714",
+      "region": "global",
+      "review_id": "D8-027",
+      "role": "Customer Success Manager, Scale",
+      "site": "Clearer"
+    },
+    {
+      "exclusion_reason": "official_page_returned_404",
+      "observed_http_status": "404",
+      "posting_id": "d6878126-8dd4-4ea4-aa86-6c613e61faeb",
+      "region": "global",
+      "review_id": "D8-031",
+      "role": "Lead Product Designer (Canada)",
+      "site": "dutch"
+    },
+    {
+      "exclusion_reason": "general_application_not_specific_posting",
+      "observed_http_status": "200",
+      "posting_id": "4b1006af-d0f0-4569-96c7-55257561d297",
+      "region": "eu",
+      "review_id": "D8-044",
+      "role": "General Application - GLOBAL",
+      "site": "lionbridge"
+    }
+  ],
+  "execution_issue": 161,
+  "locked_provenance_fields": [
+    "review_id",
+    "site",
+    "posting_id",
+    "region",
+    "posting_url",
+    "canonical_application_url",
+    "reviewed_at_utc",
+    "verification_method",
+    "observed_http_status",
+    "apply_link_present",
+    "lever_powered_present",
+    "active",
+    "viable",
+    "exclusion_reason",
+    "review_digest_sha256"
+  ],
+  "measurement_contract": "docs/operations/lever-phase-2-measurement-freeze.json",
+  "phase_a_readiness": {
+    "corpus_rows_are_submission_evidence": false,
+    "qualifying_dry_runs": 0,
+    "required_qualifying_dry_runs": 30
+  },
+  "platform_tracker_issue": 86,
+  "review_completed_at_utc": "2026-07-29T03:14:00Z",
+  "safety": {
+    "application_data_entered": false,
+    "approval_issued": false,
+    "browser_opened_by_certifier": false,
+    "final_submit_clicked": false,
+    "maturity_promoted": false,
+    "network_contacted_by_certifier": false
+  },
+  "schema_version": "1.0",
+  "selection_rules": {
+    "apply_link_required": true,
+    "duplicate_targets_allowed": false,
+    "expired_or_unverified_postings_allowed": false,
+    "global_and_eu_coverage_required": true,
+    "lever_powered_marker_required": true,
+    "official_lever_host_required": true,
+    "official_page_http_200_required": true,
+    "one_viable_posting_per_site": true,
+    "specific_posting_required": true
+  },
+  "source_main_commit": "3b6617313497b01c96db1e088e4a0a1d0101beed",
+  "status": "locked_pending_exact_head_ci"
+}
