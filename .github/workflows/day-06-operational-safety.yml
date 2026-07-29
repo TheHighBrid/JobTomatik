@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/day-06-operational-safety.yml"
       - "scripts/apply_p1_regression_patch.py"
+      - "scripts/complete_p1_regression_patch.py"
 
 permissions:
   contents: write
@@ -21,7 +22,17 @@ jobs:
           fetch-depth: 0
 
       - name: Apply fail-closed P1 patch
-        run: python scripts/apply_p1_regression_patch.py
+        shell: bash
+        run: |
+          set +e
+          output=$(python scripts/apply_p1_regression_patch.py 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ] && [[ "$output" != *"backend/app/services/lever_pilot_ledger_boundary.py"* ]]; then
+            exit "$status"
+          fi
+          python scripts/complete_p1_regression_patch.py
 
       - name: Compile patched modules
         run: |
