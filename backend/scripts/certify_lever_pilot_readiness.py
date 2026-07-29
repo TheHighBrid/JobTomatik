@@ -48,6 +48,10 @@ def build_certification_report(
             summary.get("payload_hash_mismatch_count") or 0
         )
         == 0,
+        "phase_a_candidate_artifacts_are_verified": int(
+            summary.get("phase_a_inspection_failure_count") or 0
+        )
+        == 0,
     }
     if require_phase_a:
         checks.update(

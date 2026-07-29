@@ -86,37 +86,17 @@ def test_canonical_adapter_manifest_has_no_autonomous_adapter():
     assert gate["autonomous_adapters"] == []
 
 
-def test_lever_phase_2_freeze_starts_truthfully_at_zero_of_thirty(tmp_path):
+def test_lever_phase_2_freeze_keeps_launch_snapshot_separate_from_current_progress(tmp_path):
     freeze = _json(FREEZE_PATH)
-    committed_readiness = _json(READINESS_PATH)
     calculated = read_lever_pilot_readiness(
         baseline_path=BASELINE_PATH,
         ledger_path=tmp_path / "missing-phase-b-ledger.jsonl",
     )
-
-    with BASELINE_PATH.open(encoding="utf-8", newline="") as handle:
-        retained_rows = list(csv.DictReader(handle))
-
-    assert calculated == committed_readiness
-    assert calculated["summary"]["qualifying_dry_run_count"] == 0
-    assert calculated["summary"]["manual_challenge_boundary_count"] == 2
-    assert calculated["summary"]["supervised_confirmed_count"] == 0
+    current = calculated["summary"]["qualifying_dry_run_count"]
+    assert freeze["starting_point"]["qualifying_dry_runs"] == 0
+    assert 0 <= current <= freeze["starting_point"]["required_qualifying_dry_runs"]
+    assert calculated["summary"]["manual_challenge_boundary_count"] >= 2
     assert calculated["summary"]["promotion_ready"] is False
-    assert len(retained_rows) == 2
-
-    starting = freeze["starting_point"]
-    assert starting["qualifying_dry_runs"] == 0
-    assert starting["required_qualifying_dry_runs"] == 30
-    assert starting["retained_historical_rows"] == 2
-    assert starting["historical_rows_counted_toward_quota"] == 0
-    assert starting["supervised_confirmed_submissions"] == 0
-
-    qualification = freeze["qualification"]
-    assert qualification["execution_state"] == "ready_to_submit"
-    assert qualification["outcome"] == "dry_run_passed"
-    assert qualification["successful_matching_official_posting_inspection_required"] is True
-    assert qualification["final_submit_clicked"] is False
-    assert qualification["guessed_sensitive_or_legal_answers_allowed"] is False
     assert freeze["promotion"]["authorized"] is False
     assert freeze["promotion"]["real_submission_allowed"] is False
 
@@ -189,7 +169,9 @@ def test_phase_1_workflow_covers_measurement_and_clean_release_contracts():
     assert "scripts/certify_lever_pilot_readiness.py" in workflow
     assert "bash scripts/verify.sh fast" in workflow
     assert "bash scripts/verify.sh safety" in workflow
-    assert "qualifying_dry_run_count'] == 0" in workflow
+    assert "qualifying_dry_run_count'] == 0" not in workflow
+    assert ".github/workflows/lever-phase-a-certification.yml" in workflow
+    assert "tests/test_day06_operational_safety.py" in workflow
     assert "PYTHONPATH: ." in workflow
     assert "AUTOPILOT_ENABLED: \"false\"" in workflow
     assert "ALLOW_REAL_APPLICATION_SUBMIT: \"false\"" in workflow

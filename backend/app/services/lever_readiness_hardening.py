@@ -18,6 +18,7 @@ from app.services.greenhouse_pilot import (
     SUPERVISED_MODE,
     UNCERTAIN_STATUS,
 )
+from app.services.lever_phase_a_evidence import verify_phase_a_row_evidence
 
 PHASE_A_READY_PAIR = ("ready_to_submit", "dry_run_passed")
 PHASE_A_BOUNDARY_PAIR = ("manual_challenge_handoff", "needs_review")
@@ -30,11 +31,18 @@ def _truthy(value: Any) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _phase_a_rows(path: Optional[str | Path]) -> list[Dict[str, str]]:
+def _phase_a_rows(path: Optional[str | Path]) -> list[Dict[str, Any]]:
     if path is None or not Path(path).is_file():
         return []
+    rows: list[Dict[str, Any]] = []
     with Path(path).open("r", encoding="utf-8", newline="") as handle:
-        return [dict(row) for row in csv.DictReader(handle)]
+        for raw in csv.DictReader(handle):
+            row: Dict[str, Any] = dict(raw)
+            verification = verify_phase_a_row_evidence(row, baseline_path=path)
+            row["_artifact_verified"] = verification["artifact_verified"]
+            row["_qualification_evidence_verified"] = verification["qualifies"]
+            rows.append(row)
+    return rows
 
 
 def _phase_b_rows(path: Optional[str | Path]) -> list[Dict[str, Any]]:
@@ -110,7 +118,7 @@ def harden_lever_readiness(
     qualifying = [
         row
         for row in phase_a_candidates
-        if _truthy(row.get("official_posting_inspection_passed"))
+        if row.get("_qualification_evidence_verified") is True
     ]
     boundary_only = [
         row
@@ -124,7 +132,10 @@ def harden_lever_readiness(
     inspection_failures = [
         row
         for row in phase_a_candidates
-        if not _truthy(row.get("official_posting_inspection_passed"))
+        if row.get("_qualification_evidence_verified") is not True
+    ]
+    artifact_failures = [
+        row for row in phase_a_candidates if row.get("_artifact_verified") is not True
     ]
     sites = {
         str(row.get("site") or "").strip().lower()
@@ -203,6 +214,7 @@ def harden_lever_readiness(
             "nonqualifying_dry_run_count": len(phase_a) - len(qualifying),
             "manual_challenge_boundary_count": len(boundary_only),
             "phase_a_inspection_failure_count": len(inspection_failures),
+            "phase_a_artifact_verification_failure_count": len(artifact_failures),
             "distinct_site_count": len(sites),
             "regions_covered": sorted(regions),
             "raw_supervised_confirmed_count": len(raw_successes),
@@ -223,7 +235,7 @@ def harden_lever_readiness(
     summary["supervised_pilot_evidence_complete"] = all(required)
     summary["promotion_ready"] = all(gates.values())
     payload["summary"] = summary
-    payload["readiness_hardening_version"] = "1.0"
+    payload["readiness_hardening_version"] = "1.1"
     return payload
 
 

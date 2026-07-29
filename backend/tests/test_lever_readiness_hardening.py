@@ -181,7 +181,7 @@ def test_ten_fully_safe_phase_b_records_satisfy_only_the_phase_b_gate(tmp_path):
     assert summary["supervised_pilot_evidence_complete"] is False
     assert summary["promotion_ready"] is False
 
-def test_historical_boundary_rows_do_not_poison_future_phase_a_certification(tmp_path):
+def test_candidate_rows_without_retained_artifacts_fail_closed(tmp_path):
     baseline = tmp_path / "phase-a.csv"
     ledger = tmp_path / "phase-b.jsonl"
     rows = [{
@@ -194,8 +194,8 @@ def test_historical_boundary_rows_do_not_poison_future_phase_a_certification(tmp
         "official_posting_inspection_passed": "false",
     }]
     rows.extend({
-        "run_id": f"qualified-{index}",
-        "site": f"qualified-site-{index}",
+        "run_id": f"unsupported-{index}",
+        "site": f"site-{index}",
         "posting_id": f"posting-{index}",
         "region": "global" if index % 2 else "eu",
         "pre_submit_state": "ready_to_submit",
@@ -206,11 +206,10 @@ def test_historical_boundary_rows_do_not_poison_future_phase_a_certification(tmp
     summary = harden_lever_readiness(
         _base_readiness(), baseline_path=baseline, ledger_path=ledger
     )["summary"]
-    assert summary["qualifying_dry_run_count"] == 30
+    assert summary["qualifying_dry_run_count"] == 0
     assert summary["manual_challenge_boundary_count"] == 1
-    assert summary["phase_a_inspection_failure_count"] == 0
-    assert summary["gates"]["thirty_qualifying_dry_runs"] is True
-    assert summary["gates"]["all_phase_a_records_have_successful_matching_inspection"] is True
+    assert summary["phase_a_inspection_failure_count"] == 30
+    assert summary["gates"]["thirty_qualifying_dry_runs"] is False
 
 
 def test_duplicate_indicator_on_blocked_phase_b_record_fails_duplicate_gate(tmp_path):
