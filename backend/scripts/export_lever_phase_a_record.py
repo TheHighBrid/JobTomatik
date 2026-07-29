@@ -32,6 +32,7 @@ FIELDNAMES = [
     "operator",
     "source_reference",
     "artifact_sha256",
+    "artifact_path",
     "official_posting_inspection_passed",
     "controls_discovered",
     "controls_filled",
@@ -113,6 +114,7 @@ def build_phase_a_candidate(
     employer: str,
     role: str,
     completed_at: Optional[str] = None,
+    artifact_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     if report.get("final_submit_clicked") is not False:
         raise LeverPhaseAExportError("The certification summary must record final_submit_clicked=false")
@@ -183,6 +185,7 @@ def build_phase_a_candidate(
         "operator": str(operator).strip(),
         "source_reference": str(source_reference).strip(),
         "artifact_sha256": _sha256(report_path),
+        "artifact_path": str(artifact_path or report_path.name).strip(),
         "official_posting_inspection_passed": True,
         "controls_discovered": controls_discovered,
         "controls_filled": controls_filled,
@@ -220,6 +223,12 @@ def export_phase_a_candidate(output_path: Path, record: Mapping[str, Any]) -> No
         raise LeverPhaseAExportError("Exported Phase A candidate has an invalid outcome pair")
     if record.get("official_posting_inspection_passed") is not True:
         raise LeverPhaseAExportError("Exported Phase A candidate lacks a successful inspection")
+    if pair == ("ready_to_submit", "dry_run_passed") and (
+        loaded[0].get("qualifies_for_dry_run_matrix") is not True
+    ):
+        raise LeverPhaseAExportError(
+            "Exported Phase A candidate is not backed by a verified retained artifact"
+        )
 
 
 def main() -> int:
@@ -232,6 +241,7 @@ def main() -> int:
     parser.add_argument("--employer", required=True)
     parser.add_argument("--role", required=True)
     parser.add_argument("--completed-at")
+    parser.add_argument("--artifact-path")
     args = parser.parse_args()
 
     report_path = Path(args.report)
@@ -245,6 +255,7 @@ def main() -> int:
         employer=args.employer,
         role=args.role,
         completed_at=args.completed_at,
+        artifact_path=args.artifact_path,
     )
     export_phase_a_candidate(Path(args.output), record)
     print(f"Exported Phase A candidate to {args.output}")

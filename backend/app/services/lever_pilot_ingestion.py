@@ -39,6 +39,7 @@ from app.services.greenhouse_pilot import (
     validate_record,
 )
 from app.services.platform_submission_evidence import build_platform_supervised_pilot_record
+from app.services.lever_phase_a_evidence import verify_phase_a_row_evidence
 from app.services.lever_readiness_hardening import harden_lever_readiness
 
 
@@ -231,6 +232,15 @@ def validate_phase_a_record(record: Mapping[str, Any]) -> None:
             "Lever Phase A record cannot qualify unless its pre-submit state and final status "
             "represent a successful dry-run outcome"
         )
+    if qualifies and (
+        record.get("phase_a_artifact_verified") is not True
+        or record.get("phase_a_exercise_verified") is not True
+        or record.get("official_posting_inspection_verified") is not True
+    ):
+        raise LeverPilotIngestionError(
+            "Lever Phase A qualification requires a matching retained artifact, exercise, "
+            "and official-posting inspection"
+        )
 
 
 def validate_lever_record(record: Mapping[str, Any]) -> None:
@@ -384,6 +394,7 @@ def load_phase_a_baseline(path: Path) -> list[Dict[str, Any]]:
             try:
                 pre_submit_state = str(row.get("pre_submit_state") or "").strip() or None
                 final_status = str(row.get("final_status") or "").strip() or None
+                verification = verify_phase_a_row_evidence(row, baseline_path=path)
                 record: Dict[str, Any] = {
                     "schema_version": "1.0",
                     "run_id": str(row.get("run_id") or "").strip(),
@@ -403,6 +414,7 @@ def load_phase_a_baseline(path: Path) -> list[Dict[str, Any]]:
                     "adapter_version": str(row.get("adapter_version") or "").strip(),
                     "operator": str(row.get("operator") or "").strip() or None,
                     "source_reference": str(row.get("source_reference") or "").strip(),
+                    "artifact_path": str(row.get("artifact_path") or "").strip() or None,
                     "artifact_sha256": str(row.get("artifact_sha256") or "").strip().lower(),
                     "approval_reference": None,
                     "controls_discovered": _optional_int(row.get("controls_discovered")),
@@ -424,17 +436,16 @@ def load_phase_a_baseline(path: Path) -> list[Dict[str, Any]]:
                     "duplicate_submission_detected": False,
                     "reviewed_by": None,
                     "review_reference": None,
-                    "official_posting_inspection_passed": str(
-                        row.get("official_posting_inspection_passed") or ""
-                    ).strip().lower()
-                    in {"1", "true", "yes", "on"},
-                    "qualifies_for_dry_run_matrix": (
-                        (pre_submit_state, final_status) in PHASE_A_SUCCESS_PAIRS
-                        and str(
-                            row.get("official_posting_inspection_passed") or ""
-                        ).strip().lower()
-                        in {"1", "true", "yes", "on"}
+                    "official_posting_inspection_passed": bool(
+                        verification["claimed_inspection_passed"]
                     ),
+                    "official_posting_inspection_verified": bool(
+                        verification["inspection_verified"]
+                    ),
+                    "phase_a_artifact_verified": bool(verification["artifact_verified"]),
+                    "phase_a_exercise_verified": bool(verification["exercise_verified"]),
+                    "phase_a_evidence_error": verification["error"],
+                    "qualifies_for_dry_run_matrix": bool(verification["qualifies"]),
                     "synthetic_profile": True,
                     "error": str(row.get("error") or "").strip() or None,
                     "notes": str(row.get("notes") or "").strip() or None,
