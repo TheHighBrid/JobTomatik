@@ -1,0 +1,5 @@
+{
+  "purpose": "trigger read-only Phase A and repository verification workflows",
+  "production_evidence": false,
+  "referenced_by_baseline": false
+}
