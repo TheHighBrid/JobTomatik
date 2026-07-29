@@ -21,6 +21,7 @@ on:
       - "docs/roadmaps/2026-07-29-day-07-*"
       - "docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json"
       - "docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md"
+      - ".github/workflows/lever-phase-a-certification.yml"
       - ".github/workflows/phase-1-release-gate.yml"
   push:
     branches:
@@ -43,6 +44,7 @@ on:
       - "docs/roadmaps/2026-07-29-day-07-*"
       - "docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json"
       - "docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md"
+      - ".github/workflows/lever-phase-a-certification.yml"
       - ".github/workflows/phase-1-release-gate.yml"
 
 permissions:
@@ -107,6 +109,7 @@ jobs:
           set +e
           pytest -q --tb=short -ra \
             tests/test_phase_1_release_gate.py \
+            tests/test_day06_operational_safety.py \
             tests/test_lever_phase_a_export.py \
             tests/test_lever_phase_a_readiness_validation.py \
             tests/test_lever_readiness_hardening.py \
@@ -136,7 +139,7 @@ jobs:
             --json-output phase-1-evidence/lever-certification.json \
             --markdown-output phase-1-evidence/lever-certification.md
 
-      - name: Assert truthful Phase 2 starting line
+      - name: Assert durable Phase 2 evidence invariants
         working-directory: backend
         shell: bash
         run: |
@@ -153,12 +156,14 @@ jobs:
               Path('../docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json').read_text()
           )
 
+          current = int(summary['qualifying_dry_run_count'])
+          required = int(freeze['starting_point']['required_qualifying_dry_runs'])
           assert report['passed'] is True
-          assert summary['qualifying_dry_run_count'] == 0
-          assert summary['manual_challenge_boundary_count'] == 2
-          assert summary['supervised_confirmed_count'] == 0
-          assert summary['promotion_ready'] is False
           assert freeze['starting_point']['qualifying_dry_runs'] == 0
+          assert 0 <= current <= required
+          assert summary['manual_challenge_boundary_count'] >= freeze['starting_point']['manual_challenge_boundary_rows']
+          assert summary['phase_a_inspection_failure_count'] == 0
+          assert summary['promotion_ready'] is False
           assert freeze['starting_point']['historical_rows_counted_toward_quota'] == 0
           assert freeze['promotion']['authorized'] is False
           assert gate['phase_2_launch']['lever_qualifying_dry_runs'] == 0
