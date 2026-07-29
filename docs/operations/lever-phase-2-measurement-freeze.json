@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "contract_version": "2026-07-29.day7",
+  "contract_version": "2026-07-29.day7.1",
   "effective_date": "2026-07-29",
   "campaign_phase": 2,
   "platform": "lever",
@@ -58,20 +58,28 @@
     "day_14": 30
   },
   "canonical_inputs": [
-    "backend/evidence/lever-phase-a-baseline.csv",
-    "backend/evidence/lever-phase-a-sources.csv",
+    "backend/app/services/ats_lever.py",
+    "backend/app/services/lever_phase_a_evidence.py",
+    "backend/app/services/lever_pilot_ingestion.py",
+    "backend/app/services/lever_pilot_ledger_boundary.py",
     "backend/app/services/lever_readiness_hardening.py",
     "backend/scripts/export_lever_phase_a_record.py",
     "backend/scripts/certify_lever_pilot_readiness.py",
-    ".github/workflows/lever-phase-a-certification.yml"
+    ".github/workflows/lever-phase-a-certification.yml",
+    ".github/workflows/phase-1-release-gate.yml",
+    "backend/tests/test_phase_1_release_gate.py"
   ],
   "locked_input_blobs": {
-    "backend/evidence/lever-phase-a-baseline.csv": "0aba8bbf9aabc4bfe39baef5ed4278c222dc0e85",
-    "backend/evidence/lever-phase-a-sources.csv": "46eaeef4cfded10a3cfad7ad0f0e07c6a7dd7e0e",
-    "backend/app/services/lever_readiness_hardening.py": "8bd64c94a2964ef27df28845cdfd56dce569005a",
-    "backend/scripts/export_lever_phase_a_record.py": "2b5c01ed1879bfd3d2da2483ead81cb9d9eb58f5",
-    "backend/scripts/certify_lever_pilot_readiness.py": "5e232f26cf3e50137421a02cb0e7f42d4a76addd",
-    ".github/workflows/lever-phase-a-certification.yml": "a2c267965886053e8ff39314325bd7c16486642c"
+    "backend/app/services/ats_lever.py": "d6fb6c9858edba1c98419f9d226542ed6bd68d5e",
+    "backend/app/services/lever_phase_a_evidence.py": "5ff8e3692dd9944e3581eea0a8fd431653cb6a6e",
+    "backend/app/services/lever_pilot_ingestion.py": "4c3cfab3830b5af79fb149bad35c275feba39f3f",
+    "backend/app/services/lever_pilot_ledger_boundary.py": "b6c3d4c609daaa894bcf2bf06b69a7bc28d1818e",
+    "backend/app/services/lever_readiness_hardening.py": "22973e7a28498f0ae4f91ca4281cf4ee6c77cbbb",
+    "backend/scripts/export_lever_phase_a_record.py": "d51dff4472629ebfc01cfe1d7181f9ef080b5d95",
+    "backend/scripts/certify_lever_pilot_readiness.py": "c878f3f01dcfb42442d543bffb768d399b12eab3",
+    ".github/workflows/lever-phase-a-certification.yml": "796f67d2c95df53899f21bbe3a88011ac347740c",
+    ".github/workflows/phase-1-release-gate.yml": "82920ed4c68ef55ce6588c5adee58568c2a3a3c6",
+    "backend/tests/test_phase_1_release_gate.py": "7533d434dd5cec939b2c2f1463fc9c70fd1b9c13"
   },
   "generated_outputs": [
     "backend/evidence/lever-pilot-readiness.json",
@@ -89,5 +97,10 @@
     "maturity_change_allowed_in_phase_2": false,
     "real_submission_allowed": false,
     "separate_reviewed_promotion_change_required": true
-  }
+  },
+  "evidence_inputs": [
+    "backend/evidence/lever-phase-a-baseline.csv",
+    "backend/evidence/lever-phase-a-sources.csv",
+    "backend/evidence/lever-phase-a-artifacts/*.json"
+  ]
 }
