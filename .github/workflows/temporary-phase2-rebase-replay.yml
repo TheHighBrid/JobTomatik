@@ -75,4 +75,6 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m "Replay Phase 2 integrity fixes on latest main"
+          git fetch origin ${{ github.head_ref }}
+          git rebase origin/${{ github.head_ref }}
           git push origin HEAD:${{ github.head_ref }}
