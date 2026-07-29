@@ -65,6 +65,14 @@
     "backend/scripts/certify_lever_pilot_readiness.py",
     ".github/workflows/lever-phase-a-certification.yml"
   ],
+  "locked_input_blobs": {
+    "backend/evidence/lever-phase-a-baseline.csv": "0aba8bbf9aabc4bfe39baef5ed4278c222dc0e85",
+    "backend/evidence/lever-phase-a-sources.csv": "46eaeef4cfded10a3cfad7ad0f0e07c6a7dd7e0e",
+    "backend/app/services/lever_readiness_hardening.py": "8bd64c94a2964ef27df28845cdfd56dce569005a",
+    "backend/scripts/export_lever_phase_a_record.py": "2b5c01ed1879bfd3d2da2483ead81cb9d9eb58f5",
+    "backend/scripts/certify_lever_pilot_readiness.py": "5e232f26cf3e50137421a02cb0e7f42d4a76addd",
+    ".github/workflows/lever-phase-a-certification.yml": "a2c267965886053e8ff39314325bd7c16486642c"
+  },
   "generated_outputs": [
     "backend/evidence/lever-pilot-readiness.json",
     "backend/evidence/lever-pilot-readiness.md"
