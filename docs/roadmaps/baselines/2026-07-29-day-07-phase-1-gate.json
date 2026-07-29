@@ -7,7 +7,7 @@
   "phase": {
     "number": 1,
     "name": "Control Plane and Reproducible Baseline",
-    "status": "pending_exact_head_ci"
+    "status": "passed_on_verified_parent_head"
   },
   "completed_work": [
     {
@@ -125,8 +125,57 @@
     "adapter_promotions": 0,
     "live_submissions": 0
   },
-  "observed_release_results": null,
+  "observed_release_results": {
+    "false_submitted_records": 0,
+    "duplicate_terminal_submissions": 0,
+    "unsafe_handoff_resumes": 0,
+    "adapter_promotions": 0,
+    "live_submissions": 0,
+    "focused_tests_passed": 39,
+    "focused_tests_failed": 0,
+    "focused_duration_seconds": 4.3,
+    "backend_tests_passed": 523,
+    "backend_tests_skipped": 59,
+    "backend_tests_failed": 0,
+    "backend_duration_seconds": 128.67,
+    "lever_qualifying_dry_runs": 0,
+    "lever_nonqualifying_manual_boundary_rows": 2,
+    "lever_supervised_confirmed": 0,
+    "autonomous_adapter_count": 0
+  },
+  "verified_parent_head": "46ef3d21fa2945d900ca5ead5f836c4404ddcdd9",
+  "verified_workflows": [
+    {
+      "name": "Phase 1 release gate",
+      "run_id": 30415118070,
+      "conclusion": "success",
+      "artifact_digest": "sha256:bc93d23eee7c1708248da48ca57896aa78a2a38db288e89fe16f1343aecfc603"
+    },
+    {
+      "name": "Backend tests",
+      "run_id": 30415118103,
+      "conclusion": "success",
+      "artifact_digest": "sha256:b000c91e42e9ce530b2318cf0e0a9c96d1c65cdf75849e41370d4fa7637e4075"
+    },
+    {
+      "name": "CodeQL security analysis",
+      "run_id": 30415118101,
+      "conclusion": "success"
+    },
+    {
+      "name": "Post-merge stabilization",
+      "run_id": 30415118074,
+      "conclusion": "success",
+      "aggregate_release_gate": "success"
+    },
+    {
+      "name": "Reproducible verification",
+      "run_id": 30415118113,
+      "conclusion": "success",
+      "aggregate_release_gate": "success"
+    }
+  ],
+  "final_exact_head_gate": "pending_evidence_lock_ci",
   "verified_head": null,
-  "verified_workflows": [],
   "merge_commit": null
 }
