@@ -54,6 +54,7 @@ jobs:
     timeout-minutes: 35
 
     env:
+      PYTHONPATH: .
       DATABASE_URL: sqlite:///./phase-1-release-gate.db
       REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: phase-1-release-gate-development-secret
