@@ -63,6 +63,14 @@
     }
   ],
   "execution_issue": 161,
+  "freeze_amendment": {
+    "contract_version": "2026-07-29.day8-fail-closed-amendment",
+    "new_readiness_blob": "5d856e726f82bc3576a3026b56d0a791451641f5",
+    "old_readiness_blob": "8bd64c94a2964ef27df28845cdfd56dce569005a",
+    "qualification_count_after": 0,
+    "qualification_count_before": 0,
+    "weakening_allowed": false
+  },
   "locked_provenance_fields": [
     "review_id",
     "site",
@@ -96,7 +104,7 @@
     "maturity_promoted": false,
     "network_contacted_by_certifier": false
   },
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "selection_rules": {
     "apply_link_required": true,
     "duplicate_targets_allowed": false,
@@ -109,5 +117,12 @@
     "specific_posting_required": true
   },
   "source_main_commit": "3b6617313497b01c96db1e088e4a0a1d0101beed",
-  "status": "locked_pending_exact_head_ci"
+  "status": "locked_on_verified_parent_head",
+  "verified_parent_head": "e5e98fdc1a86ccf863c60993c5ce1b9d3d75a3b6",
+  "verification": {
+    "artifact_digest": "sha256:4bee0657e4037755bb0d691c1729c27c5b4d711a46b2b901bb87cbce418507c3",
+    "focused_tests_failed": 0,
+    "focused_tests_passed": 8,
+    "workflow_run_id": 30420937662
+  }
 }
