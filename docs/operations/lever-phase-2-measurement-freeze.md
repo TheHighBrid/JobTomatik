@@ -1,9 +1,22 @@
 # Lever Phase 2 Measurement Freeze
 
 **Effective:** July 29, 2026  
-**Contract:** `2026-07-29.day7`  
+**Contract:** `2026-07-29.day8-fail-closed-amendment`  
 **Execution queue:** #161  
 **Platform tracker:** #86
+
+## Day 8 fail-closed amendment
+
+The Day 8 full backend suite detected that the Day 7 lock file referenced an older Git blob for `backend/app/services/lever_readiness_hardening.py` than the stricter implementation already present on `main`.
+
+The older blob was not restored because that would weaken the evidence gate. The current pinned implementation:
+
+- evaluates failed official-posting inspection only for records that otherwise reached the `ready_to_submit` and `dry_run_passed` candidate pair; and
+- detects duplicate identities across the complete Phase B ledger, rather than only rows already classified as successful.
+
+The pinned blob is now `5d856e726f82bc3576a3026b56d0a791451641f5`.
+
+This amendment changes **no** evidence count. Lever remains **0/30** qualifying Phase A dry runs and **0/10** independently reviewed Phase B submissions. No record receives retroactive quota credit.
 
 ## Truthful starting point
 
