@@ -1,7 +1,7 @@
 # Lever Phase 2 Measurement Freeze
 
 **Effective:** July 29, 2026
-**Contract:** `2026-07-29.day7.1`
+**Contract:** `2026-07-29.day7.2`
 **Execution queue:** #161
 **Platform tracker:** #86
 
@@ -56,6 +56,16 @@ Any change to qualification logic, evidence schema, source manifest, adapter-ver
 
 Bug fixes may improve the adapter without changing measurement rules. A bug fix that changes whether existing evidence qualifies is a measurement change and follows the process above.
 
+## Day 7.2 regression amendment
+
+This amendment keeps the starting count at **0/30** and does not authorize any submission or maturity change. It closes three certification holes:
+
+- the Phase 1 workflow now triggers when the frozen retained-artifact verifier changes;
+- the Phase A exporter preserves a verifier-safe report path when the retained report is in a subdirectory of the output CSV location;
+- roadmap Days 16–21 cannot pass unless the complete Lever Phase A gate is already true.
+
+A dedicated regression contract now recalculates the committed readiness JSON and Markdown, exercises the cross-directory export layout, and rejects Phase B or promotion completion when Phase A is incomplete.
+
 ## Daily targets
 
 | Campaign day | Frozen objective |
@@ -87,11 +97,13 @@ Blob-locked qualification and certification rules:
 - `backend/app/services/lever_pilot_ingestion.py`
 - `backend/app/services/lever_pilot_ledger_boundary.py`
 - `backend/app/services/lever_readiness_hardening.py`
+- `backend/app/services/campaign_day_gates.py`
 - `backend/scripts/export_lever_phase_a_record.py`
 - `backend/scripts/certify_lever_pilot_readiness.py`
 - `.github/workflows/lever-phase-a-certification.yml`
 - `.github/workflows/phase-1-release-gate.yml`
 - `backend/tests/test_phase_1_release_gate.py`
+- `backend/tests/test_certification_regressions.py`
 
 Generated readiness outputs:
 
