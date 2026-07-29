@@ -1,26 +1,13 @@
 # Lever Phase 2 Measurement Freeze
 
-**Effective:** July 29, 2026  
-**Contract:** `2026-07-29.day8-fail-closed-amendment`  
-**Execution queue:** #161  
+**Effective:** July 29, 2026
+**Contract:** `2026-07-29.day7.1`
+**Execution queue:** #161
 **Platform tracker:** #86
-
-## Day 8 fail-closed amendment
-
-The Day 8 full backend suite detected that the Day 7 lock file referenced an older Git blob for `backend/app/services/lever_readiness_hardening.py` than the stricter implementation already present on `main`.
-
-The older blob was not restored because that would weaken the evidence gate. The current pinned implementation:
-
-- evaluates failed official-posting inspection only for records that otherwise reached the `ready_to_submit` and `dry_run_passed` candidate pair; and
-- detects duplicate identities across the complete Phase B ledger, rather than only rows already classified as successful.
-
-The pinned blob is now `5d856e726f82bc3576a3026b56d0a791451641f5`.
-
-This amendment changes **no** evidence count. Lever remains **0/30** qualifying Phase A dry runs and **0/10** independently reviewed Phase B submissions. No record receives retroactive quota credit.
 
 ## Truthful starting point
 
-Lever Phase A starts Phase 2 at **0 qualifying dry runs out of 30**.
+Lever Phase A started Phase 2 at **0 qualifying dry runs out of 30**. This is an immutable launch snapshot; the current verified count may advance without editing the freeze.
 
 Two retained historical rows remain in the evidence baseline. Both are useful CAPTCHA and manual-boundary exercises, but neither reached the hardened qualifying outcome. They therefore contribute **zero** toward the 30-run quota.
 
@@ -49,7 +36,7 @@ A Phase A record advances the count only when every condition below is true:
 9. No duplicate target, identity collision, target mismatch, or provenance conflict exists.
 10. Readiness is recalculated from locked inputs and exactly matches the committed JSON and Markdown outputs.
 
-A boolean stored in a CSV row cannot override these rules. The certifier recalculates qualification from the complete evidence record.
+A boolean stored in a CSV row cannot override these rules. The certifier hashes and parses the retained JSON artifact, then verifies one matching Lever exercise and one matching official-posting inspection for the exact target.
 
 ## Boundaries that receive no quota credit
 
@@ -87,12 +74,24 @@ The targets are planning checkpoints, not permission to accept weak evidence. A 
 
 Canonical inputs:
 
+Mutable evidence inputs:
+
 - `backend/evidence/lever-phase-a-baseline.csv`
 - `backend/evidence/lever-phase-a-sources.csv`
+- `backend/evidence/lever-phase-a-artifacts/*.json`
+
+Blob-locked qualification and certification rules:
+
+- `backend/app/services/ats_lever.py`
+- `backend/app/services/lever_phase_a_evidence.py`
+- `backend/app/services/lever_pilot_ingestion.py`
+- `backend/app/services/lever_pilot_ledger_boundary.py`
 - `backend/app/services/lever_readiness_hardening.py`
 - `backend/scripts/export_lever_phase_a_record.py`
 - `backend/scripts/certify_lever_pilot_readiness.py`
 - `.github/workflows/lever-phase-a-certification.yml`
+- `.github/workflows/phase-1-release-gate.yml`
+- `backend/tests/test_phase_1_release_gate.py`
 
 Generated readiness outputs:
 
