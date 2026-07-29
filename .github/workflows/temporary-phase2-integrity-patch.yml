@@ -104,11 +104,15 @@ jobs:
             tests/test_lever_phase_a_readiness_validation.py \
             tests/test_lever_readiness_hardening.py
 
-      - name: Remove patch scaffolding and normalize generated text
+      - name: Stage connector-installed workflows and normalize text
         shell: bash
         run: |
+          mkdir -p docs/generated/phase2-workflows
+          cp .github/workflows/lever-phase-a-certification.yml \
+            docs/generated/phase2-workflows/lever-phase-a-certification.yml.txt
+          cp .github/workflows/phase-1-release-gate.yml \
+            docs/generated/phase2-workflows/phase-1-release-gate.yml.txt
           rm -f scripts/.phase2_patch.part* scripts/apply_phase2_integrity_patch.py
-          rm -f .github/workflows/temporary-phase2-integrity-patch.yml
           python - <<'PY'
           from pathlib import Path
 
@@ -124,9 +128,13 @@ jobs:
               )
           PY
 
-      - name: Commit verified fixes
+      - name: Commit verified non-workflow fixes
         shell: bash
         run: |
+          git restore --source=HEAD -- \
+            .github/workflows/lever-phase-a-certification.yml \
+            .github/workflows/phase-1-release-gate.yml \
+            .github/workflows/temporary-phase2-integrity-patch.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
