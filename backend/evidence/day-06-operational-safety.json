@@ -11,6 +11,7 @@
     "resumable_handoff_kill_switch": true,
     "typed_human_boundary_matrix": true,
     "retained_handoff_target_binding": true,
+    "legacy_handoff_binding_migration": true,
     "stale_session_expiry": true,
     "platform_scoped_failure_breaker": true,
     "cross_platform_user_breaker": true,
@@ -45,9 +46,31 @@
     "false_submitted_count": 0,
     "cross_platform_freeze_from_single_platform_cluster": 0
   },
-  "observed_results": null,
+  "observed_results": {
+    "unsafe_resume_count": 0,
+    "false_submitted_count": 0,
+    "cross_platform_freeze_from_single_platform_cluster": 0,
+    "focused_drill_passed": 27,
+    "focused_drill_failed": 0,
+    "backend_passed": 514,
+    "backend_skipped": 59,
+    "backend_failed": 0,
+    "backend_duration_seconds": 209.58
+  },
+  "verified_parent_head": "0af4fa0291dc25ff625ec7e49f125254857cf677",
+  "verified_workflows": [
+    "Backend tests",
+    "CodeQL security analysis",
+    "Day 6 operational safety certification",
+    "Greenhouse pilot ledger ingestion certification",
+    "Greenhouse supervised approval certification",
+    "Post-merge stabilization",
+    "Recovery incident drill",
+    "Reproducible verification",
+    "Resumable handoff certification"
+  ],
+  "release_gate": "passed_on_verified_parent_head",
+  "final_exact_head_gate": "pending_evidence_lock_ci",
   "verified_head": null,
-  "verified_workflows": [],
-  "release_gate": "pending_pull_request_ci",
   "merge_commit": null
 }
