@@ -67,7 +67,7 @@ def _canonical_review_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         if field == "review_digest_sha256":
             continue
         value: Any = row.get(field, "")
-        if field in {"apply_link_present", "lever_powered_present", "active", "viable"}:
+        if field in {"apply_link_present", "lever_powerered_present", "active", "viable"}:
             value = _truthy(value)
         else:
             value = str(value or "").strip()
@@ -85,18 +85,41 @@ def review_digest(row: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _corpus_files(path: Path) -> list[Path]:
+    if path.is_file():
+        return [path]
+    if path.is_dir():
+        files = sorted(path.glob("part-*.csv"))
+        if files:
+            return files
+    raise LeverTargetCorpusError(f"Lever target corpus not found: {path}")
+
+
 def load_target_corpus(path: str | Path) -> list[dict[str, str]]:
     corpus_path = Path(path)
-    if not corpus_path.is_file():
-        raise LeverTargetCorpusError(f"Lever target corpus not found: {corpus_path}")
-    with corpus_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if tuple(reader.fieldnames or ()) != REQUIRED_COLUMNS:
-            raise LeverTargetCorpusError("Lever target corpus columns do not match the locked schema")
-        rows = [dict(row) for row in reader]
+    rows: list[dict[str, str]] = []
+    for part in _corpus_files(corpus_path):
+        with part.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            if tuple(reader.fieldnames or ()) != REQUIRED_COLUMNS:
+                raise LeverTargetCorpusError(
+                    f"Lever target corpus columns do not match the locked schema: {part}"
+                )
+            rows.extend(dict(row) for row in reader)
     if not rows:
         raise LeverTargetCorpusError("Lever target corpus cannot be empty")
     return rows
+
+
+def corpus_digest(path: str | Path) -> str:
+    corpus_path = Path(path)
+    digest = hashlib.sha256()
+    for part in _corpus_files(corpus_path):
+        digest.update(part.name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(part.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def _expected_urls(site: str, posting_id: str, region: str) -> tuple[str, str]:
@@ -227,7 +250,7 @@ def certify_target_corpus(path: str | Path) -> dict[str, Any]:
     return {
         "schema_version": "1.0",
         "corpus_path": corpus_path.as_posix(),
-        "corpus_sha256": hashlib.sha256(corpus_path.read_bytes()).hexdigest(),
+        "corpus_sha256": corpus_digest(corpus_path),
         "summary": {
             "reviewed_posting_count": len(rows),
             "active_reviewed_posting_count": len(active),
@@ -312,6 +335,7 @@ def render_target_corpus_markdown(report: Mapping[str, Any]) -> str:
 __all__ = [
     "LeverTargetCorpusError",
     "certify_target_corpus",
+    "corpus_digest",
     "load_target_corpus",
     "render_target_corpus_markdown",
     "review_digest",
