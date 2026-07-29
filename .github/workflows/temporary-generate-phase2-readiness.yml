@@ -1,0 +1,84 @@
+name: Temporary generate Phase 2 readiness
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/temporary-generate-phase2-readiness.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  generate-and-test:
+    if: ${{ github.event_name == 'pull_request' && github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./phase2-readiness-generation.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: phase2-readiness-generation-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      AUTOMATION_GLOBAL_KILL_SWITCH: "false"
+      AUTOPILOT_ENABLED: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      LEVER_SUPERVISED_PILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+
+    steps:
+      - name: Check out validation branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Regenerate readiness snapshots from locked inputs
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from app.services.lever_pilot_ingestion import render_readiness_markdown
+          from app.services.lever_pilot_ledger_boundary import read_lever_pilot_readiness
+
+          readiness = read_lever_pilot_readiness(
+              baseline_path=Path('evidence/lever-phase-a-baseline.csv'),
+              ledger_path=Path('evidence-ci/missing-phase-b.jsonl'),
+          )
+          Path('evidence/lever-pilot-readiness.json').write_text(
+              json.dumps(readiness, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          Path('evidence/lever-pilot-readiness.md').write_text(
+              render_readiness_markdown(readiness),
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Run Phase 1 and Phase A integrity regressions
+        working-directory: backend
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_phase2_integrity_regressions.py \
+            tests/test_phase_1_release_gate.py \
+            tests/test_day06_operational_safety.py \
+            tests/test_lever_phase_a_export.py \
+            tests/test_lever_phase_a_readiness_validation.py \
+            tests/test_lever_readiness_hardening.py \
+            tests/test_lever_pilot_certification.py
+
+      - name: Commit generated readiness snapshots
+        shell: bash
+        run: |
+          git restore --source=HEAD -- .github/workflows/temporary-generate-phase2-readiness.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/evidence/lever-pilot-readiness.json backend/evidence/lever-pilot-readiness.md
+          git diff --cached --check
+          git commit -m "Generate verified Phase 2 readiness snapshots"
+          git push origin HEAD:${{ github.head_ref }}
