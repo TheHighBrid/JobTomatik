@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "contract_version": "2026-07-29.day7",
+  "effective_date": "2026-07-29",
+  "campaign_phase": 2,
+  "platform": "lever",
+  "canonical_maturity": "dry_run",
+  "execution_queue_issue": 161,
+  "platform_tracker_issue": 86,
+  "campaign_tracker_issue": 154,
+  "historical_evidence_pr": 152,
+  "hardening_pr": 159,
+  "starting_point": {
+    "qualifying_dry_runs": 0,
+    "required_qualifying_dry_runs": 30,
+    "retained_historical_rows": 2,
+    "historical_rows_counted_toward_quota": 0,
+    "manual_challenge_boundary_rows": 2,
+    "supervised_confirmed_submissions": 0,
+    "required_supervised_confirmed_submissions": 10
+  },
+  "qualification": {
+    "mode": "dry_run",
+    "synthetic_profile_required": true,
+    "execution_state": "ready_to_submit",
+    "outcome": "dry_run_passed",
+    "successful_matching_official_posting_inspection_required": true,
+    "immutable_workflow_and_artifact_provenance_required": true,
+    "artifact_sha256_required": true,
+    "certified_adapter_version_required": true,
+    "canonical_target_identity_match_required": true,
+    "distinct_reviewed_posting_required": true,
+    "final_submit_clicked": false,
+    "duplicate_identity_allowed": false,
+    "guessed_sensitive_or_legal_answers_allowed": false,
+    "readiness_recalculated_from_locked_inputs": true
+  },
+  "nonqualifying_boundaries": [
+    "captcha_detected",
+    "mfa_required",
+    "login_required",
+    "anti_bot_challenge",
+    "assessment_required",
+    "legal_answer_missing",
+    "sensitive_answer_missing",
+    "ambiguous_question",
+    "unsupported_control",
+    "submission_confirmation_uncertain"
+  ],
+  "retroactive_credit_policy": "Historical records receive quota credit only if they independently satisfy every rule in this frozen contract. The two retained CAPTCHA-boundary rows do not qualify.",
+  "daily_targets": {
+    "day_8": "lock_at_least_30_viable_distinct_sites_from_at_least_40_reviewed_active_postings",
+    "day_9": 5,
+    "day_10": 10,
+    "day_11": 15,
+    "day_12": 20,
+    "day_13": 25,
+    "day_14": 30
+  },
+  "canonical_inputs": [
+    "backend/evidence/lever-phase-a-baseline.csv",
+    "backend/evidence/lever-phase-a-sources.csv",
+    "backend/app/services/lever_readiness_hardening.py",
+    "backend/scripts/export_lever_phase_a_record.py",
+    "backend/scripts/certify_lever_pilot_readiness.py",
+    ".github/workflows/lever-phase-a-certification.yml"
+  ],
+  "generated_outputs": [
+    "backend/evidence/lever-pilot-readiness.json",
+    "backend/evidence/lever-pilot-readiness.md"
+  ],
+  "safety_defaults": {
+    "AUTOMATION_GLOBAL_KILL_SWITCH": false,
+    "AUTOPILOT_ENABLED": false,
+    "ALLOW_REAL_APPLICATION_SUBMIT": false,
+    "LEVER_SUPERVISED_PILOT_ENABLED": false,
+    "ENABLE_RESUMABLE_HANDOFFS": false
+  },
+  "promotion": {
+    "authorized": false,
+    "maturity_change_allowed_in_phase_2": false,
+    "real_submission_allowed": false,
+    "separate_reviewed_promotion_change_required": true
+  }
+}
