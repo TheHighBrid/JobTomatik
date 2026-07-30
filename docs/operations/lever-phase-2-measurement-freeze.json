@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "contract_version": "2026-07-29.day7.2",
+  "contract_version": "2026-07-29.day7.3",
   "effective_date": "2026-07-29",
   "campaign_phase": 2,
   "platform": "lever",
@@ -83,11 +83,12 @@
     ".github/workflows/lever-phase-a-certification.yml": "796f67d2c95df53899f21bbe3a88011ac347740c",
     ".github/workflows/phase-1-release-gate.yml": "e9140c04b0f72864921b531795002eb9a9bf20a7",
     "backend/tests/test_phase_1_release_gate.py": "7533d434dd5cec939b2c2f1463fc9c70fd1b9c13",
-    "backend/tests/test_certification_regressions.py": "1edc7432af989bce2e0bddf92a1332656d9785ea"
+    "backend/tests/test_certification_regressions.py": "b11ff77190878d9bb3cd1d2ddca0d22156c663c6"
   },
   "generated_outputs": [
     "backend/evidence/lever-pilot-readiness.json",
-    "backend/evidence/lever-pilot-readiness.md"
+    "backend/evidence/lever-pilot-readiness.md",
+    "backend/evidence/campaign-days-12-22.json"
   ],
   "safety_defaults": {
     "AUTOMATION_GLOBAL_KILL_SWITCH": false,
