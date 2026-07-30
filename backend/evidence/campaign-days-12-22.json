@@ -72,11 +72,13 @@
     },
     {
       "blockers": [
+        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 2 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 16,
       "facts": {
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -93,11 +95,13 @@
     },
     {
       "blockers": [
+        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 4 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 17,
       "facts": {
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -114,11 +118,13 @@
     },
     {
       "blockers": [
+        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 6 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 18,
       "facts": {
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -135,11 +141,13 @@
     },
     {
       "blockers": [
+        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 8 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 19,
       "facts": {
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -156,11 +164,13 @@
     },
     {
       "blockers": [
+        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 10 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 20,
       "facts": {
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -177,6 +187,7 @@
     },
     {
       "blockers": [
+        "complete Lever Phase A",
         "complete all Lever Phase B evidence gates",
         "owner approval and a separate maturity-promotion change are required"
       ],
@@ -184,6 +195,7 @@
       "facts": {
         "canonical_maturity": "dry_run",
         "explicit_promotion_approval": false,
+        "phase_a_complete": false,
         "phase_b_complete": false,
         "promotion_ready": false
       },
