@@ -1,0 +1,11 @@
+{
+  "candidate_lever_sites": 30,
+  "distinct_lever_sites": 19,
+  "independently_reviewed_submissions": 19,
+  "notes": "Owner reported 19 of 30 viable distinct Lever sites with successful supervised submissions and completed independent evidence reviews. Per-attempt retained records still require ledger reconciliation.",
+  "report_reference": "owner-report-2026-07-30",
+  "reported_at": "2026-07-30",
+  "source": "repository_owner_chat_report",
+  "supervised_confirmed_submissions": 19,
+  "schema_version": "1.0"
+}
