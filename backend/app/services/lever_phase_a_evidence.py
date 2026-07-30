@@ -1,8 +1,8 @@
 """Retained-artifact verification for Lever Phase A qualification.
 
-CSV rows are an index only. A qualifying row must be backed by a retained JSON
-artifact whose bytes match the recorded SHA-256 and whose exercise and official
-posting inspection independently certify the exact Lever target.
+CSV rows are an index only. Recognized Phase A rows must be backed by a retained
+JSON artifact whose bytes match the recorded SHA-256 and whose exercise and
+official posting inspection independently certify the exact Lever target.
 """
 
 from __future__ import annotations
@@ -15,6 +15,15 @@ from typing import Any, Dict, Mapping, Optional
 from app.services.ats_lever import LEVER_ADAPTER_VERSION, parse_lever_job_url
 
 PHASE_A_READY_PAIR = ("ready_to_submit", "dry_run_passed")
+PHASE_A_BOUNDARY_PAIR = ("manual_challenge_handoff", "needs_review")
+MANUAL_CHALLENGE_REASON_CODES = frozenset(
+    {
+        "captcha_detected",
+        "mfa_required",
+        "login_required",
+        "anti_bot_challenge",
+    }
+)
 
 
 def _truthy(value: Any) -> bool:
@@ -45,14 +54,40 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _manual_challenge_exercise_verified(exercise: Mapping[str, Any]) -> bool:
+    raw_review_items = exercise.get("review_items") or []
+    validation_errors = exercise.get("validation_errors") or []
+    if not isinstance(raw_review_items, list) or not isinstance(validation_errors, list):
+        return False
+    if any(not isinstance(item, dict) for item in raw_review_items):
+        return False
+
+    reason_codes = [str(item.get("reason_code") or "").strip() for item in raw_review_items]
+    challenge_items = [
+        code for code in reason_codes if code in MANUAL_CHALLENGE_REASON_CODES
+    ]
+    blocking_items = [
+        code for code in reason_codes if code not in MANUAL_CHALLENGE_REASON_CODES
+    ]
+    return bool(
+        exercise.get("manual_challenge_ready") is True
+        and exercise.get("ready_to_submit") is False
+        and exercise.get("requires_manual_review") is True
+        and challenge_items
+        and not blocking_items
+        and not validation_errors
+    )
+
+
 def verify_phase_a_row_evidence(
     row: Mapping[str, Any], *, baseline_path: Optional[str | Path]
 ) -> Dict[str, Any]:
     """Verify one CSV index row against its retained artifact.
 
-    Nonqualifying boundary rows remain auditable without requiring a retained
-    artifact. Rows claiming the ready/dry-run outcome fail closed unless every
-    artifact, target, adapter, exercise, and inspection invariant matches.
+    Ready-to-submit rows qualify only when every artifact, target, adapter,
+    exercise, and inspection invariant matches. Manual-challenge rows are also
+    independently verified so their evidence flags are truthful, but they remain
+    boundary-only and never advance the Phase A qualifying count.
     """
 
     pair = (
@@ -60,22 +95,28 @@ def verify_phase_a_row_evidence(
         str(row.get("final_status") or "").strip(),
     )
     candidate = pair == PHASE_A_READY_PAIR
+    boundary = pair == PHASE_A_BOUNDARY_PAIR
+    recognized = candidate or boundary
     claimed_inspection = _truthy(row.get("official_posting_inspection_passed"))
     result: Dict[str, Any] = {
         "candidate": candidate,
+        "boundary": boundary,
+        "recognized": recognized,
         "claimed_inspection_passed": claimed_inspection,
         "artifact_verified": False,
         "exercise_verified": False,
         "inspection_verified": False,
+        "evidence_verified": False,
+        "boundary_verified": False,
         "qualifies": False,
         "error": None,
     }
-    if not candidate:
+    if not recognized:
         return result
 
     artifact = _artifact_path(baseline_path, row)
     if artifact is None:
-        result["error"] = "qualifying Phase A rows require a safe relative artifact_path"
+        result["error"] = "recognized Phase A rows require a safe relative artifact_path"
         return result
     if not artifact.is_file():
         result["error"] = f"retained Phase A artifact is missing: {artifact.name}"
@@ -109,7 +150,7 @@ def verify_phase_a_row_evidence(
         return result
 
     # Artifact verification is independent from whether the retained report
-    # ultimately proves a qualifying exercise and official inspection.
+    # ultimately proves a qualifying exercise or a valid manual boundary.
     result["artifact_verified"] = True
 
     reports = report.get("reports") or []
@@ -145,31 +186,55 @@ def verify_phase_a_row_evidence(
         and inspection.get("final_submit_clicked") is False
     )
     exercise = exercises[0]
-    exercise_verified = (
+    exercise_base_verified = (
         exercise.get("passed") is True
         and exercise.get("adapter") == "lever"
         and str(exercise.get("adapter_version") or "") == LEVER_ADAPTER_VERSION
-        and exercise.get("certification_outcome") == "ready_to_submit"
         and exercise.get("final_submit_clicked") is False
     )
+    if candidate:
+        exercise_verified = bool(
+            exercise_base_verified
+            and exercise.get("certification_outcome") == "ready_to_submit"
+        )
+    else:
+        exercise_verified = bool(
+            exercise_base_verified
+            and exercise.get("certification_outcome") == "manual_challenge_handoff"
+            and _manual_challenge_exercise_verified(exercise)
+        )
 
+    evidence_verified = bool(
+        result["artifact_verified"]
+        and claimed_inspection
+        and exercise_verified
+        and inspection_verified
+    )
     result.update(
         {
             "exercise_verified": exercise_verified,
             "inspection_verified": inspection_verified,
-            "qualifies": bool(
-                claimed_inspection
-                and exercise_verified
-                and inspection_verified
-            ),
+            "evidence_verified": evidence_verified,
+            "boundary_verified": bool(boundary and evidence_verified),
+            "qualifies": bool(candidate and evidence_verified),
         }
     )
-    if not result["qualifies"]:
+    if candidate and not result["qualifies"]:
         result["error"] = (
             "retained artifact does not independently verify the claimed successful "
             "exercise and official-posting inspection"
         )
+    elif boundary and not result["boundary_verified"]:
+        result["error"] = (
+            "retained artifact does not independently verify the manual-challenge "
+            "handoff and official-posting inspection"
+        )
     return result
 
 
-__all__ = ["PHASE_A_READY_PAIR", "verify_phase_a_row_evidence"]
+__all__ = [
+    "MANUAL_CHALLENGE_REASON_CODES",
+    "PHASE_A_BOUNDARY_PAIR",
+    "PHASE_A_READY_PAIR",
+    "verify_phase_a_row_evidence",
+]
