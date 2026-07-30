@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from app.services.ats_base import ATSAdapter, ATSFlowResult
 from app.services.browser_navigation import detect_blocking_challenge
+from app.services.control_primitives import normalize_text
 
 FillStep = Callable[[Any, int], Awaitable[Dict[str, Any]]]
 PreSubmitCheck = Callable[[Any, ATSAdapter], Awaitable[Dict[str, Any]]]
@@ -45,6 +46,53 @@ def _merge_unique(target: List[Dict[str, Any]], source: List[Dict[str, Any]]) ->
         ) for existing in target)
         if not exists:
             target.append(item)
+
+
+def _validation_with_source_answer(
+    issues: List[Any], control_evidence: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Bind an ATS validation message to the approved answer that produced it.
+
+    Adapters report a human-readable field descriptor, while the control engine
+    retains the policy and verified selection.  Preserve both in one record so a
+    review task can correct the source answer rather than merely displaying a
+    detached browser error.  Ambiguous or descriptor-free errors remain unbound.
+    """
+    mapped: List[Dict[str, Any]] = []
+    for issue in issues:
+        record = issue.as_dict()
+        descriptor = normalize_text(record.get("field_descriptor"))
+        candidates: List[Dict[str, Any]] = []
+        if descriptor:
+            for evidence in control_evidence:
+                source_descriptor = normalize_text(evidence.get("descriptor"))
+                source_tokens = set(source_descriptor.split())
+                issue_tokens = set(descriptor.split())
+                if source_descriptor and (
+                    descriptor == source_descriptor
+                    or descriptor in source_descriptor
+                    or source_descriptor in descriptor
+                    or (
+                        source_tokens
+                        and len(source_tokens & issue_tokens) / len(source_tokens) >= 0.75
+                    )
+                ):
+                    candidates.append(evidence)
+        if len(candidates) == 1:
+            source = candidates[0]
+            record["source_answer"] = {
+                "control_id": source.get("control_id"),
+                "control_type": source.get("control_type"),
+                "descriptor": source.get("descriptor"),
+                "canonical_key": source.get("canonical_key"),
+                "policy_id": source.get("policy_id"),
+                "selected": list(source.get("selected") or []),
+                "verification": source.get("verification"),
+            }
+        else:
+            record["source_answer"] = None
+        mapped.append(record)
+    return mapped
 
 
 def _record_step_event(
@@ -319,7 +367,10 @@ async def run_ats_application_flow(
             await page.wait_for_timeout(STEP_SETTLE_MS)
             validation = await adapter.extract_validation_errors(surface)
             if validation:
-                result.validation_errors.extend(item.as_dict() for item in validation)
+                mapped_validation = _validation_with_source_answer(
+                    validation, result.control_evidence
+                )
+                result.validation_errors.extend(mapped_validation)
                 result.requires_manual_review = True
                 result.error = "The ATS rejected one or more values on the current step."
                 result.review_items.append(_review(
@@ -329,7 +380,7 @@ async def run_ats_application_flow(
                         "adapter": adapter.name,
                         "step": step_number,
                         "url": before_url,
-                        "errors": [item.as_dict() for item in validation],
+                        "errors": mapped_validation,
                     },
                 ))
                 return result
@@ -408,7 +459,10 @@ async def run_ats_application_flow(
             surface = await adapter.resolve_surface(page)
             validation = await adapter.extract_validation_errors(surface)
             if validation:
-                result.validation_errors.extend(item.as_dict() for item in validation)
+                mapped_validation = _validation_with_source_answer(
+                    validation, result.control_evidence
+                )
+                result.validation_errors.extend(mapped_validation)
                 result.requires_manual_review = True
                 result.error = "The ATS rejected the final application submission."
                 result.review_items.append(_review(
@@ -417,7 +471,7 @@ async def run_ats_application_flow(
                     {
                         "adapter": adapter.name,
                         "step": step_number,
-                        "errors": [item.as_dict() for item in validation],
+                        "errors": mapped_validation,
                     },
                 ))
                 return result

@@ -50,71 +50,11 @@ def _checkpoint(
     }
 
 
-def _reported_progress(
-    value: Optional[Mapping[str, Any]],
-) -> tuple[Dict[str, Any], list[str]]:
-    """Normalize an operator report without allowing malformed claims into output."""
-
-    report = dict(value or {})
-    issues: list[str] = []
-    report_present = bool(report)
-
-    def count(name: str) -> int:
-        raw = report.get(name, 0)
-        if isinstance(raw, bool):
-            issues.append(f"{name}_must_be_a_non_negative_integer")
-            return 0
-        try:
-            parsed = int(raw)
-        except (TypeError, ValueError):
-            issues.append(f"{name}_must_be_a_non_negative_integer")
-            return 0
-        if parsed < 0 or str(raw).strip() != str(parsed):
-            issues.append(f"{name}_must_be_a_non_negative_integer")
-            return 0
-        return parsed
-
-    candidate_sites = count("candidate_lever_sites")
-    distinct_sites = count("distinct_lever_sites")
-    confirmed = count("supervised_confirmed_submissions")
-    reviewed = count("independently_reviewed_submissions")
-    if candidate_sites and distinct_sites > candidate_sites:
-        issues.append("distinct_lever_sites_cannot_exceed_candidate_lever_sites")
-    if reviewed > confirmed:
-        issues.append(
-            "independently_reviewed_submissions_cannot_exceed_confirmed_submissions"
-        )
-    if report_present:
-        for name in ("report_reference", "reported_at", "source"):
-            if not str(report.get(name) or "").strip():
-                issues.append(f"{name}_is_required")
-
-    return (
-        {
-            "candidate_lever_sites": candidate_sites,
-            "distinct_lever_sites": distinct_sites,
-            "supervised_confirmed_submissions": confirmed,
-            "independently_reviewed_submissions": reviewed,
-            "report_reference": str(report.get("report_reference") or "").strip()
-            or None,
-            "reported_at": str(report.get("reported_at") or "").strip() or None,
-            "source": str(report.get("source") or "").strip() or None,
-        },
-        issues,
-    )
-
-
 def build_day_12_22_report(
     lever_readiness: Mapping[str, Any],
     greenhouse_readiness: Mapping[str, Any],
-    reported_progress: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Build the Days 12--22 report from verified evidence and reported progress.
-
-    Reported progress is deliberately shown separately from ledger-derived counts.  An
-    operator report is useful reconciliation input, but cannot silently substitute for
-    the per-attempt evidence needed by the certification gates.
-    """
+    """Build the Days 12--22 report solely from retained readiness evidence."""
 
     lever = _lever_summary(lever_readiness)
     lever_gates = dict(lever.get("gates") or {})
@@ -124,11 +64,6 @@ def build_day_12_22_report(
     confirmed = int(lever.get("supervised_confirmed_count") or 0)
     phase_a = all(lever_gates.get(name) is True for name in LEVER_PHASE_A_GATES)
     phase_b = all(lever_gates.get(name) is True for name in LEVER_PHASE_B_GATES)
-    reported, reported_issues = _reported_progress(reported_progress)
-    reported_sites = reported["distinct_lever_sites"]
-    reported_confirmed = reported["supervised_confirmed_submissions"]
-    reported_reviewed = reported["independently_reviewed_submissions"]
-    report_reference = reported["report_reference"]
 
     checkpoints = []
     for day, target, title in (
@@ -173,45 +108,33 @@ def build_day_12_22_report(
         )
     )
 
-    selected = int(lever.get("selected_application_count") or 0)
-    dossiers = int(lever.get("approval_dossier_count") or 0)
-    previews = int(lever.get("dry_preview_count") or 0)
-    dossier_ready = phase_a and selected >= 2 and dossiers >= 2 and previews >= 2
+    # A dossier may only become executable after Phase A and explicit applicant
+    # selection/policy review.  The readiness ledger intentionally cannot invent it.
     checkpoints.append(
         _checkpoint(
             15,
             "Lever Phase B launch dossier",
-            dossier_ready,
+            False,
             {
                 "phase_a_complete": phase_a,
-                "selected_application_count": selected,
-                "approval_dossier_count": dossiers,
-                "dry_preview_count": previews,
+                "selected_application_count": 0,
+                "approval_dossier_count": 0,
             },
             (["complete Lever Phase A"] if not phase_a else [])
             + [
-                *(
-                    ["retain at least two explicit application selections"]
-                    if selected < 2
-                    else []
-                ),
-                *(
-                    ["retain at least two exact one-time approval dossiers"]
-                    if dossiers < 2
-                    else []
-                ),
-                *(
-                    ["retain dry previews for at least two selected applications"]
-                    if previews < 2
-                    else []
-                ),
+                "user must select real applications and approve truthful profile/legal policies",
+                "generate exact one-time approval dossiers for the selected applications",
             ],
         )
     )
 
     for day, target in ((16, 2), (17, 4), (18, 6), (19, 8), (20, 10)):
-        passed = confirmed >= target and all(
-            lever_gates.get(name) is True for name in LEVER_PHASE_B_GATES[1:]
+        passed = (
+            phase_a
+            and confirmed >= target
+            and all(
+                lever_gates.get(name) is True for name in LEVER_PHASE_B_GATES[1:]
+            )
         )
         checkpoints.append(
             _checkpoint(
@@ -219,25 +142,17 @@ def build_day_12_22_report(
                 f"Lever supervised submissions through {target}",
                 passed,
                 {
+                    "phase_a_complete": phase_a,
                     "safe_confirmed_submissions": confirmed,
                     "target": target,
-                    "operator_reported_confirmed_submissions": reported_confirmed,
-                    "operator_reported_independently_reviewed_submissions": reported_reviewed,
-                    "operator_report_reference": report_reference,
-                    "reported_records_pending_ledger_reconciliation": max(
-                        0, reported_confirmed - confirmed
-                    ),
                     "phase_b_safety_gates": {
                         name: lever_gates.get(name) is True
                         for name in LEVER_PHASE_B_GATES[1:]
                     },
                 },
-                [
-                    (
-                        f"reconcile {reported_confirmed - confirmed} operator-reported submissions to retained per-attempt ledger records"
-                        if reported_confirmed > confirmed
-                        else f"obtain exact user approvals and independently verify {max(0, target - confirmed)} more distinct submissions"
-                    ),
+                (["complete Lever Phase A"] if not phase_a else [])
+                + [
+                    f"obtain exact user approvals and independently verify {max(0, target - confirmed)} more distinct submissions",
                     *[
                         name
                         for name in LEVER_PHASE_B_GATES[1:]
@@ -248,7 +163,9 @@ def build_day_12_22_report(
         )
 
     promotion_passed = (
-        phase_b and lever_gates.get("explicit_separate_promotion_approval") is True
+        phase_a
+        and phase_b
+        and lever_gates.get("explicit_separate_promotion_approval") is True
     )
     checkpoints.append(
         _checkpoint(
@@ -256,6 +173,7 @@ def build_day_12_22_report(
             "Lever promotion decision",
             promotion_passed,
             {
+                "phase_a_complete": phase_a,
                 "phase_b_complete": phase_b,
                 "canonical_maturity": lever.get("canonical_maturity"),
                 "promotion_ready": lever.get("promotion_ready") is True,
@@ -264,7 +182,8 @@ def build_day_12_22_report(
                 )
                 is True,
             },
-            (["complete all Lever Phase B evidence gates"] if not phase_b else [])
+            (["complete Lever Phase A"] if not phase_a else [])
+            + (["complete all Lever Phase B evidence gates"] if not phase_b else [])
             + [
                 "owner approval and a separate maturity-promotion change are required",
             ],
@@ -332,12 +251,6 @@ def build_day_12_22_report(
             "next_action": next(
                 (item["blockers"][0] for item in checkpoints if item["blockers"]), None
             ),
-        },
-        "reported_progress": {
-            **reported,
-            "validation_issues": reported_issues,
-            "valid": not reported_issues,
-            "certification_effect": "informational_until_reconciled_to_retained_records",
         },
         "safety": {
             "network_contacted": False,

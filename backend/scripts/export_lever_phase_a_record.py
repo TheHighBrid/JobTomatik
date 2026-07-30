@@ -57,6 +57,27 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _default_artifact_path(report_path: Path, output_path: Path) -> str:
+    """Return a verifier-safe report path relative to the exported CSV.
+
+    Canonical candidates resolve retained artifacts from the CSV's parent directory.
+    Preserve report subdirectories instead of collapsing the reference to a basename.
+    """
+
+    report = report_path.resolve()
+    output_root = output_path.resolve().parent
+    try:
+        relative = report.relative_to(output_root)
+    except ValueError as exc:
+        raise LeverPhaseAExportError(
+            "When --artifact-path is omitted, --report must be retained beneath the "
+            "output CSV directory so the candidate can reference it safely"
+        ) from exc
+    if not relative.parts or relative == Path("."):
+        raise LeverPhaseAExportError("The retained report artifact path is invalid")
+    return relative.as_posix()
+
+
 def _matching_inspection(report: Mapping[str, Any], url: str) -> Mapping[str, Any]:
     inspections = [
         item
@@ -115,6 +136,7 @@ def build_phase_a_candidate(
     role: str,
     completed_at: Optional[str] = None,
     artifact_path: Optional[str] = None,
+    output_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     if report.get("final_submit_clicked") is not False:
         raise LeverPhaseAExportError("The certification summary must record final_submit_clicked=false")
@@ -172,6 +194,13 @@ def build_phase_a_candidate(
     if missing:
         raise LeverPhaseAExportError("Missing required export values: " + ", ".join(missing))
 
+    if artifact_path is not None:
+        artifact_reference = str(artifact_path).strip()
+    elif output_path is not None:
+        artifact_reference = _default_artifact_path(report_path, output_path)
+    else:
+        artifact_reference = report_path.name
+
     return {
         "run_id": str(run_id).strip(),
         "completed_at": timestamp,
@@ -185,7 +214,7 @@ def build_phase_a_candidate(
         "operator": str(operator).strip(),
         "source_reference": str(source_reference).strip(),
         "artifact_sha256": _sha256(report_path),
-        "artifact_path": str(artifact_path or report_path.name).strip(),
+        "artifact_path": artifact_reference,
         "official_posting_inspection_passed": True,
         "controls_discovered": controls_discovered,
         "controls_filled": controls_filled,
@@ -245,6 +274,7 @@ def main() -> int:
     args = parser.parse_args()
 
     report_path = Path(args.report)
+    output_path = Path(args.output)
     report = json.loads(report_path.read_text(encoding="utf-8"))
     record = build_phase_a_candidate(
         report,
@@ -256,8 +286,9 @@ def main() -> int:
         role=args.role,
         completed_at=args.completed_at,
         artifact_path=args.artifact_path,
+        output_path=output_path,
     )
-    export_phase_a_candidate(Path(args.output), record)
+    export_phase_a_candidate(output_path, record)
     print(f"Exported Phase A candidate to {args.output}")
     return 0
 
