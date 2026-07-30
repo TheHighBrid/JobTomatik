@@ -23,6 +23,7 @@ Canonical maturity remains `dry_run`.
 - [x] `all_evidence_hashes_match_consumed_approvals`
 - [ ] `explicit_separate_promotion_approval`
 - [x] `all_phase_a_records_have_successful_matching_inspection`
+- [x] `all_manual_challenges_remain_needs_review`
 
 **Pilot evidence complete:** `False`
 **Promotion ready:** `False`
