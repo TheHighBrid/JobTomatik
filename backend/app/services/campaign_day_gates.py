@@ -7,8 +7,12 @@ issues an approval, submits an application, or promotes an adapter.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import re
-from typing import Any, Dict, Mapping, Optional
+from pathlib import Path
+from typing import Any, Dict, Mapping, Optional, Union
 
 LEVER_PHASE_A_GATES = (
     "thirty_qualifying_dry_runs",
@@ -35,7 +39,9 @@ GREENHOUSE_CERTIFICATION_GATES = (
     "all_success_evidence_independently_reviewed",
     "explicit_release_approval_reference",
 )
+LEVER_PHASE_B_LAUNCH_SCHEMA_VERSION = "1.1"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_Pathish = Union[str, Path]
 
 
 def _lever_summary(readiness: Mapping[str, Any]) -> Dict[str, Any]:
@@ -64,7 +70,111 @@ def _application_id(record: Mapping[str, Any]) -> str:
     return str(record.get("application_id") or "").strip()
 
 
-def _lever_launch_facts(evidence: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _canonical_sha256(value: Any) -> str:
+    return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _valid_sha256(value: Any) -> Optional[str]:
+    digest = str(value or "").strip().lower()
+    return digest if _SHA256_RE.fullmatch(digest) else None
+
+
+def _retained_dossier_is_valid(
+    application_id: str,
+    dossier_claim: Mapping[str, Any],
+    artifact_root: Optional[_Pathish],
+) -> tuple[bool, str]:
+    declared_dossier_sha = _valid_sha256(dossier_claim.get("dossier_sha256"))
+    declared_artifact_sha = _valid_sha256(dossier_claim.get("artifact_sha256"))
+    artifact_path = str(dossier_claim.get("artifact_path") or "").strip()
+
+    if dossier_claim.get("read_only") is not True:
+        return False, "manifest_dossier_not_read_only"
+    if dossier_claim.get("one_time_approval_required") is not True:
+        return False, "manifest_one_time_approval_not_required"
+    if declared_dossier_sha is None:
+        return False, "manifest_dossier_sha256_invalid"
+    if declared_artifact_sha is None:
+        return False, "manifest_artifact_sha256_invalid"
+    if not artifact_path:
+        return False, "manifest_artifact_path_missing"
+    if artifact_root is None:
+        return False, "artifact_root_missing"
+
+    root = Path(artifact_root).resolve()
+    relative_path = Path(artifact_path)
+    if relative_path.is_absolute():
+        return False, "artifact_path_must_be_relative"
+
+    candidate = (root / relative_path).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False, "artifact_path_escapes_root"
+
+    try:
+        artifact_bytes = candidate.read_bytes()
+    except OSError:
+        return False, "artifact_unreadable"
+
+    computed_artifact_sha = hashlib.sha256(artifact_bytes).hexdigest()
+    if not hmac.compare_digest(computed_artifact_sha, declared_artifact_sha):
+        return False, "artifact_sha256_mismatch"
+
+    try:
+        artifact = json.loads(artifact_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False, "artifact_json_invalid"
+    if not isinstance(artifact, Mapping):
+        return False, "artifact_json_not_object"
+
+    artifact_application_id = str(artifact.get("application_id") or "").strip()
+    if not hmac.compare_digest(artifact_application_id, application_id):
+        return False, "artifact_application_id_mismatch"
+    if artifact.get("read_only") is not True:
+        return False, "artifact_not_read_only"
+    if artifact.get("scope") != "lever_supervised_phase_b_candidate":
+        return False, "artifact_scope_mismatch"
+    if artifact.get("selection_policy") != "user_selected_exact_application_no_ranking":
+        return False, "artifact_selection_policy_mismatch"
+
+    target = artifact.get("target")
+    if not isinstance(target, Mapping) or str(target.get("platform") or "").lower() != "lever":
+        return False, "artifact_platform_mismatch"
+    kill_switches = artifact.get("kill_switches")
+    if not isinstance(kill_switches, Mapping) or kill_switches.get(
+        "one_time_approval_required"
+    ) is not True:
+        return False, "artifact_one_time_approval_not_required"
+
+    artifact_dossier_sha = _valid_sha256(artifact.get("dossier_sha256"))
+    if artifact_dossier_sha is None:
+        return False, "artifact_dossier_sha256_invalid"
+
+    canonical_dossier = dict(artifact)
+    canonical_dossier.pop("dossier_sha256", None)
+    canonical_dossier.pop("download_filename", None)
+    computed_dossier_sha = _canonical_sha256(canonical_dossier)
+    if not hmac.compare_digest(computed_dossier_sha, artifact_dossier_sha):
+        return False, "artifact_dossier_sha256_mismatch"
+    if not hmac.compare_digest(computed_dossier_sha, declared_dossier_sha):
+        return False, "manifest_dossier_sha256_mismatch"
+
+    download_filename = str(artifact.get("download_filename") or "").strip()
+    if download_filename and download_filename != candidate.name:
+        return False, "artifact_download_filename_mismatch"
+
+    return True, "verified"
+
+
+def _lever_launch_facts(
+    evidence: Optional[Mapping[str, Any]],
+    artifact_root: Optional[_Pathish] = None,
+) -> Dict[str, Any]:
     payload = dict(evidence or {})
     raw_records = payload.get("applications") or []
     records = [dict(item) for item in raw_records if isinstance(item, Mapping)]
@@ -72,38 +182,56 @@ def _lever_launch_facts(evidence: Optional[Mapping[str, Any]]) -> Dict[str, Any]
     selected: set[str] = set()
     dossiers: set[str] = set()
     previews: set[str] = set()
-    malformed = 0
+    ready: set[str] = set()
+    seen_application_ids: set[str] = set()
+    dossier_validation_errors: list[Dict[str, str]] = []
+    malformed = len(raw_records) - len(records) if isinstance(raw_records, list) else 1
+    duplicates = 0
+    schema_valid = payload.get("schema_version") == LEVER_PHASE_B_LAUNCH_SCHEMA_VERSION
 
     for record in records:
         application_id = _application_id(record)
         if not application_id or str(record.get("platform") or "").lower() != "lever":
             malformed += 1
             continue
+        if application_id in seen_application_ids:
+            duplicates += 1
+            continue
+        seen_application_ids.add(application_id)
 
         selection_reference = str(record.get("selection_reference") or "").strip()
-        if record.get("selected_by_user") is True and selection_reference:
+        selected_ok = record.get("selected_by_user") is True and bool(selection_reference)
+        if selected_ok:
             selected.add(application_id)
 
+        dossier_ok = False
         dossier = record.get("dossier")
         if isinstance(dossier, Mapping):
-            digest = str(dossier.get("dossier_sha256") or "").strip().lower()
-            if (
-                dossier.get("read_only") is True
-                and dossier.get("one_time_approval_required") is True
-                and _SHA256_RE.fullmatch(digest)
-            ):
-                dossiers.add(application_id)
+            dossier_ok, reason = _retained_dossier_is_valid(
+                application_id, dossier, artifact_root
+            )
+        else:
+            reason = "manifest_dossier_missing"
+        if dossier_ok:
+            dossiers.add(application_id)
+        else:
+            dossier_validation_errors.append(
+                {"application_id": application_id, "reason": reason}
+            )
 
         preview = record.get("dry_preview")
-        if isinstance(preview, Mapping):
-            if (
-                preview.get("passed") is True
-                and preview.get("final_submit_clicked") is False
-                and preview.get("outcome") == "ready_to_submit"
-            ):
-                previews.add(application_id)
+        preview_ok = bool(
+            isinstance(preview, Mapping)
+            and preview.get("passed") is True
+            and preview.get("final_submit_clicked") is False
+            and preview.get("outcome") == "ready_to_submit"
+        )
+        if preview_ok:
+            previews.add(application_id)
 
-    ready = selected & dossiers & previews
+        if selected_ok and dossier_ok and preview_ok:
+            ready.add(application_id)
+
     return {
         "selected_application_count": len(selected),
         "approval_dossier_count": len(dossiers),
@@ -111,7 +239,11 @@ def _lever_launch_facts(evidence: Optional[Mapping[str, Any]]) -> Dict[str, Any]
         "ready_application_count": len(ready),
         "ready_application_ids": sorted(ready),
         "malformed_record_count": malformed,
+        "duplicate_application_count": duplicates,
+        "invalid_dossier_count": len(dossier_validation_errors),
+        "dossier_validation_errors": dossier_validation_errors,
         "source_schema_version": payload.get("schema_version"),
+        "source_schema_valid": schema_valid,
     }
 
 
@@ -119,6 +251,8 @@ def build_day_12_22_report(
     lever_readiness: Mapping[str, Any],
     greenhouse_readiness: Mapping[str, Any],
     lever_phase_b_launch: Optional[Mapping[str, Any]] = None,
+    *,
+    lever_phase_b_artifact_root: Optional[_Pathish] = None,
 ) -> Dict[str, Any]:
     """Build the Days 12--22 report solely from retained evidence."""
 
@@ -223,8 +357,18 @@ def build_day_12_22_report(
         )
     )
 
-    launch = _lever_launch_facts(lever_phase_b_launch)
-    day15_passed = phase_a and launch["ready_application_count"] >= 2
+    launch = _lever_launch_facts(
+        lever_phase_b_launch, artifact_root=lever_phase_b_artifact_root
+    )
+    day15_integrity_clean = bool(
+        launch["source_schema_valid"]
+        and launch["malformed_record_count"] == 0
+        and launch["duplicate_application_count"] == 0
+        and launch["invalid_dossier_count"] == 0
+    )
+    day15_passed = (
+        phase_a and day15_integrity_clean and launch["ready_application_count"] >= 2
+    )
     checkpoints.append(
         _checkpoint(
             15,
@@ -238,8 +382,17 @@ def build_day_12_22_report(
             (["complete Lever Phase A"] if not phase_a else [])
             + (
                 [
-                    "retain two exact user-selected Lever applications with valid "
-                    "read-only dossier hashes and successful no-submit dry previews"
+                    f"use Lever Phase B launch schema "
+                    f"{LEVER_PHASE_B_LAUNCH_SCHEMA_VERSION}"
+                ]
+                if not launch["source_schema_valid"]
+                else []
+            )
+            + (
+                [
+                    "retain two exact user-selected Lever applications with "
+                    "byte-verified, application-bound read-only dossiers and "
+                    "successful no-submit dry previews"
                 ]
                 if launch["ready_application_count"] < 2
                 else []
@@ -247,6 +400,16 @@ def build_day_12_22_report(
             + (
                 ["remove or repair malformed Lever Phase B launch evidence records"]
                 if launch["malformed_record_count"]
+                else []
+            )
+            + (
+                ["remove duplicate application records from Lever Phase B launch evidence"]
+                if launch["duplicate_application_count"]
+                else []
+            )
+            + (
+                ["repair every retained dossier artifact validation failure"]
+                if launch["invalid_dossier_count"]
                 else []
             ),
         )
@@ -403,5 +566,6 @@ __all__ = [
     "GREENHOUSE_CERTIFICATION_GATES",
     "LEVER_PHASE_A_GATES",
     "LEVER_PHASE_B_GATES",
+    "LEVER_PHASE_B_LAUNCH_SCHEMA_VERSION",
     "build_day_12_22_report",
 ]
