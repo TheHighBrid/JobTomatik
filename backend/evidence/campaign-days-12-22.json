@@ -57,14 +57,12 @@
     {
       "blockers": [
         "complete Lever Phase A",
-        "retain at least two explicit application selections",
-        "retain at least two exact one-time approval dossiers",
-        "retain dry previews for at least two selected applications"
+        "user must select real applications and approve truthful profile/legal policies",
+        "generate exact one-time approval dossiers for the selected applications"
       ],
       "day": 15,
       "facts": {
         "approval_dossier_count": 0,
-        "dry_preview_count": 0,
         "phase_a_complete": false,
         "selected_application_count": 0
       },
@@ -74,14 +72,13 @@
     },
     {
       "blockers": [
-        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "complete Lever Phase A",
+        "obtain exact user approvals and independently verify 2 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 16,
       "facts": {
-        "operator_report_reference": "owner-report-2026-07-30",
-        "operator_reported_confirmed_submissions": 19,
-        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -89,7 +86,6 @@
           "zero_duplicate_submissions": true,
           "zero_false_submitted_records": true
         },
-        "reported_records_pending_ledger_reconciliation": 19,
         "safe_confirmed_submissions": 0,
         "target": 2
       },
@@ -99,14 +95,13 @@
     },
     {
       "blockers": [
-        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "complete Lever Phase A",
+        "obtain exact user approvals and independently verify 4 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 17,
       "facts": {
-        "operator_report_reference": "owner-report-2026-07-30",
-        "operator_reported_confirmed_submissions": 19,
-        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -114,7 +109,6 @@
           "zero_duplicate_submissions": true,
           "zero_false_submitted_records": true
         },
-        "reported_records_pending_ledger_reconciliation": 19,
         "safe_confirmed_submissions": 0,
         "target": 4
       },
@@ -124,14 +118,13 @@
     },
     {
       "blockers": [
-        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "complete Lever Phase A",
+        "obtain exact user approvals and independently verify 6 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 18,
       "facts": {
-        "operator_report_reference": "owner-report-2026-07-30",
-        "operator_reported_confirmed_submissions": 19,
-        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -139,7 +132,6 @@
           "zero_duplicate_submissions": true,
           "zero_false_submitted_records": true
         },
-        "reported_records_pending_ledger_reconciliation": 19,
         "safe_confirmed_submissions": 0,
         "target": 6
       },
@@ -149,14 +141,13 @@
     },
     {
       "blockers": [
-        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "complete Lever Phase A",
+        "obtain exact user approvals and independently verify 8 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 19,
       "facts": {
-        "operator_report_reference": "owner-report-2026-07-30",
-        "operator_reported_confirmed_submissions": 19,
-        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -164,7 +155,6 @@
           "zero_duplicate_submissions": true,
           "zero_false_submitted_records": true
         },
-        "reported_records_pending_ledger_reconciliation": 19,
         "safe_confirmed_submissions": 0,
         "target": 8
       },
@@ -174,14 +164,13 @@
     },
     {
       "blockers": [
-        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "complete Lever Phase A",
+        "obtain exact user approvals and independently verify 10 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 20,
       "facts": {
-        "operator_report_reference": "owner-report-2026-07-30",
-        "operator_reported_confirmed_submissions": 19,
-        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -189,7 +178,6 @@
           "zero_duplicate_submissions": true,
           "zero_false_submitted_records": true
         },
-        "reported_records_pending_ledger_reconciliation": 19,
         "safe_confirmed_submissions": 0,
         "target": 10
       },
@@ -199,6 +187,7 @@
     },
     {
       "blockers": [
+        "complete Lever Phase A",
         "complete all Lever Phase B evidence gates",
         "owner approval and a separate maturity-promotion change are required"
       ],
@@ -206,6 +195,7 @@
       "facts": {
         "canonical_maturity": "dry_run",
         "explicit_promotion_approval": false,
+        "phase_a_complete": false,
         "phase_b_complete": false,
         "promotion_ready": false
       },
@@ -239,13 +229,6 @@
     }
   ],
   "mode": "read_only_evidence_evaluation",
-  "reported_progress": {
-    "certification_effect": "informational_until_reconciled_to_retained_records",
-    "distinct_lever_sites": 19,
-    "independently_reviewed_submissions": 19,
-    "report_reference": "owner-report-2026-07-30",
-    "supervised_confirmed_submissions": 19
-  },
   "safety": {
     "approval_issued": false,
     "browser_opened": false,

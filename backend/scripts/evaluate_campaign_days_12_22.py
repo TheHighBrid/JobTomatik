@@ -16,21 +16,11 @@ def main() -> int:
     parser.add_argument(
         "--greenhouse", default="evidence/greenhouse-phase-a-readiness.json"
     )
-    parser.add_argument(
-        "--reported-progress",
-        default="evidence/lever-days-12-22-owner-report.json",
-    )
     parser.add_argument("--output", default="evidence/campaign-days-12-22.json")
     args = parser.parse_args()
     lever = json.loads(Path(args.lever).read_text(encoding="utf-8"))
     greenhouse = json.loads(Path(args.greenhouse).read_text(encoding="utf-8"))
-    progress_path = Path(args.reported_progress)
-    reported_progress = (
-        json.loads(progress_path.read_text(encoding="utf-8"))
-        if progress_path.is_file()
-        else {}
-    )
-    report = build_day_12_22_report(lever, greenhouse, reported_progress)
+    report = build_day_12_22_report(lever, greenhouse)
     Path(args.output).write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )

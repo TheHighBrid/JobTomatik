@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 from urllib.parse import urlparse
 
-from app.services.control_engine import normalize_text
+from app.services.control_engine import element_descriptor, normalize_text
 
 
 @dataclass
@@ -298,6 +298,10 @@ async def collect_validation_issues(
                 text = normalize_text(await element.inner_text())
             except Exception:
                 text = ""
+            try:
+                field_descriptor = await element_descriptor(surface, element)
+            except Exception:
+                field_descriptor = ""
             if not text and selector == '[aria-invalid="true"]':
                 try:
                     element_id = await element.get_attribute("id")
@@ -305,7 +309,13 @@ async def collect_validation_issues(
                         await surface.query_selector(f'label[for="{element_id}"]')
                         if element_id else None
                     )
-                    text = normalize_text(await label.inner_text()) if label else "Invalid required field"
+                    text = (
+                        normalize_text(await label.inner_text())
+                        if label
+                        else "Invalid required field"
+                    )
+                    if not field_descriptor and label:
+                        field_descriptor = str((await label.inner_text()) or "").strip()
                 except Exception:
                     text = "Invalid required field"
             if not text or text in seen:
@@ -313,5 +323,11 @@ async def collect_validation_issues(
             if len(text) > 500:
                 text = text[:500]
             seen.add(text)
-            issues.append(ValidationIssue(message=text, selector=selector))
+            issues.append(
+                ValidationIssue(
+                    message=text,
+                    selector=selector,
+                    field_descriptor=field_descriptor,
+                )
+            )
     return issues

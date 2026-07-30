@@ -1,7 +1,7 @@
 # Lever Phase 2 Measurement Freeze
 
 **Effective:** July 29, 2026
-**Contract:** `2026-07-29.day7.1`
+**Contract:** `2026-07-29.day7.3`
 **Execution queue:** #161
 **Platform tracker:** #86
 
@@ -56,6 +56,25 @@ Any change to qualification logic, evidence schema, source manifest, adapter-ver
 
 Bug fixes may improve the adapter without changing measurement rules. A bug fix that changes whether existing evidence qualifies is a measurement change and follows the process above.
 
+## Day 7.2 regression amendment
+
+This amendment keeps the starting count at **0/30** and does not authorize any submission or maturity change. It closes three certification holes:
+
+- the Phase 1 workflow now triggers when the frozen retained-artifact verifier changes;
+- the Phase A exporter preserves a verifier-safe report path when the retained report is in a subdirectory of the output CSV location;
+- roadmap Days 16–21 cannot pass unless the complete Lever Phase A gate is already true.
+
+A dedicated regression contract now recalculates the committed readiness JSON and Markdown, exercises the cross-directory export layout, and rejects Phase B or promotion completion when Phase A is incomplete.
+
+## Day 7.3 artifact-integrity amendment
+
+This amendment repairs the retained Campaign Days 12–22 checkpoint after the Day 7.2 gate-order change. It does not alter the frozen **0/30** starting point, authorize submissions, or promote adapter maturity.
+
+- `backend/evidence/campaign-days-12-22.json` is regenerated from the committed Lever and Greenhouse readiness snapshots.
+- Days 16–21 retain `phase_a_complete: false` and the `complete Lever Phase A` blocker while Phase A remains incomplete.
+- The regression contract now compares the committed campaign checkpoint JSON byte-for-byte with fresh deterministic evaluator output.
+- The amended regression suite is re-locked under this contract version so exact-head CI rejects future artifact drift.
+
 ## Daily targets
 
 | Campaign day | Frozen objective |
@@ -72,8 +91,6 @@ The targets are planning checkpoints, not permission to accept weak evidence. A 
 
 ## Frozen inputs and outputs
 
-Canonical inputs:
-
 Mutable evidence inputs:
 
 - `backend/evidence/lever-phase-a-baseline.csv`
@@ -87,16 +104,19 @@ Blob-locked qualification and certification rules:
 - `backend/app/services/lever_pilot_ingestion.py`
 - `backend/app/services/lever_pilot_ledger_boundary.py`
 - `backend/app/services/lever_readiness_hardening.py`
+- `backend/app/services/campaign_day_gates.py`
 - `backend/scripts/export_lever_phase_a_record.py`
 - `backend/scripts/certify_lever_pilot_readiness.py`
 - `.github/workflows/lever-phase-a-certification.yml`
 - `.github/workflows/phase-1-release-gate.yml`
 - `backend/tests/test_phase_1_release_gate.py`
+- `backend/tests/test_certification_regressions.py`
 
-Generated readiness outputs:
+Generated certification outputs:
 
 - `backend/evidence/lever-pilot-readiness.json`
 - `backend/evidence/lever-pilot-readiness.md`
+- `backend/evidence/campaign-days-12-22.json`
 
 ## Safety and promotion boundary
 
