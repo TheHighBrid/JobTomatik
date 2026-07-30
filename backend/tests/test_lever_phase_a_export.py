@@ -17,6 +17,29 @@ LEVER_URL = f"https://jobs.eu.lever.co/exportco/{POSTING_ID}/apply"
 
 
 def _report(*, clicked=False, outcome="ready_to_submit", inspection_passed=True):
+    exercise = {
+        "url": LEVER_URL,
+        "mode": "exercise",
+        "passed": not clicked,
+        "adapter": "lever",
+        "adapter_version": LEVER_ADAPTER_VERSION,
+        "certification_outcome": outcome,
+        "fields_filled": 8,
+        "control_evidence_count": 8,
+        "validation_errors": [],
+        "review_items": [],
+        "upload_evidence": [{"verification": "passed"}],
+        "final_submit_clicked": clicked,
+        "error": None,
+    }
+    if outcome == "manual_challenge_handoff":
+        exercise.update(
+            {
+                "manual_challenge_ready": True,
+                "ready_to_submit": False,
+                "requires_manual_review": True,
+            }
+        )
     return {
         "certification": "lever_supervised_live_dry_run",
         "final_submit_clicked": clicked,
@@ -31,21 +54,7 @@ def _report(*, clicked=False, outcome="ready_to_submit", inspection_passed=True)
                 "final_submit_clicked": False,
                 "dom": {"visible_control_count": 12},
             },
-            {
-                "url": LEVER_URL,
-                "mode": "exercise",
-                "passed": not clicked,
-                "adapter": "lever",
-                "adapter_version": LEVER_ADAPTER_VERSION,
-                "certification_outcome": outcome,
-                "fields_filled": 8,
-                "control_evidence_count": 8,
-                "validation_errors": [],
-                "review_items": [],
-                "upload_evidence": [{"verification": "passed"}],
-                "final_submit_clicked": clicked,
-                "error": None,
-            },
+            exercise,
         ],
     }
 
@@ -106,7 +115,7 @@ def test_export_requires_one_successful_matching_official_inspection(tmp_path, i
         _build(tmp_path, report)
 
 
-def test_manual_challenge_candidate_is_boundary_only_evidence(tmp_path):
+def test_manual_challenge_candidate_is_verified_boundary_only_evidence(tmp_path):
     report = _report(outcome="manual_challenge_handoff")
     exercise = report["reports"][1]
     exercise["review_items"] = [
@@ -117,9 +126,40 @@ def test_manual_challenge_candidate_is_boundary_only_evidence(tmp_path):
     ]
 
     record = _build(tmp_path, report)
+    candidate_path = tmp_path / "lever-phase-a-candidate.csv"
+    export_phase_a_candidate(candidate_path, record)
+    loaded = load_phase_a_baseline(candidate_path)[0]
 
     assert record["pre_submit_state"] == "manual_challenge_handoff"
     assert record["final_status"] == "needs_review"
     assert record["handoff_reason"] == "captcha_detected"
     assert record["handoff_boundary"] == "post_fill_pre_action"
     assert "does not advance the Phase A gate" in record["notes"]
+    assert loaded["phase_a_artifact_verified"] is True
+    assert loaded["phase_a_exercise_verified"] is True
+    assert loaded["official_posting_inspection_verified"] is True
+    assert loaded["qualifies_for_dry_run_matrix"] is False
+    assert loaded["phase_a_evidence_error"] is None
+
+
+def test_manual_challenge_boundary_fails_closed_without_explicit_handoff_readiness(tmp_path):
+    report = _report(outcome="manual_challenge_handoff")
+    exercise = report["reports"][1]
+    exercise.pop("manual_challenge_ready")
+    exercise["review_items"] = [
+        {
+            "reason_code": "captcha_detected",
+            "details": {"handoff_stage": "post_fill_pre_action"},
+        }
+    ]
+
+    record = _build(tmp_path, report)
+    candidate_path = tmp_path / "lever-phase-a-candidate.csv"
+    export_phase_a_candidate(candidate_path, record)
+    loaded = load_phase_a_baseline(candidate_path)[0]
+
+    assert loaded["phase_a_artifact_verified"] is True
+    assert loaded["phase_a_exercise_verified"] is False
+    assert loaded["official_posting_inspection_verified"] is True
+    assert loaded["qualifies_for_dry_run_matrix"] is False
+    assert "manual-challenge handoff" in loaded["phase_a_evidence_error"]
