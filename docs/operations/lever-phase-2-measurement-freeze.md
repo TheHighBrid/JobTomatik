@@ -1,7 +1,7 @@
 # Lever Phase 2 Measurement Freeze
 
 **Effective:** July 29, 2026
-**Contract:** `2026-07-29.day7.2`
+**Contract:** `2026-07-29.day7.3`
 **Execution queue:** #161
 **Platform tracker:** #86
 
@@ -66,6 +66,15 @@ This amendment keeps the starting count at **0/30** and does not authorize any s
 
 A dedicated regression contract now recalculates the committed readiness JSON and Markdown, exercises the cross-directory export layout, and rejects Phase B or promotion completion when Phase A is incomplete.
 
+## Day 7.3 artifact-integrity amendment
+
+This amendment repairs the retained Campaign Days 12–22 checkpoint after the Day 7.2 gate-order change. It does not alter the frozen **0/30** starting point, authorize submissions, or promote adapter maturity.
+
+- `backend/evidence/campaign-days-12-22.json` is regenerated from the committed Lever and Greenhouse readiness snapshots.
+- Days 16–21 retain `phase_a_complete: false` and the `complete Lever Phase A` blocker while Phase A remains incomplete.
+- The regression contract now compares the committed campaign checkpoint JSON byte-for-byte with fresh deterministic evaluator output.
+- The amended regression suite is re-locked under this contract version so exact-head CI rejects future artifact drift.
+
 ## Daily targets
 
 | Campaign day | Frozen objective |
@@ -109,6 +118,7 @@ Generated readiness outputs:
 
 - `backend/evidence/lever-pilot-readiness.json`
 - `backend/evidence/lever-pilot-readiness.md`
+- `backend/evidence/campaign-days-12-22.json`
 
 ## Safety and promotion boundary
 
