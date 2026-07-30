@@ -1,4 +1,17 @@
+import json
+from pathlib import Path
+
 from app.services.campaign_day_gates import build_day_12_22_report
+
+
+ROOT = Path(__file__).resolve().parents[2]
+LEVER_READINESS_JSON_PATH = ROOT / "backend/evidence/lever-pilot-readiness.json"
+GREENHOUSE_READINESS_JSON_PATH = (
+    ROOT / "backend/evidence/greenhouse-phase-a-readiness.json"
+)
+CAMPAIGN_CHECKPOINT_JSON_PATH = (
+    ROOT / "backend/evidence/campaign-days-12-22.json"
+)
 
 
 def _lever(dry_runs=0, sites=0, confirmed=0, gates=None):
@@ -66,3 +79,17 @@ def test_phase_b_cannot_pass_on_count_alone():
     day20 = next(item for item in report["checkpoints"] if item["day"] == 20)
     assert day20["passed"] is False
     assert "all_success_evidence_independently_reviewed" in day20["blockers"]
+
+
+def test_committed_campaign_checkpoint_matches_current_readiness_inputs():
+    lever = json.loads(LEVER_READINESS_JSON_PATH.read_text(encoding="utf-8"))
+    greenhouse = json.loads(
+        GREENHOUSE_READINESS_JSON_PATH.read_text(encoding="utf-8")
+    )
+    expected = json.dumps(
+        build_day_12_22_report(lever, greenhouse),
+        indent=2,
+        sort_keys=True,
+    ) + "\n"
+
+    assert expected == CAMPAIGN_CHECKPOINT_JSON_PATH.read_text(encoding="utf-8")
