@@ -2,12 +2,12 @@
   "checkpoints": [
     {
       "blockers": [
-        "retain and verify 20 more qualifying distinct-site dry runs"
+        "retain and verify 20 more qualifying dry runs",
+        "retain and verify 20 more distinct Lever sites"
       ],
       "day": 12,
       "facts": {
         "distinct_sites": 0,
-        "manual_challenge_boundaries": 2,
         "qualifying_dry_runs": 0,
         "regions_covered": [],
         "target": 20
@@ -18,12 +18,16 @@
     },
     {
       "blockers": [
-        "retain and verify 25 more qualifying distinct-site dry runs"
+        "retain and verify 25 more qualifying dry runs",
+        "retain and verify 25 more distinct Lever sites"
       ],
       "day": 13,
       "facts": {
+        "all_manual_challenges_remain_needs_review": true,
         "distinct_sites": 0,
         "manual_challenge_boundaries": 2,
+        "manual_challenge_encounters": 2,
+        "manual_challenge_violations": 0,
         "qualifying_dry_runs": 0,
         "regions_covered": [],
         "target": 25
@@ -42,6 +46,7 @@
       "facts": {
         "distinct_sites": 0,
         "gate_state": {
+          "all_manual_challenges_remain_needs_review": true,
           "all_phase_a_records_have_successful_matching_inspection": true,
           "global_and_eu_hosts_covered": false,
           "thirty_distinct_lever_sites": false,
@@ -57,14 +62,19 @@
     {
       "blockers": [
         "complete Lever Phase A",
-        "user must select real applications and approve truthful profile/legal policies",
-        "generate exact one-time approval dossiers for the selected applications"
+        "retain two exact user-selected Lever applications with valid read-only dossier hashes and successful no-submit dry previews"
       ],
       "day": 15,
       "facts": {
         "approval_dossier_count": 0,
+        "dry_preview_count": 0,
+        "malformed_record_count": 0,
         "phase_a_complete": false,
-        "selected_application_count": 0
+        "ready_application_count": 0,
+        "ready_application_ids": [],
+        "selected_application_count": 0,
+        "source_schema_version": "1.0",
+        "target_ready_applications": 2
       },
       "passed": false,
       "status": "blocked_by_evidence_or_user_gate",
@@ -189,6 +199,7 @@
       "blockers": [
         "complete Lever Phase A",
         "complete all Lever Phase B evidence gates",
+        "canonical readiness must report promotion_ready=true",
         "owner approval and a separate maturity-promotion change are required"
       ],
       "day": 21,
@@ -204,17 +215,33 @@
       "title": "Lever promotion decision"
     },
     {
-      "blockers": [],
+      "blockers": [
+        "ten_supervised_confirmed_submissions",
+        "all_success_evidence_independently_reviewed",
+        "explicit_release_approval_reference",
+        "human_reviewed_submit_ready"
+      ],
       "day": 22,
       "facts": {
         "exact_backlog": [
           "ten_supervised_confirmed_submissions",
           "all_success_evidence_independently_reviewed",
-          "explicit_release_approval_reference"
+          "explicit_release_approval_reference",
+          "human_reviewed_submit_ready"
         ],
         "gate_matrix": {
-          "controls": "adapter regression suite required at execution head",
           "duplicate_protection": true,
+          "false_submission_protection": true,
+          "gate_state": {
+            "all_success_evidence_independently_reviewed": false,
+            "all_uncertain_outcomes_remain_uncertain": true,
+            "explicit_release_approval_reference": false,
+            "ten_supervised_confirmed_submissions": false,
+            "thirty_distinct_employers": true,
+            "thirty_qualifying_dry_runs": true,
+            "zero_duplicate_submissions": true,
+            "zero_false_submitted_records": true
+          },
           "independent_evidence_review": false,
           "phase_a_distinct_employers": 30,
           "phase_a_qualifying_dry_runs": 30,
@@ -223,8 +250,8 @@
         },
         "human_reviewed_submit_ready": false
       },
-      "passed": true,
-      "status": "complete",
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
       "title": "Greenhouse certification gap analysis"
     }
   ],
@@ -237,7 +264,7 @@
     "network_contacted": false,
     "submission_queued": false
   },
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "scope": "roadmap_days_12_through_22",
   "summary": {
     "blocked_days": [
@@ -250,11 +277,10 @@
       18,
       19,
       20,
-      21
-    ],
-    "complete_days": [
+      21,
       22
     ],
-    "next_action": "retain and verify 20 more qualifying distinct-site dry runs"
+    "complete_days": [],
+    "next_action": "retain and verify 20 more qualifying dry runs"
   }
 }
