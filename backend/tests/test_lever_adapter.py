@@ -271,6 +271,64 @@ async def test_lever_validation_errors_block_progress(page):
     assert result.requires_manual_review is True
     assert result.review_items[0]["reason_code"] == "validation_error"
     assert "required field" in result.validation_errors[0]["message"]
+    assert result.validation_errors[0]["source_answer"] is None
+
+
+@pytest.mark.asyncio
+async def test_lever_validation_error_maps_back_to_approved_source_answer(page):
+    await page.set_content(
+        """
+        <form class="application-form" action="https://jobs.lever.co/acme/posting/apply">
+          <label for="location">Current location</label>
+          <select id="location" required>
+            <option value="">Choose one</option>
+            <option value="ottawa">Ottawa</option>
+          </select>
+          <button id="next" type="button">Continue</button>
+        </form>
+        <script>
+          document.querySelector('#next').onclick = () => {
+            document.querySelector('#location').setAttribute('aria-invalid', 'true');
+            document.querySelector('#location').setAttribute(
+              'aria-label', 'Current location is unavailable'
+            );
+          };
+        </script>
+        """
+    )
+    adapter = LeverAdapter()
+    log = []
+
+    async def fill_step(surface, step_number):
+        return await _fill_step_fields(
+            surface,
+            profile={
+                "answer_policies": [
+                    policy(
+                        "custom.current_location",
+                        "Ottawa",
+                        phrases=["current location"],
+                        policy_id=41,
+                    )
+                ]
+            },
+            cover_letter="",
+            resume_path="",
+            log=log,
+            step_number=step_number,
+        )
+
+    result = await run_ats_application_flow(
+        page, adapter, fill_step=fill_step, dry_run=True, log=log
+    )
+
+    assert result.success is False
+    assert result.review_items[0]["reason_code"] == "validation_error"
+    source = result.validation_errors[0]["source_answer"]
+    assert source["canonical_key"] == "custom.unclassified"
+    assert source["policy_id"] == 41
+    assert source["selected"] == [{"label": "Ottawa", "value": "ottawa"}]
+    assert result.review_items[0]["details"]["errors"][0]["source_answer"] == source
 
 
 @pytest.mark.asyncio
