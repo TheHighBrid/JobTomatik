@@ -57,9 +57,8 @@
     {
       "blockers": [
         "complete Lever Phase A",
-        "retain at least two explicit application selections",
-        "retain at least two exact one-time approval dossiers",
-        "retain dry previews for at least two selected applications"
+        "user must select real applications and approve truthful profile/legal policies",
+        "generate exact one-time approval dossiers for the selected applications"
       ],
       "day": 15,
       "facts": {
@@ -170,7 +169,8 @@
         "all_success_evidence_independently_reviewed"
       ],
       "day": 20,
-      "facts": {        "phase_a_complete": false,
+      "facts": {
+        "phase_a_complete": false,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
