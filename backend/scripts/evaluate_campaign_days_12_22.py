@@ -10,22 +10,37 @@ from pathlib import Path
 from app.services.campaign_day_gates import build_day_12_22_report
 
 
+def _load_optional(path: str) -> dict:
+    candidate = Path(path)
+    if not candidate.is_file():
+        return {"schema_version": "1.0", "applications": []}
+    value = json.loads(candidate.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"{candidate} must contain a JSON object")
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lever", default="evidence/lever-pilot-readiness.json")
+    parser.add_argument(
+        "--lever-phase-b-launch",
+        default="evidence/lever-phase-b-launch.json",
+        help="retained exact-selection, dossier, and dry-preview evidence for Day 15",
+    )
     parser.add_argument(
         "--greenhouse", default="evidence/greenhouse-phase-a-readiness.json"
     )
     parser.add_argument("--output", default="evidence/campaign-days-12-22.json")
     args = parser.parse_args()
     lever = json.loads(Path(args.lever).read_text(encoding="utf-8"))
+    launch = _load_optional(args.lever_phase_b_launch)
     greenhouse = json.loads(Path(args.greenhouse).read_text(encoding="utf-8"))
-    report = build_day_12_22_report(lever, greenhouse)
+    report = build_day_12_22_report(lever, greenhouse, launch)
     Path(args.output).write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     print(json.dumps(report, indent=2, sort_keys=True))
-    # Blocked evidence/user gates are report outcomes, not tool failures.
     return 0
 
 
