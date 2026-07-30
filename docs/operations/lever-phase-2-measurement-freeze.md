@@ -91,8 +91,6 @@ The targets are planning checkpoints, not permission to accept weak evidence. A 
 
 ## Frozen inputs and outputs
 
-Canonical inputs:
-
 Mutable evidence inputs:
 
 - `backend/evidence/lever-phase-a-baseline.csv`
@@ -114,7 +112,7 @@ Blob-locked qualification and certification rules:
 - `backend/tests/test_phase_1_release_gate.py`
 - `backend/tests/test_certification_regressions.py`
 
-Generated readiness outputs:
+Generated certification outputs:
 
 - `backend/evidence/lever-pilot-readiness.json`
 - `backend/evidence/lever-pilot-readiness.md`
