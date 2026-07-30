@@ -18,6 +18,9 @@ ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = ROOT / "backend/evidence/lever-phase-a-baseline.csv"
 READINESS_JSON_PATH = ROOT / "backend/evidence/lever-pilot-readiness.json"
 READINESS_MARKDOWN_PATH = ROOT / "backend/evidence/lever-pilot-readiness.md"
+LEVER_PHASE_B_LAUNCH_JSON_PATH = (
+    ROOT / "backend/evidence/lever-phase-b-launch.json"
+)
 GREENHOUSE_READINESS_JSON_PATH = (
     ROOT / "backend/evidence/greenhouse-phase-a-readiness.json"
 )
@@ -89,11 +92,14 @@ def test_committed_lever_readiness_artifacts_match_recalculated_baseline(tmp_pat
 
 def test_committed_campaign_checkpoint_matches_current_readiness_inputs():
     lever = json.loads(READINESS_JSON_PATH.read_text(encoding="utf-8"))
+    lever_phase_b_launch = json.loads(
+        LEVER_PHASE_B_LAUNCH_JSON_PATH.read_text(encoding="utf-8")
+    )
     greenhouse = json.loads(
         GREENHOUSE_READINESS_JSON_PATH.read_text(encoding="utf-8")
     )
     expected = json.dumps(
-        build_day_12_22_report(lever, greenhouse),
+        build_day_12_22_report(lever, greenhouse, lever_phase_b_launch),
         indent=2,
         sort_keys=True,
     ) + "\n"
