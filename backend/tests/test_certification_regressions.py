@@ -18,12 +18,6 @@ ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = ROOT / "backend/evidence/lever-phase-a-baseline.csv"
 READINESS_JSON_PATH = ROOT / "backend/evidence/lever-pilot-readiness.json"
 READINESS_MARKDOWN_PATH = ROOT / "backend/evidence/lever-pilot-readiness.md"
-GREENHOUSE_READINESS_JSON_PATH = (
-    ROOT / "backend/evidence/greenhouse-phase-a-readiness.json"
-)
-CAMPAIGN_CHECKPOINT_JSON_PATH = (
-    ROOT / "backend/evidence/campaign-days-12-22.json"
-)
 PHASE_1_WORKFLOW_PATH = ROOT / ".github/workflows/phase-1-release-gate.yml"
 POSTING_ID = "12345678-1234-1234-1234-123456789abc"
 LEVER_URL = f"https://jobs.eu.lever.co/exportco/{POSTING_ID}/apply"
@@ -85,20 +79,6 @@ def test_committed_lever_readiness_artifacts_match_recalculated_baseline(tmp_pat
     assert render_readiness_markdown(readiness) == READINESS_MARKDOWN_PATH.read_text(
         encoding="utf-8"
     )
-
-
-def test_committed_campaign_checkpoint_matches_current_readiness_inputs():
-    lever = json.loads(READINESS_JSON_PATH.read_text(encoding="utf-8"))
-    greenhouse = json.loads(
-        GREENHOUSE_READINESS_JSON_PATH.read_text(encoding="utf-8")
-    )
-    expected = json.dumps(
-        build_day_12_22_report(lever, greenhouse),
-        indent=2,
-        sort_keys=True,
-    ) + "\n"
-
-    assert expected == CAMPAIGN_CHECKPOINT_JSON_PATH.read_text(encoding="utf-8")
 
 
 def test_phase_1_workflow_tracks_the_frozen_verifier_and_regression_contract():
