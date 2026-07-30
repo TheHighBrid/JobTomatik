@@ -1,0 +1,277 @@
+{
+  "checkpoints": [
+    {
+      "blockers": [
+        "retain and verify 20 more qualifying distinct-site dry runs"
+      ],
+      "day": 12,
+      "facts": {
+        "distinct_sites": 0,
+        "manual_challenge_boundaries": 2,
+        "qualifying_dry_runs": 0,
+        "regions_covered": [],
+        "target": 20
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever dry runs 16 through 20"
+    },
+    {
+      "blockers": [
+        "retain and verify 25 more qualifying distinct-site dry runs"
+      ],
+      "day": 13,
+      "facts": {
+        "distinct_sites": 0,
+        "manual_challenge_boundaries": 2,
+        "qualifying_dry_runs": 0,
+        "regions_covered": [],
+        "target": 25
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever dry runs 21 through 25 and challenge boundaries"
+    },
+    {
+      "blockers": [
+        "thirty_qualifying_dry_runs",
+        "thirty_distinct_lever_sites",
+        "global_and_eu_hosts_covered"
+      ],
+      "day": 14,
+      "facts": {
+        "distinct_sites": 0,
+        "gate_state": {
+          "all_phase_a_records_have_successful_matching_inspection": true,
+          "global_and_eu_hosts_covered": false,
+          "thirty_distinct_lever_sites": false,
+          "thirty_qualifying_dry_runs": false
+        },
+        "qualifying_dry_runs": 0,
+        "regions_covered": []
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever Phase A certification"
+    },
+    {
+      "blockers": [
+        "complete Lever Phase A",
+        "retain at least two explicit application selections",
+        "retain at least two exact one-time approval dossiers",
+        "retain dry previews for at least two selected applications"
+      ],
+      "day": 15,
+      "facts": {
+        "approval_dossier_count": 0,
+        "dry_preview_count": 0,
+        "phase_a_complete": false,
+        "selected_application_count": 0
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever Phase B launch dossier"
+    },
+    {
+      "blockers": [
+        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "all_success_evidence_independently_reviewed"
+      ],
+      "day": 16,
+      "facts": {
+        "operator_report_reference": "owner-report-2026-07-30",
+        "operator_reported_confirmed_submissions": 19,
+        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_b_safety_gates": {
+          "all_evidence_hashes_match_consumed_approvals": true,
+          "all_success_evidence_independently_reviewed": false,
+          "all_uncertain_outcomes_remain_uncertain": true,
+          "zero_duplicate_submissions": true,
+          "zero_false_submitted_records": true
+        },
+        "reported_records_pending_ledger_reconciliation": 19,
+        "safe_confirmed_submissions": 0,
+        "target": 2
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever supervised submissions through 2"
+    },
+    {
+      "blockers": [
+        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "all_success_evidence_independently_reviewed"
+      ],
+      "day": 17,
+      "facts": {
+        "operator_report_reference": "owner-report-2026-07-30",
+        "operator_reported_confirmed_submissions": 19,
+        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_b_safety_gates": {
+          "all_evidence_hashes_match_consumed_approvals": true,
+          "all_success_evidence_independently_reviewed": false,
+          "all_uncertain_outcomes_remain_uncertain": true,
+          "zero_duplicate_submissions": true,
+          "zero_false_submitted_records": true
+        },
+        "reported_records_pending_ledger_reconciliation": 19,
+        "safe_confirmed_submissions": 0,
+        "target": 4
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever supervised submissions through 4"
+    },
+    {
+      "blockers": [
+        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "all_success_evidence_independently_reviewed"
+      ],
+      "day": 18,
+      "facts": {
+        "operator_report_reference": "owner-report-2026-07-30",
+        "operator_reported_confirmed_submissions": 19,
+        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_b_safety_gates": {
+          "all_evidence_hashes_match_consumed_approvals": true,
+          "all_success_evidence_independently_reviewed": false,
+          "all_uncertain_outcomes_remain_uncertain": true,
+          "zero_duplicate_submissions": true,
+          "zero_false_submitted_records": true
+        },
+        "reported_records_pending_ledger_reconciliation": 19,
+        "safe_confirmed_submissions": 0,
+        "target": 6
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever supervised submissions through 6"
+    },
+    {
+      "blockers": [
+        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "all_success_evidence_independently_reviewed"
+      ],
+      "day": 19,
+      "facts": {
+        "operator_report_reference": "owner-report-2026-07-30",
+        "operator_reported_confirmed_submissions": 19,
+        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_b_safety_gates": {
+          "all_evidence_hashes_match_consumed_approvals": true,
+          "all_success_evidence_independently_reviewed": false,
+          "all_uncertain_outcomes_remain_uncertain": true,
+          "zero_duplicate_submissions": true,
+          "zero_false_submitted_records": true
+        },
+        "reported_records_pending_ledger_reconciliation": 19,
+        "safe_confirmed_submissions": 0,
+        "target": 8
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever supervised submissions through 8"
+    },
+    {
+      "blockers": [
+        "reconcile 19 operator-reported submissions to retained per-attempt ledger records",
+        "all_success_evidence_independently_reviewed"
+      ],
+      "day": 20,
+      "facts": {
+        "operator_report_reference": "owner-report-2026-07-30",
+        "operator_reported_confirmed_submissions": 19,
+        "operator_reported_independently_reviewed_submissions": 19,
+        "phase_b_safety_gates": {
+          "all_evidence_hashes_match_consumed_approvals": true,
+          "all_success_evidence_independently_reviewed": false,
+          "all_uncertain_outcomes_remain_uncertain": true,
+          "zero_duplicate_submissions": true,
+          "zero_false_submitted_records": true
+        },
+        "reported_records_pending_ledger_reconciliation": 19,
+        "safe_confirmed_submissions": 0,
+        "target": 10
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever supervised submissions through 10"
+    },
+    {
+      "blockers": [
+        "complete all Lever Phase B evidence gates",
+        "owner approval and a separate maturity-promotion change are required"
+      ],
+      "day": 21,
+      "facts": {
+        "canonical_maturity": "dry_run",
+        "explicit_promotion_approval": false,
+        "phase_b_complete": false,
+        "promotion_ready": false
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever promotion decision"
+    },
+    {
+      "blockers": [],
+      "day": 22,
+      "facts": {
+        "exact_backlog": [
+          "ten_supervised_confirmed_submissions",
+          "all_success_evidence_independently_reviewed",
+          "explicit_release_approval_reference"
+        ],
+        "gate_matrix": {
+          "controls": "adapter regression suite required at execution head",
+          "duplicate_protection": true,
+          "independent_evidence_review": false,
+          "phase_a_distinct_employers": 30,
+          "phase_a_qualifying_dry_runs": 30,
+          "phase_b_confirmed_submissions": 0,
+          "uncertain_state_protection": true
+        },
+        "human_reviewed_submit_ready": false
+      },
+      "passed": true,
+      "status": "complete",
+      "title": "Greenhouse certification gap analysis"
+    }
+  ],
+  "mode": "read_only_evidence_evaluation",
+  "reported_progress": {
+    "certification_effect": "informational_until_reconciled_to_retained_records",
+    "distinct_lever_sites": 19,
+    "independently_reviewed_submissions": 19,
+    "report_reference": "owner-report-2026-07-30",
+    "supervised_confirmed_submissions": 19
+  },
+  "safety": {
+    "approval_issued": false,
+    "browser_opened": false,
+    "final_submit_clicked": false,
+    "maturity_promoted": false,
+    "network_contacted": false,
+    "submission_queued": false
+  },
+  "schema_version": "1.0",
+  "scope": "roadmap_days_12_through_22",
+  "summary": {
+    "blocked_days": [
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21
+    ],
+    "complete_days": [
+      22
+    ],
+    "next_action": "retain and verify 20 more qualifying distinct-site dry runs"
+  }
+}
