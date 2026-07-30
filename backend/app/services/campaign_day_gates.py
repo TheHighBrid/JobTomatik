@@ -9,7 +9,7 @@ turn a missing real-world exercise into a passing gate.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Mapping
 
 LEVER_PHASE_A_GATES = (
     "thirty_qualifying_dry_runs",
