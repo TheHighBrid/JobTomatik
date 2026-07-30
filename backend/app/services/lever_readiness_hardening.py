@@ -22,6 +22,9 @@ from app.services.lever_phase_a_evidence import verify_phase_a_row_evidence
 
 PHASE_A_READY_PAIR = ("ready_to_submit", "dry_run_passed")
 PHASE_A_BOUNDARY_PAIR = ("manual_challenge_handoff", "needs_review")
+MANUAL_CHALLENGE_REASON_CODES = frozenset(
+    {"captcha_detected", "mfa_required", "login_required", "anti_bot_challenge"}
+)
 PHASE_A_REQUIRED_RECORDS = 30
 PHASE_B_REQUIRED_RECORDS = 10
 VALID_REGIONS = {"global", "eu"}
@@ -120,15 +123,24 @@ def harden_lever_readiness(
         for row in phase_a_candidates
         if row.get("_qualification_evidence_verified") is True
     ]
-    boundary_only = [
+    challenge_rows = [
         row
         for row in phase_a
+        if str(row.get("handoff_reason") or "").strip()
+        in MANUAL_CHALLENGE_REASON_CODES
+        or str(row.get("pre_submit_state") or "").strip()
+        == PHASE_A_BOUNDARY_PAIR[0]
+    ]
+    boundary_only = [
+        row
+        for row in challenge_rows
         if (
             str(row.get("pre_submit_state") or "").strip(),
             str(row.get("final_status") or "").strip(),
         )
         == PHASE_A_BOUNDARY_PAIR
     ]
+    challenge_violations = [row for row in challenge_rows if row not in boundary_only]
     inspection_failures = [
         row
         for row in phase_a_candidates
@@ -196,6 +208,7 @@ def harden_lever_readiness(
             "thirty_distinct_lever_sites": len(sites) >= PHASE_A_REQUIRED_RECORDS,
             "global_and_eu_hosts_covered": VALID_REGIONS.issubset(regions),
             "all_phase_a_records_have_successful_matching_inspection": not inspection_failures,
+            "all_manual_challenges_remain_needs_review": not challenge_violations,
             "ten_supervised_confirmed_submissions": len(safe_successes)
             >= PHASE_B_REQUIRED_RECORDS,
             "zero_false_submitted_records": not false_submitted,
@@ -212,7 +225,9 @@ def harden_lever_readiness(
         {
             "qualifying_dry_run_count": len(qualifying),
             "nonqualifying_dry_run_count": len(phase_a) - len(qualifying),
+            "manual_challenge_encounter_count": len(challenge_rows),
             "manual_challenge_boundary_count": len(boundary_only),
+            "manual_challenge_violation_count": len(challenge_violations),
             "phase_a_inspection_failure_count": len(inspection_failures),
             "phase_a_artifact_verification_failure_count": len(artifact_failures),
             "distinct_site_count": len(sites),
@@ -235,7 +250,7 @@ def harden_lever_readiness(
     summary["supervised_pilot_evidence_complete"] = all(required)
     summary["promotion_ready"] = all(gates.values())
     payload["summary"] = summary
-    payload["readiness_hardening_version"] = "1.1"
+    payload["readiness_hardening_version"] = "1.2"
     return payload
 
 
