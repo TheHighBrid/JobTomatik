@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "contract_version": "2026-07-30.day8.2",
+  "contract_version": "2026-07-30.day8.3",
   "effective_date": "2026-07-30",
   "campaign_phase": 2,
   "platform": "lever",
@@ -27,6 +27,8 @@
     "successful_matching_official_posting_inspection_required": true,
     "immutable_workflow_and_artifact_provenance_required": true,
     "artifact_sha256_required": true,
+    "retained_dossier_artifact_sha256_required": true,
+    "retained_dossier_application_binding_required": true,
     "certified_adapter_version_required": true,
     "canonical_target_identity_match_required": true,
     "distinct_reviewed_posting_required": true,
@@ -77,11 +79,11 @@
     "backend/app/services/lever_pilot_ingestion.py": "4c3cfab3830b5af79fb149bad35c275feba39f3f",
     "backend/app/services/lever_pilot_ledger_boundary.py": "b6c3d4c609daaa894bcf2bf06b69a7bc28d1818e",
     "backend/app/services/lever_readiness_hardening.py": "df4ee6a9ebf8f62c77c8c79089e3ed89611e939e",
-    "backend/app/services/campaign_day_gates.py": "7b2638fdafc29876a665b5bbba963b3f97b3d5f9",
+    "backend/app/services/campaign_day_gates.py": "08c282b0f600d3843efe9332dd91d6592e25d9a9",
     "backend/scripts/export_lever_phase_a_record.py": "8c57eef08757c650610af906c140bbf7129bd083",
     "backend/scripts/certify_lever_pilot_readiness.py": "c878f3f01dcfb42442d543bffb768d399b12eab3",
     ".github/workflows/lever-phase-a-certification.yml": "796f67d2c95df53899f21bbe3a88011ac347740c",
-    ".github/workflows/phase-1-release-gate.yml": "e9140c04b0f72864921b531795002eb9a9bf20a7",
+    ".github/workflows/phase-1-release-gate.yml": "3b5aad39940c823da53e442dfcb7a51e424d05ae",
     "backend/tests/test_phase_1_release_gate.py": "7533d434dd5cec939b2c2f1463fc9c70fd1b9c13",
     "backend/tests/test_certification_regressions.py": "fd18e7fbb1580a8a85ba655091a4294e6c40c733"
   },
@@ -107,6 +109,7 @@
     "backend/evidence/lever-phase-a-baseline.csv",
     "backend/evidence/lever-phase-a-sources.csv",
     "backend/evidence/lever-phase-a-artifacts/*.json",
-    "backend/evidence/lever-phase-b-launch.json"
+    "backend/evidence/lever-phase-b-launch.json",
+    "backend/evidence/lever-phase-b-dossiers/*.json"
   ]
 }

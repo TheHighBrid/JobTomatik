@@ -14,11 +14,15 @@ on:
       - "backend/app/services/campaign_day_gates.py"
       - "backend/scripts/certify_lever_pilot_readiness.py"
       - "backend/scripts/export_lever_phase_a_record.py"
+      - "backend/scripts/evaluate_campaign_days_12_22.py"
       - "backend/evidence/lever-phase-a-baseline.csv"
       - "backend/evidence/lever-phase-a-sources.csv"
       - "backend/evidence/lever-pilot-readiness.json"
       - "backend/evidence/lever-pilot-readiness.md"
+      - "backend/evidence/lever-phase-b-launch.json"
+      - "backend/evidence/lever-phase-b-dossiers/*.json"
       - "backend/evidence/campaign-days-12-22.json"
+      - "backend/tests/test_campaign_day_gates.py"
       - "backend/tests/test_phase_1_release_gate.py"
       - "backend/tests/test_certification_regressions.py"
       - "docs/operations/lever-phase-2-measurement-freeze.*"
@@ -41,11 +45,15 @@ on:
       - "backend/app/services/campaign_day_gates.py"
       - "backend/scripts/certify_lever_pilot_readiness.py"
       - "backend/scripts/export_lever_phase_a_record.py"
+      - "backend/scripts/evaluate_campaign_days_12_22.py"
       - "backend/evidence/lever-phase-a-baseline.csv"
       - "backend/evidence/lever-phase-a-sources.csv"
       - "backend/evidence/lever-pilot-readiness.json"
       - "backend/evidence/lever-pilot-readiness.md"
+      - "backend/evidence/lever-phase-b-launch.json"
+      - "backend/evidence/lever-phase-b-dossiers/*.json"
       - "backend/evidence/campaign-days-12-22.json"
+      - "backend/tests/test_campaign_day_gates.py"
       - "backend/tests/test_phase_1_release_gate.py"
       - "backend/tests/test_certification_regressions.py"
       - "docs/operations/lever-phase-2-measurement-freeze.*"
@@ -105,10 +113,12 @@ jobs:
         shell: bash
         run: |
           python -m py_compile \
+            backend/tests/test_campaign_day_gates.py \
             backend/tests/test_phase_1_release_gate.py \
             backend/tests/test_certification_regressions.py \
             backend/scripts/certify_lever_pilot_readiness.py \
             backend/scripts/export_lever_phase_a_record.py \
+            backend/scripts/evaluate_campaign_days_12_22.py \
             backend/app/services/lever_phase_a_evidence.py \
             backend/app/services/lever_readiness_hardening.py \
             backend/app/services/campaign_day_gates.py
@@ -119,6 +129,7 @@ jobs:
         run: |
           set +e
           pytest -q --tb=short -ra \
+            tests/test_campaign_day_gates.py \
             tests/test_phase_1_release_gate.py \
             tests/test_certification_regressions.py \
             tests/test_day06_operational_safety.py \

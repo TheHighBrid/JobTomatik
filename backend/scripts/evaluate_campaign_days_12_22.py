@@ -10,13 +10,12 @@ from pathlib import Path
 from app.services.campaign_day_gates import build_day_12_22_report
 
 
-def _load_optional(path: str) -> dict:
-    candidate = Path(path)
-    if not candidate.is_file():
-        return {"schema_version": "1.0", "applications": []}
-    value = json.loads(candidate.read_text(encoding="utf-8"))
+def _load_optional(path: Path) -> dict:
+    if not path.is_file():
+        return {"schema_version": "1.1", "applications": []}
+    value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"{candidate} must contain a JSON object")
+        raise ValueError(f"{path} must contain a JSON object")
     return value
 
 
@@ -34,9 +33,15 @@ def main() -> int:
     parser.add_argument("--output", default="evidence/campaign-days-12-22.json")
     args = parser.parse_args()
     lever = json.loads(Path(args.lever).read_text(encoding="utf-8"))
-    launch = _load_optional(args.lever_phase_b_launch)
+    launch_path = Path(args.lever_phase_b_launch)
+    launch = _load_optional(launch_path)
     greenhouse = json.loads(Path(args.greenhouse).read_text(encoding="utf-8"))
-    report = build_day_12_22_report(lever, greenhouse, launch)
+    report = build_day_12_22_report(
+        lever,
+        greenhouse,
+        launch,
+        lever_phase_b_artifact_root=launch_path.parent,
+    )
     Path(args.output).write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
