@@ -27,7 +27,7 @@ These attempts are therefore corrected to **`posting_unavailable`**, not adapter
 |---|---|---:|---:|---|
 | D8-019 | Bounteous | global | 404 | `957d894f6c15418057102a48c514844aea05ff255a40fb1a8eaff6b7cba21663` |
 | D8-025 | CaptivateIQ | global | 404 | `ab4269e9c846310e696904b3fa465b787c36d50ea7088b6028265d302c5a98e8` |
-| D8-038 | P&L Fintech | EU | 404 | `5e9172ece28e265425dc79fcba4181a9444bec408c4ae3921e1f073416b24515` |
+| D8-038 | Finom | EU | 404 | `5e9172ece28e265425dc79fcba4181a9444bec408c4ae3921e1f073416b24515` |
 
 Source workflow run: `30604351125`  
 Source artifact: `8783248871`  
