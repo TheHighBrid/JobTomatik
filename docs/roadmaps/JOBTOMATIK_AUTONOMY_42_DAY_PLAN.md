@@ -67,7 +67,7 @@ Documentation, synthetic fixtures, counters, or elapsed dates cannot substitute 
 | Lever promotion (Day 21) | Lever Phase B (Days 16–20) | 10 exact-approved, independently reviewed confirmations; zero duplicates/false submissions; separate owner approval |
 | Multi-adapter candidate selection (Day 28) | certification contract (Day 27) | versioned contract, adapter/fixture/evidence digests, recovery and breaker thresholds |
 | Operations rehearsal (Day 35) | scheduler and control centre (Days 29–34) | no-submit end-to-end rehearsal, dependency/security checks, recovery evidence |
-| Live unattended pilot (Day 39) | shadow runs (Days 36–38) **and** separate autonomous promotion | certified adapter bound to the exact release commit; policy readiness; owner-authorized live configuration |
+| Live unattended pilot (Day 39) | shadow runs (Days 36–38) **and** post-shadow exact-head autonomous promotion | Day 36–38 shadow evidence; exact-head release matrix; separately reviewed `certified_autonomous` approval; policy readiness; owner-authorized live configuration |
 | v2.00 release (Day 42) | live pilot and release audit (Days 39–41) | exact-head full gate, signed/development-signed artifact identity, checksums, rollback proof, truthful maturity manifest |
 
 At Phase 1, 3, 4, 5, and release gates, run `bash scripts/verify.sh dependencies` in addition to the affected deterministic lanes. Review dependency changes rather than blindly upgrading majors: keep Python pins and `package-lock.json` reproducible, run `pip check`, audit production npm packages, inspect changelogs, and rerun backend, frontend, browser, Android, migration, and security lanes affected by the update.
@@ -435,9 +435,9 @@ A day is not complete until:
 - [ ] Verify scheduling, caps, quiet hours, retries, alerts, and dead-letter handling.
 - [ ] Review audit logs for explainability and secret leakage.
 - [ ] Freeze the unattended-pilot configuration.
-- [ ] Make the autonomous-certification decision from the Day 27 contract and completed recovery evidence; if it passes, obtain owner approval and promote the exact adapter/version in a separate change.
+- [ ] Evaluate the candidate against the Day 27 contract and completed recovery evidence; record a provisional autonomous-certification recommendation bound to immutable adapter/version, code, fixture, and evidence digests. Do not promote maturity or enable live submission yet.
 
-**Gate:** the system can run continuously in simulation without manual babysitting or state corruption; the pilot adapter is either separately promoted to `certified_autonomous` or Day 39 is explicitly blocked.
+**Gate:** the system can run continuously in simulation without manual babysitting or state corruption; the candidate is eligible to enter shadow runs, while Day 39 remains blocked until Day 38 evidence is committed and a separate exact-head promotion is approved.
 
 ---
 
@@ -469,12 +469,13 @@ A day is not complete until:
 
 ## Day 39, Saturday September 5: Bounded live pilot, first wave
 
-- [ ] Enable final submit only for one certified adapter, approved policy-complete applications, and a conservative daily cap.
+- [ ] After Day 38 evidence is committed, run the exact-head release matrix and open a separate promotion change binding the exact adapter version and release commit to a retained `certified_autonomous` approval.
+- [ ] Enable final submit only after that promotion is merged, and only for approved policy-complete applications under a conservative daily cap.
 - [ ] Run unattended while preserving manual handoff boundaries.
 - [ ] Independently verify every submitted outcome.
-- [ ] Abort unless the exact adapter version and release commit already hold a retained `certified_autonomous` approval from Day 35.
+- [ ] Abort unless the post-Day-38 exact-head promotion and owner authorization both remain valid for the live configuration.
 
-**User gate:** authorize the bounded live window and complete only unavoidable external challenges.  
+**User gate:** approve the post-shadow exact-head promotion, authorize the bounded live window, and complete only unavoidable external challenges.  
 **Stop immediately:** any duplicate, wrong target, guessed required answer, ambiguous confirmation, or breaker trip.
 
 ## Day 40, Sunday September 6: Bounded live pilot, second wave
