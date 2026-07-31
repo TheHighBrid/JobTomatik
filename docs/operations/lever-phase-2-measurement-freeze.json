@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "contract_version": "2026-07-30.day8.3",
-  "effective_date": "2026-07-30",
+  "contract_version": "2026-07-31.day8.4",
+  "effective_date": "2026-07-31",
   "campaign_phase": 2,
   "platform": "lever",
   "canonical_maturity": "dry_run",
@@ -10,6 +10,14 @@
   "campaign_tracker_issue": 154,
   "historical_evidence_pr": 152,
   "hardening_pr": 159,
+  "amendment": {
+    "previous_contract_version": "2026-07-30.day8.3",
+    "purpose": "Lock the readiness and campaign-checkpoint regeneration workflow plus its evaluator after the full-corpus reconciliation.",
+    "qualification_rules_changed": false,
+    "qualification_weakened": false,
+    "retroactive_credit_added": false,
+    "canonical_qualifying_count_changed": false
+  },
   "starting_point": {
     "qualifying_dry_runs": 0,
     "required_qualifying_dry_runs": 30,
@@ -68,6 +76,7 @@
     "backend/app/services/campaign_day_gates.py",
     "backend/scripts/export_lever_phase_a_record.py",
     "backend/scripts/certify_lever_pilot_readiness.py",
+    "backend/scripts/evaluate_campaign_days_12_22.py",
     ".github/workflows/lever-phase-a-certification.yml",
     ".github/workflows/phase-1-release-gate.yml",
     "backend/tests/test_phase_1_release_gate.py",
@@ -82,7 +91,8 @@
     "backend/app/services/campaign_day_gates.py": "08c282b0f600d3843efe9332dd91d6592e25d9a9",
     "backend/scripts/export_lever_phase_a_record.py": "8c57eef08757c650610af906c140bbf7129bd083",
     "backend/scripts/certify_lever_pilot_readiness.py": "c878f3f01dcfb42442d543bffb768d399b12eab3",
-    ".github/workflows/lever-phase-a-certification.yml": "796f67d2c95df53899f21bbe3a88011ac347740c",
+    "backend/scripts/evaluate_campaign_days_12_22.py": "5ad683bb949ad9f98c3bc46f39045040d2e3c0ab",
+    ".github/workflows/lever-phase-a-certification.yml": "bcabe210a9f649780aaa0ccd340640b012b8aa7a",
     ".github/workflows/phase-1-release-gate.yml": "3b5aad39940c823da53e442dfcb7a51e424d05ae",
     "backend/tests/test_phase_1_release_gate.py": "7533d434dd5cec939b2c2f1463fc9c70fd1b9c13",
     "backend/tests/test_certification_regressions.py": "fd18e7fbb1580a8a85ba655091a4294e6c40c733"
@@ -91,6 +101,10 @@
     "backend/evidence/lever-pilot-readiness.json",
     "backend/evidence/lever-pilot-readiness.md",
     "backend/evidence/campaign-days-12-22.json"
+  ],
+  "audit_receipts": [
+    "backend/evidence/lever-phase-a-corpus-sweep-2026-07-31.json",
+    "backend/evidence/lever-phase-a-corpus-sweep-2026-07-31.md"
   ],
   "safety_defaults": {
     "AUTOMATION_GLOBAL_KILL_SWITCH": false,
