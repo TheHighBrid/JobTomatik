@@ -56,53 +56,155 @@ jobs:
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
 
-      - name: Select a current certification-compatible Lever job
+      - name: Exercise locked targets until one qualifying run is retained
         shell: bash
         run: |
           python - <<'PY'
-          import httpx
+          import csv
+          import json
+          import shutil
+          import subprocess
+          import sys
+          from pathlib import Path
 
-          response = httpx.get(
-              'https://api.lever.co/v0/postings/pointclickcare',
-              params={'mode': 'json', 'limit': 12},
-              timeout=25,
-              follow_redirects=True,
-          )
-          response.raise_for_status()
-          jobs = response.json()
-          preferred = [
-              job for job in jobs
-              if job.get('applyUrl')
-              and 'talent community' not in str(job.get('text') or '').lower()
+          corpus_dir = Path('evidence/lever-phase-a-target-corpus')
+          baseline_path = Path('evidence/lever-phase-a-baseline.csv')
+          attempts_dir = Path('lever-phase-a-attempts')
+          attempts_dir.mkdir(parents=True, exist_ok=True)
+
+          baseline_identities = set()
+          with baseline_path.open(encoding='utf-8', newline='') as handle:
+              for row in csv.DictReader(handle):
+                  baseline_identities.add((row['site'].lower(), row['posting_id']))
+
+          candidates = []
+          for part in sorted(corpus_dir.glob('part-*.csv')):
+              with part.open(encoding='utf-8', newline='') as handle:
+                  for row in csv.DictReader(handle):
+                      identity = (row['site'].lower(), row['posting_id'])
+                      if row.get('viable') != 'True' or identity in baseline_identities:
+                          continue
+                      candidates.append(row)
+
+          preferred_review_ids = [
+              'D8-002',
+              'D8-003',
+              'D8-004',
+              'D8-008',
+              'D8-009',
+              'D8-010',
+              'D8-011',
+              'D8-012',
           ]
-          if not preferred:
-              raise SystemExit('No current PointClickCare Lever job was available.')
-          selected = preferred[0]
-          open('lever-synthetic-url.txt', 'w').write(selected['applyUrl'])
-          open('lever-synthetic-employer.txt', 'w').write('PointClickCare')
-          open('lever-synthetic-role.txt', 'w').write(str(selected.get('text') or '').strip())
-          print(selected.get('text'))
-          print(selected['applyUrl'])
+          preference = {review_id: index for index, review_id in enumerate(preferred_review_ids)}
+          candidates.sort(
+              key=lambda row: (
+                  preference.get(row['review_id'], len(preference)),
+                  row['review_id'],
+              )
+          )
+
+          attempts = []
+          winner = None
+          for row in candidates[:8]:
+              review_id = row['review_id']
+              report_path = attempts_dir / f'{review_id}.json'
+              log_path = attempts_dir / f'{review_id}.log'
+              command = [
+                  sys.executable,
+                  '-u',
+                  'scripts/certify_lever_live.py',
+                  '--urls',
+                  row['canonical_application_url'],
+                  '--exercise',
+                  '--synthetic-resume-path',
+                  'lever-synthetic-resume.pdf',
+                  '--report',
+                  str(report_path),
+              ]
+              with log_path.open('w', encoding='utf-8') as log_handle:
+                  completed = subprocess.run(
+                      command,
+                      stdout=log_handle,
+                      stderr=subprocess.STDOUT,
+                      check=False,
+                  )
+
+              report = None
+              if report_path.exists():
+                  report = json.loads(report_path.read_text(encoding='utf-8'))
+              inspections = [
+                  item for item in (report or {}).get('reports') or []
+                  if item.get('mode') == 'inspect'
+              ]
+              exercises = [
+                  item for item in (report or {}).get('reports') or []
+                  if item.get('mode') == 'exercise'
+              ]
+              qualifies = bool(
+                  completed.returncode == 0
+                  and report
+                  and report.get('passed') is True
+                  and report.get('final_submit_clicked') is False
+                  and len(inspections) == 1
+                  and inspections[0].get('passed') is True
+                  and inspections[0].get('final_submit_clicked') is False
+                  and len(exercises) == 1
+                  and exercises[0].get('passed') is True
+                  and exercises[0].get('certification_outcome') == 'ready_to_submit'
+                  and exercises[0].get('adapter') == 'lever'
+                  and exercises[0].get('final_submit_clicked') is False
+              )
+              attempts.append({
+                  'review_id': review_id,
+                  'employer': row['employer'],
+                  'role': row['role'],
+                  'site': row['site'],
+                  'posting_id': row['posting_id'],
+                  'region': row['region'],
+                  'application_url': row['canonical_application_url'],
+                  'return_code': completed.returncode,
+                  'qualifies': qualifies,
+                  'certification_outcome': (
+                      exercises[0].get('certification_outcome')
+                      if len(exercises) == 1
+                      else None
+                  ),
+                  'final_submit_clicked': (report or {}).get('final_submit_clicked'),
+              })
+              if qualifies:
+                  winner = row
+                  shutil.copyfile(report_path, 'lever-synthetic-live.json')
+                  Path('lever-synthetic-url.txt').write_text(
+                      row['canonical_application_url'], encoding='utf-8'
+                  )
+                  Path('lever-synthetic-employer.txt').write_text(
+                      row['employer'], encoding='utf-8'
+                  )
+                  Path('lever-synthetic-role.txt').write_text(
+                      row['role'], encoding='utf-8'
+                  )
+                  break
+
+          Path('lever-synthetic-run-metadata.json').write_text(
+              json.dumps(
+                  {
+                      'selected': winner,
+                      'attempts': attempts,
+                      'locked_corpus_only': True,
+                      'final_submit_clicked': False,
+                  },
+                  indent=2,
+                  sort_keys=True,
+              ) + '\n',
+              encoding='utf-8',
+          )
+          if winner is None:
+              raise SystemExit('No locked target produced a qualifying ready_to_submit dry run.')
+          print(json.dumps({'selected': winner, 'attempts': attempts}, indent=2))
           PY
 
-      - name: Exercise the real form with a synthetic candidate
-        id: live_exercise
-        shell: bash
-        run: |
-          set +e
-          python -u scripts/certify_lever_live.py \
-            --urls "$(cat lever-synthetic-url.txt)" \
-            --exercise \
-            --synthetic-resume-path lever-synthetic-resume.pdf \
-            --report lever-synthetic-live.json \
-            > lever-synthetic-output.txt 2>&1
-          status=$?
-          cat lever-synthetic-output.txt
-          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-
-      - name: Assert full-form readiness without submission
-        if: always()
+      - name: Assert qualifying full-form readiness without submission
         shell: bash
         run: |
           python - <<'PY'
@@ -121,11 +223,12 @@ jobs:
           exercises = [item for item in report['reports'] if item.get('mode') == 'exercise']
           assert len(inspections) == 1
           assert len(exercises) == 1
+          assert inspections[0]['passed'] is True
           assert inspections[0]['adapter'] == 'lever'
+          assert inspections[0]['final_submit_clicked'] is False
+          assert exercises[0]['passed'] is True
           assert exercises[0]['adapter'] == 'lever'
-          assert exercises[0]['certification_outcome'] in {
-              'ready_to_submit', 'manual_challenge_handoff'
-          }
+          assert exercises[0]['certification_outcome'] == 'ready_to_submit'
           assert exercises[0]['final_submit_clicked'] is False
           assert exercises[0]['fields_filled'] > 0
           assert any(
@@ -135,7 +238,6 @@ jobs:
           PY
 
       - name: Export reviewable Phase A candidate row
-        if: steps.live_exercise.outputs.exit_code == '0'
         shell: bash
         run: |
           python scripts/export_lever_phase_a_record.py \
@@ -154,7 +256,8 @@ jobs:
           name: lever-synthetic-live-report
           path: |
             backend/lever-synthetic-live.json
-            backend/lever-synthetic-output.txt
+            backend/lever-synthetic-run-metadata.json
+            backend/lever-phase-a-attempts/**
             backend/lever-synthetic-url.txt
             backend/lever-synthetic-employer.txt
             backend/lever-synthetic-role.txt
@@ -162,7 +265,3 @@ jobs:
             backend/lever-phase-a-record.csv
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Fail when the synthetic exercise failed
-        if: steps.live_exercise.outputs.exit_code != '0'
-        run: exit 1
