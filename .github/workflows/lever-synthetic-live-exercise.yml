@@ -10,6 +10,7 @@ on:
       - "backend/app/services/lever_pilot_ingestion.py"
       - "backend/scripts/certify_lever_live.py"
       - "backend/scripts/export_lever_phase_a_record.py"
+      - "backend/tests/test_lever_synthetic_certification.py"
       - "backend/tests/test_lever_phase_a_export.py"
       - ".github/workflows/lever-synthetic-live-exercise.yml"
   schedule:
@@ -56,7 +57,17 @@ jobs:
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
 
+      - name: Verify the deterministic Lever certification contract
+        if: github.event_name == 'pull_request'
+        env:
+          REQUIRE_BROWSER_TESTS: "1"
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_lever_synthetic_certification.py \
+            tests/test_lever_phase_a_export.py
+
       - name: Select a current certification-compatible Lever job
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           python - <<'PY'
@@ -86,6 +97,7 @@ jobs:
           PY
 
       - name: Exercise the real form with a synthetic candidate
+        if: github.event_name != 'pull_request'
         id: live_exercise
         shell: bash
         run: |
@@ -102,7 +114,7 @@ jobs:
           exit 0
 
       - name: Assert full-form readiness without submission
-        if: always()
+        if: github.event_name != 'pull_request' && always()
         shell: bash
         run: |
           python - <<'PY'
@@ -135,7 +147,7 @@ jobs:
           PY
 
       - name: Export reviewable Phase A candidate row
-        if: steps.live_exercise.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.live_exercise.outputs.exit_code == '0'
         shell: bash
         run: |
           python scripts/export_lever_phase_a_record.py \
@@ -148,7 +160,7 @@ jobs:
             --role "$(cat lever-synthetic-role.txt)"
 
       - name: Upload synthetic live certification evidence
-        if: always()
+        if: github.event_name != 'pull_request' && always()
         uses: actions/upload-artifact@v7
         with:
           name: lever-synthetic-live-report
@@ -163,6 +175,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Fail when the synthetic exercise failed
-        if: steps.live_exercise.outputs.exit_code != '0'
+      - name: Fail when the scheduled synthetic exercise failed
+        if: github.event_name != 'pull_request' && steps.live_exercise.outputs.exit_code != '0'
         run: exit 1
