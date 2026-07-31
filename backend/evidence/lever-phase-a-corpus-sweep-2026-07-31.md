@@ -18,7 +18,7 @@ All **39 viable distinct targets** in the frozen Day 8 corpus are accounted for:
 - **3** targets exposed no supported next-step or final-submit control.
 - **0** final-submit clicks occurred.
 
-Every boundary remains nonqualifying under measurement contract `2026-07-29.day7.2`.
+Every boundary remains nonqualifying under measurement contract `2026-07-31.day8.4`.
 
 ## Checkpoint reconciliation
 
