@@ -16,6 +16,8 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import httpx
+
 from app.services.ats_lever import (
     fetch_lever_posting,
     inspect_lever_posting,
@@ -30,6 +32,8 @@ from app.services.lever_certification import (
     write_synthetic_resume,
 )
 
+UNAVAILABLE_POSTING_STATUS_CODES = {404, 410}
+
 
 def parse_urls(raw: str) -> List[str]:
     values = [
@@ -38,6 +42,79 @@ def parse_urls(raw: str) -> List[str]:
         if item.strip()
     ]
     return list(dict.fromkeys(values))
+
+
+def _http_status_code(exc: Exception) -> Optional[int]:
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        return int(exc.response.status_code)
+    return None
+
+
+def _posting_is_unavailable(inspection: Dict[str, Any]) -> bool:
+    return inspection.get("posting_available") is False
+
+
+def _posting_unavailable_exercise_report(
+    url: str,
+    inspection: Dict[str, Any],
+) -> Dict[str, Any]:
+    status = inspection.get("posting_http_status")
+    site = inspection.get("site")
+    posting_id = inspection.get("posting_id")
+    region = inspection.get("region")
+    detail = (
+        f"Official Lever posting metadata returned HTTP {status}."
+        if status
+        else "Official Lever posting metadata confirms the target is unavailable."
+    )
+    return {
+        "url": url,
+        "mode": "exercise",
+        "passed": False,
+        "certification_outcome": "posting_unavailable",
+        "exercise_skipped": True,
+        "posting_available": False,
+        "posting_http_status": status,
+        "adapter": inspection.get("adapter") or "lever",
+        "adapter_version": inspection.get("adapter_version"),
+        "ready_to_submit": False,
+        "requires_manual_review": False,
+        "steps_completed": 0,
+        "fields_filled": 0,
+        "review_items": [{
+            "reason_code": "posting_unavailable",
+            "summary": "The exact Lever posting is no longer available.",
+            "details": {
+                "site": site,
+                "posting_id": posting_id,
+                "region": region,
+                "http_status": status,
+                "exercise_skipped": True,
+                "submit_clicked": False,
+            },
+        }],
+        "validation_errors": [],
+        "upload_evidence": [],
+        "step_evidence": [{
+            "action": "lever_exercise_skipped_posting_unavailable",
+            "site": site,
+            "posting_id": posting_id,
+            "region": region,
+            "http_status": status,
+            "submit_clicked": False,
+        }],
+        "control_evidence_count": 0,
+        "final_submit_clicked": False,
+        "certification_metadata": {
+            "site": site,
+            "posting_id": posting_id,
+            "region": region,
+            "synthetic_profile": True,
+            "posting_available": False,
+            "posting_http_status": status,
+        },
+        "error": detail,
+    }
 
 
 async def _load_application_surface(url: str, browser) -> Tuple[Any, Any, Any, List[Dict[str, Any]]]:
@@ -72,6 +149,7 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
         "mode": "inspect",
         "passed": False,
         "final_submit_clicked": False,
+        "posting_available": None,
     }
     page = None
     try:
@@ -104,8 +182,22 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
             try:
                 posting = await fetch_lever_posting(site, posting_id, region=region)
                 report["posting_metadata"] = inspect_lever_posting(posting)
+                report["posting_available"] = True
+                report["posting_http_status"] = 200
             except Exception as exc:
+                status = _http_status_code(exc)
                 report["posting_metadata_error"] = f"{type(exc).__name__}: {str(exc)[:500]}"
+                report["posting_http_status"] = status
+                if status in UNAVAILABLE_POSTING_STATUS_CODES:
+                    report["posting_available"] = False
+                    report["availability_reason_code"] = "posting_unavailable"
+
+        if _posting_is_unavailable(report):
+            report["error"] = (
+                "The exact Lever posting is no longer available through the official "
+                f"Postings API (HTTP {report.get('posting_http_status')})."
+            )
+            return report
 
         metadata = report.get("posting_metadata") or {}
         dom = report["dom"]
@@ -259,6 +351,7 @@ async def main_async(args) -> int:
     from playwright.async_api import async_playwright
 
     reports: List[Dict[str, Any]] = []
+    inspection_reports: List[Dict[str, Any]] = []
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             headless=True,
@@ -266,7 +359,9 @@ async def main_async(args) -> int:
         )
         try:
             for url in urls:
-                reports.append(await inspect_live_url(url, browser))
+                inspection = await inspect_live_url(url, browser)
+                inspection_reports.append(inspection)
+                reports.append(inspection)
 
             if args.exercise:
                 resume_path = args.synthetic_resume_path or os.getenv(
@@ -274,7 +369,10 @@ async def main_async(args) -> int:
                 )
                 write_synthetic_resume(resume_path)
                 cover_letter = os.getenv("LEVER_CERT_COVER_LETTER", SYNTHETIC_TEXT_RESPONSE)
-                for url in urls:
+                for url, inspection in zip(urls, inspection_reports):
+                    if _posting_is_unavailable(inspection):
+                        reports.append(_posting_unavailable_exercise_report(url, inspection))
+                        continue
                     try:
                         profile, metadata = await _build_profile_for_url(url, browser)
                         reports.append(await exercise_live_url(
