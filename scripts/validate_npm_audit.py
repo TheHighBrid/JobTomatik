@@ -38,14 +38,29 @@ def main() -> int:
         if not isinstance(finding, dict):
             unapproved.append(str(package))
             continue
-        via = finding.get("via") or []
-        detailed = [item for item in via if isinstance(item, dict)]
-        if detailed:
-            urls = {str(item.get("url") or "") for item in detailed}
-            observed_urls.update(urls)
-            if not urls or not urls.issubset(ALLOWED_ADVISORY_URLS):
-                unapproved.append(str(package))
-        elif not all(str(item) in vulnerabilities for item in via):
+
+        via = finding.get("via")
+        if not isinstance(via, list) or not via:
+            unapproved.append(str(package))
+            continue
+
+        finding_is_approved = True
+        for item in via:
+            if isinstance(item, dict):
+                url = item.get("url")
+                if not isinstance(url, str) or not url:
+                    finding_is_approved = False
+                    continue
+                observed_urls.add(url)
+                if url not in ALLOWED_ADVISORY_URLS:
+                    finding_is_approved = False
+            elif isinstance(item, str):
+                if not item or item not in vulnerabilities:
+                    finding_is_approved = False
+            else:
+                finding_is_approved = False
+
+        if not finding_is_approved:
             unapproved.append(str(package))
 
     if unapproved:
