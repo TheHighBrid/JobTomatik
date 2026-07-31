@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import json
 import subprocess
+import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLCHAIN_PATH = ROOT / ".jobtomatik-toolchain.env"
 VERIFY_SCRIPT = ROOT / "scripts" / "verify.sh"
+NPM_AUDIT_VALIDATOR = ROOT / "scripts" / "validate_npm_audit.py"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "reproducible-verification.yml"
 ANDROID_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "android-apk.yml"
 README_PATH = ROOT / "README.md"
+REVIEWED_ADVISORY = "https://github.com/advisories/GHSA-qwww-vcr4-c8h2"
 
 
 def _toolchain() -> dict[str, str]:
@@ -21,6 +25,17 @@ def _toolchain() -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key] = value
     return values
+
+
+def _run_npm_audit_validator(tmp_path: Path, payload: dict) -> subprocess.CompletedProcess[str]:
+    report = tmp_path / "npm-audit.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    return subprocess.run(
+        [sys.executable, str(NPM_AUDIT_VALIDATOR), str(report)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_verification_script_is_valid_bash() -> None:
@@ -109,6 +124,43 @@ def test_clean_install_and_selected_python_are_used_consistently() -> None:
     assert "npm audit --omit=dev --json" in script
     assert "validate_npm_audit.py" in script
 
+    full_case = script.split("  full)", 1)[1].split("    ;;", 1)[0]
+    assert "dependency_check" in full_case
+
+
+def test_npm_audit_validator_accepts_only_the_reviewed_transitive_advisory(
+    tmp_path: Path,
+) -> None:
+    result = _run_npm_audit_validator(
+        tmp_path,
+        {
+            "vulnerabilities": {
+                "react-router": {"via": [{"url": REVIEWED_ADVISORY}]},
+                "react-router-dom": {"via": ["react-router"]},
+            }
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert REVIEWED_ADVISORY in result.stdout
+
+
+def test_npm_audit_validator_rejects_empty_or_missing_provenance(tmp_path: Path) -> None:
+    result = _run_npm_audit_validator(
+        tmp_path,
+        {
+            "vulnerabilities": {
+                "react-router": {"via": [{"url": REVIEWED_ADVISORY}]},
+                "unproven-package": {"via": []},
+                "missing-provenance": {},
+            }
+        },
+    )
+
+    assert result.returncode == 1
+    assert "missing-provenance" in result.stderr
+    assert "unproven-package" in result.stderr
+
 
 def test_deployment_gate_reads_repository_defaults_without_safe_overrides() -> None:
     script = VERIFY_SCRIPT.read_text(encoding="utf-8")
@@ -132,6 +184,7 @@ def test_reproducible_workflow_executes_every_verification_lane() -> None:
     assert 'java-version: "21"' in workflow
     for mode in (
         "fast",
+        "dependencies",
         "backend-tests",
         "migration",
         "safety",
@@ -140,6 +193,9 @@ def test_reproducible_workflow_executes_every_verification_lane() -> None:
         "android",
     ):
         assert f"bash scripts/verify.sh {mode}" in workflow
+    assert "Run dependency verification gate" in workflow
+    assert "DEPENDENCY_RESULT" in workflow
+    assert "needs.dependency-audit.result" in workflow
     assert "Run full backend and browser tests" in workflow
     assert "Upload backend verification report" in workflow
     assert "Run migration smoke test" in workflow
@@ -151,6 +207,7 @@ def test_workflow_triggers_cover_every_file_validated_by_contract_tests() -> Non
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
     assert workflow.count('- "README.md"') == 2
+    assert workflow.count('- "scripts/validate_npm_audit.py"') == 2
     assert workflow.count('- ".github/workflows/android-apk.yml"') == 2
 
 
