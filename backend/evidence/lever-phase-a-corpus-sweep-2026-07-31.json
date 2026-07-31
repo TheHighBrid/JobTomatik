@@ -1,0 +1,106 @@
+{
+  "branch": "agent/retain-lever-phase-a-run-20",
+  "checkpoint_reconciliation": {
+    "canonical_maturity": "dry_run",
+    "day_10_passed": false,
+    "day_10_target": 10,
+    "day_11_passed": false,
+    "day_11_target": 15,
+    "day_12_passed": false,
+    "day_12_remaining_qualifying_runs": 20,
+    "day_12_target": 20,
+    "day_9_passed": false,
+    "day_9_target": 5,
+    "promotion_ready": false
+  },
+  "conclusion": {
+    "reason": "The repository has zero canonically retained qualifying runs, and every viable locked target is blocked by a manual challenge, an ambiguous required question, or an unsupported control under the frozen contract.",
+    "requested_20th_run_produced": false,
+    "smallest_truthful_next_action": "Complete a human-verification boundary on one exact locked target without clicking final submit, then resume to ready_to_submit and retain the exact artifact, or approve a separately reviewed corpus/measurement-contract change. Do not credit owner reporting."
+  },
+  "generated_at_utc": "2026-07-31T04:44:51Z",
+  "locked_artifact_regeneration": {
+    "baseline_changed": false,
+    "campaign_checkpoint_expected_to_change": false,
+    "campaign_checkpoint_json_blob_before": "14b5b26f99e664c35b049f380b472a674beab32d",
+    "readiness_expected_to_change": false,
+    "readiness_json_blob_before": "e74bca5d73e22842efde80a59f1edb4fe836dcb2",
+    "validation": "CI regenerates readiness JSON/Markdown and campaign-days-12-22.json from locked inputs and requires byte-for-byte equality with committed artifacts."
+  },
+  "locked_corpus": {
+    "active_official_postings": 40,
+    "all_viable_targets_accounted_for": true,
+    "corpus_sha256": "c2a875d475163da84862a930609c6b98650413f916143fe8dfb519d4e1dc00ef",
+    "eu_targets": 7,
+    "global_targets": 32,
+    "newly_exercised_targets": 38,
+    "previously_retained_target_boundaries": 1,
+    "reviewed_postings": 44,
+    "viable_distinct_targets": 39
+  },
+  "measurement_contract": "2026-07-29.day7.2",
+  "outcome_summary": {
+    "ambiguous_required_question_failures": 3,
+    "canonical_qualifying_dry_run_count_after": 0,
+    "canonical_qualifying_dry_run_count_before": 0,
+    "final_submit_clicked_count": 0,
+    "manual_challenge_boundaries": 33,
+    "owner_report_credit_applied": false,
+    "owner_reported_completed_count": 19,
+    "qualifying_dry_run_count_from_sweep": 0,
+    "ready_to_submit": 0,
+    "unsupported_control_failures": 3
+  },
+  "pull_request": 180,
+  "purpose": "Truthful reconciliation of the locked Lever Phase A corpus after an owner-reported 19/30 claim.",
+  "repository": "TheHighBrid/JobTomatik",
+  "safety": {
+    "autopilot_enabled": false,
+    "captcha_bypassed": false,
+    "final_submit_clicked": false,
+    "maturity_promoted": false,
+    "real_submission_enabled": false,
+    "sensitive_or_legal_answers_inferred": false,
+    "supervised_pilot_enabled": false,
+    "synthetic_profiles_only": true
+  },
+  "schema_version": "1.0",
+  "source_runs": [
+    {
+      "artifact_digest_sha256": "515d95a6fd012c1ac931c61652f6945e668f15bc454d2b9cbb3dfc92881684e3",
+      "artifact_id": 8783020519,
+      "attempted_target_count": 12,
+      "head_sha": "bb5b2cfd628e7b83250132f585c63b3f6f547ac4",
+      "qualifying_target_count": 0,
+      "workflow_run_id": 30604029853
+    },
+    {
+      "artifact_digest_sha256": "cae1d5ecaa03510f3ea2ac32246ce4358633eaadae39b690dc023814166210e9",
+      "artifact_id": 8783248871,
+      "attempted_target_count": 26,
+      "head_sha": "a8f86f07ace507a6ad9e7c35b774d149924bc1f5",
+      "qualifying_target_count": 0,
+      "workflow_run_id": 30604351125
+    },
+    {
+      "artifact_digest_sha256": "c72bf99c62394393ef98100f3c5deee2b6bdcaa839d163bd0d9dc03a60d711e2",
+      "artifact_id": 8679562746,
+      "attempted_target_count": 1,
+      "note": "Previously retained D8-043 EU manual-challenge boundary.",
+      "qualifying_target_count": 0,
+      "workflow_run_id": 30337038142
+    }
+  ],
+  "target_outcome_index": {
+    "all_review_ids": [
+      "D8-001", "D8-002", "D8-003", "D8-004", "D8-005", "D8-006", "D8-007", "D8-008", "D8-009", "D8-010", "D8-011", "D8-012", "D8-013", "D8-015", "D8-016", "D8-017", "D8-018", "D8-019", "D8-020", "D8-021", "D8-022", "D8-023", "D8-025", "D8-026", "D8-028", "D8-029", "D8-030", "D8-032", "D8-033", "D8-034", "D8-035", "D8-036", "D8-037", "D8-038", "D8-039", "D8-040", "D8-041", "D8-042", "D8-043"
+    ],
+    "ambiguous_required_question_review_ids": ["D8-002", "D8-016", "D8-042"],
+    "manifest_sha256": "47c20b113e434c9f2e48d4dfcc05d7db08dfd951e03ae046118b935338e986ba",
+    "manual_challenge_review_ids": [
+      "D8-001", "D8-003", "D8-004", "D8-005", "D8-006", "D8-007", "D8-008", "D8-009", "D8-010", "D8-011", "D8-012", "D8-013", "D8-015", "D8-017", "D8-018", "D8-020", "D8-021", "D8-022", "D8-023", "D8-026", "D8-028", "D8-029", "D8-030", "D8-032", "D8-033", "D8-034", "D8-035", "D8-036", "D8-037", "D8-039", "D8-040", "D8-041", "D8-043"
+    ],
+    "note": "Target-level reports and their individual SHA-256 values are retained in the source workflow artifacts listed above.",
+    "unsupported_control_review_ids": ["D8-019", "D8-025", "D8-038"]
+  }
+}
