@@ -4,15 +4,20 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "backend/app/services/campaign_day_gates.py"
       - "backend/app/services/lever_phase_a_evidence.py"
       - "backend/app/services/lever_pilot_ingestion.py"
       - "backend/app/services/lever_pilot_ledger_boundary.py"
       - "backend/app/services/lever_readiness_hardening.py"
       - "backend/scripts/certify_lever_pilot_readiness.py"
+      - "backend/scripts/evaluate_campaign_days_12_22.py"
       - "backend/scripts/export_lever_phase_a_record.py"
+      - "backend/evidence/campaign-days-12-22.json"
       - "backend/evidence/lever-phase-a-baseline.csv"
       - "backend/evidence/lever-phase-a-sources.csv"
       - "backend/evidence/lever-phase-a-artifacts/**"
+      - "backend/evidence/lever-phase-a-corpus-sweep-*.json"
+      - "backend/evidence/lever-phase-a-corpus-sweep-*.md"
       - "backend/evidence/lever-pilot-readiness.json"
       - "backend/evidence/lever-pilot-readiness.md"
       - "backend/tests/test_lever_phase_a_export.py"
@@ -27,15 +32,20 @@ on:
     branches:
       - main
     paths:
+      - "backend/app/services/campaign_day_gates.py"
       - "backend/app/services/lever_phase_a_evidence.py"
       - "backend/app/services/lever_pilot_ingestion.py"
       - "backend/app/services/lever_pilot_ledger_boundary.py"
       - "backend/app/services/lever_readiness_hardening.py"
       - "backend/scripts/certify_lever_pilot_readiness.py"
+      - "backend/scripts/evaluate_campaign_days_12_22.py"
       - "backend/scripts/export_lever_phase_a_record.py"
+      - "backend/evidence/campaign-days-12-22.json"
       - "backend/evidence/lever-phase-a-baseline.csv"
       - "backend/evidence/lever-phase-a-sources.csv"
       - "backend/evidence/lever-phase-a-artifacts/**"
+      - "backend/evidence/lever-phase-a-corpus-sweep-*.json"
+      - "backend/evidence/lever-phase-a-corpus-sweep-*.md"
       - "backend/evidence/lever-pilot-readiness.json"
       - "backend/evidence/lever-pilot-readiness.md"
       - "backend/tests/test_lever_phase_a_export.py"
@@ -86,7 +96,9 @@ jobs:
         run: |
           python -m py_compile \
             scripts/certify_lever_pilot_readiness.py \
+            scripts/evaluate_campaign_days_12_22.py \
             scripts/export_lever_phase_a_record.py \
+            app/services/campaign_day_gates.py \
             app/services/lever_pilot_ingestion.py \
             app/services/lever_pilot_ledger_boundary.py \
             app/services/lever_readiness_hardening.py
@@ -184,6 +196,16 @@ jobs:
           )
           PY
 
+      - name: Regenerate locked readiness and campaign checkpoint artifacts
+        working-directory: backend
+        run: |
+          python scripts/evaluate_campaign_days_12_22.py \
+            --lever evidence-ci/lever-pilot-readiness.json \
+            --output evidence-ci/campaign-days-12-22.json
+          cmp evidence/lever-pilot-readiness.json evidence-ci/lever-pilot-readiness.json
+          cmp evidence/lever-pilot-readiness.md evidence-ci/lever-pilot-readiness.md
+          cmp evidence/campaign-days-12-22.json evidence-ci/campaign-days-12-22.json
+
       - name: Certify retained evidence without threshold claims
         working-directory: backend
         run: |
@@ -245,7 +267,10 @@ jobs:
             backend/lever-phase-a-pytest.xml
             backend/evidence-ci/lever-pilot-readiness.json
             backend/evidence-ci/lever-pilot-readiness.md
+            backend/evidence-ci/campaign-days-12-22.json
             backend/evidence-ci/lever-pilot-certification.json
             backend/evidence-ci/lever-pilot-certification.md
+            backend/evidence/lever-phase-a-corpus-sweep-2026-07-31.json
+            backend/evidence/lever-phase-a-corpus-sweep-2026-07-31.md
           if-no-files-found: error
           retention-days: 30
