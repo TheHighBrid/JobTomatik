@@ -29,6 +29,7 @@ on:
       - "docs/roadmaps/2026-07-29-day-07-*"
       - "docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json"
       - "docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md"
+      - ".github/workflows/campaign-artifact-drift.yml"
       - ".github/workflows/lever-phase-a-certification.yml"
       - ".github/workflows/phase-1-release-gate.yml"
   push:
@@ -60,6 +61,7 @@ on:
       - "docs/roadmaps/2026-07-29-day-07-*"
       - "docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json"
       - "docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md"
+      - ".github/workflows/campaign-artifact-drift.yml"
       - ".github/workflows/lever-phase-a-certification.yml"
       - ".github/workflows/phase-1-release-gate.yml"
 
