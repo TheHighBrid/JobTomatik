@@ -62,6 +62,7 @@ jobs:
           python - <<'PY'
           import csv
           import json
+          import os
           import shutil
           import subprocess
           import sys
@@ -87,7 +88,6 @@ jobs:
                       candidates.append(row)
 
           preferred_review_ids = [
-              'D8-002',
               'D8-003',
               'D8-004',
               'D8-008',
@@ -95,6 +95,9 @@ jobs:
               'D8-010',
               'D8-011',
               'D8-012',
+              'D8-013',
+              'D8-001',
+              'D8-002',
           ]
           preference = {review_id: index for index, review_id in enumerate(preferred_review_ids)}
           candidates.sort(
@@ -106,10 +109,18 @@ jobs:
 
           attempts = []
           winner = None
-          for row in candidates[:8]:
+          for row in candidates[:12]:
               review_id = row['review_id']
               report_path = attempts_dir / f'{review_id}.json'
               log_path = attempts_dir / f'{review_id}.log'
+              profile_dir = attempts_dir / f'{review_id}-profile'
+              handoff_dir = attempts_dir / f'{review_id}-handoffs'
+              attempt_env = os.environ.copy()
+              attempt_env.update({
+                  'APPLICATION_BROWSER_PROFILE_DIR': str(profile_dir),
+                  'HANDOFF_STORAGE_DIR': str(handoff_dir),
+                  'ENABLE_RESUMABLE_HANDOFFS': 'false',
+              })
               command = [
                   sys.executable,
                   '-u',
@@ -128,6 +139,7 @@ jobs:
                       stdout=log_handle,
                       stderr=subprocess.STDOUT,
                       check=False,
+                      env=attempt_env,
                   )
 
               report = None
@@ -171,7 +183,17 @@ jobs:
                       else None
                   ),
                   'final_submit_clicked': (report or {}).get('final_submit_clicked'),
+                  'browser_profile_isolated': True,
               })
+
+              subprocess.run(
+                  ['pkill', '-f', f'--user-data-dir={profile_dir}'],
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+                  check=False,
+              )
+              shutil.rmtree(profile_dir, ignore_errors=True)
+
               if qualifies:
                   winner = row
                   shutil.copyfile(report_path, 'lever-synthetic-live.json')
@@ -192,6 +214,7 @@ jobs:
                       'selected': winner,
                       'attempts': attempts,
                       'locked_corpus_only': True,
+                      'isolated_browser_profiles': True,
                       'final_submit_clicked': False,
                   },
                   indent=2,
