@@ -67,7 +67,7 @@ Modes:
   frontend       Frontend runtime tests and production build.
   deployment     Docker Compose rendering and fail-safe default verification.
   android        Capacitor synchronization, Gradle lint, APK assembly, identity/version checks.
-  full           Run backend, frontend, deployment, and Android gates in dependency order.
+  full           Run dependency, backend, frontend, deployment, and Android gates in order.
 
 Add --install to install Python/Playwright/npm dependencies before the selected mode.
 EOF
@@ -356,6 +356,7 @@ case "$MODE" in
   full)
     $INSTALL_DEPS && bootstrap
     check_base_toolchain
+    dependency_check
     backend_full
     migration_smoke
     safety_manifest
