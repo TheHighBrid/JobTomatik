@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "contract_version": "2026-07-31.day8.4",
+  "contract_version": "2026-07-31.day8.5",
   "effective_date": "2026-07-31",
   "campaign_phase": 2,
   "platform": "lever",
@@ -11,8 +11,8 @@
   "historical_evidence_pr": 152,
   "hardening_pr": 159,
   "amendment": {
-    "previous_contract_version": "2026-07-30.day8.3",
-    "purpose": "Lock the readiness and campaign-checkpoint regeneration workflow plus its evaluator after the full-corpus reconciliation.",
+    "previous_contract_version": "2026-07-31.day8.4",
+    "purpose": "Independently freeze the dedicated campaign artifact drift workflow and make edits to it trigger the Phase 1 frozen-input verifier.",
     "qualification_rules_changed": false,
     "qualification_weakened": false,
     "retroactive_credit_added": false,
@@ -77,6 +77,7 @@
     "backend/scripts/export_lever_phase_a_record.py",
     "backend/scripts/certify_lever_pilot_readiness.py",
     "backend/scripts/evaluate_campaign_days_12_22.py",
+    ".github/workflows/campaign-artifact-drift.yml",
     ".github/workflows/lever-phase-a-certification.yml",
     ".github/workflows/phase-1-release-gate.yml",
     "backend/tests/test_phase_1_release_gate.py",
@@ -92,8 +93,9 @@
     "backend/scripts/export_lever_phase_a_record.py": "8c57eef08757c650610af906c140bbf7129bd083",
     "backend/scripts/certify_lever_pilot_readiness.py": "c878f3f01dcfb42442d543bffb768d399b12eab3",
     "backend/scripts/evaluate_campaign_days_12_22.py": "5ad683bb949ad9f98c3bc46f39045040d2e3c0ab",
-    ".github/workflows/lever-phase-a-certification.yml": "bcabe210a9f649780aaa0ccd340640b012b8aa7a",
-    ".github/workflows/phase-1-release-gate.yml": "3b5aad39940c823da53e442dfcb7a51e424d05ae",
+    ".github/workflows/campaign-artifact-drift.yml": "dfc420ae562ec3b865beda183c65fbd492f37af1",
+    ".github/workflows/lever-phase-a-certification.yml": "e3f0af543c3555fede296176c59453cbb7f17f9a",
+    ".github/workflows/phase-1-release-gate.yml": "9476e311c21c7707eccfc399f703fcb1c832513a",
     "backend/tests/test_phase_1_release_gate.py": "7533d434dd5cec939b2c2f1463fc9c70fd1b9c13",
     "backend/tests/test_certification_regressions.py": "fd18e7fbb1580a8a85ba655091a4294e6c40c733"
   },
