@@ -271,6 +271,7 @@ Run one subsystem:
 ```bash
 bash scripts/verify.sh backend
 bash scripts/verify.sh frontend
+bash scripts/verify.sh dependencies
 bash scripts/verify.sh deployment
 bash scripts/verify.sh android
 ```
@@ -290,6 +291,8 @@ bash scripts/verify.sh full --install
 The reproducible CI gate runs the same subsystem modes independently and requires every lane to pass. The canonical contract is Python 3.11, Node.js 20, Temurin Java 21, Gradle 9.5.1, Android Gradle Plugin 8.13.2, Android API 35, and Build Tools 35.0.0.
 
 Verification keeps real submission, scheduled autopilot, and live resumable handoffs disabled. Platform pilot settings remain available to configuration regression tests, then the dedicated safety gate explicitly verifies both pilots are off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `200`, and version name `2.0.0`.
+
+The repository root `VERSION` and published download metadata continue to describe the latest v1.00 release until v2.00 is actually cut. The Android project already uses the reserved v2.00 candidate identity so development APKs cannot be mistaken for the v1.00 release artifact.
 
 ## Repository guide
 

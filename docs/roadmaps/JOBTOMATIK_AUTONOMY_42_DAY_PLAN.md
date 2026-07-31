@@ -46,6 +46,32 @@ Every day follows the same six-step loop:
 5. **Record:** Update the roadmap issue, evidence ledger, changelog, and PR description with exact facts.
 6. **Close:** Leave main green, no hidden failures, no uncertain submission marked successful, and a precise next-day checkpoint.
 
+## Execution order and gate semantics
+
+The numbered days are dependency-ordered missions, not permission to skip ahead and not claims that calendar time alone completes work. The campaign dates are planning targets; accelerated work may prepare later-day code, fixtures, or read-only evaluators early, but a day is complete only when every prior prerequisite and its retained evidence pass. A future-day evaluator reporting `blocked_by_evidence_or_user_gate` is readiness infrastructure, not completion evidence.
+
+For every checkpoint, use this precedence:
+
+1. retained evidence and machine-readable gates;
+2. exact-head verification results;
+3. operator/user approvals explicitly required by that checkpoint;
+4. documentation and issue status.
+
+Documentation, synthetic fixtures, counters, or elapsed dates cannot substitute for a failed earlier gate. Never generate real selections, approvals, submissions, confirmation claims, or maturity promotions merely to make the schedule appear complete.
+
+## Cross-phase prerequisite map
+
+| Before starting | Required predecessor | Required retained proof |
+|---|---|---|
+| Lever Phase B (Day 15) | Lever Phase A (Day 14) | 30 qualifying distinct-site dry runs, global/EU coverage, locked provenance, zero final submits |
+| Lever promotion (Day 21) | Lever Phase B (Days 16–20) | 10 exact-approved, independently reviewed confirmations; zero duplicates/false submissions; separate owner approval |
+| Multi-adapter candidate selection (Day 28) | certification contract (Day 27) | versioned contract, adapter/fixture/evidence digests, recovery and breaker thresholds |
+| Operations rehearsal (Day 35) | scheduler and control centre (Days 29–34) | no-submit end-to-end rehearsal, dependency/security checks, recovery evidence |
+| Live unattended pilot (Day 39) | shadow runs (Days 36–38) **and** post-shadow exact-head autonomous promotion | Day 36–38 shadow evidence; exact-head release matrix; separately reviewed `certified_autonomous` approval; policy readiness; owner-authorized live configuration |
+| v2.00 release (Day 42) | live pilot and release audit (Days 39–41) | exact-head full gate, signed/development-signed artifact identity, checksums, rollback proof, truthful maturity manifest |
+
+At Phase 1, 3, 4, 5, and release gates, run `bash scripts/verify.sh dependencies` in addition to the affected deterministic lanes. Review dependency changes rather than blindly upgrading majors: keep Python pins and `package-lock.json` reproducible, run `pip check`, audit production npm packages, inspect changelogs, and rerun backend, frontend, browser, Android, migration, and security lanes affected by the update.
+
 ## Ownership rule
 
 ### Automation-owned work
@@ -409,8 +435,9 @@ A day is not complete until:
 - [ ] Verify scheduling, caps, quiet hours, retries, alerts, and dead-letter handling.
 - [ ] Review audit logs for explainability and secret leakage.
 - [ ] Freeze the unattended-pilot configuration.
+- [ ] Evaluate the candidate against the Day 27 contract and completed recovery evidence; record a provisional autonomous-certification recommendation bound to immutable adapter/version, code, fixture, and evidence digests. Do not promote maturity or enable live submission yet.
 
-**Gate:** the system can run continuously in simulation without manual babysitting or state corruption.
+**Gate:** the system can run continuously in simulation without manual babysitting or state corruption; the candidate is eligible to enter shadow runs, while Day 39 remains blocked until Day 38 evidence is committed and a separate exact-head promotion is approved.
 
 ---
 
@@ -442,11 +469,13 @@ A day is not complete until:
 
 ## Day 39, Saturday September 5: Bounded live pilot, first wave
 
-- [ ] Enable final submit only for one certified adapter, approved policy-complete applications, and a conservative daily cap.
+- [ ] After Day 38 evidence is committed, run the exact-head release matrix and open a separate promotion change binding the exact adapter version and release commit to a retained `certified_autonomous` approval.
+- [ ] Enable final submit only after that promotion is merged, and only for approved policy-complete applications under a conservative daily cap.
 - [ ] Run unattended while preserving manual handoff boundaries.
 - [ ] Independently verify every submitted outcome.
+- [ ] Abort unless the post-Day-38 exact-head promotion and owner authorization both remain valid for the live configuration.
 
-**User gate:** authorize the bounded live window and complete only unavoidable external challenges.  
+**User gate:** approve the post-shadow exact-head promotion, authorize the bounded live window, and complete only unavoidable external challenges.  
 **Stop immediately:** any duplicate, wrong target, guessed required answer, ambiguous confirmation, or breaker trip.
 
 ## Day 40, Sunday September 6: Bounded live pilot, second wave

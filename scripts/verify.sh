@@ -61,12 +61,13 @@ Modes:
   fast           Pre-commit gate: toolchain, compile, focused safety tests, frontend tests.
   backend-tests  Full backend and browser test suite only.
   migration      Alembic migration smoke test only.
+  dependencies   Validate installed Python packages and audit frontend runtime packages.
   safety         Fail-safe settings and canonical adapter maturity only.
   backend        Backend tests, migration smoke test, and safety manifest.
   frontend       Frontend runtime tests and production build.
   deployment     Docker Compose rendering and fail-safe default verification.
   android        Capacitor synchronization, Gradle lint, APK assembly, identity/version checks.
-  full           Run backend, frontend, deployment, and Android gates in dependency order.
+  full           Run dependency, backend, frontend, deployment, and Android gates in order.
 
 Add --install to install Python/Playwright/npm dependencies before the selected mode.
 EOF
@@ -193,6 +194,20 @@ frontend_full() {
   (cd "$ROOT_DIR/frontend" && npm run build)
 }
 
+dependency_check() {
+  step "Validate installed backend dependency consistency"
+  (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m pip check)
+  step "Audit frontend runtime dependencies at high severity"
+  (
+    cd "$ROOT_DIR/frontend"
+    local report
+    report="$(mktemp)"
+    trap 'rm -f "$report"' EXIT
+    npm audit --omit=dev --json >"$report" || true
+    "$PYTHON_BIN" "$ROOT_DIR/scripts/validate_npm_audit.py" "$report"
+  )
+}
+
 safety_manifest() {
   step "Verify fail-safe settings and canonical adapter maturity"
   (
@@ -307,6 +322,11 @@ case "$MODE" in
     check_base_toolchain
     migration_smoke
     ;;
+  dependencies)
+    $INSTALL_DEPS && bootstrap
+    check_base_toolchain
+    dependency_check
+    ;;
   safety)
     $INSTALL_DEPS && bootstrap
     check_base_toolchain
@@ -336,6 +356,7 @@ case "$MODE" in
   full)
     $INSTALL_DEPS && bootstrap
     check_base_toolchain
+    dependency_check
     backend_full
     migration_smoke
     safety_manifest
