@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "repository": "TheHighBrid/JobTomatik",
+  "purpose": "Correct the root-cause classification of three locked-corpus attempts without changing their nonqualifying status or the frozen measurement contract.",
+  "source": {
+    "workflow_run_id": 30604351125,
+    "artifact_id": 8783248871,
+    "artifact_digest_sha256": "cae1d5ecaa03510f3ea2ac32246ce4358633eaadae39b690dc023814166210e9"
+  },
+  "original_sweep": "backend/evidence/lever-phase-a-corpus-sweep-2026-07-31.json",
+  "classification_correction": {
+    "original_classifier_outcome": "unsupported_control",
+    "corrected_root_cause": "posting_unavailable",
+    "reason": "Each hosted application page displayed a Not Found 404 title and the exact official Lever Postings API request returned HTTP 404 before form exercise.",
+    "qualification_effect": "none",
+    "canonical_qualifying_dry_run_count_before": 0,
+    "canonical_qualifying_dry_run_count_after": 0,
+    "final_submit_clicked_count": 0,
+    "measurement_contract_changed": false,
+    "corpus_membership_changed": false
+  },
+  "corrected_outcome_summary": {
+    "manual_challenge_boundaries": 33,
+    "ambiguous_required_question_failures": 3,
+    "posting_unavailable_failures": 3,
+    "unsupported_control_failures": 0,
+    "ready_to_submit": 0,
+    "final_submit_clicked_count": 0
+  },
+  "targets": [
+    {
+      "review_id": "D8-019",
+      "employer": "Bounteous",
+      "site": "bounteous",
+      "posting_id": "bb9f5d26-c02f-4347-8156-f13dcee45f67",
+      "region": "global",
+      "hosted_page_title": "Not found - 404 error",
+      "official_api_http_status": 404,
+      "retained_report_sha256": "957d894f6c15418057102a48c514844aea05ff255a40fb1a8eaff6b7cba21663",
+      "final_submit_clicked": false
+    },
+    {
+      "review_id": "D8-025",
+      "employer": "CaptivateIQ",
+      "site": "captivateiq",
+      "posting_id": "d00dd896-dee4-4f0b-b5fc-ebdaceb1b566",
+      "region": "global",
+      "hosted_page_title": "Not found - 404 error",
+      "official_api_http_status": 404,
+      "retained_report_sha256": "ab4269e9c846310e696904b3fa465b787c36d50ea7088b6028265d302c5a98e8",
+      "final_submit_clicked": false
+    },
+    {
+      "review_id": "D8-038",
+      "employer": "P&L Fintech",
+      "site": "pnlfin",
+      "posting_id": "13c7be80-fb51-4d84-b17e-637ec54f7813",
+      "region": "eu",
+      "hosted_page_title": "Not found - 404 error",
+      "official_api_http_status": 404,
+      "retained_report_sha256": "5e9172ece28e265425dc79fcba4181a9444bec408c4ae3921e1f073416b24515",
+      "final_submit_clicked": false
+    }
+  ],
+  "safety": {
+    "captcha_bypassed": false,
+    "final_submit_clicked": false,
+    "quota_credit_added": false,
+    "maturity_promoted": false,
+    "real_submission_enabled": false
+  }
+}
