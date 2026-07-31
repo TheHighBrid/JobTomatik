@@ -76,6 +76,7 @@ def test_verification_modes_and_fail_safe_environment_are_explicit() -> None:
         "fast",
         "backend-tests",
         "migration",
+        "dependencies",
         "safety",
         "backend",
         "frontend",
@@ -104,6 +105,9 @@ def test_clean_install_and_selected_python_are_used_consistently() -> None:
     assert '"$PYTHON_BIN" -m alembic -c alembic-verification.ini upgrade head' in script
     assert "require_command alembic" not in script
     assert "JOBTOMATIK_NODE_MIN_VERSION" in script
+    assert '"$PYTHON_BIN" -m pip check' in script
+    assert "npm audit --omit=dev --json" in script
+    assert "validate_npm_audit.py" in script
 
 
 def test_deployment_gate_reads_repository_defaults_without_safe_overrides() -> None:
