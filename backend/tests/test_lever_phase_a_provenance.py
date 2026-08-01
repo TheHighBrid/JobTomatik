@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from app.services.ats_lever import LEVER_ADAPTER_VERSION
 from app.services.lever_phase_a_operator import (
     build_phase_a_report,
     build_resumed_exercise,
+    frozen_target_identity,
     load_locked_target,
     write_report,
 )
@@ -17,6 +19,7 @@ from app.services.lever_phase_a_provenance import (
     ACTIONS_RUN_PREFIX,
     LeverPhaseAProvenanceError,
     finalize_interactive_candidate,
+    require_retained_report_path,
     validate_external_provenance,
 )
 from app.services.lever_pilot_ingestion import load_phase_a_baseline
@@ -95,6 +98,17 @@ def _qualifying_report(review_id: str) -> dict:
         certification_metadata={
             "synthetic_profile": True,
             "review_id": review_id,
+            "frozen_target": frozen_target_identity(target),
+            "supervised_target": {
+                "platform": "lever",
+                "adapter": "lever",
+                "adapter_version": LEVER_ADAPTER_VERSION,
+                "site": target["site"],
+                "posting_id": target["posting_id"],
+                "region": target["region"],
+                "canonical_application_url": url,
+                "official_title": target["role"],
+            },
         },
         handoff_verification={
             "challenge_cleared": True,
@@ -108,6 +122,39 @@ def _qualifying_report(review_id: str) -> dict:
         },
     )
     return build_phase_a_report(inspection, exercise)
+
+
+def _verified_retention_stub(report: dict):
+    def fetch_verified_retention_artifact(
+        *,
+        github_token: str,
+        local_report_path: Path,
+        evidence_root: Path,
+        review_id: str,
+        workflow_run_id: str,
+        artifact_id: str,
+        artifact_digest: str,
+    ) -> dict:
+        assert github_token == "test-token"
+        artifact_path = require_retained_report_path(local_report_path, evidence_root)
+        provenance = validate_external_provenance(
+            workflow_run_id=workflow_run_id,
+            artifact_id=artifact_id,
+            artifact_digest=artifact_digest,
+        )
+        report_bytes = Path(local_report_path).read_bytes()
+        assert json.loads(report_bytes) == report
+        return {
+            "report": report,
+            "report_sha256": hashlib.sha256(report_bytes).hexdigest(),
+            "archive_bytes": b"externally-retained-test-archive",
+            "archive_sha256": artifact_digest,
+            "artifact_path": artifact_path,
+            "manifest": {},
+            "provenance": provenance,
+        }
+
+    return fetch_verified_retention_artifact
 
 
 def test_external_provenance_requires_numeric_ids_and_sha256() -> None:
@@ -127,7 +174,10 @@ def test_external_provenance_requires_numeric_ids_and_sha256() -> None:
             validate_external_provenance(**values)
 
 
-def test_finalizer_emits_qualifying_candidate_and_source_receipt(tmp_path: Path) -> None:
+def test_finalizer_emits_qualifying_candidate_and_source_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     evidence_root = tmp_path / "evidence"
     report_path = (
         evidence_root
@@ -139,9 +189,12 @@ def test_finalizer_emits_qualifying_candidate_and_source_receipt(tmp_path: Path)
     source_path = evidence_root / "lever-phase-a-source-D8-001.csv"
     report = _qualifying_report("D8-001")
     write_report(report_path, report)
+    monkeypatch.setattr(
+        "app.services.lever_phase_a_provenance.fetch_verified_retention_artifact",
+        _verified_retention_stub(report),
+    )
 
     finalized = finalize_interactive_candidate(
-        report,
         report_path=report_path,
         review_id="D8-001",
         corpus_root=CORPUS_ROOT,
@@ -152,6 +205,7 @@ def test_finalizer_emits_qualifying_candidate_and_source_receipt(tmp_path: Path)
         workflow_run_id="123456789",
         artifact_id="987654321",
         artifact_digest="b" * 64,
+        github_token="test-token",
     )
 
     loaded = load_phase_a_baseline(candidate_path)
@@ -177,15 +231,21 @@ def test_finalizer_emits_qualifying_candidate_and_source_receipt(tmp_path: Path)
     ]
 
 
-def test_finalizer_rejects_report_outside_retained_artifact_tree(tmp_path: Path) -> None:
+def test_finalizer_rejects_report_outside_retained_artifact_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     evidence_root = tmp_path / "evidence"
     report_path = tmp_path / "mutable-local-report.json"
     report = _qualifying_report("D8-001")
     report_path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(
+        "app.services.lever_phase_a_provenance.fetch_verified_retention_artifact",
+        _verified_retention_stub(report),
+    )
 
     with pytest.raises(LeverPhaseAProvenanceError, match="lever-phase-a-artifacts"):
         finalize_interactive_candidate(
-            report,
             report_path=report_path,
             review_id="D8-001",
             corpus_root=CORPUS_ROOT,
@@ -196,6 +256,7 @@ def test_finalizer_rejects_report_outside_retained_artifact_tree(tmp_path: Path)
             workflow_run_id="123456789",
             artifact_id="987654321",
             artifact_digest="c" * 64,
+            github_token="test-token",
         )
 
 
