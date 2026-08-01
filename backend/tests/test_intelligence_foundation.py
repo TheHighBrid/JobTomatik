@@ -131,3 +131,65 @@ def test_intelligence_api_vertical_slice(auth_client):
     assert overview["knowledge_edges"] == 1
     assert overview["selector_strategies"] == 1
     assert overview["agent_runs"] == 1
+
+
+def _register_and_login(client, email):
+    register = client.post(
+        "/api/auth/register",
+        json={
+            "email": email,
+            "password": "testpass123",
+            "full_name": email.split("@")[0],
+        },
+    )
+    assert register.status_code == 200
+    login = client.post(
+        "/api/auth/login",
+        data={"username": email, "password": "testpass123"},
+    )
+    assert login.status_code == 200
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+def test_selector_strategies_are_account_scoped(client):
+    user_a = _register_and_login(client, "selector-a@example.com")
+    user_b = _register_and_login(client, "selector-b@example.com")
+    payload = {
+        "platform": "lever",
+        "page_signature": "application-v2",
+        "intent": "continue",
+        "selector": "button[data-qa='next']",
+        "strategy_type": "css",
+        "success": True,
+    }
+
+    created = client.post(
+        "/api/intelligence/selectors/outcomes",
+        json=payload,
+        headers=user_a,
+    )
+    assert created.status_code == 200
+
+    params = {
+        "platform": payload["platform"],
+        "page_signature": payload["page_signature"],
+        "intent": payload["intent"],
+    }
+    hidden = client.get(
+        "/api/intelligence/selectors/recommendation",
+        params=params,
+        headers=user_b,
+    )
+    assert hidden.status_code == 404
+
+    user_b_overview = client.get("/api/intelligence/overview", headers=user_b)
+    assert user_b_overview.status_code == 200
+    assert user_b_overview.json()["selector_strategies"] == 0
+
+    visible = client.get(
+        "/api/intelligence/selectors/recommendation",
+        params=params,
+        headers=user_a,
+    )
+    assert visible.status_code == 200
+    assert visible.json()["selector"] == payload["selector"]
