@@ -61,7 +61,7 @@ Modes:
   fast           Pre-commit gate: toolchain, compile, focused safety tests, frontend tests.
   backend-tests  Full backend and browser test suite only.
   migration      Alembic migration smoke test only.
-  dependencies   Validate installed Python packages and audit frontend runtime packages.
+  dependencies   Validate installed Python packages and audit backend/frontend dependencies.
   safety         Fail-safe settings and canonical adapter maturity only.
   backend        Backend tests, migration smoke test, and safety manifest.
   frontend       Frontend runtime tests and production build.
@@ -197,6 +197,9 @@ frontend_full() {
 dependency_check() {
   step "Validate installed backend dependency consistency"
   (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m pip check)
+  step "Audit pinned backend dependencies"
+  (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m pip_audit \
+    -r requirements.txt --progress-spinner off)
   step "Audit frontend runtime dependencies at high severity"
   (
     cd "$ROOT_DIR/frontend"
