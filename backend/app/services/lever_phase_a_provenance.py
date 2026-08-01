@@ -40,7 +40,7 @@ def validate_external_provenance(
 ) -> Dict[str, str]:
     run_id = str(workflow_run_id or "").strip()
     retained_artifact_id = str(artifact_id or "").strip()
-    digest = str(artifact_digest or "").strip().lower()
+    digest = str(artifact_digest or "").strip()
     if not _DIGITS.fullmatch(run_id):
         raise LeverPhaseAProvenanceError(
             "workflow_run_id must be a positive numeric GitHub Actions run ID"
@@ -77,6 +77,52 @@ def require_retained_report_path(report_path: Path, evidence_root: Path) -> str:
             + _REPORT_NAME
         )
     return report.relative_to(root).as_posix()
+
+
+def _matching_interactive_exercise(report: Mapping[str, Any]) -> Mapping[str, Any]:
+    if report.get("certification") != "lever_supervised_live_dry_run":
+        raise LeverPhaseAProvenanceError(
+            "The retained report is not a Lever supervised live dry run"
+        )
+    if report.get("interactive_handoff") is not True:
+        raise LeverPhaseAProvenanceError(
+            "The retained report is not marked as an interactive handoff"
+        )
+    if report.get("passed") is not True or report.get("final_submit_clicked") is not False:
+        raise LeverPhaseAProvenanceError(
+            "The retained interactive report did not pass without submission"
+        )
+    exercises = [
+        item
+        for item in report.get("reports") or []
+        if isinstance(item, Mapping) and item.get("mode") == "exercise"
+    ]
+    if len(exercises) != 1:
+        raise LeverPhaseAProvenanceError(
+            "Exactly one retained interactive exercise is required"
+        )
+    exercise = exercises[0]
+    if exercise.get("certification_outcome") != "ready_to_submit":
+        raise LeverPhaseAProvenanceError(
+            "The retained interactive exercise did not reach ready_to_submit"
+        )
+    verification = dict(exercise.get("handoff_verification") or {})
+    if (
+        verification.get("challenge_cleared") is not True
+        or verification.get("target_verification", {}).get("verified") is not True
+    ):
+        raise LeverPhaseAProvenanceError(
+            "The retained interactive handoff was not independently verified"
+        )
+    if exercise.get("submit_guard") != {
+        "installed": True,
+        "blocked_clicks": 0,
+        "blocked_submits": 0,
+    }:
+        raise LeverPhaseAProvenanceError(
+            "The retained interactive submit guard was not clean"
+        )
+    return exercise
 
 
 def write_source_receipt(
@@ -121,11 +167,9 @@ def finalize_interactive_candidate(
         artifact_digest=artifact_digest,
     )
     artifact_path = require_retained_report_path(report_path, evidence_root)
+    exercise = _matching_interactive_exercise(report)
     expected_review_id = str(
-        ((report.get("reports") or [{}, {}])[1].get("certification_metadata") or {}).get(
-            "review_id"
-        )
-        or ""
+        (exercise.get("certification_metadata") or {}).get("review_id") or ""
     ).strip()
     if expected_review_id != str(target["review_id"]):
         raise LeverPhaseAProvenanceError(
@@ -135,10 +179,19 @@ def finalize_interactive_candidate(
         f"github-actions-{provenance['workflow_run_id']}-interactive-"
         f"{str(target['review_id']).lower()}"
     )
+    candidate = Path(candidate_path)
+    source_receipt = Path(source_receipt_path)
+    candidate.parent.mkdir(parents=True, exist_ok=True)
+    source_receipt.parent.mkdir(parents=True, exist_ok=True)
+    candidate_temp = candidate.with_name(f".{candidate.name}.finalizing")
+    source_temp = source_receipt.with_name(f".{source_receipt.name}.finalizing")
+    for path in (candidate_temp, source_temp):
+        path.unlink(missing_ok=True)
+
     record = build_phase_a_candidate(
         report,
         report_path=Path(report_path),
-        output_path=Path(candidate_path),
+        output_path=candidate,
         artifact_path=artifact_path,
         run_id=final_run_id,
         operator=operator,
@@ -146,13 +199,21 @@ def finalize_interactive_candidate(
         employer=str(target["employer"]),
         role=str(target["role"]),
     )
-    export_phase_a_candidate(Path(candidate_path), record)
-    loaded = load_phase_a_baseline(Path(candidate_path))
-    if len(loaded) != 1 or loaded[0].get("qualifies_for_dry_run_matrix") is not True:
-        raise LeverPhaseAProvenanceError(
-            "The externally retained interactive candidate did not qualify"
-        )
-    write_source_receipt(Path(source_receipt_path), provenance)
+    try:
+        export_phase_a_candidate(candidate_temp, record)
+        loaded = load_phase_a_baseline(candidate_temp)
+        if len(loaded) != 1 or loaded[0].get("qualifies_for_dry_run_matrix") is not True:
+            raise LeverPhaseAProvenanceError(
+                "The externally retained interactive candidate did not qualify"
+            )
+        write_source_receipt(source_temp, provenance)
+        candidate_temp.replace(candidate)
+        source_temp.replace(source_receipt)
+    except Exception:
+        candidate_temp.unlink(missing_ok=True)
+        source_temp.unlink(missing_ok=True)
+        raise
+
     return {
         "candidate": record,
         "source_receipt": {
