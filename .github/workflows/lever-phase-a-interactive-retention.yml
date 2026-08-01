@@ -61,6 +61,7 @@ jobs:
       - name: Select one report for external retention
         id: selection
         shell: bash
+        working-directory: .
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           DISPATCH_REVIEW_ID: ${{ inputs.review_id }}
