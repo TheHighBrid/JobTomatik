@@ -1,0 +1,65 @@
+name: Temporary React 19 stack generator
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/temporary-generate-react-19-stack.yml
+      - frontend/package.json
+      - frontend/package-lock.json
+
+permissions:
+  contents: read
+
+jobs:
+  generate-and-export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Generate aligned React 19 package files
+        working-directory: frontend
+        run: |
+          npm install --package-lock-only --ignore-scripts react@19.2.8 react-dom@19.2.8
+          npm install --package-lock-only --ignore-scripts --save-dev @types/react@19.2.17 @types/react-dom@19.2.3
+          node - <<'NODE'
+          const pkg = require('./package.json');
+          const expected = {
+            react: '^19.2.8',
+            'react-dom': '^19.2.8',
+            '@types/react': '^19.2.17',
+            '@types/react-dom': '^19.2.3',
+          };
+          for (const [name, version] of Object.entries(expected)) {
+            const actual = pkg.dependencies?.[name] ?? pkg.devDependencies?.[name];
+            if (actual !== version) {
+              throw new Error(`${name} expected ${version}, received ${actual}`);
+            }
+          }
+          NODE
+
+      - name: Validate aligned frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Export aligned package files
+        uses: actions/upload-artifact@v4
+        with:
+          name: aligned-react-19-stack
+          path: |
+            frontend/package.json
+            frontend/package-lock.json
+          if-no-files-found: error
+          retention-days: 7
