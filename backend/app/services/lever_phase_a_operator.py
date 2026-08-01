@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Iterable, Mapping
+from urllib.parse import urlparse
 
-from app.services.ats_lever import LEVER_ADAPTER_VERSION, parse_lever_job_url
+from app.services.ats_lever import LEVER_ADAPTER_VERSION
 from app.services.browser_handoff import current_browser_node_id
 from app.services.handoff_session import encrypt_handoff_secret
+from app.services.lever_target_corpus import (
+    certify_target_corpus,
+    load_target_corpus,
+    validate_target_corpus,
+)
 
 
+FROZEN_DAY8_CORPUS_SHA256 = (
+    "c2a875d475163da84862a930609c6b98650413f916143fe8dfb519d4e1dc00ef"
+)
 SUBMIT_LOG_ACTIONS = frozenset(
     {"ats_submit_clicked", "submit_click", "submit_clicked"}
 )
@@ -23,66 +31,42 @@ CHALLENGE_TYPE_BY_REASON = {
     "login_required": "login",
     "anti_bot_challenge": "anti_bot",
 }
-_REQUIRED_TARGET_COLUMNS = {
-    "review_id",
-    "employer",
-    "role",
-    "site",
-    "posting_id",
-    "region",
-    "canonical_application_url",
-    "active",
-    "viable",
-}
 
 
 class LeverPhaseAOperatorError(ValueError):
     pass
 
 
-def _truthy(value: Any) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def load_locked_target(review_id: str, corpus_root: Path) -> Dict[str, str]:
+def load_locked_target(review_id: str, corpus_root: Path) -> Dict[str, Any]:
     requested = str(review_id or "").strip()
     if not requested:
         raise LeverPhaseAOperatorError("A locked review ID is required")
-    matches: list[Dict[str, str]] = []
-    for path in sorted(Path(corpus_root).glob("part-*.csv")):
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            missing = _REQUIRED_TARGET_COLUMNS.difference(reader.fieldnames or [])
-            if missing:
-                raise LeverPhaseAOperatorError(
-                    f"{path} is missing locked-corpus columns: {', '.join(sorted(missing))}"
-                )
-            for row in reader:
-                if str(row.get("review_id") or "").strip() == requested:
-                    record = {key: str(value or "").strip() for key, value in row.items()}
-                    record["corpus_path"] = str(path)
-                    matches.append(record)
+
+    root = Path(corpus_root)
+    report = certify_target_corpus(root)
+    if report.get("summary", {}).get("passed") is not True:
+        raise LeverPhaseAOperatorError(
+            "The supplied Lever corpus does not pass the frozen Day 8 certification gates"
+        )
+    observed_digest = str(report.get("corpus_sha256") or "").strip().lower()
+    if observed_digest != FROZEN_DAY8_CORPUS_SHA256:
+        raise LeverPhaseAOperatorError(
+            "The supplied Lever corpus does not match the frozen Day 8 SHA-256"
+        )
+
+    rows = validate_target_corpus(load_target_corpus(root))
+    matches = [row for row in rows if row.get("review_id") == requested]
     if len(matches) != 1:
         raise LeverPhaseAOperatorError(
             f"Expected exactly one locked target for {requested}; found {len(matches)}"
         )
-    target = matches[0]
-    if not _truthy(target.get("active")) or not _truthy(target.get("viable")):
+    target = dict(matches[0])
+    if target.get("active") is not True or target.get("viable") is not True:
         raise LeverPhaseAOperatorError(
             f"Locked target {requested} is not marked active and viable"
         )
-    url = target["canonical_application_url"]
-    observed = parse_lever_job_url(url)
-    expected = (
-        target["site"],
-        target["posting_id"],
-        target["region"].lower(),
-    )
-    if observed != expected:
-        raise LeverPhaseAOperatorError(
-            f"Locked target {requested} does not match its canonical Lever URL"
-        )
-    target["region"] = target["region"].lower()
+    target["corpus_path"] = root.as_posix()
+    target["corpus_sha256"] = observed_digest
     return target
 
 
@@ -102,6 +86,30 @@ def submit_clicked(result: Mapping[str, Any]) -> bool:
     )
 
 
+def _validate_local_cdp_endpoint(endpoint: str) -> None:
+    try:
+        parsed = urlparse(endpoint)
+        port = parsed.port
+    except ValueError as exc:
+        raise LeverPhaseAOperatorError(
+            "The retained browser CDP endpoint is malformed"
+        ) from exc
+    if (
+        parsed.scheme.lower() != "http"
+        or parsed.hostname != "127.0.0.1"
+        or port is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise LeverPhaseAOperatorError(
+            "The retained browser CDP endpoint must be an HTTP URL on 127.0.0.1"
+        )
+
+
 def transient_handoff_session(
     snapshot: Mapping[str, Any],
     *,
@@ -115,6 +123,7 @@ def transient_handoff_session(
         raise LeverPhaseAOperatorError(
             "The retained browser snapshot is missing a local CDP endpoint"
         )
+    _validate_local_cdp_endpoint(endpoint)
     challenge_type = CHALLENGE_TYPE_BY_REASON.get(reason_code)
     if not challenge_type:
         raise LeverPhaseAOperatorError(
@@ -172,8 +181,11 @@ def build_resumed_exercise(
     clicked = submit_clicked(initial_result) or submit_clicked(resumed_result)
     verification = dict(handoff_verification or {})
     guard = dict(submit_guard or {})
-    interactive_handoff = bool(verification)
-    guard_missing = bool(interactive_handoff and guard.get("installed") is not True)
+    interactive_handoff_verified = bool(
+        verification.get("challenge_cleared") is True
+        and verification.get("target_verification", {}).get("verified") is True
+    )
+    guard_missing = bool(guard.get("installed") is not True)
     guard_attempted_submit = bool(
         int(guard.get("blocked_clicks") or 0)
         or int(guard.get("blocked_submits") or 0)
@@ -193,6 +205,7 @@ def build_resumed_exercise(
         and resumed_result.get("ready_to_submit")
         and adapter == "lever"
         and adapter_version == LEVER_ADAPTER_VERSION
+        and interactive_handoff_verified
         and not clicked
         and not guard_missing
         and not guard_attempted_submit
@@ -217,7 +230,9 @@ def build_resumed_exercise(
         initial_result.get("control_evidence") or [],
         resumed_result.get("control_evidence") or [],
     )
-    if guard_missing:
+    if not interactive_handoff_verified:
+        error = "The retained browser handoff was not independently verified."
+    elif guard_missing:
         error = "The submit guard was not present after human verification."
     elif guard_attempted_submit:
         error = "The submit guard intercepted an operator submit attempt."
@@ -289,6 +304,7 @@ def write_report(path: Path, report: Mapping[str, Any]) -> str:
 
 
 __all__ = [
+    "FROZEN_DAY8_CORPUS_SHA256",
     "LeverPhaseAOperatorError",
     "build_phase_a_report",
     "build_resumed_exercise",
