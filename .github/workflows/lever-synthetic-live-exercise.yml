@@ -9,6 +9,7 @@ on:
       - "backend/app/services/lever_certification.py"
       - "backend/app/services/lever_phase_a_operator.py"
       - "backend/app/services/lever_pilot_ingestion.py"
+      - "backend/app/services/retained_browser_operator.py"
       - "backend/scripts/certify_lever_live.py"
       - "backend/scripts/export_lever_phase_a_record.py"
       - "backend/scripts/run_lever_phase_a_handoff.py"
