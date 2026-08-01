@@ -9,6 +9,16 @@ from app.models.application import (
     SubmissionEvidence,
 )
 from app.models.handoff import HandoffSessionEvent, ManualHandoffSession
+from app.models.intelligence import (
+    AgentRun,
+    AgentTask,
+    CareerMemory,
+    KnowledgeEdge,
+    KnowledgeNode,
+    RecruiterContact,
+    RecruiterInteraction,
+    SelectorStrategy,
+)
 from app.models.notification import Notification
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_evidence_review import SubmissionEvidenceReview
@@ -29,6 +39,14 @@ __all__ = [
     "SubmissionEvidence",
     "ManualHandoffSession",
     "HandoffSessionEvent",
+    "CareerMemory",
+    "RecruiterContact",
+    "RecruiterInteraction",
+    "KnowledgeNode",
+    "KnowledgeEdge",
+    "SelectorStrategy",
+    "AgentRun",
+    "AgentTask",
     "Notification",
     "SubmissionApproval",
     "SubmissionEvidenceReview",
