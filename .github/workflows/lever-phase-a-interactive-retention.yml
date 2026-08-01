@@ -2,6 +2,11 @@ name: Lever Phase A interactive evidence retention
 
 on:
   workflow_dispatch:
+    inputs:
+      review_id:
+        description: Exact frozen review ID to retain, for example D8-040
+        required: false
+        type: string
   pull_request:
     paths:
       - "backend/app/services/lever_phase_a_operator.py"
@@ -28,6 +33,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -51,9 +58,57 @@ jobs:
       - name: Test provenance finalization contract
         run: pytest -q --tb=short -ra tests/test_lever_phase_a_provenance.py
 
-      - name: Validate retained interactive reports
-        id: reports
+      - name: Select one report for external retention
+        id: selection
         shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DISPATCH_REVIEW_ID: ${{ inputs.review_id }}
+        run: |
+          set -euo pipefail
+          reports=()
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            while IFS= read -r path; do
+              [[ -n "$path" ]] && reports+=("$path")
+            done < <(
+              git diff --name-only "$BASE_SHA" HEAD -- \
+                'backend/evidence/lever-phase-a-artifacts/*/lever-phase-a-interactive-report.json'
+            )
+          elif [[ -n "${DISPATCH_REVIEW_ID:-}" ]]; then
+            reports+=("backend/evidence/lever-phase-a-artifacts/${DISPATCH_REVIEW_ID}/lever-phase-a-interactive-report.json")
+          fi
+
+          if (( ${#reports[@]} > 1 )); then
+            printf 'Exactly one interactive report may be retained per artifact; found %s.\n' "${#reports[@]}" >&2
+            exit 1
+          fi
+          if (( ${#reports[@]} == 0 )); then
+            echo 'has_report=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          report="${reports[0]}"
+          [[ -f "$GITHUB_WORKSPACE/$report" ]] || {
+            echo "Selected report does not exist: $report" >&2
+            exit 1
+          }
+          review_id="$(basename "$(dirname "$report")")"
+          [[ "$review_id" =~ ^D8-[0-9]{3}$ ]] || {
+            echo "Invalid frozen review ID directory: $review_id" >&2
+            exit 1
+          }
+          echo 'has_report=true' >> "$GITHUB_OUTPUT"
+          echo "review_id=$review_id" >> "$GITHUB_OUTPUT"
+          echo "report_path=${report#backend/}" >> "$GITHUB_OUTPUT"
+          echo "report_dir=$(dirname "${report#backend/}")" >> "$GITHUB_OUTPUT"
+
+      - name: Validate retained interactive report
+        id: reports
+        if: steps.selection.outputs.has_report == 'true'
+        shell: bash
+        env:
+          REPORT_PATH: ${{ steps.selection.outputs.report_path }}
+          REVIEW_ID: ${{ steps.selection.outputs.review_id }}
         run: |
           python - <<'PY'
           import hashlib
@@ -61,85 +116,80 @@ jobs:
           import os
           from pathlib import Path
 
-          root = Path('evidence/lever-phase-a-artifacts')
-          reports = sorted(root.glob('*/lever-phase-a-interactive-report.json'))
+          report_path = Path(os.environ['REPORT_PATH'])
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+          assert report.get('certification') == 'lever_supervised_live_dry_run'
+          assert report.get('interactive_handoff') is True
+          assert report.get('passed') is True
+          assert report.get('final_submit_clicked') is False
+          items = list(report.get('reports') or [])
+          inspections = [item for item in items if item.get('mode') == 'inspect']
+          exercises = [item for item in items if item.get('mode') == 'exercise']
+          assert len(inspections) == 1
+          assert len(exercises) == 1
+          exercise = exercises[0]
+          metadata = dict(exercise.get('certification_metadata') or {})
+          review_id = str(metadata.get('review_id') or '')
+          assert review_id == os.environ['REVIEW_ID'] == report_path.parent.name
+          assert exercise.get('certification_outcome') == 'ready_to_submit'
+          assert exercise.get('final_submit_clicked') is False
+          assert exercise.get('handoff_verification', {}).get('challenge_cleared') is True
+          assert exercise.get('handoff_verification', {}).get(
+              'target_verification', {}
+          ).get('verified') is True
+          assert exercise.get('submit_guard') == {
+              'installed': True,
+              'blocked_clicks': 0,
+              'blocked_submits': 0,
+          }
           manifest = {
               'repository': os.environ['GITHUB_REPOSITORY'],
               'workflow_run_id': os.environ['GITHUB_RUN_ID'],
               'workflow_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
               'commit_sha': os.environ['GITHUB_SHA'],
-              'reports': [],
-          }
-          for report_path in reports:
-              report = json.loads(report_path.read_text(encoding='utf-8'))
-              assert report.get('certification') == 'lever_supervised_live_dry_run'
-              assert report.get('interactive_handoff') is True
-              assert report.get('passed') is True
-              assert report.get('final_submit_clicked') is False
-              items = list(report.get('reports') or [])
-              inspections = [item for item in items if item.get('mode') == 'inspect']
-              exercises = [item for item in items if item.get('mode') == 'exercise']
-              assert len(inspections) == 1
-              assert len(exercises) == 1
-              exercise = exercises[0]
-              metadata = dict(exercise.get('certification_metadata') or {})
-              review_id = str(metadata.get('review_id') or '')
-              assert review_id == report_path.parent.name
-              assert exercise.get('certification_outcome') == 'ready_to_submit'
-              assert exercise.get('final_submit_clicked') is False
-              assert exercise.get('handoff_verification', {}).get('challenge_cleared') is True
-              assert exercise.get('handoff_verification', {}).get(
-                  'target_verification', {}
-              ).get('verified') is True
-              assert exercise.get('submit_guard') == {
-                  'installed': True,
-                  'blocked_clicks': 0,
-                  'blocked_submits': 0,
-              }
-              manifest['reports'].append({
+              'retained_record_count': 1,
+              'report': {
                   'review_id': review_id,
                   'path': report_path.as_posix(),
                   'sha256': hashlib.sha256(report_path.read_bytes()).hexdigest(),
-              })
-
+              },
+          }
           Path('lever-phase-a-interactive-retention-manifest.json').write_text(
               json.dumps(manifest, indent=2, sort_keys=True) + '\n',
               encoding='utf-8',
           )
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
-              output.write(f"has_reports={'true' if reports else 'false'}\n")
-              output.write(f"report_count={len(reports)}\n")
           print(json.dumps(manifest, indent=2, sort_keys=True))
           PY
 
       - name: Upload externally retained Phase A evidence
-        if: steps.reports.outputs.has_reports == 'true'
+        if: steps.selection.outputs.has_report == 'true'
         id: upload
         uses: actions/upload-artifact@v7
         with:
-          name: lever-phase-a-interactive-evidence-${{ github.sha }}
+          name: lever-phase-a-interactive-${{ steps.selection.outputs.review_id }}-${{ github.sha }}
           path: |
-            backend/evidence/lever-phase-a-artifacts/**
+            backend/${{ steps.selection.outputs.report_dir }}/**
             backend/lever-phase-a-interactive-retention-manifest.json
           if-no-files-found: error
           retention-days: 30
 
       - name: Publish finalizer provenance
-        if: steps.reports.outputs.has_reports == 'true'
+        if: steps.selection.outputs.has_report == 'true'
         shell: bash
         run: |
           {
             echo '## Lever Phase A interactive evidence retained'
             echo
+            echo "- Review ID: \`${{ steps.selection.outputs.review_id }}\`"
             echo "- Workflow run ID: \`${GITHUB_RUN_ID}\`"
             echo "- Artifact ID: \`${{ steps.upload.outputs.artifact-id }}\`"
             echo "- Artifact digest: \`${{ steps.upload.outputs.artifact-digest }}\`"
-            echo "- Report count: \`${{ steps.reports.outputs.report_count }}\`"
+            echo '- Retained record count: `1`'
             echo
             echo 'Use these exact values with `scripts/finalize_lever_phase_a_handoff.py`.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Record code-only validation
-        if: steps.reports.outputs.has_reports != 'true'
+        if: steps.selection.outputs.has_report != 'true'
         run: |
-          echo 'No committed interactive report was present. Provenance tooling passed, but no external evidence artifact was created.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No interactive report was selected. Provenance tooling passed, but no external evidence artifact was created.' >> "$GITHUB_STEP_SUMMARY"
