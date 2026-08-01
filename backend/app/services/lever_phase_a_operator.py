@@ -170,6 +170,11 @@ def build_resumed_exercise(
     submit_guard: Mapping[str, Any] | None = None,
 ) -> Dict[str, Any]:
     clicked = submit_clicked(initial_result) or submit_clicked(resumed_result)
+    guard = dict(submit_guard or {})
+    guard_attempted_submit = bool(
+        int(guard.get("blocked_clicks") or 0)
+        or int(guard.get("blocked_submits") or 0)
+    )
     adapter = str(
         resumed_result.get("ats_adapter")
         or initial_result.get("ats_adapter")
@@ -186,6 +191,7 @@ def build_resumed_exercise(
         and adapter == "lever"
         and adapter_version == LEVER_ADAPTER_VERSION
         and not clicked
+        and not guard_attempted_submit
     )
     review_items = _merge_dicts(
         initial_result.get("review_items") or [],
@@ -233,8 +239,12 @@ def build_resumed_exercise(
         "final_submit_clicked": clicked,
         "certification_metadata": dict(certification_metadata),
         "handoff_verification": dict(handoff_verification or {}),
-        "submit_guard": dict(submit_guard or {}),
-        "error": resumed_result.get("error"),
+        "submit_guard": guard,
+        "error": (
+            "The submit guard intercepted an operator submit attempt."
+            if guard_attempted_submit
+            else resumed_result.get("error")
+        ),
     }
 
 
