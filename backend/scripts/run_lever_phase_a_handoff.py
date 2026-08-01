@@ -126,6 +126,7 @@ async def _inspect_profile_and_target(
 ) -> tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     from playwright.async_api import async_playwright
 
+    from app.services.lever_phase_a_operator import frozen_target_identity
     from app.services.supervised_target_identity import resolve_supervised_target_metadata
     from scripts.certify_lever_live import _build_profile_for_url, inspect_live_url
 
@@ -160,6 +161,7 @@ async def _inspect_profile_and_target(
         )
     return inspection, profile, certification_metadata | {
         "supervised_target": target_metadata,
+        "frozen_target": frozen_target_identity(target),
         "review_id": target["review_id"],
         "locked_corpus_path": target["corpus_path"],
         "locked_corpus_sha256": target["corpus_sha256"],
@@ -213,6 +215,7 @@ async def run(args: argparse.Namespace) -> int:
         build_resumed_exercise,
         challenge_reason,
         load_locked_target,
+        transient_cleanup_session,
         transient_handoff_session,
         write_report,
     )
@@ -242,9 +245,12 @@ async def run(args: argparse.Namespace) -> int:
     )
 
     session: Optional[Any] = None
+    cleanup_session: Optional[Any] = None
     try:
         reason = challenge_reason(initial_result)
         snapshot = dict(initial_result.get("handoff_snapshot") or {})
+        if snapshot:
+            cleanup_session = transient_cleanup_session(snapshot)
         if snapshot and reason:
             session = transient_handoff_session(
                 snapshot,
@@ -308,9 +314,9 @@ async def run(args: argparse.Namespace) -> int:
         )
         return 0
     finally:
-        if session is not None:
+        if cleanup_session is not None:
             try:
-                terminate_and_cleanup_retained_browser(session)
+                terminate_and_cleanup_retained_browser(cleanup_session)
             except Exception as exc:
                 print(f"Warning: retained Chromium cleanup failed: {exc}", file=sys.stderr)
 
