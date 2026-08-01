@@ -62,14 +62,20 @@ A local report is not qualifying provenance and cannot advance the count.
 
 ## Stage 2: retain the report externally
 
-Commit the report under its exact `evidence/lever-phase-a-artifacts/<REVIEW_ID>/` path in a reviewed evidence pull request.
+Commit one report under its exact `evidence/lever-phase-a-artifacts/<REVIEW_ID>/` path in a reviewed evidence pull request.
 
-The `Lever Phase A interactive evidence retention` workflow validates every committed report and uploads the report tree plus a retention manifest as a GitHub Actions artifact. When an artifact is created, the workflow summary prints:
+Each retention workflow run accepts exactly one review ID and creates exactly one artifact:
+
+- on a pull request, it selects the single changed interactive report;
+- on manual dispatch, provide one exact `review_id` input;
+- multiple changed reports fail instead of sharing one artifact ID.
+
+The `Lever Phase A interactive evidence retention` workflow validates the selected report and uploads only that review directory plus a one-record retention manifest. When the artifact is created, the workflow summary prints:
 
 - workflow run ID;
 - artifact ID;
 - artifact digest;
-- retained report count.
+- retained record count of `1`.
 
 All three provenance values must come from that completed GitHub Actions run. A local SHA, locally invented run ID, URL without an artifact, or self-reference is rejected.
 
@@ -108,7 +114,7 @@ The source receipt uses the canonical schema:
 workflow_run_id,artifact_id,artifact_digest,retained_record_count
 ```
 
-The finalizer does not append either row to `lever-phase-a-baseline.csv` or `lever-phase-a-sources.csv`. A separate reviewed import change must append both rows and regenerate readiness before the canonical count can advance.
+The finalizer writes the candidate and source receipt atomically. It does not append either row to `lever-phase-a-baseline.csv` or `lever-phase-a-sources.csv`. A separate reviewed import change must append both rows and regenerate readiness before the canonical count can advance.
 
 ## Fail-closed outcomes
 
@@ -125,7 +131,7 @@ The process remains nonqualifying when:
 - the resumed browser does not reach `ready_to_submit`;
 - the submit guard disappears or records an attempt;
 - any final-submit automation log is detected;
-- the report is not retained by a GitHub Actions artifact;
+- the report is not retained by a one-record GitHub Actions artifact;
 - the workflow run ID, artifact ID, artifact digest, or report path is invalid.
 
 Real submission, Lever supervised pilot, autopilot, and general resumable live handoffs remain disabled throughout this procedure.
