@@ -24,22 +24,60 @@ SUBMIT_GUARD_SCRIPT = r"""
     };
   }
   const state = { blockedClicks: 0, blockedSubmits: 0 };
-  const submitSelector = [
-    'button[type="submit"]',
-    'input[type="submit"]',
-    '.application-submit button',
-    '.postings-btn[type="submit"]',
-    '[data-qa*="submit" i]',
-    '[data-testid*="submit" i]',
+  const applicationFormSelector = [
+    'form.application-form',
+    'form.postings-form',
+    'form[action*="jobs.lever.co" i]',
+    'form[action*="jobs.eu.lever.co" i]',
   ].join(',');
+  const explicitFinalSelector = [
+    '.application-submit button[type="submit"]',
+    '.application-submit input[type="submit"]',
+    '.postings-btn[type="submit"]',
+  ].join(',');
+  const normalizedLabel = (control) => String(
+    control?.innerText || control?.value || control?.getAttribute?.('aria-label') || ''
+  ).toLowerCase().replace(/\s+/g, ' ').trim();
+  const looksLikeApplicationForm = (form) => Boolean(
+    form instanceof HTMLFormElement && (
+      form.matches(applicationFormSelector) || (
+        form.querySelector('input[type="file"]') &&
+        form.querySelector('input[type="email"], input[name*="email" i]')
+      )
+    )
+  );
+  const finalApplicationControl = (element) => {
+    const control = element instanceof Element
+      ? element.closest('button, input[type="submit"]')
+      : null;
+    if (!control) return null;
+    const form = control.form || control.closest('form');
+    if (!looksLikeApplicationForm(form)) return null;
+    const label = normalizedLabel(control);
+    if (
+      control.matches(explicitFinalSelector) ||
+      /^(submit|send) (your )?application$/.test(label) ||
+      label === 'submit application'
+    ) {
+      return control;
+    }
+    return null;
+  };
   const clickHandler = (event) => {
-    const target = event.target instanceof Element ? event.target.closest(submitSelector) : null;
+    const target = finalApplicationControl(event.target);
     if (!target) return;
     state.blockedClicks += 1;
     event.preventDefault();
     event.stopImmediatePropagation();
   };
   const submitHandler = (event) => {
+    const form = event.target;
+    if (!looksLikeApplicationForm(form)) return;
+    const submitter = finalApplicationControl(event.submitter);
+    const hasFinalControl = submitter || Array.from(
+      form.querySelectorAll('button, input[type="submit"]')
+    ).some((control) => Boolean(finalApplicationControl(control)));
+    if (!hasFinalControl) return;
     state.blockedSubmits += 1;
     event.preventDefault();
     event.stopImmediatePropagation();
