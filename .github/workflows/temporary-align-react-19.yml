@@ -1,26 +1,23 @@
 name: Temporary React 19 alignment
 
 on:
-  push:
-    branches:
-      - dependabot/npm_and_yarn/frontend/multi-3146d5559c
+  pull_request:
     paths:
       - .github/workflows/temporary-align-react-19.yml
+      - frontend/package.json
+      - frontend/package-lock.json
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  align-and-commit:
+  align-and-export:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
       - name: Check out dependency branch
         uses: actions/checkout@v4
-        with:
-          ref: dependabot/npm_and_yarn/frontend/multi-3146d5559c
-          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -57,11 +54,12 @@ jobs:
           npm test
           npm run build
 
-      - name: Commit aligned lockfile and remove temporary workflow
-        run: |
-          rm .github/workflows/temporary-align-react-19.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/package.json frontend/package-lock.json .github/workflows/temporary-align-react-19.yml
-          git commit -m "Align React DOM packages with React 19"
-          git push origin HEAD:dependabot/npm_and_yarn/frontend/multi-3146d5559c
+      - name: Export aligned dependency files
+        uses: actions/upload-artifact@v4
+        with:
+          name: aligned-react-19-dependencies
+          path: |
+            frontend/package.json
+            frontend/package-lock.json
+          if-no-files-found: error
+          retention-days: 7
