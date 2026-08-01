@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,12 +19,7 @@ from app.services.lever_phase_a_operator import (
     transient_handoff_session,
     write_report,
 )
-from app.services.lever_pilot_ingestion import load_phase_a_baseline
 from app.services import retained_browser_operator
-from scripts.export_lever_phase_a_record import (
-    build_phase_a_candidate,
-    export_phase_a_candidate,
-)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -193,42 +189,31 @@ def test_transient_session_rejects_nonlocal_cdp_endpoint() -> None:
         )
 
 
-def test_resumed_handoff_builds_a_qualifying_retained_candidate(tmp_path: Path) -> None:
+def test_resumed_handoff_builds_report_ready_for_external_retention(
+    tmp_path: Path,
+) -> None:
     exercise = build_resumed_exercise(
         url=URL,
         initial_result=_initial_handoff(),
         resumed_result=_resumed_ready(),
-        certification_metadata={"synthetic_profile": True},
+        certification_metadata={
+            "synthetic_profile": True,
+            "review_id": "D8-001",
+        },
         handoff_verification=_verified_handoff(),
         submit_guard=_clean_submit_guard(),
     )
     report = build_phase_a_report(_inspection(), exercise)
-    report_path = tmp_path / "interactive-report.json"
-    candidate_path = tmp_path / "candidate.csv"
+    report_path = tmp_path / "lever-phase-a-interactive-report.json"
     digest = write_report(report_path, report)
-
-    record = build_phase_a_candidate(
-        report,
-        report_path=report_path,
-        output_path=candidate_path,
-        run_id=f"local-d8-001-{digest[:16]}",
-        operator="test-operator",
-        source_reference=f"local-sha256:{digest}",
-        employer="Acme",
-        role="Engineer",
-    )
-    export_phase_a_candidate(candidate_path, record)
-    loaded = load_phase_a_baseline(candidate_path)
+    retained = json.loads(report_path.read_text(encoding="utf-8"))
 
     assert report["passed"] is True
+    assert report["final_submit_clicked"] is False
     assert exercise["certification_outcome"] == "ready_to_submit"
-    assert exercise["final_submit_clicked"] is False
     assert exercise["upload_evidence"][0]["verification"] == "passed"
-    assert len(loaded) == 1
-    assert loaded[0]["phase_a_artifact_verified"] is True
-    assert loaded[0]["official_posting_inspection_verified"] is True
-    assert loaded[0]["phase_a_exercise_verified"] is True
-    assert loaded[0]["qualifies_for_dry_run_matrix"] is True
+    assert len(digest) == 64
+    assert retained == report
 
 
 def test_unverified_or_missing_handoff_prevents_phase_a_success() -> None:
@@ -340,3 +325,5 @@ def test_interactive_runner_uses_public_browser_helpers_and_submit_guards() -> N
     assert 'os.environ["ALLOW_REAL_APPLICATION_SUBMIT"] = "false"' in source
     assert 'os.environ["AUTOPILOT_ENABLED"] = "false"' in source
     assert "dry_run=True" in source
+    assert "local-sha256:" not in source
+    assert "build_phase_a_candidate" not in source
