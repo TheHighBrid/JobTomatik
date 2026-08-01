@@ -8,16 +8,19 @@ on:
       - frontend/package-lock.json
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  generate-and-export:
+  generate-validate-and-commit:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
       - name: Check out repair branch
         uses: actions/checkout@v4
+        with:
+          ref: fix/react-19-aligned-stack
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -54,12 +57,11 @@ jobs:
           npm test
           npm run build
 
-      - name: Export aligned package files
-        uses: actions/upload-artifact@v4
-        with:
-          name: aligned-react-19-stack
-          path: |
-            frontend/package.json
-            frontend/package-lock.json
-          if-no-files-found: error
-          retention-days: 7
+      - name: Commit package files and remove generator
+        run: |
+          rm .github/workflows/temporary-generate-react-19-stack.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package.json frontend/package-lock.json .github/workflows/temporary-generate-react-19-stack.yml
+          git commit -m "Align React runtime and type packages on 19.2"
+          git push origin HEAD:fix/react-19-aligned-stack
