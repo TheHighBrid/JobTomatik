@@ -15,6 +15,7 @@ from app.api import (
     export,
     greenhouse_pilot_ledger,
     handoffs,
+    intelligence,
     jobs,
     lever_pilot_ledger,
     notifications,
@@ -216,6 +217,7 @@ app.include_router(answer_policies.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(settings_api.router, prefix="/api")
+app.include_router(intelligence.router, prefix="/api")
 
 
 @app.get("/health")
