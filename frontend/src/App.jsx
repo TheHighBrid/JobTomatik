@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
+import CommandCenter from './pages/CommandCenter'
 import JobSearch from './pages/JobSearch'
 import Queue from './pages/Queue'
 import Applications from './pages/Applications'
@@ -32,6 +33,7 @@ export default function App() {
           }
         >
           <Route index element={<Dashboard />} />
+          <Route path="command-center" element={<CommandCenter />} />
           <Route path="search" element={<JobSearch />} />
           <Route path="queue" element={<Queue />} />
           <Route path="applications" element={<Applications />} />
