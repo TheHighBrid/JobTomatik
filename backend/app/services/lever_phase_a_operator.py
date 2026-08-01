@@ -170,7 +170,10 @@ def build_resumed_exercise(
     submit_guard: Mapping[str, Any] | None = None,
 ) -> Dict[str, Any]:
     clicked = submit_clicked(initial_result) or submit_clicked(resumed_result)
+    verification = dict(handoff_verification or {})
     guard = dict(submit_guard or {})
+    interactive_handoff = bool(verification)
+    guard_missing = bool(interactive_handoff and guard.get("installed") is not True)
     guard_attempted_submit = bool(
         int(guard.get("blocked_clicks") or 0)
         or int(guard.get("blocked_submits") or 0)
@@ -191,6 +194,7 @@ def build_resumed_exercise(
         and adapter == "lever"
         and adapter_version == LEVER_ADAPTER_VERSION
         and not clicked
+        and not guard_missing
         and not guard_attempted_submit
     )
     review_items = _merge_dicts(
@@ -213,6 +217,12 @@ def build_resumed_exercise(
         initial_result.get("control_evidence") or [],
         resumed_result.get("control_evidence") or [],
     )
+    if guard_missing:
+        error = "The submit guard was not present after human verification."
+    elif guard_attempted_submit:
+        error = "The submit guard intercepted an operator submit attempt."
+    else:
+        error = resumed_result.get("error")
     return {
         "url": url,
         "mode": "exercise",
@@ -238,13 +248,9 @@ def build_resumed_exercise(
         "control_evidence_count": len(control_evidence),
         "final_submit_clicked": clicked,
         "certification_metadata": dict(certification_metadata),
-        "handoff_verification": dict(handoff_verification or {}),
+        "handoff_verification": verification,
         "submit_guard": guard,
-        "error": (
-            "The submit guard intercepted an operator submit attempt."
-            if guard_attempted_submit
-            else resumed_result.get("error")
-        ),
+        "error": error,
     }
 
 
