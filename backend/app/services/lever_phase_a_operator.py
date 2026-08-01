@@ -70,6 +70,22 @@ def load_locked_target(review_id: str, corpus_root: Path) -> Dict[str, Any]:
     return target
 
 
+def frozen_target_identity(target: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "review_id": str(target.get("review_id") or ""),
+        "employer": str(target.get("employer") or ""),
+        "role": str(target.get("role") or ""),
+        "site": str(target.get("site") or ""),
+        "posting_id": str(target.get("posting_id") or ""),
+        "region": str(target.get("region") or ""),
+        "canonical_application_url": str(
+            target.get("canonical_application_url") or ""
+        ),
+        "review_digest_sha256": str(target.get("review_digest_sha256") or ""),
+        "corpus_sha256": str(target.get("corpus_sha256") or ""),
+    }
+
+
 def challenge_reason(result: Mapping[str, Any]) -> str:
     for item in result.get("review_items") or []:
         reason = str(item.get("reason_code") or "").strip()
@@ -108,6 +124,22 @@ def _validate_local_cdp_endpoint(endpoint: str) -> None:
         raise LeverPhaseAOperatorError(
             "The retained browser CDP endpoint must be an HTTP URL on 127.0.0.1"
         )
+
+
+def transient_cleanup_session(snapshot: Mapping[str, Any]) -> SimpleNamespace:
+    """Build a termination/deletion handle even when a boundary is uncertifiable."""
+    return SimpleNamespace(
+        browser_provider=snapshot.get("browser_provider"),
+        browser_session_id=snapshot.get("browser_session_id"),
+        encrypted_browser_endpoint=None,
+        browser_node_id=snapshot.get("browser_node_id") or current_browser_node_id(),
+        browser_process_id=snapshot.get("browser_process_id"),
+        browser_profile_path=snapshot.get("browser_profile_path"),
+        current_url=snapshot.get("current_url"),
+        current_fingerprint=snapshot.get("current_fingerprint"),
+        challenge_type="uncertified",
+        handoff_metadata={"phase_a_cleanup_only": True},
+    )
 
 
 def transient_handoff_session(
@@ -309,8 +341,10 @@ __all__ = [
     "build_phase_a_report",
     "build_resumed_exercise",
     "challenge_reason",
+    "frozen_target_identity",
     "load_locked_target",
     "submit_clicked",
+    "transient_cleanup_session",
     "transient_handoff_session",
     "write_report",
 ]
