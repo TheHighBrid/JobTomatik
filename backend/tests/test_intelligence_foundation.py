@@ -142,7 +142,7 @@ def _register_and_login(client, email):
             "full_name": email.split("@")[0],
         },
     )
-    assert register.status_code == 200
+    assert register.status_code == 201
     login = client.post(
         "/api/auth/login",
         data={"username": email, "password": "testpass123"},
