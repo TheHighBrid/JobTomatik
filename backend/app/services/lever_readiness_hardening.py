@@ -18,6 +18,7 @@ from app.services.greenhouse_pilot import (
     SUPERVISED_MODE,
     UNCERTAIN_STATUS,
 )
+from app.services.lever_phase_a_archive import verify_phase_a_external_archive
 from app.services.lever_phase_a_evidence import verify_phase_a_row_evidence
 
 PHASE_A_READY_PAIR = ("ready_to_submit", "dry_run_passed")
@@ -42,8 +43,12 @@ def _phase_a_rows(path: Optional[str | Path]) -> list[Dict[str, Any]]:
         for raw in csv.DictReader(handle):
             row: Dict[str, Any] = dict(raw)
             verification = verify_phase_a_row_evidence(row, baseline_path=path)
+            archive = verify_phase_a_external_archive(row, baseline_path=path)
             row["_artifact_verified"] = verification["artifact_verified"]
             row["_qualification_evidence_verified"] = verification["qualifies"]
+            row["_external_archive_verified"] = archive["verified"]
+            row["_external_archive_path"] = archive["archive_path"]
+            row["_external_archive_errors"] = list(archive["errors"])
             rows.append(row)
     return rows
 
@@ -122,6 +127,7 @@ def harden_lever_readiness(
         row
         for row in phase_a_candidates
         if row.get("_qualification_evidence_verified") is True
+        and row.get("_external_archive_verified") is True
     ]
     challenge_rows = [
         row
@@ -146,8 +152,16 @@ def harden_lever_readiness(
         for row in phase_a_candidates
         if row.get("_qualification_evidence_verified") is not True
     ]
+    external_archive_failures = [
+        row
+        for row in phase_a_candidates
+        if row.get("_external_archive_verified") is not True
+    ]
     artifact_failures = [
-        row for row in phase_a_candidates if row.get("_artifact_verified") is not True
+        row
+        for row in phase_a_candidates
+        if row.get("_artifact_verified") is not True
+        or row.get("_external_archive_verified") is not True
     ]
     sites = {
         str(row.get("site") or "").strip().lower()
@@ -208,6 +222,7 @@ def harden_lever_readiness(
             "thirty_distinct_lever_sites": len(sites) >= PHASE_A_REQUIRED_RECORDS,
             "global_and_eu_hosts_covered": VALID_REGIONS.issubset(regions),
             "all_phase_a_records_have_successful_matching_inspection": not inspection_failures,
+            "all_qualifying_phase_a_records_have_durable_external_archives": not external_archive_failures,
             "all_manual_challenges_remain_needs_review": not challenge_violations,
             "ten_supervised_confirmed_submissions": len(safe_successes)
             >= PHASE_B_REQUIRED_RECORDS,
@@ -230,6 +245,7 @@ def harden_lever_readiness(
             "manual_challenge_violation_count": len(challenge_violations),
             "phase_a_inspection_failure_count": len(inspection_failures),
             "phase_a_artifact_verification_failure_count": len(artifact_failures),
+            "phase_a_external_archive_failure_count": len(external_archive_failures),
             "distinct_site_count": len(sites),
             "regions_covered": sorted(regions),
             "raw_supervised_confirmed_count": len(raw_successes),
@@ -250,7 +266,7 @@ def harden_lever_readiness(
     summary["supervised_pilot_evidence_complete"] = all(required)
     summary["promotion_ready"] = all(gates.values())
     payload["summary"] = summary
-    payload["readiness_hardening_version"] = "1.2"
+    payload["readiness_hardening_version"] = "1.3"
     return payload
 
 
