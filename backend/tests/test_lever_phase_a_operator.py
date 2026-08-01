@@ -91,6 +91,21 @@ def _resumed_ready() -> dict:
     }
 
 
+def _verified_handoff() -> dict:
+    return {
+        "challenge_cleared": True,
+        "verification_method": "captcha_response_state",
+    }
+
+
+def _clean_submit_guard() -> dict:
+    return {
+        "installed": True,
+        "blocked_clicks": 0,
+        "blocked_submits": 0,
+    }
+
+
 def test_load_locked_target_requires_one_exact_viable_corpus_row(tmp_path: Path) -> None:
     corpus = tmp_path / "corpus"
     corpus.mkdir()
@@ -168,15 +183,8 @@ def test_resumed_handoff_builds_a_qualifying_retained_candidate(tmp_path: Path) 
         initial_result=_initial_handoff(),
         resumed_result=_resumed_ready(),
         certification_metadata={"synthetic_profile": True},
-        handoff_verification={
-            "challenge_cleared": True,
-            "verification_method": "captcha_response_state",
-        },
-        submit_guard={
-            "installed": True,
-            "blocked_clicks": 0,
-            "blocked_submits": 0,
-        },
+        handoff_verification=_verified_handoff(),
+        submit_guard=_clean_submit_guard(),
     )
     report = build_phase_a_report(_inspection(), exercise)
     report_path = tmp_path / "interactive-report.json"
@@ -215,6 +223,8 @@ def test_any_submit_log_prevents_phase_a_success() -> None:
         initial_result=_initial_handoff(),
         resumed_result=resumed,
         certification_metadata={"synthetic_profile": True},
+        handoff_verification=_verified_handoff(),
+        submit_guard=_clean_submit_guard(),
     )
     report = build_phase_a_report(_inspection(), exercise)
 
@@ -222,6 +232,40 @@ def test_any_submit_log_prevents_phase_a_success() -> None:
     assert exercise["final_submit_clicked"] is True
     assert report["passed"] is False
     assert report["final_submit_clicked"] is True
+
+
+def test_missing_submit_guard_after_handoff_prevents_phase_a_success() -> None:
+    exercise = build_resumed_exercise(
+        url=URL,
+        initial_result=_initial_handoff(),
+        resumed_result=_resumed_ready(),
+        certification_metadata={"synthetic_profile": True},
+        handoff_verification=_verified_handoff(),
+        submit_guard={"installed": False},
+    )
+
+    assert exercise["passed"] is False
+    assert exercise["certification_outcome"] == "failed"
+    assert exercise["error"] == "The submit guard was not present after human verification."
+
+
+def test_intercepted_submit_intent_prevents_phase_a_success() -> None:
+    exercise = build_resumed_exercise(
+        url=URL,
+        initial_result=_initial_handoff(),
+        resumed_result=_resumed_ready(),
+        certification_metadata={"synthetic_profile": True},
+        handoff_verification=_verified_handoff(),
+        submit_guard={
+            "installed": True,
+            "blocked_clicks": 1,
+            "blocked_submits": 0,
+        },
+    )
+
+    assert exercise["passed"] is False
+    assert exercise["final_submit_clicked"] is False
+    assert exercise["error"] == "The submit guard intercepted an operator submit attempt."
 
 
 def test_interactive_runner_installs_click_and_submit_guards() -> None:
