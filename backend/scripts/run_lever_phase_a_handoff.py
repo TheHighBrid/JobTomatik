@@ -220,20 +220,16 @@ async def run(args: argparse.Namespace) -> int:
         terminate_and_cleanup_retained_browser,
     )
     from scripts.certify_lever_live import _manual_challenge_ready
-    from scripts.export_lever_phase_a_record import (
-        build_phase_a_candidate,
-        export_phase_a_candidate,
-    )
 
     target = load_locked_target(args.review_id, Path(args.corpus_root))
     output_dir = Path(args.output_dir) / str(target["review_id"])
     output_dir.mkdir(parents=True, exist_ok=True)
     report_path = output_dir / "lever-phase-a-interactive-report.json"
-    candidate_path = output_dir / "lever-phase-a-candidate.csv"
     resume_path = output_dir / "lever-phase-a-synthetic-resume.pdf"
     write_synthetic_resume(str(resume_path))
 
     inspection, profile, certification_metadata = await _inspect_profile_and_target(target)
+    certification_metadata["interactive_operator"] = args.operator
     target_metadata = certification_metadata["supervised_target"]
     url = str(target["canonical_application_url"])
     initial_result = await fill_and_submit_application(
@@ -300,25 +296,16 @@ async def run(args: argparse.Namespace) -> int:
             print(f"Nonqualifying report retained at {report_path}")
             return 1
 
-        run_id = args.run_id or f"local-{str(target['review_id']).lower()}-{digest[:16]}"
-        source_reference = args.source_reference or f"local-sha256:{digest}"
-        record = build_phase_a_candidate(
-            report,
-            report_path=report_path,
-            output_path=candidate_path,
-            run_id=run_id,
-            operator=args.operator,
-            source_reference=source_reference,
-            employer=str(target["employer"]),
-            role=str(target["role"]),
-        )
-        export_phase_a_candidate(candidate_path, record)
         print()
         print("Lever Phase A interactive handoff completed without submission.")
-        print(f"Report:    {report_path}")
-        print(f"Candidate: {candidate_path}")
-        print(f"SHA-256:   {digest}")
-        print("The candidate was not appended to the canonical baseline.")
+        print(f"Report:  {report_path}")
+        print(f"SHA-256: {digest}")
+        print("No candidate CSV was emitted. Local evidence cannot self-certify.")
+        print(
+            "Commit the report, retain it with the Lever Phase A interactive "
+            "retention workflow, then run finalize_lever_phase_a_handoff.py with "
+            "the GitHub workflow run ID, artifact ID, and artifact digest."
+        )
         return 0
     finally:
         if session is not None:
@@ -337,11 +324,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--output-dir",
-        default="evidence/lever-phase-a-interactive",
+        default="evidence/lever-phase-a-artifacts",
     )
     parser.add_argument("--operator", default=getpass.getuser())
-    parser.add_argument("--run-id")
-    parser.add_argument("--source-reference")
     args = parser.parse_args()
 
     if sys.platform.startswith("linux") and not (
