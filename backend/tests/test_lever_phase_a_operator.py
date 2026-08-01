@@ -159,7 +159,9 @@ def test_replaced_or_mutated_corpus_is_rejected(tmp_path: Path) -> None:
     shutil.copytree(CORPUS_ROOT, replacement)
     first_part = replacement / "part-01.csv"
     first_part.write_text(
-        first_part.read_text(encoding="utf-8").replace("Questrade", "QuestradeX", 1),
+        first_part.read_text(encoding="utf-8").replace(
+            "Veeva Systems", "Veeva SystemsX", 1
+        ),
         encoding="utf-8",
     )
 
