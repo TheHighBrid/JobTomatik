@@ -17,6 +17,7 @@ on:
       - "backend/tests/test_lever_live_availability.py"
       - "backend/tests/test_lever_phase_a_export.py"
       - "backend/tests/test_lever_phase_a_operator.py"
+      - "backend/tests/test_lever_phase_a_submit_guard.py"
       - ".github/workflows/lever-synthetic-live-exercise.yml"
   schedule:
     - cron: "41 13 * * 1"
@@ -71,7 +72,8 @@ jobs:
             tests/test_lever_synthetic_certification.py \
             tests/test_lever_live_availability.py \
             tests/test_lever_phase_a_export.py \
-            tests/test_lever_phase_a_operator.py
+            tests/test_lever_phase_a_operator.py \
+            tests/test_lever_phase_a_submit_guard.py
 
       - name: Select a current certification-compatible Lever job
         if: github.event_name != 'pull_request'
