@@ -14,8 +14,8 @@ import {
   Wrench,
 } from 'lucide-react'
 
-import { createAgentRun, getIntelligenceOverview } from '../api/client'
 import { getApiErrorMessage } from '../api/client'
+import { createAgentRun, getIntelligenceOverview } from '../api/intelligence'
 
 function MetricCard({ icon: Icon, label, value, detail }) {
   return (
