@@ -17,7 +17,7 @@ beautifulsoup4==4.12.3
 lxml==6.1.0
 python-dotenv==1.2.2
 pydantic==2.13.4
-pydantic-settings==2.3.0
+pydantic-settings==2.14.2
 aiofiles==23.2.1
 email-validator==2.2.0
 pillow==12.3.0
