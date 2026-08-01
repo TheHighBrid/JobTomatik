@@ -1,0 +1,145 @@
+name: Lever Phase A interactive evidence retention
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/app/services/lever_phase_a_operator.py"
+      - "backend/app/services/lever_phase_a_provenance.py"
+      - "backend/app/services/retained_browser_operator.py"
+      - "backend/scripts/finalize_lever_phase_a_handoff.py"
+      - "backend/scripts/run_lever_phase_a_handoff.py"
+      - "backend/evidence/lever-phase-a-artifacts/**"
+      - "backend/tests/test_lever_phase_a_provenance.py"
+      - ".github/workflows/lever-phase-a-interactive-retention.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  retain-interactive-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Compile provenance tooling
+        run: |
+          python -m py_compile \
+            app/services/lever_phase_a_operator.py \
+            app/services/lever_phase_a_provenance.py \
+            app/services/retained_browser_operator.py \
+            scripts/finalize_lever_phase_a_handoff.py \
+            scripts/run_lever_phase_a_handoff.py
+
+      - name: Test provenance finalization contract
+        run: pytest -q --tb=short -ra tests/test_lever_phase_a_provenance.py
+
+      - name: Validate retained interactive reports
+        id: reports
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('evidence/lever-phase-a-artifacts')
+          reports = sorted(root.glob('*/lever-phase-a-interactive-report.json'))
+          manifest = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'workflow_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'commit_sha': os.environ['GITHUB_SHA'],
+              'reports': [],
+          }
+          for report_path in reports:
+              report = json.loads(report_path.read_text(encoding='utf-8'))
+              assert report.get('certification') == 'lever_supervised_live_dry_run'
+              assert report.get('interactive_handoff') is True
+              assert report.get('passed') is True
+              assert report.get('final_submit_clicked') is False
+              items = list(report.get('reports') or [])
+              inspections = [item for item in items if item.get('mode') == 'inspect']
+              exercises = [item for item in items if item.get('mode') == 'exercise']
+              assert len(inspections) == 1
+              assert len(exercises) == 1
+              exercise = exercises[0]
+              metadata = dict(exercise.get('certification_metadata') or {})
+              review_id = str(metadata.get('review_id') or '')
+              assert review_id == report_path.parent.name
+              assert exercise.get('certification_outcome') == 'ready_to_submit'
+              assert exercise.get('final_submit_clicked') is False
+              assert exercise.get('handoff_verification', {}).get('challenge_cleared') is True
+              assert exercise.get('handoff_verification', {}).get(
+                  'target_verification', {}
+              ).get('verified') is True
+              assert exercise.get('submit_guard') == {
+                  'installed': True,
+                  'blocked_clicks': 0,
+                  'blocked_submits': 0,
+              }
+              manifest['reports'].append({
+                  'review_id': review_id,
+                  'path': report_path.as_posix(),
+                  'sha256': hashlib.sha256(report_path.read_bytes()).hexdigest(),
+              })
+
+          Path('lever-phase-a-interactive-retention-manifest.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f"has_reports={'true' if reports else 'false'}\n")
+              output.write(f"report_count={len(reports)}\n")
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload externally retained Phase A evidence
+        if: steps.reports.outputs.has_reports == 'true'
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: lever-phase-a-interactive-evidence-${{ github.sha }}
+          path: |
+            backend/evidence/lever-phase-a-artifacts/**
+            backend/lever-phase-a-interactive-retention-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish finalizer provenance
+        if: steps.reports.outputs.has_reports == 'true'
+        shell: bash
+        run: |
+          {
+            echo '## Lever Phase A interactive evidence retained'
+            echo
+            echo "- Workflow run ID: \`${GITHUB_RUN_ID}\`"
+            echo "- Artifact ID: \`${{ steps.upload.outputs.artifact-id }}\`"
+            echo "- Artifact digest: \`${{ steps.upload.outputs.artifact-digest }}\`"
+            echo "- Report count: \`${{ steps.reports.outputs.report_count }}\`"
+            echo
+            echo 'Use these exact values with `scripts/finalize_lever_phase_a_handoff.py`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record code-only validation
+        if: steps.reports.outputs.has_reports != 'true'
+        run: |
+          echo 'No committed interactive report was present. Provenance tooling passed, but no external evidence artifact was created.' >> "$GITHUB_STEP_SUMMARY"
