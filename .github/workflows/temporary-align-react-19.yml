@@ -1,0 +1,67 @@
+name: Temporary React 19 alignment
+
+on:
+  push:
+    branches:
+      - dependabot/npm_and_yarn/frontend/multi-3146d5559c
+    paths:
+      - .github/workflows/temporary-align-react-19.yml
+
+permissions:
+  contents: write
+
+jobs:
+  align-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out dependency branch
+        uses: actions/checkout@v4
+        with:
+          ref: dependabot/npm_and_yarn/frontend/multi-3146d5559c
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Align React runtime and type packages
+        working-directory: frontend
+        run: |
+          npm install --package-lock-only --ignore-scripts react-dom@19.2.8
+          npm install --package-lock-only --ignore-scripts --save-dev @types/react-dom@19.2.3
+          node - <<'NODE'
+          const pkg = require('./package.json');
+          const expected = {
+            react: '^19.2.8',
+            'react-dom': '^19.2.8',
+            '@types/react': '^19.2.17',
+            '@types/react-dom': '^19.2.3',
+          };
+          for (const [name, version] of Object.entries(expected)) {
+            const actual = pkg.dependencies?.[name] ?? pkg.devDependencies?.[name];
+            if (actual !== version) {
+              throw new Error(`${name} expected ${version}, received ${actual}`);
+            }
+          }
+          NODE
+
+      - name: Validate aligned frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Commit aligned lockfile and remove temporary workflow
+        run: |
+          rm .github/workflows/temporary-align-react-19.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package.json frontend/package-lock.json .github/workflows/temporary-align-react-19.yml
+          git commit -m "Align React DOM packages with React 19"
+          git push origin HEAD:dependabot/npm_and_yarn/frontend/multi-3146d5559c
