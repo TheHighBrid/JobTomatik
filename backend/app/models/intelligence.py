@@ -100,6 +100,7 @@ class SelectorStrategy(Base):
     __tablename__ = "selector_strategies"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     platform = Column(String(80), nullable=False, index=True)
     page_signature = Column(String(255), nullable=False, index=True)
     intent = Column(String(120), nullable=False, index=True)
