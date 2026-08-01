@@ -11,6 +11,7 @@ on:
       - "backend/scripts/certify_lever_live.py"
       - "backend/scripts/export_lever_phase_a_record.py"
       - "backend/tests/test_lever_synthetic_certification.py"
+      - "backend/tests/test_lever_live_availability.py"
       - "backend/tests/test_lever_phase_a_export.py"
       - ".github/workflows/lever-synthetic-live-exercise.yml"
   schedule:
@@ -64,6 +65,7 @@ jobs:
         run: |
           pytest -q --tb=short -ra \
             tests/test_lever_synthetic_certification.py \
+            tests/test_lever_live_availability.py \
             tests/test_lever_phase_a_export.py
 
       - name: Select a current certification-compatible Lever job
