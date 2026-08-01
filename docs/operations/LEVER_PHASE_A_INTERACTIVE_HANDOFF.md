@@ -18,7 +18,7 @@ python -m pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
-## Run one locked target
+## Stage 1: run one locked target
 
 ```bash
 PYTHONPATH=. python -u scripts/run_lever_phase_a_handoff.py \
@@ -28,48 +28,104 @@ PYTHONPATH=. python -u scripts/run_lever_phase_a_handoff.py \
 
 The runner performs the following sequence:
 
-1. Loads exactly one active and viable target from the frozen corpus.
-2. Revalidates its official Lever posting metadata and exact role identity.
-3. Builds the synthetic Phase A profile and résumé.
-4. Opens a visible, retained Chromium session and fills safe controls.
-5. Stops at the human-verification boundary.
-6. Installs capturing click and form-submit guards before operator interaction.
-7. Allows only the CAPTCHA or human-verification step to be completed manually.
-8. Verifies the challenge response and exact retained target.
-9. Resumes in `dry_run=True` mode and stops at `ready_to_submit`.
-10. Terminates retained Chromium and writes a hashed JSON report plus candidate CSV.
+1. Validates the complete frozen corpus and its exact SHA-256.
+2. Loads exactly one active and viable target.
+3. Revalidates its official Lever posting metadata and exact role identity.
+4. Builds the synthetic Phase A profile and résumé.
+5. Opens a visible, retained Chromium session and fills safe controls.
+6. Stops at the human-verification boundary.
+7. Installs final-application click and form-submit guards before operator interaction.
+8. Leaves MFA and login verification forms usable while blocking the final Lever application action.
+9. Allows only the CAPTCHA or human-verification step to be completed manually.
+10. Verifies the challenge response and exact retained target.
+11. Treats a populated reCAPTCHA, hCaptcha, or Turnstile response as completed even when its iframe remains in the page.
+12. Resumes in `dry_run=True` mode and stops at `ready_to_submit`.
+13. Terminates retained Chromium and deletes transient screenshot, HTML, storage-state, cookie, and log files.
+14. Writes a hashed JSON report. It does not create a candidate CSV.
 
 When Chromium appears, complete only the protected verification widget. Do not click the application submit control. Return to the terminal and press Enter. JobTomatik verifies the browser state before resuming.
-
-## Outputs
 
 The default output directory is:
 
 ```text
-evidence/lever-phase-a-interactive/<REVIEW_ID>/
+evidence/lever-phase-a-artifacts/<REVIEW_ID>/
 ```
 
 It contains:
 
 - `lever-phase-a-interactive-report.json`
-- `lever-phase-a-candidate.csv`
 - `lever-phase-a-synthetic-resume.pdf`
 
-The report records the official inspection, initial handoff boundary, resumed exercise, exact adapter version, challenge verification, submit-guard state, upload evidence, and `final_submit_clicked=false`.
+The report records the official inspection, initial handoff boundary, resumed exercise, exact adapter version, challenge verification, submit-guard state, upload evidence, frozen corpus SHA, and `final_submit_clicked=false`.
 
-The candidate uses the report SHA-256 as its immutable local source reference. The command never edits `evidence/lever-phase-a-baseline.csv`; a separate evidence review and import change is required before the canonical count can advance.
+A local report is not qualifying provenance and cannot advance the count.
+
+## Stage 2: retain the report externally
+
+Commit the report under its exact `evidence/lever-phase-a-artifacts/<REVIEW_ID>/` path in a reviewed evidence pull request.
+
+The `Lever Phase A interactive evidence retention` workflow validates every committed report and uploads the report tree plus a retention manifest as a GitHub Actions artifact. When an artifact is created, the workflow summary prints:
+
+- workflow run ID;
+- artifact ID;
+- artifact digest;
+- retained report count.
+
+All three provenance values must come from that completed GitHub Actions run. A local SHA, locally invented run ID, URL without an artifact, or self-reference is rejected.
+
+## Stage 3: finalize the candidate and source receipt
+
+After the retention workflow succeeds, run:
+
+```bash
+PYTHONPATH=. python scripts/finalize_lever_phase_a_handoff.py \
+  --review-id D8-001 \
+  --report evidence/lever-phase-a-artifacts/D8-001/lever-phase-a-interactive-report.json \
+  --workflow-run-id <GITHUB_RUN_ID> \
+  --artifact-id <GITHUB_ARTIFACT_ID> \
+  --artifact-digest <64_HEX_ARTIFACT_DIGEST> \
+  --operator TheHighBrid
+```
+
+The finalizer requires:
+
+- a positive numeric GitHub Actions run ID;
+- a positive numeric GitHub artifact ID;
+- a lowercase 64-character artifact SHA-256 digest;
+- the exact GitHub Actions run URL as `source_reference`;
+- a report under `evidence/lever-phase-a-artifacts/<REVIEW_ID>/`;
+- the same frozen review ID inside the retained report;
+- one verifier-qualified `ready_to_submit` dry run with no submission action.
+
+It writes two review files in `evidence/`:
+
+- `lever-phase-a-candidate-<REVIEW_ID>.csv`
+- `lever-phase-a-source-<REVIEW_ID>.csv`
+
+The source receipt uses the canonical schema:
+
+```text
+workflow_run_id,artifact_id,artifact_digest,retained_record_count
+```
+
+The finalizer does not append either row to `lever-phase-a-baseline.csv` or `lever-phase-a-sources.csv`. A separate reviewed import change must append both rows and regenerate readiness before the canonical count can advance.
 
 ## Fail-closed outcomes
 
-The command exits without a qualifying candidate when:
+The process remains nonqualifying when:
 
 - the posting expired or official metadata changed;
 - the role no longer matches the frozen corpus;
+- the corpus digest changed;
 - the page exposes an ambiguous required answer or unsupported control;
 - the boundary is not a clean resumable CAPTCHA, MFA, login, or anti-bot challenge;
 - the retained target changes;
 - the challenge remains active;
+- a solved CAPTCHA token is absent;
 - the resumed browser does not reach `ready_to_submit`;
-- any final-submit click is detected.
+- the submit guard disappears or records an attempt;
+- any final-submit automation log is detected;
+- the report is not retained by a GitHub Actions artifact;
+- the workflow run ID, artifact ID, artifact digest, or report path is invalid.
 
 Real submission, Lever supervised pilot, autopilot, and general resumable live handoffs remain disabled throughout this procedure.
