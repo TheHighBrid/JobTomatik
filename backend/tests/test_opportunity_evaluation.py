@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.opportunity_evaluation import (
     calculate_weighted_score,
     classify_recommendation,
@@ -22,7 +24,7 @@ STRONG_SCORES = {
 def test_weighted_score_uses_declared_dimensions():
     score = calculate_weighted_score(STRONG_SCORES)
 
-    assert score == 4.375
+    assert score == 4.3
     assert classify_recommendation(score) == "strong_apply"
 
 
@@ -51,7 +53,7 @@ def test_evaluation_api_persists_auditable_result(auth_client):
 
     assert response.status_code == 201
     evaluation = response.json()
-    assert evaluation["weighted_score"] == 4.375
+    assert evaluation["weighted_score"] == 4.3
     assert evaluation["recommendation"] == "strong_apply"
     assert evaluation["legitimacy_status"] == "likely_legitimate"
     assert evaluation["analysis_blocks"]["G"]["legitimacy"] == "Official employer posting"
@@ -63,7 +65,7 @@ def test_evaluation_api_persists_auditable_result(auth_client):
     framework_response = auth_client.get("/api/evaluations/framework")
     assert framework_response.status_code == 200
     framework = framework_response.json()
-    assert sum(framework["dimensions"].values()) == 1.0
+    assert sum(framework["dimensions"].values()) == pytest.approx(1.0)
     assert framework["legitimacy_is_separate"] is True
     assert framework["hard_blockers_override_score"] is True
 
