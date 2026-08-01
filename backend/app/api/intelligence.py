@@ -86,7 +86,14 @@ def get_intelligence_overview(
     db: Session = Depends(get_db),
 ):
     now = datetime.now(timezone.utc)
-    selector_strategies = db.query(SelectorStrategy).filter(SelectorStrategy.is_disabled.is_(False)).all()
+    selector_strategies = (
+        db.query(SelectorStrategy)
+        .filter(
+            SelectorStrategy.user_id == current_user.id,
+            SelectorStrategy.is_disabled.is_(False),
+        )
+        .all()
+    )
     recent_runs = (
         db.query(AgentRun)
         .options(selectinload(AgentRun.tasks))
@@ -121,32 +128,47 @@ def get_intelligence_overview(
             confidence=strategy.confidence,
             success_count=strategy.success_count,
             failure_count=strategy.failure_count,
-        ) >= 0.65
+        )
+        >= 0.65
     )
     active_run_states = {"planned", "running", "blocked"}
 
     return IntelligenceOverview(
         memories=(
             db.query(CareerMemory)
-            .filter(CareerMemory.user_id == current_user.id, CareerMemory.is_active.is_(True))
+            .filter(
+                CareerMemory.user_id == current_user.id,
+                CareerMemory.is_active.is_(True),
+            )
             .count()
         ),
         recruiter_contacts=(
-            db.query(RecruiterContact).filter(RecruiterContact.user_id == current_user.id).count()
+            db.query(RecruiterContact)
+            .filter(RecruiterContact.user_id == current_user.id)
+            .count()
         ),
         followups_due=followups_due,
         knowledge_nodes=(
-            db.query(KnowledgeNode).filter(KnowledgeNode.user_id == current_user.id).count()
+            db.query(KnowledgeNode)
+            .filter(KnowledgeNode.user_id == current_user.id)
+            .count()
         ),
         knowledge_edges=(
-            db.query(KnowledgeEdge).filter(KnowledgeEdge.user_id == current_user.id).count()
+            db.query(KnowledgeEdge)
+            .filter(KnowledgeEdge.user_id == current_user.id)
+            .count()
         ),
         selector_strategies=len(selector_strategies),
         healthy_selectors=healthy_selectors,
-        agent_runs=(db.query(AgentRun).filter(AgentRun.user_id == current_user.id).count()),
+        agent_runs=(
+            db.query(AgentRun).filter(AgentRun.user_id == current_user.id).count()
+        ),
         active_agent_runs=(
             db.query(AgentRun)
-            .filter(AgentRun.user_id == current_user.id, AgentRun.status.in_(active_run_states))
+            .filter(
+                AgentRun.user_id == current_user.id,
+                AgentRun.status.in_(active_run_states),
+            )
             .count()
         ),
         recent_runs=recent_runs,
@@ -166,7 +188,10 @@ def list_memories(
         query = query.filter(CareerMemory.kind == kind)
     if active_only:
         query = query.filter(CareerMemory.is_active.is_(True))
-    return query.order_by(CareerMemory.updated_at.desc(), CareerMemory.created_at.desc()).all()
+    return query.order_by(
+        CareerMemory.updated_at.desc(),
+        CareerMemory.created_at.desc(),
+    ).all()
 
 
 @router.post("/memories", response_model=CareerMemoryOut, status_code=status.HTTP_201_CREATED)
@@ -190,7 +215,10 @@ def deactivate_memory(
 ):
     memory = (
         db.query(CareerMemory)
-        .filter(CareerMemory.id == memory_id, CareerMemory.user_id == current_user.id)
+        .filter(
+            CareerMemory.id == memory_id,
+            CareerMemory.user_id == current_user.id,
+        )
         .first()
     )
     if memory is None:
@@ -205,10 +233,15 @@ def list_recruiters(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    query = db.query(RecruiterContact).filter(RecruiterContact.user_id == current_user.id)
+    query = db.query(RecruiterContact).filter(
+        RecruiterContact.user_id == current_user.id
+    )
     if company:
         query = query.filter(RecruiterContact.company.ilike(f"%{company}%"))
-    return query.order_by(RecruiterContact.next_followup_at.asc(), RecruiterContact.updated_at.desc()).all()
+    return query.order_by(
+        RecruiterContact.next_followup_at.asc(),
+        RecruiterContact.updated_at.desc(),
+    ).all()
 
 
 @router.post("/recruiters", response_model=RecruiterContactOut, status_code=status.HTTP_201_CREATED)
@@ -254,12 +287,17 @@ def list_knowledge_nodes(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    statement = db.query(KnowledgeNode).filter(KnowledgeNode.user_id == current_user.id)
+    statement = db.query(KnowledgeNode).filter(
+        KnowledgeNode.user_id == current_user.id
+    )
     if node_type:
         statement = statement.filter(KnowledgeNode.node_type == node_type)
     if query:
         statement = statement.filter(KnowledgeNode.label.ilike(f"%{query}%"))
-    return statement.order_by(KnowledgeNode.updated_at.desc(), KnowledgeNode.created_at.desc()).all()
+    return statement.order_by(
+        KnowledgeNode.updated_at.desc(),
+        KnowledgeNode.created_at.desc(),
+    ).all()
 
 
 @router.post(
@@ -292,7 +330,10 @@ def create_knowledge_edge(
     node_ids = {payload.from_node_id, payload.to_node_id}
     owned_nodes = (
         db.query(KnowledgeNode.id)
-        .filter(KnowledgeNode.user_id == current_user.id, KnowledgeNode.id.in_(node_ids))
+        .filter(
+            KnowledgeNode.user_id == current_user.id,
+            KnowledgeNode.id.in_(node_ids),
+        )
         .all()
     )
     if {node_id for (node_id,) in owned_nodes} != node_ids:
@@ -312,10 +353,10 @@ def recommend_selector(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    del current_user  # Authentication is required; selector telemetry contains no applicant data.
     candidates = (
         db.query(SelectorStrategy)
         .filter(
+            SelectorStrategy.user_id == current_user.id,
             SelectorStrategy.platform == platform,
             SelectorStrategy.page_signature == page_signature,
             SelectorStrategy.intent == intent,
@@ -324,7 +365,10 @@ def recommend_selector(
         .all()
     )
     if not candidates:
-        raise HTTPException(status_code=404, detail="No selector strategy is known for this intent")
+        raise HTTPException(
+            status_code=404,
+            detail="No selector strategy is known for this intent",
+        )
     best = max(
         candidates,
         key=lambda item: selector_health_score(
@@ -342,10 +386,10 @@ def record_selector_outcome(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    del current_user
     strategy = (
         db.query(SelectorStrategy)
         .filter(
+            SelectorStrategy.user_id == current_user.id,
             SelectorStrategy.platform == payload.platform,
             SelectorStrategy.page_signature == payload.page_signature,
             SelectorStrategy.intent == payload.intent,
@@ -355,6 +399,7 @@ def record_selector_outcome(
     )
     if strategy is None:
         strategy = SelectorStrategy(
+            user_id=current_user.id,
             platform=payload.platform,
             page_signature=payload.page_signature,
             intent=payload.intent,
@@ -479,8 +524,7 @@ def update_agent_task(
         task.completed_at = now
 
     run = db.query(AgentRun).filter(AgentRun.id == run_id).one()
-    task_states = [row.status for row in run.tasks]
-    run.status = derive_run_status(task_states)
+    run.status = derive_run_status(row.status for row in run.tasks)
     if run.status == "running":
         run.started_at = run.started_at or now
     if run.status in {"completed", "failed"}:
