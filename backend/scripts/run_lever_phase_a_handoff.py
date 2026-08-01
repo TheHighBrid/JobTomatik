@@ -84,14 +84,14 @@ def _configure_safe_environment() -> None:
 
 
 async def _inspect_profile_and_target(
-    target: Mapping[str, str],
+    target: Mapping[str, Any],
 ) -> tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     from playwright.async_api import async_playwright
 
     from app.services.supervised_target_identity import resolve_supervised_target_metadata
     from scripts.certify_lever_live import _build_profile_for_url, inspect_live_url
 
-    url = target["canonical_application_url"]
+    url = str(target["canonical_application_url"])
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             headless=True,
@@ -124,19 +124,15 @@ async def _inspect_profile_and_target(
         "supervised_target": target_metadata,
         "review_id": target["review_id"],
         "locked_corpus_path": target["corpus_path"],
+        "locked_corpus_sha256": target["corpus_sha256"],
     }
 
 
 async def _browser_evaluate(session: Any, expression: str) -> Dict[str, Any]:
-    from app.services import browser_handoff
+    from app.services.retained_browser_operator import evaluate_retained_browser
 
-    playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
-    try:
-        value = await page.evaluate(expression)
-        session.current_url = page.url
-        return dict(value or {})
-    finally:
-        await browser_handoff._disconnect(playwright)
+    value = await evaluate_retained_browser(session, expression)
+    return dict(value or {})
 
 
 async def _wait_for_challenge(
@@ -167,10 +163,7 @@ async def _wait_for_challenge(
 
 
 async def run(args: argparse.Namespace) -> int:
-    from app.services.browser_handoff import (
-        resume_handoff_application,
-        terminate_retained_browser,
-    )
+    from app.services.browser_handoff import resume_handoff_application
     from app.services.form_filler import fill_and_submit_application
     from app.services.lever_certification import (
         SYNTHETIC_TEXT_RESPONSE,
@@ -185,6 +178,9 @@ async def run(args: argparse.Namespace) -> int:
         transient_handoff_session,
         write_report,
     )
+    from app.services.retained_browser_operator import (
+        terminate_and_cleanup_retained_browser,
+    )
     from scripts.certify_lever_live import _manual_challenge_ready
     from scripts.export_lever_phase_a_record import (
         build_phase_a_candidate,
@@ -192,7 +188,7 @@ async def run(args: argparse.Namespace) -> int:
     )
 
     target = load_locked_target(args.review_id, Path(args.corpus_root))
-    output_dir = Path(args.output_dir) / target["review_id"]
+    output_dir = Path(args.output_dir) / str(target["review_id"])
     output_dir.mkdir(parents=True, exist_ok=True)
     report_path = output_dir / "lever-phase-a-interactive-report.json"
     candidate_path = output_dir / "lever-phase-a-candidate.csv"
@@ -201,7 +197,7 @@ async def run(args: argparse.Namespace) -> int:
 
     inspection, profile, certification_metadata = await _inspect_profile_and_target(target)
     target_metadata = certification_metadata["supervised_target"]
-    url = target["canonical_application_url"]
+    url = str(target["canonical_application_url"])
     initial_result = await fill_and_submit_application(
         job_url=url,
         user_profile=profile,
@@ -212,53 +208,44 @@ async def run(args: argparse.Namespace) -> int:
     )
 
     session: Optional[Any] = None
-    handoff_verification: Dict[str, Any] = {}
-    submit_guard: Dict[str, Any] = {}
     try:
-        initially_ready = bool(
-            initial_result.get("success")
-            and initial_result.get("ready_to_submit")
-            and initial_result.get("ats_adapter") == "lever"
-        )
-        if initially_ready:
-            resumed_result = dict(initial_result)
-        else:
-            reason = challenge_reason(initial_result)
-            snapshot = dict(initial_result.get("handoff_snapshot") or {})
-            if snapshot and reason:
-                session = transient_handoff_session(
-                    snapshot,
-                    reason_code=reason,
-                    target_metadata=target_metadata,
-                )
-            if not _manual_challenge_ready(
-                dict(initial_result),
-                any(
-                    item.get("action") in {
-                        "ats_submit_clicked",
-                        "submit_click",
-                        "submit_clicked",
-                    }
-                    for item in initial_result.get("log") or []
-                ),
-            ):
-                raise LeverPhaseAOperatorError(
-                    "The selected target did not reach a clean resumable human-verification "
-                    "boundary. No answer or control will be guessed."
-                )
-            if session is None:
-                raise LeverPhaseAOperatorError(
-                    "The clean handoff boundary did not retain a local browser session"
-                )
-            handoff_verification, submit_guard = await _wait_for_challenge(session)
-            resumed_result = await resume_handoff_application(
-                session,
-                user_profile=profile,
-                cover_letter=SYNTHETIC_TEXT_RESPONSE,
-                resume_path=str(resume_path),
-                dry_run=True,
+        reason = challenge_reason(initial_result)
+        snapshot = dict(initial_result.get("handoff_snapshot") or {})
+        if snapshot and reason:
+            session = transient_handoff_session(
+                snapshot,
+                reason_code=reason,
+                target_metadata=target_metadata,
+            )
+        if not _manual_challenge_ready(
+            dict(initial_result),
+            any(
+                item.get("action") in {
+                    "ats_submit_clicked",
+                    "submit_click",
+                    "submit_clicked",
+                }
+                for item in initial_result.get("log") or []
+            ),
+        ):
+            raise LeverPhaseAOperatorError(
+                "The selected target did not reach a clean resumable human-verification "
+                "boundary. This interactive runner does not certify ordinary dry runs, "
+                "and no answer or control will be guessed."
+            )
+        if session is None:
+            raise LeverPhaseAOperatorError(
+                "The clean handoff boundary did not retain a local browser session"
             )
 
+        handoff_verification, submit_guard = await _wait_for_challenge(session)
+        resumed_result = await resume_handoff_application(
+            session,
+            user_profile=profile,
+            cover_letter=SYNTHETIC_TEXT_RESPONSE,
+            resume_path=str(resume_path),
+            dry_run=True,
+        )
         exercise = build_resumed_exercise(
             url=url,
             initial_result=initial_result,
@@ -275,7 +262,7 @@ async def run(args: argparse.Namespace) -> int:
             print(f"Nonqualifying report retained at {report_path}")
             return 1
 
-        run_id = args.run_id or f"local-{target['review_id'].lower()}-{digest[:16]}"
+        run_id = args.run_id or f"local-{str(target['review_id']).lower()}-{digest[:16]}"
         source_reference = args.source_reference or f"local-sha256:{digest}"
         record = build_phase_a_candidate(
             report,
@@ -284,8 +271,8 @@ async def run(args: argparse.Namespace) -> int:
             run_id=run_id,
             operator=args.operator,
             source_reference=source_reference,
-            employer=target["employer"],
-            role=target["role"],
+            employer=str(target["employer"]),
+            role=str(target["role"]),
         )
         export_phase_a_candidate(candidate_path, record)
         print()
@@ -298,7 +285,7 @@ async def run(args: argparse.Namespace) -> int:
     finally:
         if session is not None:
             try:
-                terminate_retained_browser(session)
+                terminate_and_cleanup_retained_browser(session)
             except Exception as exc:
                 print(f"Warning: retained Chromium cleanup failed: {exc}", file=sys.stderr)
 
