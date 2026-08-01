@@ -19,6 +19,10 @@ RETENTION_MANIFEST_NAME = "lever-phase-a-interactive-retention-manifest.json"
 ARCHIVE_ROOT_NAME = "lever-phase-a-external-archives"
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _DIGITS = re.compile(r"[1-9][0-9]*")
+_INTERACTIVE_RUN_ID = re.compile(
+    r"github-actions-[1-9][0-9]*-interactive-d8-[0-9]{3}",
+    re.IGNORECASE,
+)
 
 
 def _sha256(value: bytes) -> str:
@@ -52,6 +56,54 @@ def _review_id_from_artifact_path(artifact_path: Any) -> str:
     return ""
 
 
+def _load_artifact_payload(
+    row: Mapping[str, Any],
+    *,
+    baseline_path: str | Path,
+) -> Mapping[str, Any]:
+    raw_path = str(row.get("artifact_path") or "").strip()
+    if not raw_path:
+        return {}
+    relative = PurePosixPath(raw_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        return {}
+
+    evidence_root = Path(baseline_path).resolve().parent
+    artifact_path = (evidence_root / Path(*relative.parts)).resolve()
+    try:
+        artifact_path.relative_to(evidence_root)
+    except ValueError:
+        return {}
+    if not artifact_path.is_file():
+        return {}
+    try:
+        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, Mapping) else {}
+
+
+def _requires_external_archive(
+    row: Mapping[str, Any],
+    *,
+    baseline_path: str | Path,
+) -> bool:
+    ready = (
+        str(row.get("pre_submit_state") or "").strip() == "ready_to_submit"
+        and str(row.get("final_status") or "").strip() == "dry_run_passed"
+    )
+    if not ready:
+        return False
+
+    if _review_id_from_artifact_path(row.get("artifact_path")):
+        return True
+    if _INTERACTIVE_RUN_ID.fullmatch(str(row.get("run_id") or "").strip()):
+        return True
+
+    artifact = _load_artifact_payload(row, baseline_path=baseline_path)
+    return artifact.get("interactive_handoff") is True
+
+
 def _load_source_rows(path: Path) -> list[Dict[str, str]]:
     if not path.is_file():
         return []
@@ -75,17 +127,15 @@ def verify_phase_a_external_archive(
     *,
     baseline_path: str | Path,
 ) -> Dict[str, Any]:
-    """Verify the committed copy of the exact GitHub retention artifact.
+    """Verify durable retention for interactive Lever Phase A candidates.
 
-    Boundary and other nonqualifying rows do not require an external archive. Any row
-    claiming ``ready_to_submit`` plus ``dry_run_passed`` fails closed unless the
-    canonical source manifest and durable zip agree with the retained report.
+    Historical noninteractive records continue to use the verifier-qualified evidence
+    contract that existed when they were retained. New interactive-handoff candidates
+    fail closed unless the canonical source manifest and durable GitHub artifact zip
+    agree with the retained report.
     """
 
-    required = (
-        str(row.get("pre_submit_state") or "").strip() == "ready_to_submit"
-        and str(row.get("final_status") or "").strip() == "dry_run_passed"
-    )
+    required = _requires_external_archive(row, baseline_path=baseline_path)
     result: Dict[str, Any] = {
         "required": required,
         "verified": not required,
