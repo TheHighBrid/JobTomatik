@@ -1,8 +1,8 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
-  LayoutDashboard, BrainCircuit, Search, ListTodo, ClipboardList, HeartPulse,
-  User, Settings, LogOut, Menu, X
+  LayoutDashboard, BrainCircuit, Search, ListTodo, ClipboardList, BookOpenCheck,
+  HeartPulse, User, Settings, LogOut, Menu, X
 } from 'lucide-react'
 import { useAuthStore, useNotificationStore } from '../store'
 import { getUnreadCount } from '../api/client'
@@ -16,6 +16,7 @@ const NAV = [
   { to: '/search', icon: Search, label: 'Job Search' },
   { to: '/queue', icon: ListTodo, label: 'Queue' },
   { to: '/applications', icon: ClipboardList, label: 'Applications' },
+  { to: '/evidence-materials', icon: BookOpenCheck, label: 'Evidence & Materials' },
   { to: '/adapter-health', icon: HeartPulse, label: 'Adapter Health' },
   { to: '/profile', icon: User, label: 'Profile' },
   { to: '/settings', icon: Settings, label: 'Settings' },
