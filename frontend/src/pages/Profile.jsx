@@ -6,7 +6,7 @@ import { getProfile, updateProfile, uploadResume, deleteResume } from '../api/cl
 import { useAuthStore } from '../store'
 import {
   User, Phone, MapPin, Link2, Globe, Upload,
-  Trash2, FileText, CheckCircle2, Loader2
+  Trash2, FileText, CheckCircle2, Loader2, Building2,
 } from 'lucide-react'
 
 function Section({ title, children }) {
@@ -30,6 +30,36 @@ function Field({ label, icon: Icon, children }) {
   )
 }
 
+function serializeAtsTargets(targets) {
+  return (targets || [])
+    .filter((target) => target?.provider && target?.identifier)
+    .map((target) => {
+      const company = target.company && target.company !== target.identifier
+        ? `|${target.company}`
+        : ''
+      return `${target.provider}:${target.identifier}${company}`
+    })
+    .join('\n')
+}
+
+function parseAtsTargets(value) {
+  const supported = new Set(['greenhouse', 'lever', 'ashby'])
+  return value
+    .split(/[\n,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [providerAndIdentifier, company] = entry.split('|').map((part) => part.trim())
+      const separator = providerAndIdentifier.indexOf(':')
+      if (separator < 1) return null
+      const provider = providerAndIdentifier.slice(0, separator).trim().toLowerCase()
+      const identifier = providerAndIdentifier.slice(separator + 1).trim()
+      if (!supported.has(provider) || !/^[A-Za-z0-9_-]+$/.test(identifier)) return null
+      return { provider, identifier, company: company || identifier }
+    })
+    .filter(Boolean)
+}
+
 const DEFAULT_FORM = {
   full_name: '',
   phone: '',
@@ -45,6 +75,7 @@ const DEFAULT_PREFS = {
   preferred_titles: '',
   preferred_locations: '',
   min_salary: '',
+  ats_targets: '',
   current_role: '',
   years_experience: '',
   key_achievements: '',
@@ -62,10 +93,9 @@ export default function Profile() {
   const { data: profile, isLoading } = useQuery({
     queryKey: ['profile'],
     queryFn: () => getProfile(),
-    select: (r) => r.data,
+    select: (response) => response.data,
   })
 
-  // Populate form from server data (runs once after load, and again if profile changes)
   useEffect(() => {
     if (!profile) return
     setForm({
@@ -82,6 +112,7 @@ export default function Profile() {
       preferred_titles: (profile.job_preferences?.preferred_titles || []).join(', '),
       preferred_locations: (profile.job_preferences?.preferred_locations || []).join(', '),
       min_salary: profile.job_preferences?.min_salary || '',
+      ats_targets: serializeAtsTargets(profile.job_preferences?.ats_targets),
       current_role: profile.profile_data?.current_role || '',
       years_experience: profile.profile_data?.years_experience || '',
       key_achievements: profile.profile_data?.key_achievements || '',
@@ -89,28 +120,31 @@ export default function Profile() {
     })
   }, [profile])
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
-  const setP = (k) => (e) => setPrefs((p) => ({ ...p, [k]: e.target.value }))
+  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
+  const setP = (key) => (event) => setPrefs((current) => ({ ...current, [key]: event.target.value }))
 
   const updateMut = useMutation({
     mutationFn: () => updateProfile({
       ...form,
       profile_data: {
+        ...(profile?.profile_data || {}),
         current_role: prefs.current_role,
         years_experience: prefs.years_experience,
         key_achievements: prefs.key_achievements,
         employment_history: prefs.employment_history,
       },
       job_preferences: {
-        skills: prefs.skills.split(',').map((s) => s.trim()).filter(Boolean),
-        preferred_titles: prefs.preferred_titles.split(',').map((s) => s.trim()).filter(Boolean),
-        preferred_locations: prefs.preferred_locations.split(',').map((s) => s.trim()).filter(Boolean),
-        min_salary: prefs.min_salary ? parseInt(prefs.min_salary) : null,
+        ...(profile?.job_preferences || {}),
+        skills: prefs.skills.split(',').map((item) => item.trim()).filter(Boolean),
+        preferred_titles: prefs.preferred_titles.split(',').map((item) => item.trim()).filter(Boolean),
+        preferred_locations: prefs.preferred_locations.split(',').map((item) => item.trim()).filter(Boolean),
+        min_salary: prefs.min_salary ? parseInt(prefs.min_salary, 10) : null,
+        ats_targets: parseAtsTargets(prefs.ats_targets),
       },
     }),
-    onSuccess: (res) => {
-      updateUser(res.data)
-      qc.invalidateQueries(['profile'])
+    onSuccess: (response) => {
+      updateUser(response.data)
+      qc.invalidateQueries({ queryKey: ['profile'] })
       toast.success('Profile saved!')
     },
     onError: () => toast.error('Failed to save profile'),
@@ -118,9 +152,9 @@ export default function Profile() {
 
   const resumeMut = useMutation({
     mutationFn: (file) => uploadResume(file),
-    onSuccess: (res) => {
-      updateUser(res.data)
-      qc.invalidateQueries(['profile'])
+    onSuccess: (response) => {
+      updateUser(response.data)
+      qc.invalidateQueries({ queryKey: ['profile'] })
       toast.success('Resume uploaded!')
     },
     onError: () => toast.error('Upload failed. Only PDF files are accepted.'),
@@ -128,15 +162,14 @@ export default function Profile() {
 
   const deleteResumeMut = useMutation({
     mutationFn: deleteResume,
-    onSuccess: (res) => {
-      updateUser(res.data)
-      qc.invalidateQueries(['profile'])
+    onSuccess: (response) => {
+      updateUser(response.data)
+      qc.invalidateQueries({ queryKey: ['profile'] })
       toast.success('Resume removed.')
     },
   })
 
   const handleFile = useCallback((file) => {
-    // Always reset the hidden input so re-picking the same file fires onChange next time
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (!file) return
     if (!file.name.toLowerCase().endsWith('.pdf')) {
@@ -147,14 +180,12 @@ export default function Profile() {
   }, [resumeMut])
 
   const onDrop = useCallback((accepted, rejected) => {
-    // Try accepted first, then rejected (Android sends wrong MIME so dropzone rejects them)
     const file = accepted[0] ?? rejected[0]?.file
     handleFile(file)
   }, [handleFile])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    // No MIME type filter — Android/iOS send wrong types for PDFs
     maxFiles: 1,
     noClick: false,
   })
@@ -195,7 +226,6 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Resume */}
       <Section title="Resume (PDF)">
         {profile?.resume_filename ? (
           <div className="flex items-center gap-4 p-4 bg-green-50 border border-green-200 rounded-xl">
@@ -207,6 +237,7 @@ export default function Profile() {
               </div>
             </div>
             <button
+              type="button"
               onClick={() => deleteResumeMut.mutate()}
               disabled={deleteResumeMut.isPending}
               className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -216,7 +247,6 @@ export default function Profile() {
           </div>
         ) : (
           <div className="space-y-3">
-            {/* Drag-drop zone */}
             <div
               {...getRootProps()}
               className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
@@ -236,17 +266,13 @@ export default function Profile() {
               </p>
               <p className="text-xs text-gray-400 mt-1">or use the button below</p>
             </div>
-            {/* Fallback plain file picker — more reliable on Android */}
             <input
               ref={fileInputRef}
               type="file"
               accept=".pdf"
               className="hidden"
               disabled={resumeMut.isPending}
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                handleFile(file)
-              }}
+              onChange={(event) => handleFile(event.target.files?.[0])}
             />
             <button
               type="button"
@@ -263,7 +289,6 @@ export default function Profile() {
         )}
       </Section>
 
-      {/* Personal info */}
       <Section title="Personal Information">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Full Name" icon={User}>
@@ -274,7 +299,7 @@ export default function Profile() {
           </Field>
           <div className="md:col-span-2">
             <Field label="Address / City" icon={MapPin}>
-              <input type="text" className="input" placeholder="San Francisco, CA 94105" value={form.address} onChange={set('address')} />
+              <input type="text" className="input" placeholder="Ottawa, ON" value={form.address} onChange={set('address')} />
             </Field>
           </div>
           <Field label="LinkedIn URL" icon={Link2}>
@@ -291,12 +316,11 @@ export default function Profile() {
         </div>
       </Section>
 
-      {/* Career profile */}
       <Section title="Career Profile">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Field label="Current / Most Recent Role">
-              <input type="text" className="input" placeholder="Senior Software Engineer" value={prefs.current_role} onChange={setP('current_role')} />
+              <input type="text" className="input" placeholder="Fraud Investigator" value={prefs.current_role} onChange={setP('current_role')} />
             </Field>
             <Field label="Years of Experience">
               <input type="text" className="input" placeholder="5" value={prefs.years_experience} onChange={setP('years_experience')} />
@@ -305,7 +329,7 @@ export default function Profile() {
           <Field label="Key Achievements (used in cover letters)">
             <textarea
               className="input min-h-[80px] resize-none"
-              placeholder="Led migration from monolith to microservices, reducing latency by 40%…"
+              placeholder="Resolved complex investigations and maintained audit-ready case notes…"
               value={prefs.key_achievements}
               onChange={setP('key_achievements')}
             />
@@ -324,25 +348,34 @@ export default function Profile() {
         </div>
       </Section>
 
-      {/* Job preferences */}
       <Section title="Job Preferences">
         <div className="space-y-4">
           <Field label="Skills (comma-separated)">
-            <input type="text" className="input" placeholder="Python, React, PostgreSQL, AWS" value={prefs.skills} onChange={setP('skills')} />
+            <input type="text" className="input" placeholder="Fraud, AML, KYC, bilingual" value={prefs.skills} onChange={setP('skills')} />
           </Field>
           <Field label="Target Job Titles (comma-separated)">
-            <input type="text" className="input" placeholder="Senior Engineer, Staff Engineer, Tech Lead" value={prefs.preferred_titles} onChange={setP('preferred_titles')} />
+            <input type="text" className="input" placeholder="Fraud Investigator, AML Analyst" value={prefs.preferred_titles} onChange={setP('preferred_titles')} />
           </Field>
           <Field label="Preferred Locations (comma-separated)">
-            <input type="text" className="input" placeholder="San Francisco, Remote, New York" value={prefs.preferred_locations} onChange={setP('preferred_locations')} />
+            <input type="text" className="input" placeholder="Ottawa, Gatineau, Remote" value={prefs.preferred_locations} onChange={setP('preferred_locations')} />
           </Field>
           <Field label="Minimum Salary (CAD / year)">
             <input type="number" className="input" placeholder="65000" value={prefs.min_salary} onChange={setP('min_salary')} />
           </Field>
+          <Field label="Official ATS Boards" icon={Building2}>
+            <textarea
+              className="input min-h-[110px] resize-y font-mono text-xs"
+              placeholder={"greenhouse:example-bank|Example Bank\nlever:example-fintech|Example Fintech\nashby:example-org|Example Organization"}
+              value={prefs.ats_targets}
+              onChange={setP('ats_targets')}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              One board per line using provider:identifier|Company. These targets power scheduled official-API discovery.
+            </p>
+          </Field>
         </div>
       </Section>
 
-      {/* Email signature */}
       <Section title="Email Signature">
         <textarea
           className="input min-h-[80px] resize-none font-mono text-xs"
@@ -354,6 +387,7 @@ export default function Profile() {
       </Section>
 
       <button
+        type="button"
         onClick={() => updateMut.mutate()}
         disabled={updateMut.isPending}
         className="btn-primary w-full py-3 text-base"
