@@ -1,20 +1,31 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.job import JobSource, JobStatus, JobType
 
 
+class ATSTarget(BaseModel):
+    provider: Literal["greenhouse", "lever", "ashby"]
+    identifier: str = Field(
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    company: Optional[str] = Field(default=None, max_length=255)
+
+
 class JobSearch(BaseModel):
-    keywords: str
-    location: Optional[str] = None
-    salary_min: Optional[int] = None
-    salary_max: Optional[int] = None
+    keywords: str = Field(min_length=1, max_length=500)
+    location: Optional[str] = Field(default=None, max_length=255)
+    salary_min: Optional[int] = Field(default=None, ge=0)
+    salary_max: Optional[int] = Field(default=None, ge=0)
     job_type: Optional[JobType] = None
     sources: Optional[List[JobSource]] = None
+    ats_targets: List[ATSTarget] = Field(default_factory=list, max_length=25)
     remote_only: Optional[bool] = False
-    limit: Optional[int] = 50
+    limit: int = Field(default=50, ge=1, le=100)
 
 
 class JobOut(BaseModel):
