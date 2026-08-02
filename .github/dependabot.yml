@@ -18,6 +18,16 @@ updates:
       - dependencies
       - frontend
     groups:
+      react-stack:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+        update-types:
+          - major
+          - minor
+          - patch
       capacitor:
         patterns:
           - "@capacitor/*"
@@ -28,6 +38,8 @@ updates:
         dependency-type: production
         exclude-patterns:
           - "@capacitor/*"
+          - "react"
+          - "react-dom"
         update-types:
           - minor
           - patch
@@ -35,6 +47,8 @@ updates:
         dependency-type: development
         exclude-patterns:
           - "@capacitor/*"
+          - "@types/react"
+          - "@types/react-dom"
         update-types:
           - minor
           - patch
