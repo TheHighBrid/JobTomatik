@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
@@ -6,62 +6,28 @@ from app.auth import get_current_user
 from app.models.user import User
 from app.models.job import Job, JobStatus
 from app.models.application import Application
-from app.models.notification import Notification, NotificationType
 from app.schemas.job import JobOut, JobSearch, JobListOut
-from app.services.job_scraper import search_jobs
-from app.services.keyword_tagger import tag_job
+from app.services.discovery_pipeline import persist_discovery_results
+from app.services.discovery_search import search_jobs
 from app.tasks.scraping import run_job_search
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
-def _save_search_results(db: Session, user: User, raw_jobs: List[dict], keywords: str) -> int:
-    saved = 0
-    prefs = user.job_preferences or {}
-    for raw in raw_jobs:
-        existing = (
-            db.query(Job)
-            .filter(Job.external_id == raw.get("external_id"))
-            .first()
-        )
-        if existing:
-            continue
-
-        tagged = tag_job(raw, prefs)
-        job = Job(
-            external_id=tagged.get("external_id"),
-            title=tagged["title"],
-            company=tagged["company"],
-            location=tagged.get("location"),
-            salary_min=tagged.get("salary_min"),
-            salary_max=tagged.get("salary_max"),
-            salary_currency=tagged.get("salary_currency", "USD"),
-            job_type=tagged.get("job_type"),
-            description=tagged.get("description"),
-            requirements=tagged.get("requirements"),
-            url=tagged.get("url"),
-            source=tagged.get("source"),
-            status=JobStatus.queued,
-            tags=tagged.get("tags", []),
-            skills=tagged.get("skills", []),
-            seniority=tagged.get("seniority"),
-            industry=tagged.get("industry"),
-            relevance_score=tagged.get("relevance_score", 0.5),
-            raw_data=raw,
-        )
-        db.add(job)
-        saved += 1
-
-    if saved > 0:
-        db.add(Notification(
-            user_id=user.id,
-            type=NotificationType.new_match,
-            title=f"{saved} new job matches found",
-            message=f"We found {saved} new jobs matching your search for \"{keywords}\".",
-            data={"count": saved, "keywords": keywords},
-        ))
-
-    return saved
+def _save_search_results(
+    db: Session,
+    user: User,
+    raw_jobs: List[dict],
+    keywords: str,
+    search_params: dict | None = None,
+) -> dict:
+    return persist_discovery_results(
+        db,
+        user,
+        raw_jobs,
+        keywords=keywords,
+        search_params=search_params or {"keywords": keywords},
+    )
 
 
 @router.post("/search", response_model=dict)
@@ -70,7 +36,7 @@ async def trigger_job_search(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Kick off a background job search and return immediately."""
+    """Kick off a background discovery and intelligence run."""
     task = run_job_search.delay(
         user_id=current_user.id,
         search_params={
@@ -80,10 +46,15 @@ async def trigger_job_search(
             "salary_max": search.salary_max,
             "job_type": search.job_type.value if search.job_type else None,
             "sources": [s.value for s in search.sources] if search.sources else None,
+            "ats_targets": [target.model_dump() for target in search.ats_targets],
             "limit": search.limit,
         },
     )
-    return {"task_id": task.id, "status": "queued", "message": "Job search started in background"}
+    return {
+        "task_id": task.id,
+        "status": "queued",
+        "message": "Job discovery and evaluation started in background",
+    }
 
 
 @router.get("/queue", response_model=JobListOut)
@@ -146,7 +117,7 @@ async def approve_job(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """User approves this job — moves it to 'approved' status."""
+    """User approves this job and moves it to approved status."""
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -222,7 +193,6 @@ async def bulk_apply(
         db.flush()
 
         cl_task = generate_cover_letter_task.delay(app_obj.id)
-        # Generate cover letter first (60s), then submit
         sub_task = submit_application_task.apply_async(
             args=[app_obj.id],
             kwargs={"dry_run": dry_run},
@@ -256,7 +226,7 @@ async def run_autopilot(
     Full autonomous pipeline:
     1. Search jobs using user preferences
     2. Auto-approve all queued jobs above min_score
-    3. Generate cover letters + submit applications
+    3. Generate cover letters and submit applications
     """
     from app.models.application import ApplicationStatus
     from app.tasks.applications import generate_cover_letter_task, submit_application_task
@@ -268,23 +238,35 @@ async def run_autopilot(
     )
     locations = prefs.get("preferred_locations", [])
     location = locations[0] if locations else "Ottawa, Ontario"
+    ats_targets = [
+        target
+        for target in (prefs.get("ats_targets") or [])
+        if isinstance(target, dict)
+    ]
+    ats_sources = sorted({
+        str(target.get("provider") or "").lower()
+        for target in ats_targets
+        if target.get("provider")
+    })
 
-    # Step 1: run the search now so this autopilot call can approve and submit
-    # the jobs it just found. Queuing the search and immediately querying the DB
-    # left fresh autopilot runs with zero applications because the Celery search
-    # had not finished yet.
     search_params = {
         "keywords": keywords,
         "location": location,
         "salary_min": prefs.get("min_salary"),
-        "sources": ["jobbank", "indeed", "linkedin", "glassdoor"],
+        "sources": ["jobbank", "indeed", "linkedin", "glassdoor", *ats_sources],
+        "ats_targets": ats_targets,
         "limit": 50,
     }
     raw_jobs = await search_jobs(**search_params)
-    saved_jobs = _save_search_results(db, current_user, raw_jobs, keywords)
+    discovery_stats = _save_search_results(
+        db,
+        current_user,
+        raw_jobs,
+        keywords,
+        search_params=search_params,
+    )
     db.commit()
 
-    # Step 2: auto-approve all queued jobs above threshold
     queued_jobs = (
         db.query(Job)
         .filter(Job.status == JobStatus.queued, Job.relevance_score >= min_score)
@@ -298,7 +280,6 @@ async def run_autopilot(
         auto_approved += 1
     db.commit()
 
-    # Step 3: create applications and queue submissions for all approved jobs
     approved_jobs = (
         db.query(Job)
         .filter(Job.status == JobStatus.approved)
@@ -337,14 +318,16 @@ async def run_autopilot(
     return {
         "search_task_id": None,
         "jobs_found": len(raw_jobs),
-        "jobs_saved": saved_jobs,
+        "jobs_saved": discovery_stats["saved"],
+        "jobs_blocked": discovery_stats["blocked"],
+        "evaluations_created": discovery_stats["evaluations_created"],
+        "agent_run_id": discovery_stats["agent_run_id"],
         "auto_approved": auto_approved,
         "applications_queued": applied,
         "applications_skipped": skipped,
         "dry_run": dry_run,
         "message": (
-            f"Autonomous pipeline running. "
-            f"Search started, {auto_approved} jobs auto-approved, "
-            f"{applied} applications queued for submission."
+            f"Autonomous pipeline running. {discovery_stats['saved']} jobs saved, "
+            f"{auto_approved} jobs auto-approved, and {applied} applications queued."
         ),
     }
