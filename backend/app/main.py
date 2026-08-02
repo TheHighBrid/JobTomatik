@@ -19,6 +19,7 @@ from app.api import (
     intelligence,
     jobs,
     lever_pilot_ledger,
+    materials,
     notifications,
     pilot_ledger,
     profile,
@@ -230,6 +231,7 @@ app.include_router(adapter_health.router, prefix="/api")
 app.include_router(handoffs.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
 app.include_router(answer_policies.router, prefix="/api")
+app.include_router(materials.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(settings_api.router, prefix="/api")
