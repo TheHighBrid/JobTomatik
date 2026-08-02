@@ -2,7 +2,7 @@
 # another constrained local server. This intentionally excludes browser/image
 # automation packages such as Playwright and Pillow; auth/login/register do not
 # need them.
-fastapi==0.140.13
+fastapi==0.141.1
 uvicorn==0.51.0
 sqlalchemy==2.0.30
 alembic==1.18.5
