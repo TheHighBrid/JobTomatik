@@ -7,7 +7,11 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.models.application import Application, ApplicationEvent
 from app.models.job import Job
-from app.models.material import ApplicationMaterial, EvidenceUnit
+from app.models.material import (
+    ApplicationMaterial,
+    ApplicationMaterialEvidence,
+    EvidenceUnit,
+)
 from app.models.user import User
 from app.schemas.material import (
     ApplicationMaterialOut,
@@ -46,7 +50,7 @@ def _load_material(db: Session, material_id: int, user_id: int) -> ApplicationMa
         db.query(ApplicationMaterial)
         .options(
             joinedload(ApplicationMaterial.evidence_links).joinedload(
-                "evidence_unit"
+                ApplicationMaterialEvidence.evidence_unit
             )
         )
         .filter(
@@ -190,7 +194,7 @@ def list_application_materials(
         db.query(ApplicationMaterial)
         .options(
             joinedload(ApplicationMaterial.evidence_links).joinedload(
-                "evidence_unit"
+                ApplicationMaterialEvidence.evidence_unit
             )
         )
         .filter(
