@@ -81,7 +81,8 @@ def test_pipeline_persists_job_evaluation_graph_memory_and_agent_run(auth_client
     assert stats["memories_used"] == 1
     assert job.source == JobSource.greenhouse
     assert job.relevance_score >= 0.7
-    assert job.raw_data["discovery_score"]["memory_matches"] == [memory.id]
+    assert "discovery_score" not in job.raw_data
+    assert evaluation.source_snapshot["scoring"]["memory_matches"] == [memory.id]
     assert evaluation.job_id == job.id
     assert evaluation.user_id == user.id
     assert evaluation.legitimacy_status == "likely_legitimate"
@@ -151,8 +152,10 @@ def test_global_job_dedupe_still_creates_user_scoped_intelligence(auth_client, d
     assert second_stats["duplicates"] == 1
     assert second_stats["evaluations_created"] == 1
     assert db_session.query(Job).count() == 1
+    assert "discovery_score" not in job.raw_data
     assert {evaluation.user_id for evaluation in evaluations} == {first_user.id, second_user.id}
     assert all(evaluation.job_id == job.id for evaluation in evaluations)
+    assert all("scoring" in evaluation.source_snapshot for evaluation in evaluations)
     assert db_session.query(KnowledgeNode).count() == 4
     assert db_session.query(KnowledgeEdge).count() == 2
 
