@@ -98,6 +98,22 @@ export const uploadResume = (file) => {
 }
 export const deleteResume = () => api.delete('/profile/resume')
 
+// Verified applicant evidence and application materials
+export const listEvidenceUnits = (params = {}) => api.get('/materials/evidence', { params })
+export const rebuildEvidenceLedger = () => api.post('/materials/evidence/rebuild')
+export const createEvidenceUnit = (data) => api.post('/materials/evidence', data)
+export const updateEvidenceUnit = (id, data) => api.patch(`/materials/evidence/${id}`, data)
+export const deactivateEvidenceUnit = (id) => api.delete(`/materials/evidence/${id}`)
+export const listApplicationMaterials = (applicationId, params = {}) =>
+  api.get(`/materials/applications/${applicationId}`, { params })
+export const generateApplicationMaterial = (applicationId, materialType = 'cover_letter') =>
+  api.post(`/materials/applications/${applicationId}/generate`, null, {
+    params: { material_type: materialType },
+  })
+export const generateApplicationMaterialBundle = (applicationId) =>
+  api.post(`/materials/applications/${applicationId}/generate-bundle`)
+export const getApplicationMaterial = (materialId) => api.get(`/materials/${materialId}`)
+
 // Answer policy vault
 export const getAnswerPolicyCatalog = () => api.get('/profile/answer-policies/catalog')
 export const getAnswerPolicyReadiness = (params = {}) =>
