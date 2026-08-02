@@ -9,6 +9,9 @@ class JobSource(str, enum.Enum):
     indeed = "indeed"
     glassdoor = "glassdoor"
     jobbank = "jobbank"
+    greenhouse = "greenhouse"
+    lever = "lever"
+    ashby = "ashby"
     manual = "manual"
 
 
