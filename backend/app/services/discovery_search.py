@@ -19,8 +19,10 @@ BROAD_SOURCES = {"indeed", "linkedin", "jobbank", "glassdoor"}
 
 
 def _source_values(sources: list[Any] | None) -> list[str]:
-    if not sources:
+    if sources is None:
         return ["indeed", "linkedin", "jobbank"]
+    if not sources:
+        return []
     return list(
         dict.fromkeys(
             str(getattr(source, "value", source)).strip().lower()
