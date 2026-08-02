@@ -128,6 +128,12 @@ class Application(Base):
     user = relationship("User", back_populates="applications")
     job = relationship("Job", back_populates="applications")
     followups = relationship("FollowUp", back_populates="application", cascade="all, delete-orphan")
+    materials = relationship(
+        "ApplicationMaterial",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ApplicationMaterial.created_at",
+    )
     manual_reviews = relationship(
         "ManualReviewTask",
         back_populates="application",
