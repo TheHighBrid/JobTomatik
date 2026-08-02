@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
@@ -22,6 +23,7 @@ from app.schemas.material import (
     MaterialGenerationOut,
 )
 from app.services.evidence_ledger import (
+    ACTIVE_STATUSES,
     create_manual_evidence,
     evidence_hash,
     rebuild_user_evidence,
@@ -116,7 +118,14 @@ def add_evidence(
         confidence=data.confidence,
         provenance=data.provenance,
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="An identical evidence unit already exists",
+        ) from exc
     db.refresh(unit)
     return unit
 
@@ -137,6 +146,13 @@ def update_evidence(
         raise HTTPException(status_code=404, detail="Evidence unit not found")
 
     updates = data.model_dump(exclude_unset=True)
+    requested_status = updates.get("verification_status")
+    if requested_status is not None and requested_status.strip().lower() not in ACTIVE_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"verification_status must be one of {sorted(ACTIVE_STATUSES)}",
+        )
+
     for field, value in updates.items():
         if field in {"label", "statement", "organization", "role"} and value is not None:
             value = value.strip()
@@ -157,7 +173,14 @@ def update_evidence(
         }
         unit.verification_status = "user_confirmed"
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="This edit would duplicate an existing evidence unit",
+        ) from exc
     db.refresh(unit)
     return unit
 
