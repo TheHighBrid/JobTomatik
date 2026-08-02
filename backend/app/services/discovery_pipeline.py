@@ -219,41 +219,72 @@ def _upsert_knowledge(
         company_node.observed_at = now
 
     role_key = f"job:{job.id}"
-    role_node = KnowledgeNode(
-        user_id=user.id,
-        node_type="role",
-        external_key=role_key,
-        label=job.title,
-        payload={
-            "job_id": job.id,
+    role_node = (
+        db.query(KnowledgeNode)
+        .filter(
+            KnowledgeNode.user_id == user.id,
+            KnowledgeNode.external_key == role_key,
+        )
+        .first()
+    )
+    if role_node is None:
+        role_node = KnowledgeNode(
+            user_id=user.id,
+            node_type="role",
+            external_key=role_key,
+            label=job.title,
+            payload={
+                "job_id": job.id,
+                "location": job.location,
+                "skills": job.skills or [],
+                "seniority": job.seniority,
+                "relevance_score": job.relevance_score,
+            },
+            confidence=0.95 if raw.get("official_public_ats") else 0.75,
+            source_url=job.url,
+            observed_at=now,
+        )
+        db.add(role_node)
+        db.flush()
+        nodes_created += 1
+    else:
+        role_node.payload = {
+            **(role_node.payload or {}),
             "location": job.location,
             "skills": job.skills or [],
             "seniority": job.seniority,
-            "relevance_score": job.relevance_score,
-        },
-        confidence=0.95 if raw.get("official_public_ats") else 0.75,
-        source_url=job.url,
-        observed_at=now,
-    )
-    db.add(role_node)
-    db.flush()
-    nodes_created += 1
+        }
+        role_node.source_url = job.url or role_node.source_url
+        role_node.observed_at = now
 
-    db.add(
-        KnowledgeEdge(
-            user_id=user.id,
-            from_node_id=company_node.id,
-            to_node_id=role_node.id,
-            relation="hires_for",
-            weight=max(0.1, float(job.relevance_score or 0.0)),
-            evidence={
-                "job_id": job.id,
-                "source_url": job.url,
-                "official_public_ats": bool(raw.get("official_public_ats")),
-            },
+    existing_edge = (
+        db.query(KnowledgeEdge)
+        .filter(
+            KnowledgeEdge.user_id == user.id,
+            KnowledgeEdge.from_node_id == company_node.id,
+            KnowledgeEdge.to_node_id == role_node.id,
+            KnowledgeEdge.relation == "hires_for",
         )
+        .first()
     )
-    return nodes_created, 1
+    edges_created = 0
+    if existing_edge is None:
+        db.add(
+            KnowledgeEdge(
+                user_id=user.id,
+                from_node_id=company_node.id,
+                to_node_id=role_node.id,
+                relation="hires_for",
+                weight=max(0.1, float(job.relevance_score or 0.0)),
+                evidence={
+                    "job_id": job.id,
+                    "source_url": job.url,
+                    "official_public_ats": bool(raw.get("official_public_ats")),
+                },
+            )
+        )
+        edges_created = 1
+    return nodes_created, edges_created
 
 
 def _persist_evaluation(
@@ -380,13 +411,30 @@ def persist_discovery_results(
                 stats["blocked_reasons"][reason] = stats["blocked_reasons"].get(reason, 0) + 1
             continue
 
-        existing = (
+        job = (
             db.query(Job)
             .filter(Job.external_id == tagged.get("external_id"))
             .first()
         )
-        if existing is not None:
+        if job is not None:
             stats["duplicates"] += 1
+            existing_evaluation = (
+                db.query(OpportunityEvaluation)
+                .filter(
+                    OpportunityEvaluation.user_id == user.id,
+                    OpportunityEvaluation.job_id == job.id,
+                )
+                .first()
+            )
+            if existing_evaluation is None:
+                _persist_evaluation(db, user, job, tagged, scoring)
+                nodes, edges = _upsert_knowledge(db, user, job, tagged_raw)
+                stats["evaluations_created"] += 1
+                stats["knowledge_nodes_created"] += nodes
+                stats["knowledge_edges_created"] += edges
+            for memory_id in scoring.get("memory_matches") or []:
+                if memory_id in memory_by_id:
+                    used_memory_ids.add(memory_id)
             continue
 
         job = Job(
