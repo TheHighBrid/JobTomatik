@@ -182,6 +182,8 @@ def _upsert_knowledge(
     raw: dict[str, Any],
 ) -> tuple[int, int]:
     now = datetime.now(timezone.utc)
+    scoring = raw.get("discovery_score") if isinstance(raw.get("discovery_score"), dict) else {}
+    user_relevance_score = float(scoring.get("normalized_score") or job.relevance_score or 0.0)
     company_key = f"company:{_slug(job.company)}"
     company_node = (
         db.query(KnowledgeNode)
@@ -238,7 +240,7 @@ def _upsert_knowledge(
                 "location": job.location,
                 "skills": job.skills or [],
                 "seniority": job.seniority,
-                "relevance_score": job.relevance_score,
+                "relevance_score": user_relevance_score,
             },
             confidence=0.95 if raw.get("official_public_ats") else 0.75,
             source_url=job.url,
@@ -253,6 +255,7 @@ def _upsert_knowledge(
             "location": job.location,
             "skills": job.skills or [],
             "seniority": job.seniority,
+            "relevance_score": user_relevance_score,
         }
         role_node.source_url = job.url or role_node.source_url
         role_node.observed_at = now
@@ -275,15 +278,23 @@ def _upsert_knowledge(
                 from_node_id=company_node.id,
                 to_node_id=role_node.id,
                 relation="hires_for",
-                weight=max(0.1, float(job.relevance_score or 0.0)),
+                weight=max(0.1, user_relevance_score),
                 evidence={
                     "job_id": job.id,
                     "source_url": job.url,
                     "official_public_ats": bool(raw.get("official_public_ats")),
+                    "scoring_version": scoring.get("scoring_version"),
                 },
             )
         )
         edges_created = 1
+    else:
+        existing_edge.weight = max(0.1, user_relevance_score)
+        existing_edge.evidence = {
+            **(existing_edge.evidence or {}),
+            "source_url": job.url,
+            "scoring_version": scoring.get("scoring_version"),
+        }
     return nodes_created, edges_created
 
 
@@ -401,9 +412,9 @@ def persist_discovery_results(
             memories=memories,
         )
         tagged["relevance_score"] = scoring["normalized_score"]
-        tagged_raw = dict(tagged.get("raw_data") or {})
-        tagged_raw["discovery_score"] = scoring
-        tagged["raw_data"] = tagged_raw
+        provider_raw = dict(tagged.get("raw_data") or {})
+        contextual_raw = {**provider_raw, "discovery_score": scoring}
+        tagged["raw_data"] = provider_raw
 
         if scoring["hard_blockers"]:
             stats["blocked"] += 1
@@ -428,7 +439,7 @@ def persist_discovery_results(
             )
             if existing_evaluation is None:
                 _persist_evaluation(db, user, job, tagged, scoring)
-                nodes, edges = _upsert_knowledge(db, user, job, tagged_raw)
+                nodes, edges = _upsert_knowledge(db, user, job, contextual_raw)
                 stats["evaluations_created"] += 1
                 stats["knowledge_nodes_created"] += nodes
                 stats["knowledge_edges_created"] += edges
@@ -456,13 +467,13 @@ def persist_discovery_results(
             seniority=tagged.get("seniority"),
             industry=tagged.get("industry"),
             relevance_score=tagged.get("relevance_score", 0.0),
-            raw_data=tagged_raw,
+            raw_data=provider_raw,
         )
         db.add(job)
         db.flush()
 
         _persist_evaluation(db, user, job, tagged, scoring)
-        nodes, edges = _upsert_knowledge(db, user, job, tagged_raw)
+        nodes, edges = _upsert_knowledge(db, user, job, contextual_raw)
         stats["saved"] += 1
         stats["evaluations_created"] += 1
         stats["knowledge_nodes_created"] += nodes
