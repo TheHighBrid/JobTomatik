@@ -111,7 +111,10 @@ jobs:
               with pytest.raises(LeverPhaseAProvenanceError):
                   _normalized_manifest_report_path(value)
           ''')
-          tests.write_text(test_source.rstrip() + additions + '\n', encoding='utf-8')
+          tests.write_text(
+              test_source.rstrip() + additions.rstrip() + '\n',
+              encoding='utf-8',
+          )
           PY
 
       - name: Verify focused diff and tests
