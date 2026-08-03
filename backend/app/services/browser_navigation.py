@@ -47,6 +47,12 @@ SUBMIT_SELECTORS = [
     '[data-testid*="submit"]',
     '[aria-label*="submit" i]',
 ]
+CAPTCHA_RESPONSE_SELECTORS = (
+    'textarea[name="g-recaptcha-response"]',
+    'textarea[name="h-captcha-response"]',
+    'input[name="cf-turnstile-response"]',
+    'textarea[name="cf-turnstile-response"]',
+)
 _BLOCKING_CHALLENGES = [
     (
         "captcha_detected",
@@ -332,7 +338,30 @@ async def navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[st
     return {}
 
 
+async def captcha_response_state(page: Any) -> Dict[str, Any]:
+    """Inspect provider response fields without interacting with the challenge."""
+    responses: List[Dict[str, Any]] = []
+    for selector in CAPTCHA_RESPONSE_SELECTORS:
+        try:
+            for element in await page.query_selector_all(selector):
+                value = await element.input_value()
+                responses.append({
+                    "selector": selector,
+                    "length": len(value or ""),
+                })
+        except Exception:
+            continue
+    return {
+        "responses": responses,
+        "has_completed_response": any(
+            int(item.get("length") or 0) >= 20 for item in responses
+        ),
+    }
+
+
 async def detect_blocking_challenge(page) -> Optional[Dict[str, Any]]:
+    response_state = await captcha_response_state(page)
+    captcha_completed = bool(response_state["has_completed_response"])
     for selector in (
         'iframe[src*="recaptcha" i]',
         'iframe[src*="hcaptcha" i]',
@@ -341,6 +370,8 @@ async def detect_blocking_challenge(page) -> Optional[Dict[str, Any]]:
     ):
         try:
             if await page.query_selector(selector):
+                if captcha_completed:
+                    continue
                 return {
                     "reason_code": "captcha_detected",
                     "summary": "A CAPTCHA or human-verification challenge requires manual completion.",
@@ -359,6 +390,8 @@ async def detect_blocking_challenge(page) -> Optional[Dict[str, Any]]:
         body = ""
     haystack = f"{title}\n{body}"
     for reason_code, pattern, summary in _BLOCKING_CHALLENGES:
+        if reason_code == "captcha_detected" and captcha_completed:
+            continue
         if pattern.search(haystack):
             return {
                 "reason_code": reason_code,

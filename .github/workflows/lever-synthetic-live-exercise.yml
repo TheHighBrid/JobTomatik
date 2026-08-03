@@ -4,15 +4,26 @@ on:
   pull_request:
     paths:
       - "backend/app/services/ats_*.py"
+      - "backend/app/services/browser_navigation.py"
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/upload_handler.py"
       - "backend/app/services/lever_certification.py"
+      - "backend/app/services/lever_phase_a_operator.py"
+      - "backend/app/services/lever_phase_a_provenance.py"
       - "backend/app/services/lever_pilot_ingestion.py"
+      - "backend/app/services/retained_browser_operator.py"
       - "backend/scripts/certify_lever_live.py"
       - "backend/scripts/export_lever_phase_a_record.py"
+      - "backend/scripts/finalize_lever_phase_a_handoff.py"
+      - "backend/scripts/run_lever_phase_a_handoff.py"
+      - "backend/tests/test_browser_navigation_completed_captcha.py"
       - "backend/tests/test_lever_synthetic_certification.py"
       - "backend/tests/test_lever_live_availability.py"
       - "backend/tests/test_lever_phase_a_export.py"
+      - "backend/tests/test_lever_phase_a_operator.py"
+      - "backend/tests/test_lever_phase_a_provenance.py"
+      - "backend/tests/test_lever_phase_a_submit_guard.py"
+      - ".github/workflows/lever-phase-a-interactive-retention.yml"
       - ".github/workflows/lever-synthetic-live-exercise.yml"
   schedule:
     - cron: "41 13 * * 1"
@@ -64,9 +75,13 @@ jobs:
           REQUIRE_BROWSER_TESTS: "1"
         run: |
           pytest -q --tb=short -ra \
+            tests/test_browser_navigation_completed_captcha.py \
             tests/test_lever_synthetic_certification.py \
             tests/test_lever_live_availability.py \
-            tests/test_lever_phase_a_export.py
+            tests/test_lever_phase_a_export.py \
+            tests/test_lever_phase_a_operator.py \
+            tests/test_lever_phase_a_provenance.py \
+            tests/test_lever_phase_a_submit_guard.py
 
       - name: Select a current certification-compatible Lever job
         if: github.event_name != 'pull_request'
