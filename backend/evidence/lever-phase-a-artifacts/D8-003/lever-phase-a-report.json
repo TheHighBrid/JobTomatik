@@ -1,0 +1,660 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/waveapps/e5bb8724-6ee8-49d2-ae4e-1e83c4d61637/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/waveapps/e5bb8724-6ee8-49d2-ae4e-1e83c4d61637/apply",
+      "title": "Wave HQ - Group Product Manager",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/waveapps/e5bb8724-6ee8-49d2-ae4e-1e83c4d61637/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | He/him",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | She/her",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | They/them",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Xe/xem",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Ze/hir",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Ey/em",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Hir/hir",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Fae/faer",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Hu/hu",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | useNameOnlyPronounsOption | Use name only",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": "useNameOnlyPronounsOption"
+          },
+          {
+            "descriptor": "customPronounsOption | Custom",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "",
+            "id": "customPronounsOption"
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Twitter] | Twitter URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Twitter]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[GitHub] | GitHub URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[GitHub]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field2] | Yes (PR, open work permit, etc.)",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes (PR, open work permit, etc.)",
+              "No"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field2] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes (PR, open work permit, etc.)",
+              "No"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field3] | Yes",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Yes"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field4]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field5] | Acknowledged and agreed.",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Acknowledged and agreed."
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field6] | Acknowledged and agreed.",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Acknowledged and agreed."
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field7] | Type your response",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field7]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field8]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field8]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 33,
+        "required_control_count": 15,
+        "required_custom_controls": [
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field2] | Yes (PR, open work permit, etc.)",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes (PR, open work permit, etc.)",
+              "No"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field2] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes (PR, open work permit, etc.)",
+              "No"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field3] | Yes",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Yes"
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field4]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field5] | Acknowledged and agreed.",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Acknowledged and agreed."
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field6] | Acknowledged and agreed.",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Acknowledged and agreed."
+            ],
+            "name": "cards[5f0aa0f7-141e-4487-b69f-78dcec746e23][field6]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "waveapps",
+      "posting_id": "e5bb8724-6ee8-49d2-ae4e-1e83c4d61637",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "e5bb8724-6ee8-49d2-ae4e-1e83c4d61637",
+        "title": "Group Product Manager",
+        "categories": {
+          "commitment": "Full-time",
+          "department": "Product",
+          "location": "Toronto, Ontario",
+          "team": "Product",
+          "allLocations": [
+            "Toronto, Ontario"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/waveapps/e5bb8724-6ee8-49d2-ae4e-1e83c4d61637",
+        "apply_url": "https://jobs.lever.co/waveapps/e5bb8724-6ee8-49d2-ae4e-1e83c4d61637/apply",
+        "site": "waveapps",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/waveapps/e5bb8724-6ee8-49d2-ae4e-1e83c4d61637/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 16,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "a99efccdd7699fb1f41c4fde",
+          "filled_fingerprint": "9edeba7d3fba41f257301a6c",
+          "fields_filled": 16,
+          "control_passes": 2,
+          "ts": "2026-08-03T20:40:21.381491"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "9edeba7d3fba41f257301a6c",
+          "ts": "2026-08-03T20:40:23.531916"
+        }
+      ],
+      "control_evidence_count": 5,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 33,
+        "required_control_count": 15,
+        "required_custom_control_count": 11,
+        "policy_count": 11,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "waveapps",
+        "posting_id": "e5bb8724-6ee8-49d2-ae4e-1e83c4d61637",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}
