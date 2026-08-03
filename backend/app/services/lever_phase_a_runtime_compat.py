@@ -16,6 +16,7 @@ from app.services import browser_navigation, lever_certification
 
 
 _INSTALLED = False
+_ORIGINAL_DETECT_BLOCKING_CHALLENGE = browser_navigation.detect_blocking_challenge
 _ORIGINAL_CHOOSE_SYNTHETIC_ANSWER = lever_certification.choose_synthetic_answer
 _ACTIVE_CAPTCHA_TEXT = re.compile(
     r"verify you are human|confirm you are human|prove you are human|"
@@ -154,6 +155,18 @@ async def _visible_captcha_evidence(page: Any) -> Optional[Dict[str, Any]]:
 
 
 async def _detect_blocking_challenge(page: Any) -> Optional[Dict[str, Any]]:
+    """Refine inherited CAPTCHA results without erasing other ATS boundaries.
+
+    Challenge detection is assembled through compatibility wrappers whose import
+    order can vary across workers and test collection. The Lever layer therefore
+    delegates first and only replaces a broad ``captcha_detected`` result with its
+    stricter visibility check. Login, MFA, anti-bot, assessment, popup, and other
+    adapter-specific handoffs pass through unchanged.
+    """
+    inherited = await _ORIGINAL_DETECT_BLOCKING_CHALLENGE(page)
+    if inherited and inherited.get("reason_code") != "captcha_detected":
+        return inherited
+
     response_state = await browser_navigation.captcha_response_state(page)
     captcha_completed = bool(response_state["has_completed_response"])
 
@@ -192,6 +205,9 @@ async def _detect_blocking_challenge(page: Any) -> Optional[Dict[str, Any]]:
             },
         }
 
+    # The inherited detector already evaluated every non-CAPTCHA boundary it knew
+    # about. This fallback preserves base challenge patterns when the Lever wrapper
+    # was installed before a later adapter-specific wrapper joined the chain.
     for reason_code, pattern, summary in browser_navigation._BLOCKING_CHALLENGES:
         if reason_code == "captcha_detected":
             continue
