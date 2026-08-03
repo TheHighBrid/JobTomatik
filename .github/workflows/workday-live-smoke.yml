@@ -56,7 +56,7 @@ jobs:
           python scripts/select_workday_candidates.py \
             --output workday-live-candidates.json \
             --urls-output workday-live-urls.txt \
-            --limit 3 \
+            --limit 5 \
             --per-tenant 1
 
       - name: Inspect current CXS metadata and UI boundaries
@@ -68,6 +68,7 @@ jobs:
           rm -f workday-live-attempt-*.json workday-live-smoke.json
           index=0
           success_count=0
+          minimum_required=3
           while IFS= read -r url; do
             [ -z "$url" ] && continue
             index=$((index + 1))
@@ -80,6 +81,9 @@ jobs:
             status=$?
             if [ "$status" -eq 0 ]; then
               success_count=$((success_count + 1))
+              if [ "$success_count" -ge "$minimum_required" ]; then
+                break
+              fi
             fi
           done < workday-live-urls.txt
 
