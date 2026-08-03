@@ -21,9 +21,9 @@ from app.models.application import (
 )
 from app.models.job import Job, JobStatus
 from app.models.user import User
-from app.services.job_scraper import search_jobs
+from app.services.discovery_pipeline import persist_discovery_results
+from app.services.discovery_search import search_jobs
 from app.tasks.applications import generate_cover_letter_task, submit_application_task
-from app.api.jobs import _save_search_results
 
 
 router = APIRouter(prefix="/controller", tags=["controller"])
@@ -103,8 +103,6 @@ def _prepare_approved_jobs(
         results.append(record)
         prepared += 1
 
-    # Celery workers use independent connections. Persist every application before
-    # any task can consume its identifier.
     db.commit()
 
     countdown = 60
@@ -121,7 +119,6 @@ def _prepare_approved_jobs(
 
     return {
         "prepared": prepared,
-        # Compatibility alias used by the existing dashboard response handling.
         "applied": prepared,
         "skipped": skipped,
         "dry_run": True,
@@ -157,7 +154,7 @@ async def safe_dry_run(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Search, approve, and prepare applications without any live-submit option."""
+    """Search, evaluate, approve, and prepare without any live-submit option."""
 
     preferences = dict(current_user.job_preferences or {})
     keywords = ", ".join(
@@ -167,14 +164,32 @@ async def safe_dry_run(
     )
     locations = preferences.get("preferred_locations", [])
     location = locations[0] if locations else "Ottawa, Ontario"
-    raw_jobs = await search_jobs(
+    ats_targets = [
+        target
+        for target in (preferences.get("ats_targets") or [])
+        if isinstance(target, dict)
+    ]
+    ats_sources = sorted({
+        str(target.get("provider") or "").lower()
+        for target in ats_targets
+        if target.get("provider")
+    })
+    search_params = {
+        "keywords": keywords,
+        "location": location,
+        "salary_min": preferences.get("min_salary"),
+        "sources": ["jobbank", "indeed", "linkedin", "glassdoor", *ats_sources],
+        "ats_targets": ats_targets,
+        "limit": 50,
+    }
+    raw_jobs = await search_jobs(**search_params)
+    discovery_stats = persist_discovery_results(
+        db,
+        current_user,
+        raw_jobs,
         keywords=keywords,
-        location=location,
-        salary_min=preferences.get("min_salary"),
-        sources=["jobbank", "indeed", "linkedin", "glassdoor"],
-        limit=50,
+        search_params=search_params,
     )
-    saved_jobs = _save_search_results(db, current_user, raw_jobs, keywords)
     db.commit()
 
     queued_jobs = (
@@ -197,7 +212,10 @@ async def safe_dry_run(
     result.update(
         {
             "jobs_found": len(raw_jobs),
-            "jobs_saved": saved_jobs,
+            "jobs_saved": discovery_stats["saved"],
+            "jobs_blocked": discovery_stats["blocked"],
+            "evaluations_created": discovery_stats["evaluations_created"],
+            "agent_run_id": discovery_stats["agent_run_id"],
             "auto_approved": len(queued_jobs),
             "applications_queued": result["prepared"],
             "applications_skipped": result["skipped"],

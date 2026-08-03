@@ -56,14 +56,29 @@ install_closed_application_task_gate()
 
 
 def _safe_migrate(eng):
-    """Add backward-compatible columns for existing local databases.
+    """Add backward-compatible columns and enum values for existing databases.
 
-    New tables are created by ``Base.metadata.create_all``. These additive column
-    migrations keep older SQLite/PostgreSQL installations usable alongside the
-    formal Alembic revision chain. A failed migration is fatal because continuing
-    with a partially upgraded schema produces harder-to-diagnose runtime errors.
+    New tables are created by ``Base.metadata.create_all``. These additive migrations
+    keep older SQLite/PostgreSQL installations usable alongside the formal Alembic
+    revision chain. A failed migration is fatal because continuing with a partially
+    upgraded schema produces harder-to-diagnose runtime errors.
     """
     failures = []
+
+    if eng.dialect.name == "postgresql":
+        try:
+            with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as enum_conn:
+                enum_exists = enum_conn.execute(
+                    text("SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'jobsource')")
+                ).scalar()
+                if enum_exists:
+                    for enum_value in ("greenhouse", "lever", "ashby"):
+                        enum_conn.execute(
+                            text(f"ALTER TYPE jobsource ADD VALUE IF NOT EXISTS '{enum_value}'")
+                        )
+        except Exception as exc:
+            logger.exception("Failed additive migration for jobs.source enum")
+            failures.append(("jobs.source_enum", exc))
 
     with eng.connect() as conn:
         try:
