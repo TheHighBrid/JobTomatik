@@ -42,14 +42,41 @@ jobs:
           finalizer = Path('backend/scripts/finalize_lever_phase_a_ready.py')
           source = finalizer.read_text(encoding='utf-8')
 
-          helper = '''\n\ndef _normalized_manifest_report_path(value: Any) -> str:\n    path = PurePosixPath(str(value or "").strip())\n    if path.is_absolute() or ".." in path.parts:\n        raise LeverPhaseAProvenanceError(\n            "The retention manifest contains an unsafe report path"\n        )\n    parts = list(path.parts)\n    if parts[:1] == ["backend"]:\n        parts = parts[1:]\n    if parts[:1] == ["evidence"]:\n        parts = parts[1:]\n    normalized = PurePosixPath(*parts).as_posix() if parts else ""\n    if not normalized:\n        raise LeverPhaseAProvenanceError(\n            "The retention manifest report path is empty"\n        )\n    return normalized\n'''
+          helper = '''
+
+          def _normalized_manifest_report_path(value: Any) -> str:
+              path = PurePosixPath(str(value or "").strip())
+              if path.is_absolute() or ".." in path.parts:
+                  raise LeverPhaseAProvenanceError(
+                      "The retention manifest contains an unsafe report path"
+                  )
+              parts = list(path.parts)
+              if parts[:1] == ["backend"]:
+                  parts = parts[1:]
+              if parts[:1] == ["evidence"]:
+                  parts = parts[1:]
+              normalized = PurePosixPath(*parts).as_posix() if parts else ""
+              if not normalized:
+                  raise LeverPhaseAProvenanceError(
+                      "The retention manifest report path is empty"
+                  )
+              return normalized
+          '''
+          helper = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in helper.splitlines()
+          )
 
           needle = '\n\ndef _safe_members(archive: zipfile.ZipFile) -> list[str]:\n'
           assert source.count(needle) == 1
           source = source.replace(needle, helper + needle, 1)
 
           old = '        or manifest_report.get("path") != artifact_path\n'
-          new = (\n              '        or _normalized_manifest_report_path('\n              'manifest_report.get("path")) != artifact_path\n'\n          )
+          new = (
+              '        or _normalized_manifest_report_path(\n'
+              '            manifest_report.get("path")\n'
+              '        ) != artifact_path\n'
+          )
           assert source.count(old) == 1
           source = source.replace(old, new, 1)
           finalizer.write_text(source, encoding='utf-8')
@@ -63,7 +90,31 @@ jobs:
               import_needle + '    _normalized_manifest_report_path,\n',
               1,
           )
-          test_source += '''\n\ndef test_manifest_report_path_normalizes_repository_roots() -> None:\n    expected = "lever-phase-a-artifacts/D8-003/lever-phase-a-report.json"\n    assert _normalized_manifest_report_path(expected) == expected\n    assert _normalized_manifest_report_path("evidence/" + expected) == expected\n    assert _normalized_manifest_report_path("backend/evidence/" + expected) == expected\n\n\n@pytest.mark.parametrize(\n    "value",\n    [\n        "",\n        "/evidence/lever-phase-a-artifacts/D8-003/lever-phase-a-report.json",\n        "evidence/../secrets.json",\n    ],\n)\ndef test_manifest_report_path_rejects_unsafe_values(value: str) -> None:\n    with pytest.raises(LeverPhaseAProvenanceError):\n        _normalized_manifest_report_path(value)\n'''
+          test_source += '''
+
+          def test_manifest_report_path_normalizes_repository_roots() -> None:
+              expected = "lever-phase-a-artifacts/D8-003/lever-phase-a-report.json"
+              assert _normalized_manifest_report_path(expected) == expected
+              assert _normalized_manifest_report_path("evidence/" + expected) == expected
+              assert _normalized_manifest_report_path("backend/evidence/" + expected) == expected
+
+
+          @pytest.mark.parametrize(
+              "value",
+              [
+                  "",
+                  "/evidence/lever-phase-a-artifacts/D8-003/lever-phase-a-report.json",
+                  "evidence/../secrets.json",
+              ],
+          )
+          def test_manifest_report_path_rejects_unsafe_values(value: str) -> None:
+              with pytest.raises(LeverPhaseAProvenanceError):
+                  _normalized_manifest_report_path(value)
+          '''
+          test_source = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in test_source.splitlines()
+          ) + "\n"
           tests.write_text(test_source, encoding='utf-8')
           PY
 
