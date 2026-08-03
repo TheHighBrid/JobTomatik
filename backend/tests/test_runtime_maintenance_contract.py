@@ -6,6 +6,7 @@ import warnings
 from pathlib import Path
 
 import bcrypt
+import pytest
 
 from app.auth import hash_password, verify_password
 
@@ -26,17 +27,37 @@ def test_password_backend_round_trips_and_accepts_existing_bcrypt_hashes():
     assert verify_password(password, "not-a-bcrypt-hash") is False
 
 
-def test_dependency_manifests_use_bcrypt_without_passlib():
+def test_password_backend_enforces_bcrypt_utf8_byte_limit():
+    exactly_72_bytes = "é" * 36
+    over_72_bytes = exactly_72_bytes + "a"
+
+    generated = hash_password(exactly_72_bytes)
+    assert verify_password(exactly_72_bytes, generated) is True
+
+    with pytest.raises(ValueError, match="72 UTF-8 bytes"):
+        hash_password(over_72_bytes)
+    assert verify_password(over_72_bytes, generated) is False
+
+
+def test_dependency_manifests_use_supported_bcrypt_without_passlib():
     manifests = (
         REPO_ROOT / "backend" / "requirements.txt",
         REPO_ROOT / "backend" / "requirements.termux.txt",
         REPO_ROOT / "backend" / "requirements.android-server.txt",
     )
+    versions: dict[str, tuple[int, int, int]] = {}
 
     for path in manifests:
         content = path.read_text(encoding="utf-8")
         assert "passlib" not in content.lower(), path
-        assert "bcrypt==4.0.1" in content, path
+
+        match = re.search(r"(?m)^bcrypt==(\d+)\.(\d+)\.(\d+)$", content)
+        assert match is not None, path
+        version = tuple(int(part) for part in match.groups())
+        assert (4, 0, 1) <= version < (6, 0, 0), (path, version)
+        versions[path.name] = version
+
+    assert len(set(versions.values())) == 1, versions
 
 
 def test_form_filler_v3_compiles_without_escape_sequence_warnings():
