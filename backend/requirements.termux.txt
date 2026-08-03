@@ -17,5 +17,5 @@ beautifulsoup4==4.15.0
 python-dotenv==1.2.2
 pydantic==2.13.4
 pydantic-settings==2.14.2
-aiofiles==23.2.1
+aiofiles==25.1.0
 email-validator==2.3.0
