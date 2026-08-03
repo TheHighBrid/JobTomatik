@@ -8,6 +8,10 @@ from app.services import ats_flow
 from app.services.ats_registry import detect_ats_adapter
 
 
+async def _abort_external_request(route):
+    await route.abort()
+
+
 @pytest_asyncio.fixture
 async def browser_page():
     from playwright.async_api import async_playwright
@@ -25,6 +29,8 @@ async def browser_page():
             pytest.skip("Chromium is not installed in this environment")
         context = await browser.new_context()
         page = await context.new_page()
+        await page.route("http://**/*", _abort_external_request)
+        await page.route("https://**/*", _abort_external_request)
         yield page
     finally:
         if context is not None:
@@ -44,7 +50,8 @@ async def test_smartrecruiters_datadome_is_classified_as_preform_manual_handoff(
             title="Security verification"
           ></iframe>
         </main>
-        """
+        """,
+        wait_until="domcontentloaded",
     )
 
     adapter = await detect_ats_adapter(
@@ -65,7 +72,8 @@ async def test_smartrecruiters_datadome_is_classified_as_preform_manual_handoff(
 @pytest.mark.asyncio
 async def test_unrelated_iframe_is_not_misclassified_as_datadome(browser_page):
     await browser_page.set_content(
-        '<iframe src="https://example.org/ordinary-application-frame"></iframe>'
+        '<iframe src="https://example.org/ordinary-application-frame"></iframe>',
+        wait_until="domcontentloaded",
     )
     challenge = await ats_flow.detect_blocking_challenge(browser_page)
     assert challenge is None
