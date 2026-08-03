@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - ".github/evidence-d8-003-ready.tgz.b64"
+      - ".github/evidence-d8-003-ready.part*"
       - ".github/workflows/materialize-d8-003-evidence.yml"
 
 permissions:
@@ -24,12 +24,29 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Decode and verify exact evidence archive
+      - name: Reassemble and verify exact evidence archive
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .github/evidence-d8-003-ready.tgz.b64 > /tmp/lever-phase-a-D8-003-ready.tgz
+
+          echo "519e6ae5ba3bc4c2e90c2245fcda1baa9781080df47c104a347f61cd62fb5842  .github/evidence-d8-003-ready.part01" | sha256sum -c -
+          echo "32aacbf72d3b9124cf0c45aeb772ac1ac57fcca4a7a49c90e0203f445bd6e72f  .github/evidence-d8-003-ready.part02" | sha256sum -c -
+          echo "e19fb741a1b51c1421f2c352ea747c97630d0c79cd58bdefb09c094ca5e22d6d  .github/evidence-d8-003-ready.part03" | sha256sum -c -
+          echo "b3166ff35c91ab5c7e64b8c812fa9b31ea4312227031a94d7bdd839e01406d00  .github/evidence-d8-003-ready.part04" | sha256sum -c -
+          echo "b68491b47bde89b6f7926021d1ba997ba0bd4fb965c0cfe501620395dbf599cb  .github/evidence-d8-003-ready.part05" | sha256sum -c -
+
+          cat \
+            .github/evidence-d8-003-ready.part01 \
+            .github/evidence-d8-003-ready.part02 \
+            .github/evidence-d8-003-ready.part03 \
+            .github/evidence-d8-003-ready.part04 \
+            .github/evidence-d8-003-ready.part05 \
+            > /tmp/lever-phase-a-D8-003-ready.b64
+
+          echo "58c3a4abe080698dab83015de167a5ecabc0834771ed521977063c278aa3beb0  /tmp/lever-phase-a-D8-003-ready.b64" | sha256sum -c -
+          base64 -d /tmp/lever-phase-a-D8-003-ready.b64 > /tmp/lever-phase-a-D8-003-ready.tgz
           echo "5504a5bb8a0f0d263650cee714d4f2b42ca759edc8ceb87ba6c8522b0d6e6627  /tmp/lever-phase-a-D8-003-ready.tgz" | sha256sum -c -
+
           tar -xzf /tmp/lever-phase-a-D8-003-ready.tgz -C "$GITHUB_WORKSPACE"
           echo "86b145f01e83e01b43053a0bb8d77a956ac176c2459c11dd6f6dc3986214c5e1  backend/evidence/lever-phase-a-artifacts/D8-003/lever-phase-a-report.json" | sha256sum -c -
           echo "62072693af0661507beac420c00d9f620b51023fcbd55423254bb49b7f6f7f42  backend/evidence/lever-phase-a-artifacts/D8-003/lever-phase-a-synthetic-resume.pdf" | sha256sum -c -
@@ -41,7 +58,13 @@ jobs:
         run: |
           set -euo pipefail
           rm -f .github/evidence-d8-003-ready.tgz.b64
+          rm -f .github/evidence-d8-003-ready.part01
+          rm -f .github/evidence-d8-003-ready.part02
+          rm -f .github/evidence-d8-003-ready.part03
+          rm -f .github/evidence-d8-003-ready.part04
+          rm -f .github/evidence-d8-003-ready.part05
           rm -f .github/workflows/materialize-d8-003-evidence.yml
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
