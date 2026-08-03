@@ -23,5 +23,5 @@ email-validator==2.2.0
 pillow==12.3.0
 pytest==9.1.1
 pytest-asyncio==1.4.0
-faker==25.2.0
+faker==40.36.0
 pip-audit==2.10.1
