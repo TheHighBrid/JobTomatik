@@ -173,7 +173,7 @@ def test_deployment_gate_reads_repository_defaults_without_safe_overrides() -> N
         "AUTOPILOT_ENABLED",
     ):
         assert f"-u {variable}" in script
-        assert f'{variable}: \"false\"' in script
+        assert f'{variable}: "false"' in script
 
 
 def test_reproducible_workflow_executes_every_verification_lane() -> None:
@@ -211,14 +211,18 @@ def test_workflow_triggers_cover_every_file_validated_by_contract_tests() -> Non
     assert workflow.count('- ".github/workflows/android-apk.yml"') == 2
 
 
-def test_android_workflow_and_readme_use_canonical_versions() -> None:
+def test_android_workflow_uses_the_canonical_toolchain() -> None:
+    toolchain = _toolchain()
     android_workflow = ANDROID_WORKFLOW_PATH.read_text(encoding="utf-8")
     readme = README_PATH.read_text(encoding="utf-8")
 
     assert 'node-version: "20"' in android_workflow
     assert 'node-version: "22"' not in android_workflow
-    assert "Gradle 9.5.1" in readme
-    assert "Android Gradle Plugin 8.13.2" in readme
+    assert "source ../.jobtomatik-toolchain.env" in android_workflow
+    assert 'gradle-${JOBTOMATIK_GRADLE_VERSION}-bin.zip' in android_workflow
+    assert toolchain["JOBTOMATIK_GRADLE_VERSION"] == "9.6.1"
+    assert toolchain["JOBTOMATIK_ANDROID_GRADLE_PLUGIN_VERSION"] == "8.13.2"
+    assert "The canonical toolchain is declared in `.jobtomatik-toolchain.env`" in readme
     assert "Gradle 8.11.1" not in readme
     assert "Android Gradle Plugin 8.7.2" not in readme
     assert "bash scripts/verify.sh full" in readme
