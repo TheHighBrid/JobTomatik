@@ -179,6 +179,25 @@ def validate_ready_report(
     }
 
 
+def _normalized_manifest_report_path(value: Any) -> str:
+    path = PurePosixPath(str(value or "").strip())
+    if path.is_absolute() or ".." in path.parts:
+        raise LeverPhaseAProvenanceError(
+            "The retention manifest contains an unsafe report path"
+        )
+    parts = list(path.parts)
+    if parts[:1] == ["backend"]:
+        parts = parts[1:]
+    if parts[:1] == ["evidence"]:
+        parts = parts[1:]
+    normalized = PurePosixPath(*parts).as_posix() if parts else ""
+    if not normalized:
+        raise LeverPhaseAProvenanceError(
+            "The retention manifest report path is empty"
+        )
+    return normalized
+
+
 def _safe_members(archive: zipfile.ZipFile) -> list[str]:
     names: list[str] = []
     for raw in archive.namelist():
@@ -250,7 +269,9 @@ def verify_artifact_bundle(
         or str(manifest.get("workflow_run_id") or "") != provenance["workflow_run_id"]
         or manifest.get("retained_record_count") != 1
         or manifest_report.get("review_id") != review_id
-        or manifest_report.get("path") != artifact_path
+        or _normalized_manifest_report_path(
+            manifest_report.get("path")
+        ) != artifact_path
         or manifest_report.get("sha256") != report_sha
     ):
         raise LeverPhaseAProvenanceError(

@@ -15,6 +15,7 @@ from app.services.lever_phase_a_operator import load_locked_target
 from app.services.lever_phase_a_provenance import LeverPhaseAProvenanceError
 from scripts.finalize_lever_phase_a_ready import (
     MANIFEST_NAME,
+    _normalized_manifest_report_path,
     finalize,
     validate_ready_report,
     verify_artifact_bundle,
@@ -208,3 +209,22 @@ def test_finalize_writes_candidate_source_and_archive(tmp_path: Path) -> None:
         }
     ]
     assert Path(result["durable_archive"]["path"]).is_file()
+
+def test_manifest_report_path_normalizes_repository_roots() -> None:
+    expected = "lever-phase-a-artifacts/D8-003/lever-phase-a-report.json"
+    assert _normalized_manifest_report_path(expected) == expected
+    assert _normalized_manifest_report_path("evidence/" + expected) == expected
+    assert _normalized_manifest_report_path("backend/evidence/" + expected) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "/evidence/lever-phase-a-artifacts/D8-003/lever-phase-a-report.json",
+        "evidence/../secrets.json",
+    ],
+)
+def test_manifest_report_path_rejects_unsafe_values(value: str) -> None:
+    with pytest.raises(LeverPhaseAProvenanceError):
+        _normalized_manifest_report_path(value)
