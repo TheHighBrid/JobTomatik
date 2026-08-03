@@ -183,7 +183,7 @@ def _normalized_manifest_report_path(value: Any) -> str:
     path = PurePosixPath(str(value or "").strip())
     if path.is_absolute() or ".." in path.parts:
         raise LeverPhaseAProvenanceError(
-  "The retention manifest contains an unsafe report path"
+            "The retention manifest contains an unsafe report path"
         )
     parts = list(path.parts)
     if parts[:1] == ["backend"]:
@@ -193,9 +193,10 @@ def _normalized_manifest_report_path(value: Any) -> str:
     normalized = PurePosixPath(*parts).as_posix() if parts else ""
     if not normalized:
         raise LeverPhaseAProvenanceError(
-  "The retention manifest report path is empty"
+            "The retention manifest report path is empty"
         )
     return normalized
+
 
 def _safe_members(archive: zipfile.ZipFile) -> list[str]:
     names: list[str] = []

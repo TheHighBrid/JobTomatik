@@ -34,49 +34,49 @@ def _report() -> dict:
         "final_submit_clicked": False,
         "passed": True,
         "reports": [
-  {
-      "url": URL,
-      "mode": "inspect",
-      "passed": True,
-      "final_submit_clicked": False,
-      "posting_available": True,
-      "posting_http_status": 200,
-      "adapter": "lever",
-      "adapter_version": LEVER_ADAPTER_VERSION,
-      "posting_metadata": {
-          "title": "Group Product Manager",
-          "posting_metadata_certified": True,
-          "apply_url_matches_posting": True,
-      },
-  },
-  {
-      "url": URL,
-      "mode": "exercise",
-      "passed": True,
-      "certification_outcome": "ready_to_submit",
-      "ready_to_submit": True,
-      "requires_manual_review": False,
-      "fields_filled": 16,
-      "review_items": [],
-      "validation_errors": [],
-      "upload_evidence": [
-          {
-              "upload_type": "resume",
-              "verification": "passed",
-          }
-      ],
-      "control_evidence_count": 5,
-      "final_submit_clicked": False,
-      "adapter": "lever",
-      "adapter_version": LEVER_ADAPTER_VERSION,
-      "certification_metadata": {
-          "site": "waveapps",
-          "posting_id": "e5bb8724-6ee8-49d2-ae4e-1e83c4d61637",
-          "region": "global",
-          "synthetic_profile": True,
-      },
-      "error": None,
-  },
+            {
+                "url": URL,
+                "mode": "inspect",
+                "passed": True,
+                "final_submit_clicked": False,
+                "posting_available": True,
+                "posting_http_status": 200,
+                "adapter": "lever",
+                "adapter_version": LEVER_ADAPTER_VERSION,
+                "posting_metadata": {
+                    "title": "Group Product Manager",
+                    "posting_metadata_certified": True,
+                    "apply_url_matches_posting": True,
+                },
+            },
+            {
+                "url": URL,
+                "mode": "exercise",
+                "passed": True,
+                "certification_outcome": "ready_to_submit",
+                "ready_to_submit": True,
+                "requires_manual_review": False,
+                "fields_filled": 16,
+                "review_items": [],
+                "validation_errors": [],
+                "upload_evidence": [
+                    {
+                        "upload_type": "resume",
+                        "verification": "passed",
+                    }
+                ],
+                "control_evidence_count": 5,
+                "final_submit_clicked": False,
+                "adapter": "lever",
+                "adapter_version": LEVER_ADAPTER_VERSION,
+                "certification_metadata": {
+                    "site": "waveapps",
+                    "posting_id": "e5bb8724-6ee8-49d2-ae4e-1e83c4d61637",
+                    "region": "global",
+                    "synthetic_profile": True,
+                },
+                "error": None,
+            },
         ],
     }
 
@@ -101,9 +101,9 @@ def _artifact(report: Path, evidence: Path) -> tuple[dict, bytes, str]:
         "workflow_run_id": RUN_ID,
         "retained_record_count": 1,
         "report": {
-  "review_id": REVIEW_ID,
-  "path": relative,
-  "sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
+            "review_id": REVIEW_ID,
+            "path": relative,
+            "sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
         },
     }
     stream = io.BytesIO()
@@ -175,19 +175,19 @@ def test_finalize_writes_candidate_source_and_archive(tmp_path: Path) -> None:
 
     result = finalize(
         argparse.Namespace(
-  review_id=REVIEW_ID,
-  report=str(report),
-  artifact_metadata=str(metadata_path),
-  artifact_zip=str(zip_path),
-  workflow_run_id=RUN_ID,
-  artifact_id=ARTIFACT_ID,
-  artifact_digest=digest,
-  operator="TheHighBrid",
-  run_id=None,
-  corpus_root="evidence/lever-phase-a-target-corpus",
-  evidence_root=str(evidence),
-  candidate_output=str(candidate),
-  source_output=str(source),
+            review_id=REVIEW_ID,
+            report=str(report),
+            artifact_metadata=str(metadata_path),
+            artifact_zip=str(zip_path),
+            workflow_run_id=RUN_ID,
+            artifact_id=ARTIFACT_ID,
+            artifact_digest=digest,
+            operator="TheHighBrid",
+            run_id=None,
+            corpus_root="evidence/lever-phase-a-target-corpus",
+            evidence_root=str(evidence),
+            candidate_output=str(candidate),
+            source_output=str(source),
         )
     )
 
@@ -202,14 +202,13 @@ def test_finalize_writes_candidate_source_and_archive(tmp_path: Path) -> None:
     assert rows[0]["source_reference"].endswith("/actions/runs/" + RUN_ID)
     assert sources == [
         {
-  "workflow_run_id": RUN_ID,
-  "artifact_id": ARTIFACT_ID,
-  "artifact_digest": digest,
-  "retained_record_count": "1",
+            "workflow_run_id": RUN_ID,
+            "artifact_id": ARTIFACT_ID,
+            "artifact_digest": digest,
+            "retained_record_count": "1",
         }
     ]
     assert Path(result["durable_archive"]["path"]).is_file()
-
 
 def test_manifest_report_path_normalizes_repository_roots() -> None:
     expected = "lever-phase-a-artifacts/D8-003/lever-phase-a-report.json"
