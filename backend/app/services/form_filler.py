@@ -1,6 +1,15 @@
 """Compatibility surface for ATS-aware application form runners."""
 
 from app.services.browser_runtime import resumable_handoffs_enabled
+from app.services.lever_phase_a_runtime_compat import (
+    install_lever_phase_a_runtime_compat,
+)
+
+
+# Install before importing the ATS flow modules because they bind challenge
+# detection functions at import time.
+install_lever_phase_a_runtime_compat()
+
 from app.services.form_filler_handoff import fill_and_submit_application_with_handoff
 from app.services.form_filler_v3 import (
     _navigate_job_board_listing,
