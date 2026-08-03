@@ -4,10 +4,19 @@ import os
 
 import pytest
 
-# Importing the compatibility surface installs the strict Lever challenge detector
-# before the browser-navigation function is exercised.
+# Import the modules that cache detector aliases before installing the Lever
+# compatibility layer. This reproduces the live certification import order.
+from app.services import ats_flow, browser_handoff
 from app.services import form_filler as _form_filler  # noqa: F401
 from app.services import browser_navigation
+
+
+def test_runtime_compat_rebinds_cached_detector_aliases() -> None:
+    assert ats_flow.detect_blocking_challenge is browser_navigation.detect_blocking_challenge
+    assert (
+        browser_handoff.detect_blocking_challenge
+        is browser_navigation.detect_blocking_challenge
+    )
 
 
 @pytest.mark.asyncio
@@ -61,11 +70,11 @@ async def test_completed_captcha_token_suppresses_stale_widget_detection(
             </form>
             """
         )
-        pending = await browser_navigation.detect_blocking_challenge(page)
+        pending = await ats_flow.detect_blocking_challenge(page)
         await page.locator(response_selector).evaluate(
             "(element) => { element.value = 'x'.repeat(64); }"
         )
-        completed = await browser_navigation.detect_blocking_challenge(page)
+        completed = await ats_flow.detect_blocking_challenge(page)
     finally:
         await browser.close()
         await playwright.stop()
@@ -103,15 +112,26 @@ async def test_invisible_captcha_plumbing_and_legal_text_do_not_create_handoff()
                   style="width:256px;height:60px"
                 ></iframe>
               </div>
+              <div style="opacity:0">
+                <iframe
+                  src="https://newassets.hcaptcha.com/captcha/v1/index.html"
+                  style="width:303px;height:78px"
+                ></iframe>
+              </div>
               <textarea name="g-recaptcha-response" style="display:none"></textarea>
+              <textarea name="h-captcha-response" style="display:none"></textarea>
               <p>This site is protected by reCAPTCHA and the Google Privacy Policy applies.</p>
               <button type="submit">Submit application</button>
             </form>
             """
         )
-        challenge = await browser_navigation.detect_blocking_challenge(page)
+        browser_navigation_result = await browser_navigation.detect_blocking_challenge(page)
+        ats_flow_result = await ats_flow.detect_blocking_challenge(page)
+        handoff_result = await browser_handoff.detect_blocking_challenge(page)
     finally:
         await browser.close()
         await playwright.stop()
 
-    assert challenge is None
+    assert browser_navigation_result is None
+    assert ats_flow_result is None
+    assert handoff_result is None
