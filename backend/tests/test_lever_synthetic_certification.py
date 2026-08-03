@@ -3,9 +3,13 @@ import os
 import pytest
 import pytest_asyncio
 
+# Install the Lever Phase A compatibility layer before importing the synthetic
+# answer helper that the certification profile uses.
+from app.services import form_filler as _form_filler  # noqa: F401
 from app.services.lever_certification import (
     SYNTHETIC_LOCATION,
     build_synthetic_profile,
+    choose_synthetic_answer,
     inspect_lever_application_dom,
 )
 
@@ -79,3 +83,39 @@ async def test_lever_dom_inventory_builds_only_required_synthetic_policies(page)
     assert location_policy["answer_value"] == SYNTHETIC_LOCATION
     assert all(policy["allow_autofill"] is True for policy in profile["answer_policies"])
     assert profile["synthetic_certification_only"] is True
+
+
+def test_canada_location_question_matches_yes() -> None:
+    answer = choose_synthetic_answer(
+        "Are you located in Canada?",
+        ["Yes", "No"],
+        control_type="radio",
+    )
+    assert answer == "Yes"
+
+
+def test_canada_work_eligibility_question_matches_yes() -> None:
+    answer = choose_synthetic_answer(
+        "Are you legally eligible to work in Canada with no restrictions?",
+        ["Yes (PR, open work permit, etc.)", "No"],
+        control_type="radio",
+    )
+    assert answer == "Yes (PR, open work permit, etc.)"
+
+
+def test_salary_alignment_question_matches_yes() -> None:
+    answer = choose_synthetic_answer(
+        "Have you reviewed the posted salary range and are your expectations aligned with it?",
+        ["Yes", "No"],
+        control_type="radio",
+    )
+    assert answer == "Yes"
+
+
+def test_desired_salary_uses_numeric_synthetic_value() -> None:
+    answer = choose_synthetic_answer(
+        "What is your desired salary? Please write down a number.",
+        [],
+        control_type="text",
+    )
+    assert answer == "150000"
