@@ -10,6 +10,7 @@ salary-alignment questions.
 from __future__ import annotations
 
 import re
+import sys
 from typing import Any, Dict, Iterable, Optional
 
 from app.services import browser_navigation, lever_certification
@@ -126,27 +127,114 @@ async def _visible_captcha_evidence(page: Any) -> Optional[Dict[str, Any]]:
                 if not await element.is_visible():
                     continue
                 source = str(await element.get_attribute("src") or "").lower()
-                if "size=invisible" in source:
+                if "size=invisible" in source or "invisible=true" in source:
                     continue
-                if await element.evaluate(
-                    "(el) => Boolean(el.closest('.grecaptcha-badge'))"
+
+                presentation = await element.evaluate(
+                    """(el) => {
+                      const rect = el.getBoundingClientRect();
+                      let node = el;
+                      let effectiveOpacity = 1;
+                      let hiddenByStyle = false;
+                      let hiddenByAttribute = false;
+                      let invisibleContainer = false;
+                      let pointerEvents = '';
+
+                      while (node && node.nodeType === Node.ELEMENT_NODE) {
+                        const style = window.getComputedStyle(node);
+                        const parsedOpacity = Number.parseFloat(style.opacity || '1');
+                        effectiveOpacity *= Number.isFinite(parsedOpacity) ? parsedOpacity : 1;
+                        hiddenByStyle = hiddenByStyle
+                          || style.display === 'none'
+                          || style.visibility === 'hidden'
+                          || style.visibility === 'collapse';
+                        hiddenByAttribute = hiddenByAttribute
+                          || node.hidden
+                          || node.getAttribute('aria-hidden') === 'true'
+                          || node.hasAttribute('inert');
+                        invisibleContainer = invisibleContainer
+                          || String(node.getAttribute('data-size') || '').toLowerCase() === 'invisible'
+                          || node.classList.contains('grecaptcha-badge');
+                        if (node === el) {
+                          pointerEvents = style.pointerEvents || '';
+                        }
+                        node = node.parentElement;
+                      }
+
+                      const intersectsViewport = rect.bottom > 0
+                        && rect.right > 0
+                        && rect.top < window.innerHeight
+                        && rect.left < window.innerWidth;
+                      let hitTested = null;
+                      if (intersectsViewport && rect.width > 0 && rect.height > 0) {
+                        const x = Math.max(0, Math.min(
+                          window.innerWidth - 1,
+                          rect.left + rect.width / 2
+                        ));
+                        const y = Math.max(0, Math.min(
+                          window.innerHeight - 1,
+                          rect.top + rect.height / 2
+                        ));
+                        const top = document.elementFromPoint(x, y);
+                        hitTested = Boolean(
+                          top && (top === el || el.contains(top) || top.contains(el))
+                        );
+                      }
+
+                      return {
+                        width: rect.width,
+                        height: rect.height,
+                        top: rect.top,
+                        left: rect.left,
+                        effectiveOpacity,
+                        hiddenByStyle,
+                        hiddenByAttribute,
+                        invisibleContainer,
+                        pointerEvents,
+                        intersectsViewport,
+                        hitTested,
+                        title: el.getAttribute('title') || '',
+                      };
+                    }"""
+                )
+
+                if presentation.get("hiddenByStyle"):
+                    continue
+                if presentation.get("hiddenByAttribute"):
+                    continue
+                if presentation.get("invisibleContainer"):
+                    continue
+                if float(presentation.get("effectiveOpacity") or 0) <= 0.05:
+                    continue
+                if str(presentation.get("pointerEvents") or "").lower() == "none":
+                    continue
+                if (
+                    presentation.get("intersectsViewport")
+                    and presentation.get("hitTested") is False
                 ):
                     continue
-                box = await element.bounding_box()
-                if not box:
-                    continue
-                width = float(box.get("width") or 0)
-                height = float(box.get("height") or 0)
+
+                width = float(presentation.get("width") or 0)
+                height = float(presentation.get("height") or 0)
                 if selector.startswith("iframe"):
                     if width < 120 or height < 40:
                         continue
                 elif width < 20 or height < 20:
                     continue
+
                 return {
                     "selector": selector,
                     "width": round(width, 2),
                     "height": round(height, 2),
                     "source": source[:300],
+                    "title": str(presentation.get("title") or "")[:200],
+                    "effective_opacity": round(
+                        float(presentation.get("effectiveOpacity") or 0), 3
+                    ),
+                    "intersects_viewport": bool(
+                        presentation.get("intersectsViewport")
+                    ),
+                    "hit_tested": presentation.get("hitTested"),
                     "visible": True,
                 }
             except Exception:
@@ -220,12 +308,29 @@ async def _detect_blocking_challenge(page: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _rebind_loaded_detector_aliases() -> None:
+    """Replace cached imports that were bound before this compatibility layer.
+
+    ``ats_flow`` and ``browser_handoff`` import the detector directly. When a script
+    imports ATS registry modules before ``form_filler``, those modules retain the old
+    function object even after ``browser_navigation`` is patched. Rebind only the
+    known shared detector aliases so adapter-specific wrappers remain untouched.
+    """
+    for module_name in (
+        "app.services.ats_flow",
+        "app.services.browser_handoff",
+        "app.services.form_filler_v2",
+    ):
+        module = sys.modules.get(module_name)
+        if module is not None and hasattr(module, "detect_blocking_challenge"):
+            setattr(module, "detect_blocking_challenge", _detect_blocking_challenge)
+
+
 def install_lever_phase_a_runtime_compat() -> None:
     global _INSTALLED
-    if _INSTALLED:
-        return
     browser_navigation.detect_blocking_challenge = _detect_blocking_challenge
     lever_certification.choose_synthetic_answer = _choose_synthetic_answer
+    _rebind_loaded_detector_aliases()
     _INSTALLED = True
 
 
