@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "frontend/**"
+      - ".jobtomatik-toolchain.env"
       - "backend/tests/test_v1_release_contract.py"
       - ".github/workflows/android-apk.yml"
   push:
@@ -11,6 +12,7 @@ on:
       - main
     paths:
       - "frontend/**"
+      - ".jobtomatik-toolchain.env"
       - "backend/tests/test_v1_release_contract.py"
       - ".github/workflows/android-apk.yml"
   workflow_dispatch:
@@ -69,10 +71,12 @@ jobs:
       - name: Verify Gradle wrapper
         shell: bash
         run: |
+          set -euo pipefail
+          source ../.jobtomatik-toolchain.env
           chmod +x android/gradlew
-          grep -q 'distributionUrl=https\\://services.gradle.org/distributions/gradle-9.5.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
-          grep -q 'validateDistributionUrl=true' android/gradle/wrapper/gradle-wrapper.properties
-          ! grep -q '/tmp/gradle' android/gradle/wrapper/gradle-wrapper.properties
+          grep -Fq "gradle-${JOBTOMATIK_GRADLE_VERSION}-bin.zip" android/gradle/wrapper/gradle-wrapper.properties
+          grep -Fq 'validateDistributionUrl=true' android/gradle/wrapper/gradle-wrapper.properties
+          ! grep -Fq '/tmp/gradle' android/gradle/wrapper/gradle-wrapper.properties
           cd android
           ./gradlew --no-daemon --version
 
