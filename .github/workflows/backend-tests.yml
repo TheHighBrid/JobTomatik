@@ -4,12 +4,16 @@ on:
   pull_request:
     paths:
       - "backend/**"
+      - ".jobtomatik-toolchain.env"
+      - ".github/dependabot.yml"
       - ".github/workflows/backend-tests.yml"
   push:
     branches:
       - main
     paths:
       - "backend/**"
+      - ".jobtomatik-toolchain.env"
+      - ".github/dependabot.yml"
       - ".github/workflows/backend-tests.yml"
 
 permissions:

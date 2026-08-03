@@ -69,11 +69,11 @@ updates:
       - dependency-name: "com.android.tools.build:gradle"
         update-types:
           - "version-update:semver-major"
-      # AGP 8.x depends on a Gradle internal API removed in Gradle 9.6.
-      # Keep receiving safe wrapper updates while blocking only the incompatible line.
+      # AGP 8.x depends on Gradle Problems API internals removed in Gradle 9.6.
+      # Block 9.6 and later until the Android Gradle Plugin is upgraded.
       - dependency-name: "gradle-wrapper"
         versions:
-          - "[9.6,9.7)"
+          - "[9.6,)"
 
   - package-ecosystem: github-actions
     directory: /
