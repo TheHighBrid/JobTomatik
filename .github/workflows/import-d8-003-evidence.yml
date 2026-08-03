@@ -106,7 +106,11 @@ jobs:
                       'duplicate import', unique_fields, row
                   )
               with target.open('a', encoding='utf-8', newline='') as handle:
-                  csv.DictWriter(handle, fieldnames=target_fields).writerow(row)
+                  csv.DictWriter(
+                      handle,
+                      fieldnames=target_fields,
+                      lineterminator='\n',
+                  ).writerow(row)
               return row
 
           candidate_row = append_one(
