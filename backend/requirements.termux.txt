@@ -10,7 +10,7 @@ redis==5.2.1
 celery[redis]==5.6.3
 PyJWT==2.13.0
 cryptography==49.0.0
-bcrypt==4.0.1
+bcrypt==5.0.0
 python-multipart==0.0.31
 httpx==0.28.1
 beautifulsoup4==4.15.0
