@@ -22,6 +22,8 @@ jobs:
   retain-ready-evidence:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      PYTHONPATH: .
 
     defaults:
       run:
