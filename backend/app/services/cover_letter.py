@@ -1,22 +1,12 @@
-"""Cover letter generator with a free local fallback."""
+"""Evidence-conservative cover letter fallback.
+
+The source-mapped material pipeline lives in ``material_generation.py``. This module
+remains as a compatibility path for older callers, but it never supplies default
+employers, names, years, skills, roles, or achievements when the user did not provide
+them.
+"""
 
 from typing import Any, Dict
-
-try:
-    import anthropic
-except Exception:  # optional dependency/runtime
-    anthropic = None
-
-from app.config import get_settings
-
-
-DEFAULT_BANKING_EMPLOYERS = [
-    "TD Bank",
-    "RBC",
-    "BMO",
-    "Scotiabank",
-    "Tangerine",
-]
 
 
 def _get(obj: Any, key: str, default: Any = "") -> Any:
@@ -33,143 +23,106 @@ def _clean_list(values: Any, limit: int = 8) -> str:
     if isinstance(values, str):
         return values.strip()
     try:
-        return ", ".join(str(v).strip() for v in list(values)[:limit] if str(v).strip())
+        return ", ".join(
+            str(value).strip()
+            for value in list(values)[:limit]
+            if str(value).strip()
+        )
     except Exception:
-        return str(values)
+        return str(values).strip()
 
 
-def _employment_history(user_profile: Dict) -> str:
+def _employment_entries(user_profile: Dict) -> list[dict[str, str]]:
     raw = (
         _get(user_profile, "employment_history", "")
         or _get(user_profile, "experience_history", "")
         or _get(user_profile, "employers", "")
     )
+    entries: list[dict[str, str]] = []
     if isinstance(raw, list):
-        entries = []
-        for item in raw:
-            if isinstance(item, dict):
-                employer = str(item.get("employer") or item.get("company") or "").strip()
-                role = str(item.get("role") or item.get("title") or "").strip()
-                highlights = str(item.get("highlights") or item.get("experience") or "").strip()
-                summary = " | ".join(part for part in (employer, role, highlights) if part)
-                if summary:
-                    entries.append(summary)
-            elif str(item).strip():
-                entries.append(str(item).strip())
-        if entries:
-            return "; ".join(entries)
-    elif str(raw or "").strip():
-        return str(raw).strip()
-    return ", ".join(DEFAULT_BANKING_EMPLOYERS)
+        source_items = raw
+    else:
+        source_items = str(raw or "").replace("\r", "\n").replace(";", "\n").splitlines()
 
-
-def _employer_names(history: str) -> str:
-    names = []
-    for entry in history.replace("\n", ";").split(";"):
-        name = entry.split("|")[0].strip()
-        if name and name.casefold() not in {item.casefold() for item in names}:
-            names.append(name)
-    if len(names) == 1:
-        return names[0]
-    if len(names) == 2:
-        return " and ".join(names)
-    return ", ".join(names[:-1]) + f", and {names[-1]}" if names else "previous employers"
+    for item in source_items:
+        if isinstance(item, dict):
+            employer = str(item.get("employer") or item.get("company") or "").strip()
+            role = str(item.get("role") or item.get("title") or "").strip()
+            detail = str(item.get("highlights") or item.get("experience") or "").strip()
+        else:
+            parts = [part.strip() for part in str(item or "").split("|")]
+            employer = parts[0] if parts else ""
+            role = parts[1] if len(parts) > 1 else ""
+            detail = " | ".join(parts[2:]) if len(parts) > 2 else ""
+        if employer or role or detail:
+            entries.append({"employer": employer, "role": role, "detail": detail})
+    return entries
 
 
 def _fallback_cover_letter(job: Dict, user_profile: Dict) -> str:
-    title = _get(job, "title", "the position")
-    company = _get(job, "company", "your organization")
-    name = _get(user_profile, "full_name", "") or _get(user_profile, "name", "") or "Mohamed Alem"
-    current_role = (
+    title = str(_get(job, "title", "the position") or "the position").strip()
+    company = str(_get(job, "company", "your organization") or "your organization").strip()
+    name = str(_get(user_profile, "full_name", "") or _get(user_profile, "name", "")).strip()
+    current_role = str(
         _get(user_profile, "current_role", "")
         or _get(user_profile, "role", "")
-        or "banking and customer service professional"
+    ).strip()
+    years_exp = str(
+        _get(user_profile, "years_experience", "")
+        or _get(user_profile, "experience_years", "")
+    ).strip()
+    skills = _clean_list(_get(user_profile, "skills", ""))
+    achievements = str(
+        _get(user_profile, "key_achievements", "")
+        or _get(user_profile, "achievements", "")
+    ).strip()
+    employment = _employment_entries(user_profile)
+
+    paragraphs = [
+        "Dear Hiring Manager,",
+        f"I am writing to apply for the {title} position at {company}.",
+    ]
+
+    summary_parts = []
+    if current_role:
+        summary_parts.append(f"My profile identifies my current or most recent role as {current_role}")
+    if years_exp:
+        summary_parts.append(f"my profile records {years_exp} years of experience")
+    if skills:
+        summary_parts.append(f"my documented skills include {skills}")
+    if summary_parts:
+        paragraphs.append("; ".join(summary_parts) + ".")
+
+    employment_sentences = []
+    for entry in employment[:5]:
+        employer = entry["employer"]
+        role = entry["role"]
+        detail = entry["detail"]
+        if employer and role:
+            sentence = f"My employment history includes {role} experience with {employer}"
+        elif employer:
+            sentence = f"My employment history includes experience with {employer}"
+        elif role:
+            sentence = f"My employment history includes experience as {role}"
+        else:
+            sentence = "My employment history includes the following documented detail"
+        if detail:
+            sentence += f": {detail}"
+        employment_sentences.append(sentence + ".")
+    if employment_sentences:
+        paragraphs.append(" ".join(employment_sentences))
+
+    if achievements:
+        paragraphs.append(f"My documented achievements include {achievements}.")
+
+    paragraphs.append(
+        "Thank you for considering my application. I would welcome the opportunity "
+        "to discuss the documented experience above in relation to your team’s needs."
     )
-    years_exp = _get(user_profile, "years_experience", "") or _get(user_profile, "experience_years", "") or "several"
-    skills = _clean_list(
-        _get(user_profile, "skills", "")
-        or ["banking", "customer service", "bilingual English/French", "KYC", "AML", "fraud awareness", "risk review"]
-    )
-    achievements = _get(user_profile, "key_achievements", "") or _get(user_profile, "achievements", "")
-    achievement_sentence = f" My background also includes {achievements}" if achievements else ""
-    employment_history = _employment_history(user_profile)
-    employer_names = _employer_names(employment_history)
-
-    return f"""Dear Hiring Manager,
-
-I am writing to express my interest in the {title} position at {company}. With {years_exp} years of experience as a {current_role}, I bring a strong foundation in {skills}, along with the judgment, accuracy, and professionalism required for high-trust banking and financial-crime work.
-
-Across my roles with {employer_names}, I developed a careful and detail-oriented approach to reviewing client information, identifying potential issues, documenting actions clearly, and supporting customers through sensitive financial situations.{achievement_sentence} I understand the importance of confidentiality, regulatory awareness, and calm communication when dealing with financial risk.
-
-What makes this opportunity especially appealing is the chance to contribute to {company} in a role where investigation, customer protection, compliance, and sound decision-making all matter. I am confident that my banking experience, bilingual English/French communication skills, and fraud/risk awareness would allow me to contribute quickly and responsibly.
-
-Thank you for considering my application. I would welcome the opportunity to discuss how my background aligns with the needs of your team.
-
-Best regards,
-{name}
-"""
+    paragraphs.append(f"Best regards,\n{name}" if name else "Best regards")
+    return "\n\n".join(paragraphs).strip() + "\n"
 
 
 async def generate_cover_letter(job: Dict, user_profile: Dict) -> str:
-    settings = get_settings()
-    ai_provider = (getattr(settings, "ai_provider", "template") or "template").lower().strip()
-
-    if ai_provider in ("", "template", "free", "local", "none"):
-        return _fallback_cover_letter(job, user_profile)
-
-    if ai_provider == "anthropic":
-        if not getattr(settings, "anthropic_api_key", "") or anthropic is None:
-            return _fallback_cover_letter(job, user_profile)
-
-        title = _get(job, "title", "the position")
-        company = _get(job, "company", "your organization")
-        description = str(_get(job, "description", ""))[:1500]
-        requirements = str(_get(job, "requirements", ""))[:900]
-        job_skills = _clean_list(_get(job, "skills", ""))
-        name = _get(user_profile, "full_name", "") or "Mohamed Alem"
-        current_role = _get(user_profile, "current_role", "") or "banking and customer service professional"
-        years_exp = _get(user_profile, "years_experience", "") or "several"
-        profile_skills = _clean_list(_get(user_profile, "skills", "")) or job_skills
-        achievements = _get(user_profile, "key_achievements", "") or _get(user_profile, "achievements", "")
-        employment_history = _employment_history(user_profile)
-
-        prompt = f"""Write a professional Canadian banking cover letter.
-
-Job:
-Title: {title}
-Company: {company}
-Description: {description}
-Requirements: {requirements}
-Job skills: {job_skills}
-
-Applicant:
-Name: {name}
-Current role: {current_role}
-Years experience: {years_exp}
-Skills: {profile_skills}
-Achievements: {achievements}
-Employment history: {employment_history}
-
-Rules:
-- Banking, fraud, AML, KYC, compliance, risk, and client-service tone only.
-- Do not mention software engineering.
-- Do not mention scalable systems.
-- Do not mention coding.
-- Do not mention engineering culture.
-- Attribute experience to the employer or employers listed in the employment history.
-- Do not invent an employer, role, responsibility, or achievement.
-- Keep it under 350 words.
-- Output only the letter text.
-"""
-        try:
-            client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-            message = client.messages.create(
-                model=getattr(settings, "anthropic_model", "claude-sonnet-5"),
-                max_tokens=900,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return message.content[0].text.strip()
-        except Exception:
-            return _fallback_cover_letter(job, user_profile)
-
+    """Return the deterministic compatibility letter without inventing profile facts."""
     return _fallback_cover_letter(job, user_profile)

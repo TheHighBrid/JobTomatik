@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import UserOut, UserUpdate
+from app.services.evidence_ledger import rebuild_user_evidence
 
 
 settings = get_settings()
@@ -35,6 +36,8 @@ async def update_profile(
 ):
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(current_user, field, value)
+    db.flush()
+    rebuild_user_evidence(db, current_user)
     db.commit()
     db.refresh(current_user)
     return current_user
@@ -100,6 +103,8 @@ async def upload_resume(
 
     current_user.resume_path = str(filepath)
     current_user.resume_filename = display_filename
+    db.flush()
+    rebuild_user_evidence(db, current_user)
     db.commit()
     db.refresh(current_user)
     return current_user
@@ -114,6 +119,8 @@ async def delete_resume(
         os.remove(current_user.resume_path)
     current_user.resume_path = None
     current_user.resume_filename = None
+    db.flush()
+    rebuild_user_evidence(db, current_user)
     db.commit()
     db.refresh(current_user)
     return current_user
