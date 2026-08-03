@@ -429,7 +429,12 @@ def main() -> None:
         raise SystemExit("Missing finalization arguments: " + ", ".join(missing))
 
     finalized = finalize(args)
-    print(json.dumps(finalized, indent=2, sort_keys=True, default=str))
+    safe_summary = {
+        "source_receipt": finalized.get("source_receipt"),
+        "durable_archive": finalized.get("durable_archive"),
+        "candidate_redacted": True,
+    }
+    print(json.dumps(safe_summary, indent=2, sort_keys=True, default=str))
     print("No row was appended to the canonical baseline or source manifest.")
 
 
