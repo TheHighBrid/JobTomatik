@@ -1,0 +1,46 @@
+name: Materialize D8-003 evidence
+
+on:
+  push:
+    branches:
+      - evidence/lever-phase-a-d8-003
+    paths:
+      - ".github/evidence-d8-003-ready.tgz.b64"
+      - ".github/workflows/materialize-d8-003-evidence.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out evidence branch
+        uses: actions/checkout@v7
+        with:
+          ref: evidence/lever-phase-a-d8-003
+          fetch-depth: 0
+
+      - name: Decode and verify exact evidence archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .github/evidence-d8-003-ready.tgz.b64 > /tmp/lever-phase-a-D8-003-ready.tgz
+          echo "5504a5bb8a0f0d263650cee714d4f2b42ca759edc8ceb87ba6c8522b0d6e6627  /tmp/lever-phase-a-D8-003-ready.tgz" | sha256sum -c -
+          tar -xzf /tmp/lever-phase-a-D8-003-ready.tgz -C "$GITHUB_WORKSPACE"
+          echo "86b145f01e83e01b43053a0bb8d77a956ac176c2459c11dd6f6dc3986214c5e1  backend/evidence/lever-phase-a-artifacts/D8-003/lever-phase-a-report.json" | sha256sum -c -
+          echo "62072693af0661507beac420c00d9f620b51023fcbd55423254bb49b7f6f7f42  backend/evidence/lever-phase-a-artifacts/D8-003/lever-phase-a-synthetic-resume.pdf" | sha256sum -c -
+
+      - name: Commit only the exact evidence files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/evidence-d8-003-ready.tgz.b64
+          rm -f .github/workflows/materialize-d8-003-evidence.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Retain qualifying Lever Phase A D8-003 dry run"
+          git push origin HEAD:evidence/lever-phase-a-d8-003
