@@ -1,0 +1,160 @@
+name: Lever Phase A ready evidence retention
+
+on:
+  workflow_dispatch:
+    inputs:
+      review_id:
+        description: Exact frozen review ID to retain, for example D8-003
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - "backend/scripts/finalize_lever_phase_a_ready.py"
+      - "backend/evidence/lever-phase-a-artifacts/**/lever-phase-a-report.json"
+      - "backend/evidence/lever-phase-a-artifacts/**/lever-phase-a-synthetic-resume.pdf"
+      - "backend/tests/test_lever_phase_a_ready_provenance.py"
+      - ".github/workflows/lever-phase-a-ready-retention.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  retain-ready-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Compile and test ready-retention tooling
+        run: |
+          python -m py_compile scripts/finalize_lever_phase_a_ready.py
+          pytest -q --tb=short -ra tests/test_lever_phase_a_ready_provenance.py
+
+      - name: Select exactly one ready report
+        id: selection
+        shell: bash
+        working-directory: .
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DISPATCH_REVIEW_ID: ${{ inputs.review_id }}
+        run: |
+          set -euo pipefail
+          reports=()
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            while IFS= read -r path; do
+              [[ -n "$path" ]] && reports+=("$path")
+            done < <(
+              git diff --name-only "$BASE_SHA" HEAD -- \
+                'backend/evidence/lever-phase-a-artifacts/*/lever-phase-a-report.json'
+            )
+          else
+            [[ "${DISPATCH_REVIEW_ID:-}" =~ ^D8-[0-9]{3}$ ]] || {
+              echo "Invalid review_id: ${DISPATCH_REVIEW_ID:-}" >&2
+              exit 1
+            }
+            reports+=("backend/evidence/lever-phase-a-artifacts/${DISPATCH_REVIEW_ID}/lever-phase-a-report.json")
+          fi
+
+          if (( ${#reports[@]} != 1 )); then
+            printf 'Exactly one ready report must be selected; found %s.\n' "${#reports[@]}" >&2
+            exit 1
+          fi
+
+          report="${reports[0]}"
+          [[ -f "$GITHUB_WORKSPACE/$report" ]] || {
+            echo "Selected report does not exist: $report" >&2
+            exit 1
+          }
+          review_id="$(basename "$(dirname "$report")")"
+          [[ "$review_id" =~ ^D8-[0-9]{3}$ ]] || {
+            echo "Invalid frozen review ID directory: $review_id" >&2
+            exit 1
+          }
+          echo "review_id=$review_id" >> "$GITHUB_OUTPUT"
+          echo "report_path=${report#backend/}" >> "$GITHUB_OUTPUT"
+          echo "report_dir=$(dirname "${report#backend/}")" >> "$GITHUB_OUTPUT"
+
+      - name: Validate ordinary ready-to-submit report
+        env:
+          REVIEW_ID: ${{ steps.selection.outputs.review_id }}
+          REPORT_PATH: ${{ steps.selection.outputs.report_path }}
+        run: |
+          python scripts/finalize_lever_phase_a_ready.py \
+            --validate-only \
+            --review-id "$REVIEW_ID" \
+            --report "$REPORT_PATH"
+
+      - name: Build one-record retention manifest
+        env:
+          REVIEW_ID: ${{ steps.selection.outputs.review_id }}
+          REPORT_PATH: ${{ steps.selection.outputs.report_path }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path(os.environ['REPORT_PATH'])
+          manifest = {
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'workflow_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'commit_sha': os.environ['GITHUB_SHA'],
+              'retained_record_count': 1,
+              'report': {
+                  'review_id': os.environ['REVIEW_ID'],
+                  'path': report_path.as_posix(),
+                  'sha256': hashlib.sha256(report_path.read_bytes()).hexdigest(),
+              },
+          }
+          Path('lever-phase-a-ready-retention-manifest.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload externally retained ready evidence
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: lever-phase-a-ready-${{ steps.selection.outputs.review_id }}-${{ github.sha }}
+          path: |
+            backend/${{ steps.selection.outputs.report_dir }}/**
+            backend/lever-phase-a-ready-retention-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish finalizer provenance
+        shell: bash
+        run: |
+          {
+            echo '## Lever Phase A ready evidence retained'
+            echo
+            echo "- Review ID: \`${{ steps.selection.outputs.review_id }}\`"
+            echo "- Workflow run ID: \`${GITHUB_RUN_ID}\`"
+            echo "- Artifact ID: \`${{ steps.upload.outputs.artifact-id }}\`"
+            echo "- Artifact digest: \`${{ steps.upload.outputs.artifact-digest }}\`"
+            echo '- Retained record count: `1`'
+            echo
+            echo 'Download the artifact metadata and ZIP, then run `scripts/finalize_lever_phase_a_ready.py`.'
+          } >> "$GITHUB_STEP_SUMMARY"
