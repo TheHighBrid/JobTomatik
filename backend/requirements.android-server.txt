@@ -11,7 +11,7 @@ celery==5.6.3
 anthropic==0.120.0
 sendgrid==6.12.5
 PyJWT==2.13.0
-cryptography==49.0.0
+cryptography==50.0.0
 bcrypt==5.0.0
 python-multipart==0.0.32
 httpx==0.28.1
