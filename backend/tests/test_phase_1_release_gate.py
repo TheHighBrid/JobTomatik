@@ -98,12 +98,11 @@ def test_lever_phase_2_freeze_keeps_launch_snapshot_separate_from_current_progre
     assert freeze["starting_point"]["qualifying_dry_runs"] == 0
     assert 0 <= current <= freeze["starting_point"]["required_qualifying_dry_runs"]
     assert calculated["summary"]["manual_challenge_boundary_count"] == 1
-    assert supersession["superseded"]["baseline_row"]["pre_submit_state"] == "manual_challenge_handoff"
-    assert supersession["superseded"]["baseline_row"]["final_status"] == "needs_review"
+    assert supersession["superseded"]["pre_submit_state"] == "manual_challenge_handoff"
+    assert supersession["superseded"]["final_status"] == "needs_review"
     assert supersession["safety"] == {
         "final_submit_clicked": False,
-        "historical_attempt_preserved": True,
-        "historical_source_receipt_preserved": True,
+        "historical_boundary_preserved": True,
         "quota_credit_counted_once": True,
     }
     assert calculated["summary"]["promotion_ready"] is False
