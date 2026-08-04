@@ -1,0 +1,346 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/cin7/7d4a0f39-7771-4d19-b328-e8705cac1623/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/cin7/7d4a0f39-7771-4d19-b328-e8705cac1623/apply",
+      "title": "Cin7 - Customer Success Manager",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/cin7/7d4a0f39-7771-4d19-b328-e8705cac1623/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Twitter] | Twitter URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Twitter]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[GitHub] | GitHub URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[GitHub]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field0]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Canadian Citizen",
+              "Permanent Resident",
+              "Post-Graduation Work Permit (PGWP)",
+              "Spousal/Partner Open Work Permit",
+              "Bridging Open Work Permit",
+              "Other"
+            ],
+            "name": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field1] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field2]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field3]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[gender] | Gender Select ... Male Female Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Male",
+              "Female",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[gender]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[race] | Race Select ... Hispanic or Latino White (Not Hispanic or Latino) Black or African American (Not Hispanic or Latino) Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino) Asian (Not Hispanic or Latino) American Indian or Alaska Native (Not Hispanic or Latino) Two or More Races (Not Hispanic or Latino) Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Hispanic or Latino",
+              "White (Not Hispanic or Latino)",
+              "Black or African American (Not Hispanic or Latino)",
+              "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+              "Asian (Not Hispanic or Latino)",
+              "American Indian or Alaska Native (Not Hispanic or Latino)",
+              "Two or More Races (Not Hispanic or Latino)",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[race]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[veteran] | Veteran status Select ... I am a veteran I am not a veteran Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "I am a veteran",
+              "I am not a veteran",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[veteran]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 18,
+        "required_control_count": 7,
+        "required_custom_controls": [
+          {
+            "descriptor": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field0]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Canadian Citizen",
+              "Permanent Resident",
+              "Post-Graduation Work Permit (PGWP)",
+              "Spousal/Partner Open Work Permit",
+              "Bridging Open Work Permit",
+              "Other"
+            ],
+            "name": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field1] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field2]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field3]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[2ff83a10-0c49-4c06-85bf-98429c82357f][field3]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "cin7",
+      "posting_id": "7d4a0f39-7771-4d19-b328-e8705cac1623",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "7d4a0f39-7771-4d19-b328-e8705cac1623",
+        "title": "Customer Success Manager",
+        "categories": {
+          "commitment": "Full-Time",
+          "location": "Toronto, CAN",
+          "team": "Customer Success",
+          "allLocations": [
+            "Toronto, CAN"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/cin7/7d4a0f39-7771-4d19-b328-e8705cac1623",
+        "apply_url": "https://jobs.lever.co/cin7/7d4a0f39-7771-4d19-b328-e8705cac1623/apply",
+        "site": "cin7",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/cin7/7d4a0f39-7771-4d19-b328-e8705cac1623/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 12,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "10a9a29c1c670ce40d51a653",
+          "filled_fingerprint": "51d80d554e1f0ea96456867b",
+          "fields_filled": 12,
+          "control_passes": 2,
+          "ts": "2026-08-04T02:27:40.304749"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "51d80d554e1f0ea96456867b",
+          "ts": "2026-08-04T02:27:40.396744"
+        }
+      ],
+      "control_evidence_count": 1,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 18,
+        "required_control_count": 7,
+        "required_custom_control_count": 4,
+        "policy_count": 4,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "cin7",
+        "posting_id": "7d4a0f39-7771-4d19-b328-e8705cac1623",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

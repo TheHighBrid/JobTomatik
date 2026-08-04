@@ -1,0 +1,361 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/brafton/1516693a-7a1d-4359-bd2f-4df2b85c68f5/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/brafton/1516693a-7a1d-4359-bd2f-4df2b85c68f5/apply",
+      "title": "Brafton - Account Executive",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/brafton/1516693a-7a1d-4359-bd2f-4df2b85c68f5/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Twitter] | Twitter URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Twitter]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[GitHub] | GitHub URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[GitHub]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Brafton",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field2] | Type your response",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field3] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[gender] | Gender Select ... Male Female Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Male",
+              "Female",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[gender]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[race] | Race Select ... Hispanic or Latino White (Not Hispanic or Latino) Black or African American (Not Hispanic or Latino) Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino) Asian (Not Hispanic or Latino) American Indian or Alaska Native (Not Hispanic or Latino) Two or More Races (Not Hispanic or Latino) Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Hispanic or Latino",
+              "White (Not Hispanic or Latino)",
+              "Black or African American (Not Hispanic or Latino)",
+              "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+              "Asian (Not Hispanic or Latino)",
+              "American Indian or Alaska Native (Not Hispanic or Latino)",
+              "Two or More Races (Not Hispanic or Latino)",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[race]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[veteran] | Veteran status Select ... I am a veteran I am not a veteran Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "I am a veteran",
+              "I am not a veteran",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[veteran]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 19,
+        "required_control_count": 7,
+        "required_custom_controls": [
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field3] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[ee4fa054-27b6-4539-a6cc-3d7f78bc30a6][field3]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "brafton",
+      "posting_id": "1516693a-7a1d-4359-bd2f-4df2b85c68f5",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "1516693a-7a1d-4359-bd2f-4df2b85c68f5",
+        "title": "Account Executive",
+        "categories": {
+          "commitment": "Full-Time",
+          "department": "Sales",
+          "location": "Toronto, Ontario",
+          "team": "Sales",
+          "allLocations": [
+            "Toronto, Ontario"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/brafton/1516693a-7a1d-4359-bd2f-4df2b85c68f5",
+        "apply_url": "https://jobs.lever.co/brafton/1516693a-7a1d-4359-bd2f-4df2b85c68f5/apply",
+        "site": "brafton",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/brafton/1516693a-7a1d-4359-bd2f-4df2b85c68f5/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 10,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "e6cfc4081a12dc427e145e46",
+          "filled_fingerprint": "56ceedca27a1b5da52119495",
+          "fields_filled": 10,
+          "control_passes": 2,
+          "ts": "2026-08-04T02:26:50.843122"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "56ceedca27a1b5da52119495",
+          "ts": "2026-08-04T02:26:50.938304"
+        }
+      ],
+      "control_evidence_count": 1,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 19,
+        "required_control_count": 7,
+        "required_custom_control_count": 5,
+        "policy_count": 5,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "brafton",
+        "posting_id": "1516693a-7a1d-4359-bd2f-4df2b85c68f5",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

@@ -1,0 +1,57 @@
+{
+  "reason": "stronger_exact_target_ready_evidence",
+  "safety": {
+    "final_submit_clicked": false,
+    "historical_attempt_preserved": true,
+    "historical_source_receipt_preserved": true,
+    "quota_credit_counted_once": true
+  },
+  "schema_version": "1.0",
+  "superseded": {
+    "baseline_row": {
+      "adapter_version": "1.1.0",
+      "application_url": "https://jobs.eu.lever.co/lever/065f4538-7347-4207-909f-4ea68f63b4af/apply",
+      "artifact_path": "",
+      "artifact_sha256": "6ca77acba08e6e909157ede3483414d648cee6263a0af4c769ae77a1b1efa6e6",
+      "completed_at": "2026-07-28T07:05:57.712720+00:00",
+      "controls_blocked": "0",
+      "controls_discovered": "14",
+      "controls_filled": "9",
+      "controls_skipped": "5",
+      "employer": "Lever",
+      "error": "A CAPTCHA or human-verification challenge requires manual completion.",
+      "final_status": "needs_review",
+      "handoff_boundary": "post_fill_pre_action",
+      "handoff_reason": "captcha_detected",
+      "notes": "Synthetic manual-challenge boundary coverage; does not advance the Phase A gate.",
+      "official_posting_inspection_passed": "false",
+      "operator": "github-actions",
+      "policies_used": "1",
+      "posting_id": "065f4538-7347-4207-909f-4ea68f63b4af",
+      "pre_submit_state": "manual_challenge_handoff",
+      "region": "eu",
+      "role": "API Engineer",
+      "run_id": "github-actions-30337038142-1",
+      "site": "lever",
+      "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30337038142",
+      "uploads_verified": "1"
+    },
+    "source_receipt": {
+      "artifact_digest": "c72bf99c62394393ef98100f3c5deee2b6bdcaa839d163bd0d9dc03a60d711e2",
+      "artifact_id": "8679562746",
+      "retained_record_count": "1",
+      "workflow_run_id": "30337038142"
+    }
+  },
+  "superseding": {
+    "artifact_path": "lever-phase-a-artifacts/D8-043/lever-phase-a-report.json",
+    "artifact_sha256": "8b98b2199ce767fdee052b940b919c77cc9f7b4df138aed648793c4e2a92b1bc",
+    "final_status": "dry_run_passed",
+    "final_submit_clicked": false,
+    "pre_submit_state": "ready_to_submit",
+    "review_id": "D8-043",
+    "run_id": "github-actions-30871406281-ready-d8-043",
+    "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30871406281"
+  },
+  "target_identity": "eu:lever:065f4538-7347-4207-909f-4ea68f63b4af"
+}
