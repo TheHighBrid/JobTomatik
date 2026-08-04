@@ -7,6 +7,7 @@ on:
       - ".env.example"
       - "scripts/verify.sh"
       - "backend/app/services/ats_manifest.py"
+      - "backend/app/services/lever_phase_a_archive.py"
       - "backend/app/services/lever_phase_a_evidence.py"
       - "backend/app/services/lever_pilot_ingestion.py"
       - "backend/app/services/lever_pilot_ledger_boundary.py"
@@ -15,8 +16,12 @@ on:
       - "backend/scripts/certify_lever_pilot_readiness.py"
       - "backend/scripts/export_lever_phase_a_record.py"
       - "backend/scripts/evaluate_campaign_days_12_22.py"
+      - "backend/scripts/verify_lever_phase_a_checkpoint.py"
       - "backend/evidence/lever-phase-a-baseline.csv"
       - "backend/evidence/lever-phase-a-sources.csv"
+      - "backend/evidence/lever-phase-a-supersessions.json"
+      - "backend/evidence/lever-phase-a-artifacts/**"
+      - "backend/evidence/lever-phase-a-external-archives/**"
       - "backend/evidence/lever-pilot-readiness.json"
       - "backend/evidence/lever-pilot-readiness.md"
       - "backend/evidence/lever-phase-b-launch.json"
@@ -25,6 +30,7 @@ on:
       - "backend/tests/test_campaign_day_gates.py"
       - "backend/tests/test_phase_1_release_gate.py"
       - "backend/tests/test_certification_regressions.py"
+      - "backend/tests/test_lever_phase_a_multi_archive.py"
       - "docs/operations/lever-phase-2-measurement-freeze.*"
       - "docs/roadmaps/2026-07-29-day-07-*"
       - "docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json"
@@ -39,6 +45,7 @@ on:
       - ".env.example"
       - "scripts/verify.sh"
       - "backend/app/services/ats_manifest.py"
+      - "backend/app/services/lever_phase_a_archive.py"
       - "backend/app/services/lever_phase_a_evidence.py"
       - "backend/app/services/lever_pilot_ingestion.py"
       - "backend/app/services/lever_pilot_ledger_boundary.py"
@@ -47,8 +54,12 @@ on:
       - "backend/scripts/certify_lever_pilot_readiness.py"
       - "backend/scripts/export_lever_phase_a_record.py"
       - "backend/scripts/evaluate_campaign_days_12_22.py"
+      - "backend/scripts/verify_lever_phase_a_checkpoint.py"
       - "backend/evidence/lever-phase-a-baseline.csv"
       - "backend/evidence/lever-phase-a-sources.csv"
+      - "backend/evidence/lever-phase-a-supersessions.json"
+      - "backend/evidence/lever-phase-a-artifacts/**"
+      - "backend/evidence/lever-phase-a-external-archives/**"
       - "backend/evidence/lever-pilot-readiness.json"
       - "backend/evidence/lever-pilot-readiness.md"
       - "backend/evidence/lever-phase-b-launch.json"
@@ -57,6 +68,7 @@ on:
       - "backend/tests/test_campaign_day_gates.py"
       - "backend/tests/test_phase_1_release_gate.py"
       - "backend/tests/test_certification_regressions.py"
+      - "backend/tests/test_lever_phase_a_multi_archive.py"
       - "docs/operations/lever-phase-2-measurement-freeze.*"
       - "docs/roadmaps/2026-07-29-day-07-*"
       - "docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json"
@@ -118,9 +130,12 @@ jobs:
             backend/tests/test_campaign_day_gates.py \
             backend/tests/test_phase_1_release_gate.py \
             backend/tests/test_certification_regressions.py \
+            backend/tests/test_lever_phase_a_multi_archive.py \
             backend/scripts/certify_lever_pilot_readiness.py \
             backend/scripts/export_lever_phase_a_record.py \
             backend/scripts/evaluate_campaign_days_12_22.py \
+            backend/scripts/verify_lever_phase_a_checkpoint.py \
+            backend/app/services/lever_phase_a_archive.py \
             backend/app/services/lever_phase_a_evidence.py \
             backend/app/services/lever_readiness_hardening.py \
             backend/app/services/campaign_day_gates.py
@@ -136,6 +151,7 @@ jobs:
             tests/test_certification_regressions.py \
             tests/test_day06_operational_safety.py \
             tests/test_lever_phase_a_export.py \
+            tests/test_lever_phase_a_multi_archive.py \
             tests/test_lever_phase_a_readiness_validation.py \
             tests/test_lever_readiness_hardening.py \
             tests/test_reproducible_verification_contract.py \
@@ -158,6 +174,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p phase-1-evidence
+          python scripts/verify_lever_phase_a_checkpoint.py \
+            --evidence-root evidence \
+            --output-root phase-1-evidence
           python scripts/certify_lever_pilot_readiness.py \
             --baseline evidence/lever-phase-a-baseline.csv \
             --ledger phase-1-evidence/missing-phase-b.jsonl \
@@ -172,23 +191,41 @@ jobs:
           import json
           from pathlib import Path
 
-          report = json.loads(Path('phase-1-evidence/lever-certification.json').read_text())
+          report = json.loads(
+              Path('phase-1-evidence/lever-certification.json').read_text(
+                  encoding='utf-8'
+              )
+          )
+          checkpoint = json.loads(
+              Path('phase-1-evidence/lever-phase-a-checkpoint-verification.json').read_text(
+                  encoding='utf-8'
+              )
+          )
           summary = report['readiness']['summary']
           freeze = json.loads(
-              Path('../docs/operations/lever-phase-2-measurement-freeze.json').read_text()
+              Path('../docs/operations/lever-phase-2-measurement-freeze.json').read_text(
+                  encoding='utf-8'
+              )
           )
           gate = json.loads(
-              Path('../docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json').read_text()
+              Path('../docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json').read_text(
+                  encoding='utf-8'
+              )
           )
 
           current = int(summary['qualifying_dry_run_count'])
           required = int(freeze['starting_point']['required_qualifying_dry_runs'])
           assert report['passed'] is True
+          assert checkpoint['passed'] is True
           assert freeze['starting_point']['qualifying_dry_runs'] == 0
+          assert freeze['starting_point']['manual_challenge_boundary_rows'] == 2
           assert 0 <= current <= required
-          assert summary['manual_challenge_boundary_count'] >= freeze['starting_point']['manual_challenge_boundary_rows']
+          assert current == 20
+          assert summary['distinct_site_count'] == 20
+          assert summary['manual_challenge_boundary_count'] == 1
           assert summary['phase_a_inspection_failure_count'] == 0
           assert summary['promotion_ready'] is False
+          assert checkpoint['supersession']['quota_credit_counted_once'] is True
           assert freeze['starting_point']['historical_rows_counted_toward_quota'] == 0
           assert freeze['promotion']['authorized'] is False
           assert gate['phase_2_launch']['lever_qualifying_dry_runs'] == 0
@@ -203,6 +240,9 @@ jobs:
           path: |
             backend/phase-1-release-gate.txt
             backend/phase-1-release-gate.xml
+            backend/phase-1-evidence/lever-phase-a-checkpoint-verification.json
+            backend/phase-1-evidence/lever-pilot-readiness.json
+            backend/phase-1-evidence/lever-pilot-readiness.md
             backend/phase-1-evidence/lever-certification.json
             backend/phase-1-evidence/lever-certification.md
             docs/roadmaps/baselines/2026-07-29-day-07-phase-1-gate.json
