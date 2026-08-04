@@ -59,27 +59,28 @@
       "title": "Lever Phase A certification"
     },
     {
-      "blockers": [
-        "retain two exact user-selected Lever applications with byte-verified, application-bound read-only dossiers and successful no-submit dry previews"
-      ],
+      "blockers": [],
       "day": 15,
       "facts": {
-        "approval_dossier_count": 0,
+        "approval_dossier_count": 2,
         "dossier_validation_errors": [],
-        "dry_preview_count": 0,
+        "dry_preview_count": 2,
         "duplicate_application_count": 0,
         "invalid_dossier_count": 0,
         "malformed_record_count": 0,
         "phase_a_complete": true,
-        "ready_application_count": 0,
-        "ready_application_ids": [],
-        "selected_application_count": 0,
+        "ready_application_count": 2,
+        "ready_application_ids": [
+          "lever:cin7:7d4a0f39-7771-4d19-b328-e8705cac1623",
+          "lever:pockethealth:b7c95155-37e5-4a9f-b1fb-be00710c1820"
+        ],
+        "selected_application_count": 2,
         "source_schema_valid": true,
         "source_schema_version": "1.1",
         "target_ready_applications": 2
       },
-      "passed": false,
-      "status": "blocked_by_evidence_or_user_gate",
+      "passed": true,
+      "status": "complete",
       "title": "Lever Phase B launch dossier"
     },
     {
@@ -264,7 +265,6 @@
   "scope": "roadmap_days_12_through_22",
   "summary": {
     "blocked_days": [
-      15,
       16,
       17,
       18,
@@ -276,8 +276,9 @@
     "complete_days": [
       12,
       13,
-      14
+      14,
+      15
     ],
-    "next_action": "retain two exact user-selected Lever applications with byte-verified, application-bound read-only dossiers and successful no-submit dry previews"
+    "next_action": "obtain exact user approvals and independently verify 2 more distinct submissions"
   }
 }
