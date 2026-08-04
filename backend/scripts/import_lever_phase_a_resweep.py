@@ -10,7 +10,7 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from app.services.lever_phase_a_operator import load_locked_target
 from app.services.lever_pilot_ingestion import (
@@ -42,8 +42,13 @@ EXPECTED_REVIEW_IDS = {
     "D8-043",
 }
 RECOVERED_REVIEW_IDS = {"D8-011", "D8-022"}
-SUPERSEDED_TARGET = "eu:lever:065f4538-7347-4207-909f-4ea68f63b4af"
+SUPERSEDED_TARGET = (
+    "eu",
+    "lever",
+    "065f4538-7347-4207-909f-4ea68f63b4af",
+)
 SUPERSEDED_RUN_ID = "github-actions-30337038142-1"
+SUPERSEDED_WORKFLOW_RUN_ID = "30337038142"
 SUPERSEDING_REVIEW_ID = "D8-043"
 
 
@@ -95,7 +100,22 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _assert_initial_state(baseline_path: Path) -> tuple[list[str], list[dict[str, str]], dict[str, str]]:
+def _target_identity(row: Mapping[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(row.get("region") or "").strip().lower(),
+        str(row.get("site") or row.get("board_token") or "").strip().lower(),
+        str(row.get("posting_id") or row.get("job_id") or "").strip().lower(),
+    )
+
+
+def _review_id_from_candidate(row: Mapping[str, Any]) -> str:
+    path = Path(str(row.get("artifact_path") or ""))
+    return path.parent.name if path.name == "lever-phase-a-report.json" else ""
+
+
+def _assert_initial_state(
+    baseline_path: Path,
+) -> tuple[list[str], list[dict[str, str]], dict[str, str]]:
     fields, raw_rows = _read_rows(baseline_path)
     typed_rows = load_phase_a_baseline(baseline_path)
     if len(raw_rows) != 3 or len(typed_rows) != 3:
@@ -106,15 +126,28 @@ def _assert_initial_state(baseline_path: Path) -> tuple[list[str], list[dict[str
     superseded = [
         row
         for row in raw_rows
-        if row.get("target_identity") == SUPERSEDED_TARGET
+        if _target_identity(row) == SUPERSEDED_TARGET
         and row.get("run_id") == SUPERSEDED_RUN_ID
+        and row.get("pre_submit_state") == "manual_challenge_handoff"
         and row.get("final_status") == "needs_review"
         and row.get("handoff_reason") == "captcha_detected"
-        and row.get("valid_manual_challenge_handoff") == "true"
-        and row.get("final_submit_clicked") == "false"
     ]
     if len(superseded) != 1:
         raise AssertionError(("superseded D8-043 row", superseded))
+
+    typed_superseded = [
+        row for row in typed_rows if row.get("run_id") == SUPERSEDED_RUN_ID
+    ]
+    if len(typed_superseded) != 1:
+        raise AssertionError(typed_superseded)
+    typed = typed_superseded[0]
+    if typed.get("qualifies_for_dry_run_matrix") is not False:
+        raise AssertionError(typed)
+    if typed.get("final_submit_clicked") is not False:
+        raise AssertionError(typed)
+    if _target_identity(typed) != SUPERSEDED_TARGET:
+        raise AssertionError(typed)
+
     return fields, raw_rows, superseded[0]
 
 
@@ -124,10 +157,17 @@ def _replace_superseded_row(
     raw_rows: list[dict[str, str]],
     superseded: dict[str, str],
 ) -> None:
-    retained = [row for row in raw_rows if row is not superseded]
+    retained = [
+        row for row in raw_rows if row.get("run_id") != superseded.get("run_id")
+    ]
     if len(retained) != 2:
         raise AssertionError(len(retained))
     _write_rows(baseline_path, fields, retained)
+    remaining = load_phase_a_baseline(baseline_path)
+    if len(remaining) != 2:
+        raise AssertionError(len(remaining))
+    if any(_target_identity(row) == SUPERSEDED_TARGET for row in remaining):
+        raise AssertionError("The stale target identity remains in the baseline")
 
 
 def _copy_packages(original: Path, recovered: Path, evidence: Path) -> list[str]:
@@ -172,6 +212,8 @@ def _import_candidates(
         )
         finalization = json.loads(finalization_path.read_text(encoding="utf-8"))
 
+        if _review_id_from_candidate(candidate) != review_id:
+            raise AssertionError(candidate)
         if finalization.get("review_id") != review_id:
             raise AssertionError(finalization)
         if finalization.get("workflow_run_id") != source.get("workflow_run_id"):
@@ -188,8 +230,6 @@ def _import_candidates(
             raise AssertionError(candidate)
         if candidate.get("final_status") != "dry_run_passed":
             raise AssertionError(candidate)
-        if candidate.get("final_submit_clicked") != "false":
-            raise AssertionError(candidate)
         if not candidate.get("source_reference", "").endswith(
             "/" + source["workflow_run_id"]
         ):
@@ -201,6 +241,8 @@ def _import_candidates(
         report = json.loads(report_path.read_text(encoding="utf-8"))
         target = load_locked_target(review_id, corpus)
         validate_ready_report(report, target)
+        if _target_identity(candidate) != _target_identity(target):
+            raise AssertionError((candidate, target))
 
         archive = (
             evidence
@@ -225,22 +267,37 @@ def _import_candidates(
 
 def _write_supersession(
     evidence: Path,
+    sources_path: Path,
     superseded: dict[str, str],
     imported_rows: list[dict[str, str]],
 ) -> dict[str, Any]:
     superseding = [
-        row for row in imported_rows if row.get("review_id") == SUPERSEDING_REVIEW_ID
+        row
+        for row in imported_rows
+        if _review_id_from_candidate(row) == SUPERSEDING_REVIEW_ID
+        and _target_identity(row) == SUPERSEDED_TARGET
     ]
     if len(superseding) != 1:
         raise AssertionError(superseding)
     superseding_row = superseding[0]
-    if superseding_row.get("target_identity") != SUPERSEDED_TARGET:
-        raise AssertionError(superseding_row)
+
+    _, source_rows = _read_rows(sources_path)
+    historical_sources = [
+        row
+        for row in source_rows
+        if row.get("workflow_run_id") == SUPERSEDED_WORKFLOW_RUN_ID
+    ]
+    if len(historical_sources) != 1:
+        raise AssertionError(historical_sources)
+
     receipt = {
         "schema_version": "1.0",
-        "target_identity": SUPERSEDED_TARGET,
+        "target_identity": ":".join(SUPERSEDED_TARGET),
         "reason": "stronger_exact_target_ready_evidence",
-        "superseded": superseded,
+        "superseded": {
+            "baseline_row": superseded,
+            "source_receipt": historical_sources[0],
+        },
         "superseding": {
             "review_id": SUPERSEDING_REVIEW_ID,
             "run_id": superseding_row["run_id"],
@@ -252,7 +309,8 @@ def _write_supersession(
             "final_submit_clicked": False,
         },
         "safety": {
-            "historical_boundary_preserved": True,
+            "historical_attempt_preserved": True,
+            "historical_source_receipt_preserved": True,
             "final_submit_clicked": False,
             "quota_credit_counted_once": True,
         },
@@ -271,11 +329,11 @@ def _assert_final_state(baseline_path: Path, sources_path: Path) -> dict[str, An
         raise AssertionError(len(rows))
     if len(qualifying) != 20:
         raise AssertionError(len(qualifying))
-    if len({row["site"] for row in qualifying}) != 20:
+    if len({str(row.get("site") or "").lower() for row in qualifying}) != 20:
         raise AssertionError("Qualifying sites are not distinct")
-    if len({row["target_identity"] for row in rows}) != len(rows):
+    if len({_target_identity(row) for row in rows}) != len(rows):
         raise AssertionError("Canonical target identities are not unique")
-    if len({row["run_id"] for row in rows}) != len(rows):
+    if len({str(row.get("run_id") or "") for row in rows}) != len(rows):
         raise AssertionError("Run IDs are not unique")
     if any(row.get("final_submit_clicked") for row in rows):
         raise AssertionError("A final-submit click was recorded")
@@ -294,7 +352,9 @@ def _assert_final_state(baseline_path: Path, sources_path: Path) -> dict[str, An
     return {
         "baseline_record_count": len(rows),
         "qualifying_dry_run_count": len(qualifying),
-        "distinct_site_count": len({row["site"] for row in qualifying}),
+        "distinct_site_count": len(
+            {str(row.get("site") or "").lower() for row in qualifying}
+        ),
         "source_receipt_count": len(source_rows),
     }
 
@@ -312,9 +372,11 @@ def _regenerate_readiness(evidence: Path) -> dict[str, Any]:
         render_readiness_markdown(readiness),
         encoding="utf-8",
     )
+
     summary = readiness["summary"]
+    if readiness["baseline_record_count"] != 21:
+        raise AssertionError(readiness["baseline_record_count"])
     expected = {
-        "baseline_record_count": 21,
         "record_count": 21,
         "qualifying_dry_run_count": 20,
         "distinct_site_count": 20,
@@ -327,8 +389,6 @@ def _regenerate_readiness(evidence: Path) -> dict[str, Any]:
         "phase_a_external_archive_failure_count": 0,
         "phase_a_inspection_failure_count": 0,
     }
-    if readiness["baseline_record_count"] != expected.pop("baseline_record_count"):
-        raise AssertionError(readiness["baseline_record_count"])
     for key, value in expected.items():
         if summary.get(key) != value:
             raise AssertionError((key, summary.get(key), value))
@@ -386,7 +446,12 @@ def main() -> None:
         baseline_path=baseline_path,
         sources_path=sources_path,
     )
-    supersession = _write_supersession(evidence, superseded, imported_rows)
+    supersession = _write_supersession(
+        evidence,
+        sources_path,
+        superseded,
+        imported_rows,
+    )
     final_state = _assert_final_state(baseline_path, sources_path)
     readiness_summary = _regenerate_readiness(evidence)
 
@@ -397,6 +462,7 @@ def main() -> None:
         "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
         "head_sha": os.environ.get("GITHUB_SHA", ""),
         "source_resweep_run_id": args.source_run_id,
+        "recovery_run_id": os.environ.get("RECOVERY_RUN_ID", ""),
         "attempted_target_count": catalog["attempted_target_count"],
         "outcome_counts": catalog["outcome_counts"],
         "qualifying_count_before": 1,
