@@ -312,6 +312,22 @@ def _import_and_verify() -> dict:
     }
 
 
+def _normalize_generated_csv_line_endings() -> None:
+    """Store generated candidate/source CSVs with repository LF line endings."""
+
+    for review_id in sorted(EXPECTED_IDS):
+        for filename in (
+            f"lever-phase-a-candidate-{review_id}.csv",
+            f"lever-phase-a-source-{review_id}.csv",
+        ):
+            path = BACKEND / "evidence" / filename
+            if not path.is_file():
+                raise RuntimeError(f"Missing generated CSV: {path}")
+            original = path.read_bytes()
+            normalized = original.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            path.write_bytes(normalized)
+
+
 def _verify_freeze() -> None:
     freeze = json.loads(
         (ROOT / "docs/operations/lever-phase-2-measurement-freeze.json").read_text()
@@ -334,6 +350,7 @@ def main() -> None:
     receipt = _download_packages()
     _patch_importer()
     _import_and_verify()
+    _normalize_generated_csv_line_endings()
     _verify_freeze()
     subprocess.run(["git", "diff", "--check"], cwd=ROOT, check=True)
     print(json.dumps(receipt, indent=2, sort_keys=True))
