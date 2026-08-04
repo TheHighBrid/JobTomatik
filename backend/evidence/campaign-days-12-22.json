@@ -4,8 +4,8 @@
       "blockers": [],
       "day": 12,
       "facts": {
-        "distinct_sites": 20,
-        "qualifying_dry_runs": 20,
+        "distinct_sites": 28,
+        "qualifying_dry_runs": 28,
         "regions_covered": [
           "eu",
           "global"
@@ -17,26 +17,23 @@
       "title": "Lever dry runs 16 through 20"
     },
     {
-      "blockers": [
-        "retain and verify 5 more qualifying dry runs",
-        "retain and verify 5 more distinct Lever sites"
-      ],
+      "blockers": [],
       "day": 13,
       "facts": {
         "all_manual_challenges_remain_needs_review": true,
-        "distinct_sites": 20,
+        "distinct_sites": 28,
         "manual_challenge_boundaries": 1,
         "manual_challenge_encounters": 1,
         "manual_challenge_violations": 0,
-        "qualifying_dry_runs": 20,
+        "qualifying_dry_runs": 28,
         "regions_covered": [
           "eu",
           "global"
         ],
         "target": 25
       },
-      "passed": false,
-      "status": "blocked_by_evidence_or_user_gate",
+      "passed": true,
+      "status": "complete",
       "title": "Lever dry runs 21 through 25 and challenge boundaries"
     },
     {
@@ -46,7 +43,7 @@
       ],
       "day": 14,
       "facts": {
-        "distinct_sites": 20,
+        "distinct_sites": 28,
         "gate_state": {
           "all_manual_challenges_remain_needs_review": true,
           "all_phase_a_records_have_successful_matching_inspection": true,
@@ -54,7 +51,7 @@
           "thirty_distinct_lever_sites": false,
           "thirty_qualifying_dry_runs": false
         },
-        "qualifying_dry_runs": 20,
+        "qualifying_dry_runs": 28,
         "regions_covered": [
           "eu",
           "global"
@@ -277,7 +274,6 @@
   "scope": "roadmap_days_12_through_22",
   "summary": {
     "blocked_days": [
-      13,
       14,
       15,
       16,
@@ -289,8 +285,9 @@
       22
     ],
     "complete_days": [
-      12
+      12,
+      13
     ],
-    "next_action": "retain and verify 5 more qualifying dry runs"
+    "next_action": "thirty_qualifying_dry_runs"
   }
 }

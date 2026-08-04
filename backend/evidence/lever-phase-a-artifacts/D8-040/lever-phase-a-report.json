@@ -1,0 +1,220 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.eu.lever.co/easol/e95224e3-6e50-4353-988e-f23aefbcf48f/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.eu.lever.co/easol/e95224e3-6e50-4353-988e-f23aefbcf48f/apply",
+      "title": "Easol - Software Engineer - London",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.eu.lever.co/easol/e95224e3-6e50-4353-988e-f23aefbcf48f/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[88a300a4-69c0-468f-bb09-a843eb02a1ef][field0]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[88a300a4-69c0-468f-bb09-a843eb02a1ef][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[88a300a4-69c0-468f-bb09-a843eb02a1ef][field1]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[88a300a4-69c0-468f-bb09-a843eb02a1ef][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[88a300a4-69c0-468f-bb09-a843eb02a1ef][field2]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[88a300a4-69c0-468f-bb09-a843eb02a1ef][field2]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 9,
+        "required_control_count": 4,
+        "required_custom_controls": [
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "easol",
+      "posting_id": "e95224e3-6e50-4353-988e-f23aefbcf48f",
+      "region": "eu",
+      "posting_metadata": {
+        "posting_id": "e95224e3-6e50-4353-988e-f23aefbcf48f",
+        "title": "Software Engineer - London",
+        "categories": {
+          "commitment": "Full Time",
+          "department": "Engineering",
+          "location": "London",
+          "team": "Software Engineering",
+          "allLocations": [
+            "London"
+          ]
+        },
+        "hosted_url": "https://jobs.eu.lever.co/easol/e95224e3-6e50-4353-988e-f23aefbcf48f",
+        "apply_url": "https://jobs.eu.lever.co/easol/e95224e3-6e50-4353-988e-f23aefbcf48f/apply",
+        "site": "easol",
+        "region": "eu",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.eu.lever.co/easol/e95224e3-6e50-4353-988e-f23aefbcf48f/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 4,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "7e504f02e0a59eb879180724",
+          "filled_fingerprint": "311f7840f85c7eb0e1d363b9",
+          "fields_filled": 4,
+          "control_passes": 2,
+          "ts": "2026-08-04T04:04:42.819227"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "311f7840f85c7eb0e1d363b9",
+          "ts": "2026-08-04T04:04:42.912505"
+        }
+      ],
+      "control_evidence_count": 3,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 9,
+        "required_control_count": 4,
+        "required_custom_control_count": 1,
+        "policy_count": 1,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "easol",
+        "posting_id": "e95224e3-6e50-4353-988e-f23aefbcf48f",
+        "region": "eu",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

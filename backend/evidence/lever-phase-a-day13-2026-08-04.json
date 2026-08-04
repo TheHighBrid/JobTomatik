@@ -1,0 +1,29 @@
+{
+  "baseline_record_count_after": 29,
+  "distinct_site_count_after": 28,
+  "qualifying_count_added": 8,
+  "qualifying_count_after": 28,
+  "qualifying_count_before": 20,
+  "regions_covered": [
+    "eu",
+    "global"
+  ],
+  "retained_review_ids": [
+    "D8-009",
+    "D8-010",
+    "D8-018",
+    "D8-020",
+    "D8-030",
+    "D8-034",
+    "D8-036",
+    "D8-040"
+  ],
+  "safety": {
+    "duplicate_submission_count": 0,
+    "external_archive_failure_count": 0,
+    "false_submitted_count": 0,
+    "final_submit_clicked": false,
+    "maturity_promoted": false
+  },
+  "schema_version": "1.0"
+}
