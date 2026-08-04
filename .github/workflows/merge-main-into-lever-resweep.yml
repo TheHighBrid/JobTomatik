@@ -4,8 +4,6 @@ on:
   pull_request:
     branches:
       - temp-lever-resweep-base
-    paths:
-      - ".github/workflows/merge-main-into-lever-resweep.yml"
 
 permissions:
   contents: write
@@ -70,5 +68,3 @@ jobs:
 
           git merge-base --is-ancestor origin/main HEAD
           git push origin "HEAD:${HEAD_BRANCH}"
-
-# Synchronize after temporary-base retarget.
