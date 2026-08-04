@@ -32,7 +32,7 @@
     "synthetic_profile_required": true,
     "execution_state": "ready_to_submit",
     "outcome": "dry_run_passed",
-    "successful_matching_official_posting_inspection_required": true,
+    "successful_matching_official_posting_inspection_passed": true,
     "immutable_workflow_and_artifact_provenance_required": true,
     "durable_external_archive_required": true,
     "artifact_sha256_required": true,
@@ -100,7 +100,7 @@
     "backend/scripts/verify_lever_phase_a_checkpoint.py": "d455a19756faee26c35a017e1c19df45ccd89d14",
     ".github/workflows/campaign-artifact-drift.yml": "dfc420ae562ec3b865beda183c65fbd492f37af1",
     ".github/workflows/lever-phase-a-certification.yml": "82b40249789c774e431191fd8d43d1df7c71d00f",
-    ".github/workflows/phase-1-release-gate.yml": "9476e311c21c7707eccfc399f703fcb1c832513a",
+    ".github/workflows/phase-1-release-gate.yml": "bb2ad6d6ad220eb78d7d8fadb647b3fe9a9bb012",
     "backend/tests/test_phase_1_release_gate.py": "714d9ddd66e1c7c12bc74a0fee6d193a1f814fa5",
     "backend/tests/test_certification_regressions.py": "fd18e7fbb1580a8a85ba655091a4294e6c40c733"
   },
