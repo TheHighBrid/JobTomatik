@@ -10,8 +10,13 @@ on:
   pull_request:
     paths:
       - "backend/scripts/finalize_lever_phase_a_ready.py"
+      - "backend/scripts/verify_lever_phase_a_checkpoint.py"
+      - "backend/evidence/lever-phase-a-baseline.csv"
+      - "backend/evidence/lever-phase-a-sources.csv"
+      - "backend/evidence/lever-phase-a-supersessions.json"
       - "backend/evidence/lever-phase-a-artifacts/**/lever-phase-a-report.json"
       - "backend/evidence/lever-phase-a-artifacts/**/lever-phase-a-synthetic-resume.pdf"
+      - "backend/evidence/lever-phase-a-external-archives/**"
       - "backend/tests/test_lever_phase_a_ready_provenance.py"
       - ".github/workflows/lever-phase-a-ready-retention.yml"
 
@@ -47,10 +52,14 @@ jobs:
 
       - name: Compile and test ready-retention tooling
         run: |
-          python -m py_compile scripts/finalize_lever_phase_a_ready.py
-          pytest -q --tb=short -ra tests/test_lever_phase_a_ready_provenance.py
+          python -m py_compile \
+            scripts/finalize_lever_phase_a_ready.py \
+            scripts/verify_lever_phase_a_checkpoint.py
+          pytest -q --tb=short -ra \
+            tests/test_lever_phase_a_ready_provenance.py \
+            tests/test_lever_phase_a_multi_archive.py
 
-      - name: Select ready report
+      - name: Select ready report or checkpoint
         id: selection
         shell: bash
         working-directory: .
@@ -76,8 +85,10 @@ jobs:
           fi
 
           if (( ${#reports[@]} > 1 )); then
-            printf 'Exactly one ready report may be retained; found %s.\n' "${#reports[@]}" >&2
-            exit 1
+            echo 'has_report=false' >> "$GITHUB_OUTPUT"
+            echo 'has_checkpoint=true' >> "$GITHUB_OUTPUT"
+            echo "checkpoint_report_count=${#reports[@]}" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if (( ${#reports[@]} == 0 )); then
             if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
@@ -85,6 +96,7 @@ jobs:
               exit 1
             fi
             echo 'has_report=false' >> "$GITHUB_OUTPUT"
+            echo 'has_checkpoint=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -99,9 +111,17 @@ jobs:
             exit 1
           }
           echo 'has_report=true' >> "$GITHUB_OUTPUT"
+          echo 'has_checkpoint=false' >> "$GITHUB_OUTPUT"
           echo "review_id=$review_id" >> "$GITHUB_OUTPUT"
           echo "report_path=${report#backend/}" >> "$GITHUB_OUTPUT"
           echo "report_dir=$(dirname "${report#backend/}")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify canonical multi-report checkpoint
+        if: steps.selection.outputs.has_checkpoint == 'true'
+        run: |
+          python scripts/verify_lever_phase_a_checkpoint.py \
+            --evidence-root evidence \
+            --output-root ready-checkpoint-ci
 
       - name: Validate ordinary ready-to-submit report
         if: steps.selection.outputs.has_report == 'true'
@@ -174,7 +194,18 @@ jobs:
             echo 'Download the artifact metadata and ZIP, then run `scripts/finalize_lever_phase_a_ready.py`.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Record checkpoint validation
+        if: steps.selection.outputs.has_checkpoint == 'true'
+        run: |
+          {
+            echo '## Lever Phase A multi-report checkpoint verified'
+            echo
+            echo "- Changed ready reports: \`${{ steps.selection.outputs.checkpoint_report_count }}\`"
+            echo '- Every current row, source receipt, supersession receipt, and durable archive matched.'
+            echo '- No evidence was re-uploaded or counted twice.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Record code-only validation
-        if: steps.selection.outputs.has_report != 'true'
+        if: steps.selection.outputs.has_report != 'true' && steps.selection.outputs.has_checkpoint != 'true'
         run: |
           echo 'Ready-retention tooling passed. No evidence report was selected on this code-only change.' >> "$GITHUB_STEP_SUMMARY"
