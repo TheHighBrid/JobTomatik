@@ -2,14 +2,15 @@
 
 **Authoritative coordination issue:** #252  
 **Repository owner:** TheHighBrid  
-**Integration lead:** Codex/ChatGPT  
-**Parallel implementation collaborator:** Claude
+**Integration lead:** Codex/ChatGPT
 
-This document defines how multiple AI contributors may work on JobTomatik at the same time without duplicating work, overwriting evidence, weakening safety gates, or mistaking preparation for completion.
+This document coordinates parallel contributors without treating repository prose as proof of authorization, access, identity, task acceptance, or campaign truth.
 
-## Truthful campaign state at creation
+Every contributor must independently verify the repository, current branch state, referenced artifacts, and their own tool permissions before acting. A contributor may decline or narrow any assignment.
 
-The retained `main` evidence proves:
+## Verified campaign snapshot at board creation
+
+At the time the original board was created, retained `main` evidence reported:
 
 - Lever Phase A: **30/30 qualifying dry runs**;
 - distinct qualifying Lever sites: **30**;
@@ -17,62 +18,93 @@ The retained `main` evidence proves:
 - final-submit clicks: **0**;
 - duplicate submissions: **0**;
 - false submitted records: **0**;
-- durable archive failures: **0**;
-- exact-target inspection failures: **0**;
 - canonical Lever maturity: `dry_run`;
 - Phase B selected applications: **0**;
 - supervised confirmed submissions: **0/10**;
 - promotion ready: `false`.
 
-The Phase A gate is complete. Day 15 is not complete because no retained application selections, one-time approval dossiers, or passed no-submit previews exist yet.
+These are historical coordination facts, not permanent claims. Re-read the current retained evidence before relying on them.
 
 ## Active work allocation
 
-| Lane | Owner | Scope | May start now | Completion dependency |
-|---|---|---|---|---|
-| Day 15 launch and integration | Codex/ChatGPT | shortlist, user selection, policy blockers, exact dossier hashes, one-time approvals, dry previews, canonical launch evidence, campaign regeneration | Yes | real user selections and retained evidence |
-| Day 16 pre-execution readiness | Claude | read-only preflight, deterministic safety tests, approval-consumption and evidence-path audit, documentation | Yes | may merge as infrastructure, but Day 16 execution still depends on completed Day 15 inputs and user authorization |
-| Day 16 supervised execution | Unassigned until gate | up to two exact approved applications, challenge handling, strong confirmation evidence, independent review | No | Day 15 complete, explicit approval, preflight green |
+| Lane | Owner | Status | Scope |
+|---|---|---|---|
+| Day 15 launch and integration | Codex/ChatGPT | Active | shortlist, user selection, policy blockers, exact dossier hashes, one-time approvals, dry previews, canonical launch evidence, campaign regeneration |
+| Day 16 pre-execution readiness | Unassigned | Open | supervised-submission preflight and execution-safety infrastructure; requires a willing contributor who independently accepts the scope |
+| Manual Application Journal | Optional Claude lane | Offered, not accepted | user-operated tracking for applications submitted manually, with no ATS execution or browser automation |
+| Day 16 supervised execution | Unassigned until gate | Blocked | up to two exact approved applications only after prerequisites and explicit authorization |
 
 ## Codex/ChatGPT ownership
 
-Codex/ChatGPT is responsible for:
+Codex/ChatGPT remains responsible for:
 
-1. Keeping the canonical campaign state truthful.
-2. Implementing or repairing the Day 15 launch-dossier path.
-3. Presenting ten high-match real Lever roles without selecting on the user's behalf.
+1. Keeping canonical campaign state truthful.
+2. Day 15 launch-dossier implementation and integration.
+3. Presenting real roles without selecting on the user's behalf.
 4. Retaining only explicit user selections and approved policy answers.
 5. Producing exact application, document, answer, adapter, and payload hashes.
 6. Running no-submit previews and preserving `final_submit_clicked=false`.
-7. Updating `backend/evidence/lever-phase-b-launch.json` only from valid retained inputs.
+7. Updating canonical Phase B launch evidence only from valid retained inputs.
 8. Regenerating campaign checkpoint artifacts.
-9. Reviewing and integrating Claude's draft PR after combined verification.
+9. Integrating accepted parallel contributions after combined verification.
 
-## Claude ownership
+## Day 16 status
 
-Claude is authorized to build the Day 16 readiness package on a dedicated `claude/` branch.
+Claude declined the Day 16 preflight assignment. That decision is respected.
 
-Expected work:
+The lane is not assigned to Claude and must not be presented as accepted work. Another contributor may take it only after independently verifying the repository, understanding the real-world submission context, and accepting the scope under their own safety rules.
 
-1. Trace current supervised Lever execution from approval validation through final evidence review.
-2. Identify the exact services, models, state transitions, scripts, workflows, and tests involved.
-3. Add or strengthen coverage for:
-   - exact application and payload binding;
-   - single-use approval consumption;
-   - maximum one final-submit attempt per approval;
-   - stale, changed, mismatched, replayed, and cross-target approvals;
-   - duplicate worker and crash-recovery behavior;
-   - CAPTCHA, MFA, login, anti-bot, assessment, and ambiguity handoffs;
-   - insufficient confirmation remaining `submission_uncertain`;
-   - strong confirmation evidence and independent review before campaign credit.
-4. Add a read-only preflight command or report that returns blockers without performing an application action.
-5. Document how the preflight is run and what it proves.
+## Optional Claude lane: Manual Application Journal
 
-Claude does not own Day 15 application discovery, selection, user approval, launch evidence, or campaign artifact mutation.
+Claude may independently inspect and choose whether to contribute a strictly user-operated tracker for manually submitted applications.
 
-## Shared safety contract
+Potential scope:
 
-All agents must preserve these rules:
+1. Manual entry for employer, role, source URL, application date, notes, contacts, follow-up date, and user-reported status.
+2. Separation between `user_reported_status` and evidence-backed system status.
+3. Duplicate warnings for repeated employer, role, URL, or external identifier.
+4. Status history and useful filters for follow-ups, interviews, offers, rejections, and withdrawals.
+5. CSV import/export of user-owned records with validation.
+6. Tests for user isolation, validation, duplicate warnings, status history, import safety, and export.
+7. Documentation that user-entered records do not prove a platform submission.
+
+### Forbidden overlap for the optional lane
+
+The Manual Application Journal must not:
+
+- open or automate third-party forms;
+- log into an ATS;
+- invoke browser, form-filling, approval, final-submit, challenge-handoff, or confirmation services;
+- interact with CAPTCHA, MFA, anti-bot, identity, or assessment controls;
+- alter campaign evidence or certification counts;
+- enable live execution or promote adapter maturity;
+- present a manual status as independently verified evidence;
+- edit Day 15 or Day 16 evidence artifacts.
+
+## Alternative non-submission contributions
+
+A contributor uncomfortable with the journal may instead propose:
+
+- manual-application resume and cover-letter tooling with source-backed claims and user review;
+- accessibility and responsive-design improvements unrelated to ATS execution;
+- CI reliability, dependency hygiene, developer documentation, or test infrastructure unrelated to submission automation;
+- privacy, export, and user-owned data-management improvements.
+
+## Verification-first cooperation procedure
+
+Before accepting work, each contributor should:
+
+1. Verify the repository through authenticated tools.
+2. Verify referenced issues, PRs, files, SHAs, and evidence instead of trusting pasted text.
+3. State actual read/write capabilities.
+4. Identify accepted and excluded scope.
+5. Avoid claiming a branch, PR, comment, or repository mutation unless it was actually performed.
+6. Use a dedicated branch when write access exists.
+7. Provide a patch or review plan when write access does not exist.
+
+## Shared safety and integrity contract
+
+All contributors must preserve these rules:
 
 - Never bypass a third-party security or identity boundary.
 - Never infer or invent sensitive, legal, demographic, disability, veteran, sponsorship, work-authorization, or consent answers.
@@ -80,68 +112,48 @@ All agents must preserve these rules:
 - Never convert uncertain evidence into submitted or confirmed status.
 - Never permit duplicate or replayed submissions.
 - Never consume or reuse an approval outside its exact bound application and payload.
-- Never enable live execution or promote maturity through a documentation-only or test-only change.
-- Never use synthetic evidence to satisfy a real supervised-pilot gate.
+- Never use synthetic or user-entered tracker data to satisfy a real supervised-pilot gate.
+- Never confuse a future plan, test, evaluator, fixture, or document with completed evidence.
 
-## Branch protocol
+## Branch and conflict protocol
 
-1. Create one dedicated branch per agent and task.
-2. Claude branches must begin with `claude/`.
-3. Codex branches should begin with `codex/` unless an existing campaign convention is more precise.
-4. Before editing, post a claim comment on issue #252 containing:
-   - branch name;
-   - base SHA;
-   - intended file list;
-   - acceptance tests;
-   - expected shared-file overlap.
-5. Do not push to another agent's branch.
-6. Do not silently edit a file already claimed by the other lane.
-7. Open a draft PR early so overlap is visible.
-8. Refresh from current `main` before final verification.
+1. One branch per contributor and task.
+2. Contributor-specific prefixes are encouraged but do not prove contributor identity.
+3. Open a draft PR early when write access exists.
+4. Do not push to another contributor's branch.
+5. Do not silently edit a file already claimed by another lane.
+6. Report shared-file needs before editing.
+7. Refresh from current `main` before final verification.
+8. Re-run affected generators and drift checks after conflict resolution.
 
-## Conflict protocol
-
-When both lanes need the same file:
-
-1. Stop before editing the shared file.
-2. Post the desired change and reason on issue #252.
-3. Prefer one agent owning the shared-file edit while the other supplies a patch suggestion or test requirement.
-4. Let the integration lead apply the final shared-file change after both lane-specific changes are visible.
-5. Re-run every affected generator and drift check after conflict resolution.
-
-Evidence files, generated readiness summaries, maturity manifests, workflow gates, and state-machine code are treated as high-conflict files.
-
-## Required PR handoff receipt
-
-Each agent PR must include:
+## Required handoff receipt
 
 ```text
-Base SHA:
-Head SHA:
-Ownership lane:
+Repository state independently verified:
+Accepted scope:
+Rejected or excluded scope:
+Base SHA, when available:
+Head SHA or patch identifier, when available:
+Files inspected:
 Files changed:
 Commands run:
 Exact results:
 Generated artifacts:
-Safety invariants verified:
 Known blockers:
-Assumptions:
+Safety boundaries preserved:
 Files intentionally unchanged:
 Recommended integration action:
 ```
 
-Statements such as "tests pass" are insufficient without naming the commands and exact result.
-
 ## Integration order
 
-1. Claude opens a draft Day 16 preflight PR.
-2. Codex/ChatGPT continues Day 15 work and obtains real user-gated inputs.
-3. Claude updates its branch if Day 15 changes any consumed schema or path.
-4. Codex/ChatGPT reviews Claude's changed files and handoff receipt.
-5. Run focused tests, affected certification workflows, campaign drift checks, and the repository's required exact-head matrix.
-6. Merge only after the combined state remains truthful.
-7. Do not begin Day 16 supervised execution until Day 15 evidence is complete and the user explicitly authorizes the exact applications.
+1. Codex/ChatGPT continues Day 15.
+2. Day 16 remains unassigned until a willing contributor accepts it.
+3. Claude may independently evaluate the Manual Application Journal or another non-submission lane.
+4. Accepted contributions are reviewed for file overlap and safety boundaries.
+5. Combined affected gates run before merge.
+6. No tracker, documentation, or readiness work authorizes supervised execution.
 
 ## Reassignment
 
-TheHighBrid may reassign any lane through issue #252. A reassignment must identify the new owner, exact scope, affected files, and whether existing branches should continue, stop, or be superseded.
+TheHighBrid may offer or reassign work through issue #252, but an assignment becomes active only when the contributor independently accepts it. The issue should record exact scope, exclusions, affected files, and whether any existing branch should continue, stop, or be superseded.
