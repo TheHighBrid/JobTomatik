@@ -1,0 +1,42 @@
+{
+  "addition_review_ids": [
+    "D8-004",
+    "D8-016"
+  ],
+  "base_commit_sha": "6044e43486700889c0125aed1e62eb7b9cc72e91",
+  "measurement_contract": "2026-08-04.day13.2",
+  "replacement_review_ids": [
+    "D8-009",
+    "D8-010",
+    "D8-018",
+    "D8-020",
+    "D8-030",
+    "D8-034",
+    "D8-036",
+    "D8-040"
+  ],
+  "requested_checkpoint": 30,
+  "requested_review_ids": [
+    "D8-004",
+    "D8-009",
+    "D8-010",
+    "D8-016",
+    "D8-018",
+    "D8-020",
+    "D8-030",
+    "D8-034",
+    "D8-036",
+    "D8-040"
+  ],
+  "safety": {
+    "allow_real_application_submit": false,
+    "autopilot_enabled": false,
+    "captcha_bypass_allowed": false,
+    "final_submit_clicked": false,
+    "maturity_promotion_allowed": false,
+    "resumable_handoffs_enabled": false,
+    "supervised_pilot_enabled": false,
+    "synthetic_profiles_only": true
+  },
+  "schema_version": "1.0"
+}
