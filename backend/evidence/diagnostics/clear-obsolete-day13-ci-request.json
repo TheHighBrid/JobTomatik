@@ -1,0 +1,5 @@
+{
+  "current_head_sha": "bf8c4114dac46b7110de83498d537b5ffb3dc527",
+  "operation": "cancel_superseded_pr_workflow_runs_only",
+  "schema_version": "1.0"
+}
