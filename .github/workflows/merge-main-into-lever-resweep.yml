@@ -1,7 +1,7 @@
 name: Merge main into Lever resweep
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - temp-lever-resweep-base
 
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   merge-main:
-    if: github.head_ref == 'evidence/lever-phase-a-resweep-visible-challenge'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'evidence/lever-phase-a-resweep-visible-challenge'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -22,12 +22,13 @@ jobs:
       - name: Check out resweep branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.head_ref }}
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Merge current main with guarded resolutions
         env:
-          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         shell: bash
         run: |
           set -euo pipefail
