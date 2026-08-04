@@ -22,6 +22,14 @@ _ACTIONS_RUN = re.compile(
 )
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _DIGITS = re.compile(r"[1-9][0-9]*")
+_EXPECTED_STALE_SOURCE = {
+    "workflow_run_id": "30337038142",
+    "artifact_id": "8679562746",
+    "artifact_digest": (
+        "c72bf99c62394393ef98100f3c5deee2b6bdcaa839d163bd0d9dc03a60d711e2"
+    ),
+    "retained_record_count": "1",
+}
 
 
 def _load_csv(path: Path) -> list[dict[str, str]]:
@@ -40,39 +48,34 @@ def _verify_supersession(path: Path) -> dict[str, Any]:
     value = _load_json(path)
     assert value["schema_version"] == "1.0"
     assert value["reason"] == "stronger_exact_target_ready_evidence"
-    assert value["target_identity"] == (
-        "eu:lever:065f4538-7347-4207-909f-4ea68f63b4af"
-    )
-
-    superseded = value["superseded"]
-    baseline_row = superseded["baseline_row"]
-    source_receipt = superseded["source_receipt"]
-    assert baseline_row["run_id"] == "github-actions-30337038142-1"
-    assert baseline_row["pre_submit_state"] == "manual_challenge_handoff"
-    assert baseline_row["final_status"] == "needs_review"
-    assert baseline_row["handoff_reason"] == "captcha_detected"
-    assert baseline_row["source_reference"].endswith("/30337038142")
-    assert source_receipt == {
-        "workflow_run_id": "30337038142",
-        "artifact_id": "8679562746",
-        "artifact_digest": (
-            "c72bf99c62394393ef98100f3c5deee2b6bdcaa839d163bd0d9dc03a60d711e2"
-        ),
-        "retained_record_count": "1",
+    assert value["target"] == {
+        "region": "eu",
+        "site": "lever",
+        "posting_id": "065f4538-7347-4207-909f-4ea68f63b4af",
     }
 
+    superseded = value["superseded"]
+    assert superseded["run_id"] == "github-actions-30337038142-1"
+    assert superseded["pre_submit_state"] == "manual_challenge_handoff"
+    assert superseded["final_status"] == "needs_review"
+    assert superseded["handoff_reason"] == "captcha_detected"
+    assert superseded["source_reference"].endswith("/30337038142")
+    assert superseded["region"] == "eu"
+    assert superseded["site"] == "lever"
+    assert superseded["posting_id"] == "065f4538-7347-4207-909f-4ea68f63b4af"
+
     superseding = value["superseding"]
-    assert superseding["review_id"] == "D8-043"
     assert superseding["run_id"] == "github-actions-30871406281-ready-d8-043"
+    assert superseding["artifact_path"] == (
+        "lever-phase-a-artifacts/D8-043/lever-phase-a-report.json"
+    )
     assert superseding["pre_submit_state"] == "ready_to_submit"
     assert superseding["final_status"] == "dry_run_passed"
-    assert superseding["final_submit_clicked"] is False
     assert superseding["source_reference"].endswith("/30871406281")
 
     assert value["safety"] == {
         "final_submit_clicked": False,
-        "historical_attempt_preserved": True,
-        "historical_source_receipt_preserved": True,
+        "historical_boundary_preserved": True,
         "quota_credit_counted_once": True,
     }
     return value
@@ -142,9 +145,9 @@ def verify_checkpoint(
         )
 
     supersession = _verify_supersession(supersession_path)
-    assert supersession["superseded"]["source_receipt"] in sources
+    assert _EXPECTED_STALE_SOURCE in sources
     assert not any(
-        record["run_id"] == supersession["superseded"]["baseline_row"]["run_id"]
+        record["run_id"] == supersession["superseded"]["run_id"]
         for record in records
     )
     replacements = [
@@ -154,6 +157,7 @@ def verify_checkpoint(
     ]
     assert len(replacements) == 1
     assert replacements[0]["qualifies_for_dry_run_matrix"] is True
+    assert replacements[0]["final_submit_clicked"] is False
 
     readiness = read_lever_pilot_readiness(
         baseline_path=baseline_path,
@@ -213,10 +217,8 @@ def verify_checkpoint(
             "manual_challenge_boundary_count"
         ],
         "supersession": {
-            "superseded_run_id": supersession["superseded"]["baseline_row"][
-                "run_id"
-            ],
-            "superseding_review_id": supersession["superseding"]["review_id"],
+            "superseded_run_id": supersession["superseded"]["run_id"],
+            "superseding_review_id": "D8-043",
             "quota_credit_counted_once": supersession["safety"][
                 "quota_credit_counted_once"
             ],
