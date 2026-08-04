@@ -1,0 +1,988 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/pointclickcare/43defc56-cbc6-4ab2-849d-6269879721dd/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/pointclickcare/43defc56-cbc6-4ab2-849d-6269879721dd/apply",
+      "title": "PointClickCare - Principal/Senior Software Engineer",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/pointclickcare/43defc56-cbc6-4ab2-849d-6269879721dd/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | He/him",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | She/her",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | They/them",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Xe/xem",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Ze/hir",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Ey/em",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Hir/hir",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Fae/faer",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Hu/hu",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | useNameOnlyPronounsOption | Use name only",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": "useNameOnlyPronounsOption"
+          },
+          {
+            "descriptor": "customPronounsOption | Custom",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "",
+            "id": "customPronounsOption"
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7edf9610-0cb9-4d04-89d5-d17b61ceab70][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7edf9610-0cb9-4d04-89d5-d17b61ceab70][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field0] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field0] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[61698c17-a69f-402b-ae83-0839fb666f3c][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[61698c17-a69f-402b-ae83-0839fb666f3c][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[03e5fa54-0c4e-4bcd-be0e-effd237fa0c0][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[03e5fa54-0c4e-4bcd-be0e-effd237fa0c0][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[03e5fa54-0c4e-4bcd-be0e-effd237fa0c0][field1]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[03e5fa54-0c4e-4bcd-be0e-effd237fa0c0][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field1]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field2]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "comments | additional-information | Add a cover letter or anything else you want to share. | ADDITIONAL INFORMATION",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "comments",
+            "id": "additional-information"
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0] | Female",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Gender non-binary",
+              "Not Listed",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0] | Male",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Gender non-binary",
+              "Not Listed",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0] | Gender non-binary",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Gender non-binary",
+              "Not Listed",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0] | Not Listed",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Gender non-binary",
+              "Not Listed",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0] | Prefer not to disclose",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Gender non-binary",
+              "Not Listed",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field1] | Yes",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "No",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field1] | No",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "No",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field1] | Prefer not to disclose",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "No",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2] | Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+              "Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+              "Indigenous Peoples (Canada)",
+              "Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+              "Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+              "Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+              "White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+              "Two or more Races (not Hispanic or Latino)",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2] | Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+              "Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+              "Indigenous Peoples (Canada)",
+              "Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+              "Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+              "Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+              "White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+              "Two or more Races (not Hispanic or Latino)",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2] | Indigenous Peoples (Canada)",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+              "Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+              "Indigenous Peoples (Canada)",
+              "Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+              "Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+              "Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+              "White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+              "Two or more Races (not Hispanic or Latino)",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2] | Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+              "Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+              "Indigenous Peoples (Canada)",
+              "Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+              "Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+              "Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+              "White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+              "Two or more Races (not Hispanic or Latino)",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2] | Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+              "Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+              "Indigenous Peoples (Canada)",
+              "Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+              "Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+              "Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+              "White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+              "Two or more Races (not Hispanic or Latino)",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2] | Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+              "Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+              "Indigenous Peoples (Canada)",
+              "Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+              "Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+              "Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+              "White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+              "Two or more Races (not Hispanic or Latino)",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2] | White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+              "Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+              "Indigenous Peoples (Canada)",
+              "Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+              "Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+              "Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+              "White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+              "Two or more Races (not Hispanic or Latino)",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2] | Two or more Races (not Hispanic or Latino)",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+              "Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+              "Indigenous Peoples (Canada)",
+              "Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+              "Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+              "Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+              "White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+              "Two or more Races (not Hispanic or Latino)",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2] | Prefer not to disclose",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Hispanic or Latine: A person of Cuban, Mexican, Puerto Rican, South or Central American, or other Spanish culture or origin, regardless of race.",
+              "Native American/Alaskan Native (not Hispanic or Latino: A person having origins in any of the original peoples of North and South America (including Central America) and who maintain tribal affiliation or community attachment.",
+              "Indigenous Peoples (Canada)",
+              "Asian (not Hispanic or Latino): A person having origins in any of the original peoples of the Far East, Southeast Asia or the Indian subcontinent, including, for example, Cambodia, China, India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand, and Vietnam",
+              "Black or African American (not Hispanic or Latino): A person having origins in any of the black racial groups of Africa",
+              "Native Hawaiian or Other Pacific Islander (not Hispanic or Latino): A person having origins in any of the original peoples of Hawaii, Guam, Samoa or other Pacific Islands",
+              "White (not Hispanic or Latino): A person having origins in any of the original peoples of Europe, the Middle East, or North Africa",
+              "Two or more Races (not Hispanic or Latino)",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field3] | I am a veteran",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "I am a veteran",
+              "I am not a veteran",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field3] | I am not a veteran",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "I am a veteran",
+              "I am not a veteran",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field3] | Prefer not to disclose",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "I am a veteran",
+              "I am not a veteran",
+              "Prefer not to disclose"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field4] | Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
+              "No, I Don\u2019t Have A Disability, Or A History/Record Of Having A Disability",
+              "I Don\u2019t Wish To Answer"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field4] | No, I Don\u2019t Have A Disability, Or A History/Record Of Having A Disability",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
+              "No, I Don\u2019t Have A Disability, Or A History/Record Of Having A Disability",
+              "I Don\u2019t Wish To Answer"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field4] | I Don\u2019t Wish To Answer",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
+              "No, I Don\u2019t Have A Disability, Or A History/Record Of Having A Disability",
+              "I Don\u2019t Wish To Answer"
+            ],
+            "name": "surveysResponses[b30d8a74-c86a-44ee-a14a-08a543858e5d][responses][field4]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 55,
+        "required_control_count": 16,
+        "required_custom_controls": [
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "cards[7edf9610-0cb9-4d04-89d5-d17b61ceab70][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7edf9610-0cb9-4d04-89d5-d17b61ceab70][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field0] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field0] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7f3973b5-45b2-4b93-9fee-0d1d84e8680f][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[61698c17-a69f-402b-ae83-0839fb666f3c][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[61698c17-a69f-402b-ae83-0839fb666f3c][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[03e5fa54-0c4e-4bcd-be0e-effd237fa0c0][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[03e5fa54-0c4e-4bcd-be0e-effd237fa0c0][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[03e5fa54-0c4e-4bcd-be0e-effd237fa0c0][field1]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[03e5fa54-0c4e-4bcd-be0e-effd237fa0c0][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field1]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field2]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7fdf06dc-7ab5-496b-b796-ae6aef3dbcf9][field2]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "pointclickcare",
+      "posting_id": "43defc56-cbc6-4ab2-849d-6269879721dd",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "43defc56-cbc6-4ab2-849d-6269879721dd",
+        "title": "Principal/Senior Software Engineer",
+        "categories": {
+          "commitment": "Full-Time",
+          "department": "PointClickCare",
+          "location": "Mississauga, Ontario",
+          "team": "Engineering",
+          "allLocations": [
+            "Mississauga, Ontario"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/pointclickcare/43defc56-cbc6-4ab2-849d-6269879721dd",
+        "apply_url": "https://jobs.lever.co/pointclickcare/43defc56-cbc6-4ab2-849d-6269879721dd/apply",
+        "site": "pointclickcare",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/pointclickcare/43defc56-cbc6-4ab2-849d-6269879721dd/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 17,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "bb4adbf843e559d94017a0a7",
+          "filled_fingerprint": "1eae4a2f020d704247aedfee",
+          "fields_filled": 17,
+          "control_passes": 2,
+          "ts": "2026-08-04T02:27:43.016435"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "1eae4a2f020d704247aedfee",
+          "ts": "2026-08-04T02:27:43.114703"
+        }
+      ],
+      "control_evidence_count": 2,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 55,
+        "required_control_count": 16,
+        "required_custom_control_count": 12,
+        "policy_count": 12,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "pointclickcare",
+        "posting_id": "43defc56-cbc6-4ab2-849d-6269879721dd",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

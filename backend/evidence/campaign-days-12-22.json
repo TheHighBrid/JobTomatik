@@ -1,37 +1,36 @@
 {
   "checkpoints": [
     {
-      "blockers": [
-        "retain and verify 19 more qualifying dry runs",
-        "retain and verify 19 more distinct Lever sites"
-      ],
+      "blockers": [],
       "day": 12,
       "facts": {
-        "distinct_sites": 1,
-        "qualifying_dry_runs": 1,
+        "distinct_sites": 20,
+        "qualifying_dry_runs": 20,
         "regions_covered": [
+          "eu",
           "global"
         ],
         "target": 20
       },
-      "passed": false,
-      "status": "blocked_by_evidence_or_user_gate",
+      "passed": true,
+      "status": "complete",
       "title": "Lever dry runs 16 through 20"
     },
     {
       "blockers": [
-        "retain and verify 24 more qualifying dry runs",
-        "retain and verify 24 more distinct Lever sites"
+        "retain and verify 5 more qualifying dry runs",
+        "retain and verify 5 more distinct Lever sites"
       ],
       "day": 13,
       "facts": {
         "all_manual_challenges_remain_needs_review": true,
-        "distinct_sites": 1,
-        "manual_challenge_boundaries": 2,
-        "manual_challenge_encounters": 2,
+        "distinct_sites": 20,
+        "manual_challenge_boundaries": 1,
+        "manual_challenge_encounters": 1,
         "manual_challenge_violations": 0,
-        "qualifying_dry_runs": 1,
+        "qualifying_dry_runs": 20,
         "regions_covered": [
+          "eu",
           "global"
         ],
         "target": 25
@@ -43,21 +42,21 @@
     {
       "blockers": [
         "thirty_qualifying_dry_runs",
-        "thirty_distinct_lever_sites",
-        "global_and_eu_hosts_covered"
+        "thirty_distinct_lever_sites"
       ],
       "day": 14,
       "facts": {
-        "distinct_sites": 1,
+        "distinct_sites": 20,
         "gate_state": {
           "all_manual_challenges_remain_needs_review": true,
           "all_phase_a_records_have_successful_matching_inspection": true,
-          "global_and_eu_hosts_covered": false,
+          "global_and_eu_hosts_covered": true,
           "thirty_distinct_lever_sites": false,
           "thirty_qualifying_dry_runs": false
         },
-        "qualifying_dry_runs": 1,
+        "qualifying_dry_runs": 20,
         "regions_covered": [
+          "eu",
           "global"
         ]
       },
@@ -278,7 +277,6 @@
   "scope": "roadmap_days_12_through_22",
   "summary": {
     "blocked_days": [
-      12,
       13,
       14,
       15,
@@ -290,7 +288,9 @@
       21,
       22
     ],
-    "complete_days": [],
-    "next_action": "retain and verify 19 more qualifying dry runs"
+    "complete_days": [
+      12
+    ],
+    "next_action": "retain and verify 5 more qualifying dry runs"
   }
 }

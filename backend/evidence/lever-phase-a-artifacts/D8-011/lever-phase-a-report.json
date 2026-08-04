@@ -1,0 +1,1734 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/fullscript/580fdc9a-9565-4a20-a9d6-a552c606fcaa/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/fullscript/580fdc9a-9565-4a20-a9d6-a552c606fcaa/apply",
+      "title": "Fullscript - Lead Data Scientist \u2014 Growth & Experimentation",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/fullscript/580fdc9a-9565-4a20-a9d6-a552c606fcaa/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "opportunityLocationId | opportunity-location-select",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Toronto, ON",
+              "New York, NY",
+              "Ottawa, ON"
+            ],
+            "name": "opportunityLocationId",
+            "id": ""
+          },
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Twitter] | Twitter URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Twitter]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[GitHub] | GitHub URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[GitHub]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Referral ] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Referral ]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Company careers page",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Glassdoor",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Indeed",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | LinkedIn",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Social Media (Twitter, Instagram, Facebook)",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Recruiter reach out",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Alumni",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Event, conference, or webinar",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Employee referral",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Other",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field1] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[3f78b7a3-2d9f-4156-8c76-8497a38fe018][field0] | Yes, I'm legally eligible to work in Canada without the need for sponsorship",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I'm legally eligible to work in Canada without the need for sponsorship",
+              "No, I'm not legally eligible to work in Canada"
+            ],
+            "name": "cards[3f78b7a3-2d9f-4156-8c76-8497a38fe018][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[3f78b7a3-2d9f-4156-8c76-8497a38fe018][field0] | No, I'm not legally eligible to work in Canada",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I'm legally eligible to work in Canada without the need for sponsorship",
+              "No, I'm not legally eligible to work in Canada"
+            ],
+            "name": "cards[3f78b7a3-2d9f-4156-8c76-8497a38fe018][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c04c5cf2-93be-4aa8-bbe5-0918b48ada84][field0]",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Alberta",
+              "British Columbia",
+              "Manitoba",
+              "New Brunswick",
+              "Newfoundland and Labrador",
+              "Northwest Territories",
+              "Nova Scotia",
+              "Nunavut",
+              "Ontario",
+              "Prince Edward Island",
+              "Quebec",
+              "Saskatchewan",
+              "Yukon"
+            ],
+            "name": "cards[c04c5cf2-93be-4aa8-bbe5-0918b48ada84][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5a9ed0f0-2369-4cf0-9b34-3eaa87a1cd66][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[5a9ed0f0-2369-4cf0-9b34-3eaa87a1cd66][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0] | Yes, I owned the study design, assumptions, and conclusions end to end",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I owned the study design, assumptions, and conclusions end to end",
+              "Yes, I contributed to the analysis but did not own the design",
+              "Not yet"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0] | Yes, I contributed to the analysis but did not own the design",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I owned the study design, assumptions, and conclusions end to end",
+              "Yes, I contributed to the analysis but did not own the design",
+              "Not yet"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0] | Not yet",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I owned the study design, assumptions, and conclusions end to end",
+              "Yes, I contributed to the analysis but did not own the design",
+              "Not yet"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Customer, user, or account-level data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Product usage, engagement, or behavioural data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Marketing, campaign, or attribution data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Financial, billing, payment, or transaction data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Healthcare, clinical, practitioner, or patient-level data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Operational, supply chain, or business process data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Unstructured data, such as notes, documents, surveys, or free-text responses",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Third-party, public, or externally sourced datasets",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Aggregated or summary-level data only",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | I have not worked with individual-level or record-level data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | None of the above",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Propensity score methods (matching, weighting)",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Instrumental variables",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Difference-in-differences",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Regression discontinuity",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Causal ML approaches (e.g., double ML, causal forests)",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Sensitivity analyses for unobserved confounding",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | None of the above",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3] | Yes \u2014 multiple times",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 multiple times",
+              "Yes \u2014 at least once",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3] | Yes \u2014 at least once",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 multiple times",
+              "Yes \u2014 at least once",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 multiple times",
+              "Yes \u2014 at least once",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4] | Yes \u2014 direct people management",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 direct people management",
+              "Yes \u2014 technical lead / mentorship without formal management",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4] | Yes \u2014 technical lead / mentorship without formal management",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 direct people management",
+              "Yes \u2014 technical lead / mentorship without formal management",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 direct people management",
+              "Yes \u2014 technical lead / mentorship without formal management",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5] | 0\u20132 years",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "0\u20132 years",
+              "3\u20135 years",
+              "6\u201310 years",
+              "10+ years"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5] | 3\u20135 years",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "0\u20132 years",
+              "3\u20135 years",
+              "6\u201310 years",
+              "10+ years"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5] | 6\u201310 years",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "0\u20132 years",
+              "3\u20135 years",
+              "6\u201310 years",
+              "10+ years"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5] | 10+ years",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "0\u20132 years",
+              "3\u20135 years",
+              "6\u201310 years",
+              "10+ years"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[gender] | Gender Select ... Male Female Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Male",
+              "Female",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[gender]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[race] | Race Select ... Hispanic or Latino White (Not Hispanic or Latino) Black or African American (Not Hispanic or Latino) Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino) Asian (Not Hispanic or Latino) American Indian or Alaska Native (Not Hispanic or Latino) Two or More Races (Not Hispanic or Latino) Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Hispanic or Latino",
+              "White (Not Hispanic or Latino)",
+              "Black or African American (Not Hispanic or Latino)",
+              "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+              "Asian (Not Hispanic or Latino)",
+              "American Indian or Alaska Native (Not Hispanic or Latino)",
+              "Two or More Races (Not Hispanic or Latino)",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[race]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[veteran] | Veteran status Select ... I am a veteran I am not a veteran Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "I am a veteran",
+              "I am not a veteran",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[veteran]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 61,
+        "required_control_count": 49,
+        "required_custom_controls": [
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Company careers page",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Glassdoor",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Indeed",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Social Media (Twitter, Instagram, Facebook)",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Recruiter reach out",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Alumni",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Event, conference, or webinar",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Employee referral",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0] | Other",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Company careers page",
+              "Glassdoor",
+              "Indeed",
+              "LinkedIn",
+              "Social Media (Twitter, Instagram, Facebook)",
+              "Recruiter reach out",
+              "Alumni",
+              "Event, conference, or webinar",
+              "Employee referral",
+              "Other"
+            ],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field1] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[87a41a8e-b705-4f9c-a76e-ce979ba4ad03][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[3f78b7a3-2d9f-4156-8c76-8497a38fe018][field0] | Yes, I'm legally eligible to work in Canada without the need for sponsorship",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I'm legally eligible to work in Canada without the need for sponsorship",
+              "No, I'm not legally eligible to work in Canada"
+            ],
+            "name": "cards[3f78b7a3-2d9f-4156-8c76-8497a38fe018][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[3f78b7a3-2d9f-4156-8c76-8497a38fe018][field0] | No, I'm not legally eligible to work in Canada",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I'm legally eligible to work in Canada without the need for sponsorship",
+              "No, I'm not legally eligible to work in Canada"
+            ],
+            "name": "cards[3f78b7a3-2d9f-4156-8c76-8497a38fe018][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[5a9ed0f0-2369-4cf0-9b34-3eaa87a1cd66][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[5a9ed0f0-2369-4cf0-9b34-3eaa87a1cd66][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0] | Yes, I owned the study design, assumptions, and conclusions end to end",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I owned the study design, assumptions, and conclusions end to end",
+              "Yes, I contributed to the analysis but did not own the design",
+              "Not yet"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0] | Yes, I contributed to the analysis but did not own the design",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I owned the study design, assumptions, and conclusions end to end",
+              "Yes, I contributed to the analysis but did not own the design",
+              "Not yet"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0] | Not yet",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I owned the study design, assumptions, and conclusions end to end",
+              "Yes, I contributed to the analysis but did not own the design",
+              "Not yet"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Customer, user, or account-level data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Product usage, engagement, or behavioural data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Marketing, campaign, or attribution data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Financial, billing, payment, or transaction data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Healthcare, clinical, practitioner, or patient-level data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Operational, supply chain, or business process data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Unstructured data, such as notes, documents, surveys, or free-text responses",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Third-party, public, or externally sourced datasets",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | Aggregated or summary-level data only",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | I have not worked with individual-level or record-level data",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1] | None of the above",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Customer, user, or account-level data",
+              "Product usage, engagement, or behavioural data",
+              "Marketing, campaign, or attribution data",
+              "Financial, billing, payment, or transaction data",
+              "Healthcare, clinical, practitioner, or patient-level data",
+              "Operational, supply chain, or business process data",
+              "Unstructured data, such as notes, documents, surveys, or free-text responses",
+              "Third-party, public, or externally sourced datasets",
+              "Aggregated or summary-level data only",
+              "I have not worked with individual-level or record-level data",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Propensity score methods (matching, weighting)",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Instrumental variables",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Difference-in-differences",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Regression discontinuity",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Causal ML approaches (e.g., double ML, causal forests)",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | Sensitivity analyses for unobserved confounding",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2] | None of the above",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Propensity score methods (matching, weighting)",
+              "Instrumental variables",
+              "Difference-in-differences",
+              "Regression discontinuity",
+              "Causal ML approaches (e.g., double ML, causal forests)",
+              "Sensitivity analyses for unobserved confounding",
+              "None of the above"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3] | Yes \u2014 multiple times",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 multiple times",
+              "Yes \u2014 at least once",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3] | Yes \u2014 at least once",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 multiple times",
+              "Yes \u2014 at least once",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 multiple times",
+              "Yes \u2014 at least once",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4] | Yes \u2014 direct people management",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 direct people management",
+              "Yes \u2014 technical lead / mentorship without formal management",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4] | Yes \u2014 technical lead / mentorship without formal management",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 direct people management",
+              "Yes \u2014 technical lead / mentorship without formal management",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes \u2014 direct people management",
+              "Yes \u2014 technical lead / mentorship without formal management",
+              "No"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5] | 0\u20132 years",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "0\u20132 years",
+              "3\u20135 years",
+              "6\u201310 years",
+              "10+ years"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5] | 3\u20135 years",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "0\u20132 years",
+              "3\u20135 years",
+              "6\u201310 years",
+              "10+ years"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5] | 6\u201310 years",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "0\u20132 years",
+              "3\u20135 years",
+              "6\u201310 years",
+              "10+ years"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5] | 10+ years",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "0\u20132 years",
+              "3\u20135 years",
+              "6\u201310 years",
+              "10+ years"
+            ],
+            "name": "cards[0af7f632-fd89-45be-aecb-071874742ef1][field5]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "fullscript",
+      "posting_id": "580fdc9a-9565-4a20-a9d6-a552c606fcaa",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "580fdc9a-9565-4a20-a9d6-a552c606fcaa",
+        "title": "Lead Data Scientist \u2014 Growth & Experimentation",
+        "categories": {
+          "commitment": "Full Time",
+          "department": "Finance",
+          "location": "Toronto, ON",
+          "team": "Data",
+          "allLocations": [
+            "Toronto, ON",
+            "New York, NY",
+            "Ottawa, ON"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/fullscript/580fdc9a-9565-4a20-a9d6-a552c606fcaa",
+        "apply_url": "https://jobs.lever.co/fullscript/580fdc9a-9565-4a20-a9d6-a552c606fcaa/apply",
+        "site": "fullscript",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/fullscript/580fdc9a-9565-4a20-a9d6-a552c606fcaa/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 18,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "fbb2df92764601e174ba6526",
+          "filled_fingerprint": "c1bb2b1e2ec6f30b95c7e068",
+          "fields_filled": 18,
+          "control_passes": 2,
+          "ts": "2026-08-04T02:21:28.240318"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "c1bb2b1e2ec6f30b95c7e068",
+          "ts": "2026-08-04T02:21:28.330776"
+        }
+      ],
+      "control_evidence_count": 8,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 61,
+        "required_control_count": 49,
+        "required_custom_control_count": 45,
+        "policy_count": 45,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "fullscript",
+        "posting_id": "580fdc9a-9565-4a20-a9d6-a552c606fcaa",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

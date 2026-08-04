@@ -1,0 +1,702 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/deliverect/6cc37ab4-bac8-4de7-bca7-6be2775e0578/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/deliverect/6cc37ab4-bac8-4de7-bca7-6be2775e0578/apply",
+      "title": "Deliverect - Enterprise Customer Success Manager",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/deliverect/6cc37ab4-bac8-4de7-bca7-6be2775e0578/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field1] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field2]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field3]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field4]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field5]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0] | 17 or younger",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "17 or younger",
+              "18-20",
+              "21-29",
+              "30-39",
+              "40-49",
+              "50-59",
+              "60 or older",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0] | 18-20",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "17 or younger",
+              "18-20",
+              "21-29",
+              "30-39",
+              "40-49",
+              "50-59",
+              "60 or older",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0] | 21-29",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "17 or younger",
+              "18-20",
+              "21-29",
+              "30-39",
+              "40-49",
+              "50-59",
+              "60 or older",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0] | 30-39",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "17 or younger",
+              "18-20",
+              "21-29",
+              "30-39",
+              "40-49",
+              "50-59",
+              "60 or older",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0] | 40-49",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "17 or younger",
+              "18-20",
+              "21-29",
+              "30-39",
+              "40-49",
+              "50-59",
+              "60 or older",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0] | 50-59",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "17 or younger",
+              "18-20",
+              "21-29",
+              "30-39",
+              "40-49",
+              "50-59",
+              "60 or older",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0] | 60 or older",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "17 or younger",
+              "18-20",
+              "21-29",
+              "30-39",
+              "40-49",
+              "50-59",
+              "60 or older",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0] | I do not wish to answer",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "17 or younger",
+              "18-20",
+              "21-29",
+              "30-39",
+              "40-49",
+              "50-59",
+              "60 or older",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1] | White / Caucasian",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "White / Caucasian",
+              "Hispanic, Latino, or Spanish origin",
+              "Black or African American",
+              "Asian",
+              "Native Hawaiian or other Pacific Islander",
+              "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+              "Middle Eastern or North African",
+              "Some other race, ethnicity, or origin",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1] | Hispanic, Latino, or Spanish origin",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "White / Caucasian",
+              "Hispanic, Latino, or Spanish origin",
+              "Black or African American",
+              "Asian",
+              "Native Hawaiian or other Pacific Islander",
+              "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+              "Middle Eastern or North African",
+              "Some other race, ethnicity, or origin",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1] | Black or African American",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "White / Caucasian",
+              "Hispanic, Latino, or Spanish origin",
+              "Black or African American",
+              "Asian",
+              "Native Hawaiian or other Pacific Islander",
+              "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+              "Middle Eastern or North African",
+              "Some other race, ethnicity, or origin",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1] | Asian",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "White / Caucasian",
+              "Hispanic, Latino, or Spanish origin",
+              "Black or African American",
+              "Asian",
+              "Native Hawaiian or other Pacific Islander",
+              "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+              "Middle Eastern or North African",
+              "Some other race, ethnicity, or origin",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1] | Native Hawaiian or other Pacific Islander",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "White / Caucasian",
+              "Hispanic, Latino, or Spanish origin",
+              "Black or African American",
+              "Asian",
+              "Native Hawaiian or other Pacific Islander",
+              "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+              "Middle Eastern or North African",
+              "Some other race, ethnicity, or origin",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1] | Indigenous Peoples, First Nations, Native American, or Alaska Native",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "White / Caucasian",
+              "Hispanic, Latino, or Spanish origin",
+              "Black or African American",
+              "Asian",
+              "Native Hawaiian or other Pacific Islander",
+              "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+              "Middle Eastern or North African",
+              "Some other race, ethnicity, or origin",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1] | Middle Eastern or North African",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "White / Caucasian",
+              "Hispanic, Latino, or Spanish origin",
+              "Black or African American",
+              "Asian",
+              "Native Hawaiian or other Pacific Islander",
+              "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+              "Middle Eastern or North African",
+              "Some other race, ethnicity, or origin",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1] | Some other race, ethnicity, or origin",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "White / Caucasian",
+              "Hispanic, Latino, or Spanish origin",
+              "Black or African American",
+              "Asian",
+              "Native Hawaiian or other Pacific Islander",
+              "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+              "Middle Eastern or North African",
+              "Some other race, ethnicity, or origin",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1] | I do not wish to answer",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "White / Caucasian",
+              "Hispanic, Latino, or Spanish origin",
+              "Black or African American",
+              "Asian",
+              "Native Hawaiian or other Pacific Islander",
+              "Indigenous Peoples, First Nations, Native American, or Alaska Native",
+              "Middle Eastern or North African",
+              "Some other race, ethnicity, or origin",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2] | Female",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Non-binary",
+              "Other",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2] | Male",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Non-binary",
+              "Other",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2] | Non-binary",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Non-binary",
+              "Other",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2] | Other",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Non-binary",
+              "Other",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2] | I do not wish to answer",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Female",
+              "Male",
+              "Non-binary",
+              "Other",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field3] | Yes",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "No",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field3] | No",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "No",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field3] | I do not wish to answer",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "No",
+              "I do not wish to answer"
+            ],
+            "name": "surveysResponses[55fa3d61-6a14-4551-8ba4-d7535c42c339][responses][field3]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 39,
+        "required_control_count": 8,
+        "required_custom_controls": [
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field1] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field2]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field4]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[823fc141-ebef-47fc-8f6a-b709d931197b][field4]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "deliverect",
+      "posting_id": "6cc37ab4-bac8-4de7-bca7-6be2775e0578",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "6cc37ab4-bac8-4de7-bca7-6be2775e0578",
+        "title": "Enterprise Customer Success Manager",
+        "categories": {
+          "commitment": "Full-time Permanent",
+          "department": "Growth",
+          "location": "Toronto",
+          "team": "Customer Experience Management",
+          "allLocations": [
+            "Toronto"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/deliverect/6cc37ab4-bac8-4de7-bca7-6be2775e0578",
+        "apply_url": "https://jobs.lever.co/deliverect/6cc37ab4-bac8-4de7-bca7-6be2775e0578/apply",
+        "site": "deliverect",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/deliverect/6cc37ab4-bac8-4de7-bca7-6be2775e0578/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 10,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "59e4460d4bbec5aba9e3d873",
+          "filled_fingerprint": "ba6ae13a448fdb363cbd32ca",
+          "fields_filled": 10,
+          "control_passes": 2,
+          "ts": "2026-08-04T02:23:55.869519"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "ba6ae13a448fdb363cbd32ca",
+          "ts": "2026-08-04T02:23:55.960976"
+        }
+      ],
+      "control_evidence_count": 1,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 39,
+        "required_control_count": 8,
+        "required_custom_control_count": 5,
+        "policy_count": 5,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "deliverect",
+        "posting_id": "6cc37ab4-bac8-4de7-bca7-6be2775e0578",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}
