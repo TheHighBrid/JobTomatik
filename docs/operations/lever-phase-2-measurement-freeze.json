@@ -99,7 +99,7 @@
     "backend/scripts/export_lever_phase_a_record.py": "55a0dbb946247d74fdfb18b46660e7228c0f270a",
     "backend/scripts/finalize_lever_phase_a_ready.py": "875c6cacd75c670843a1ed7e6bc42c3e89ebd7d3",
     "backend/scripts/verify_lever_phase_a_checkpoint.py": "e0a67bf853aaa6b98ac0d750945478eefba0a964",
-    "backend/tests/test_certification_regressions.py": "fd18e7fbb1580a8a85ba655091a4294e6c40c733",
+    "backend/tests/test_certification_regressions.py": "bb8a4f547670911ec392aafbe9b24e68c3a0f6fc",
     "backend/tests/test_lever_control_evidence_integrity.py": "9e527738ec8eea7c1db65eaf1a9fc6a6af636f48",
     "backend/tests/test_lever_phase_a_checkpoint_progression.py": "b7d74535c6fcf712db8828fa4a55a16be49040a0",
     "backend/tests/test_lever_phase_a_multi_archive.py": "a74b029772194fc457dfca2d140363b02644c321",

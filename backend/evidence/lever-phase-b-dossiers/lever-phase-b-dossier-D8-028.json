@@ -1,0 +1,57 @@
+{
+  "application_id": "lever:pockethealth:b7c95155-37e5-4a9f-b1fb-be00710c1820",
+  "dossier_sha256": "a37bbbdde1807a5a3d32efd119fe8aa5b94cfa613519a6ecc9eae8dd121f6928",
+  "download_filename": "lever-phase-b-dossier-D8-028.json",
+  "dry_preview": {
+    "final_submit_clicked": false,
+    "outcome": "ready_to_submit",
+    "passed": true,
+    "ready_to_submit": true,
+    "requires_manual_review": false,
+    "retained_phase_a_preview": true,
+    "source_report_path": "lever-phase-a-artifacts/D8-028/lever-phase-a-report.json",
+    "source_report_sha256": "2e766993ef5da4f5e7053416a4ea5d47eab99057d2a2a61617680b130967765a"
+  },
+  "kill_switches": {
+    "adapter_promotion_allowed": false,
+    "final_submit_allowed": false,
+    "one_time_approval_required": true,
+    "supervised_submission_allowed": false
+  },
+  "read_only": true,
+  "scope": "lever_supervised_phase_b_candidate",
+  "selection_policy": "user_selected_exact_application_no_ranking",
+  "selection_receipt": {
+    "path": "lever-phase-b-user-selection-2026-08-04.json",
+    "receipt_id": "lever-phase-b-selection-2026-08-04-d8-026-d8-028",
+    "recorded_at": "2026-08-04T07:00:00-04:00",
+    "review_id": "D8-028",
+    "sha256": "c6e404f59c98981be1ad85aaa6c32e5db19192c4d08d3c10f4387c9c62379564"
+  },
+  "snapshot_version": "1.2.0",
+  "source_phase_a": {
+    "adapter_version": "1.1.0",
+    "artifact_path": "lever-phase-a-artifacts/D8-028/lever-phase-a-report.json",
+    "artifact_sha256": "2e766993ef5da4f5e7053416a4ea5d47eab99057d2a2a61617680b130967765a",
+    "baseline_run_id": "github-actions-30871406281-ready-d8-028",
+    "completed_at": "2026-08-04T02:33:44.148986+00:00",
+    "controls_discovered": 34,
+    "controls_filled": 14,
+    "final_status": "dry_run_passed",
+    "official_posting_inspection_passed": true,
+    "pre_submit_state": "ready_to_submit",
+    "review_id": "D8-028",
+    "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30871406281",
+    "synthetic_profile": true
+  },
+  "target": {
+    "application_url": "https://jobs.lever.co/PocketHealth/b7c95155-37e5-4a9f-b1fb-be00710c1820/apply",
+    "employer": "PocketHealth",
+    "location": "Greater Toronto Area",
+    "platform": "lever",
+    "posting_id": "b7c95155-37e5-4a9f-b1fb-be00710c1820",
+    "region": "global",
+    "role": "Customer Success Manager",
+    "site": "PocketHealth"
+  }
+}

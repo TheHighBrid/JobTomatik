@@ -99,7 +99,12 @@ def test_committed_campaign_checkpoint_matches_current_readiness_inputs():
         GREENHOUSE_READINESS_JSON_PATH.read_text(encoding="utf-8")
     )
     expected = json.dumps(
-        build_day_12_22_report(lever, greenhouse, lever_phase_b_launch),
+        build_day_12_22_report(
+            lever,
+            greenhouse,
+            lever_phase_b_launch,
+            lever_phase_b_artifact_root=LEVER_PHASE_B_LAUNCH_JSON_PATH.parent,
+        ),
         indent=2,
         sort_keys=True,
     ) + "\n"
