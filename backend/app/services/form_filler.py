@@ -4,11 +4,13 @@ from app.services.browser_runtime import resumable_handoffs_enabled
 from app.services.lever_phase_a_runtime_compat import (
     install_lever_phase_a_runtime_compat,
 )
+from app.services.text_control_evidence import install_text_control_evidence
 
 
 # Install before importing the ATS flow modules because they bind challenge
 # detection functions at import time.
 install_lever_phase_a_runtime_compat()
+install_text_control_evidence()
 
 from app.services.form_filler_handoff import fill_and_submit_application_with_handoff
 from app.services.form_filler_v3 import (
