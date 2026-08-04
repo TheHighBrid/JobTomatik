@@ -16,6 +16,7 @@ on:
       - "backend/evidence/greenhouse-phase-a-readiness.json"
       - "backend/evidence/lever-phase-a-baseline.csv"
       - "backend/evidence/lever-phase-a-sources.csv"
+      - "backend/evidence/lever-phase-a-supersessions.json"
       - "backend/evidence/lever-phase-a-artifacts/**"
       - "backend/evidence/lever-phase-a-corpus-sweep-*.json"
       - "backend/evidence/lever-phase-a-corpus-sweep-*.md"
@@ -47,6 +48,7 @@ on:
       - "backend/evidence/greenhouse-phase-a-readiness.json"
       - "backend/evidence/lever-phase-a-baseline.csv"
       - "backend/evidence/lever-phase-a-sources.csv"
+      - "backend/evidence/lever-phase-a-supersessions.json"
       - "backend/evidence/lever-phase-a-artifacts/**"
       - "backend/evidence/lever-phase-a-corpus-sweep-*.json"
       - "backend/evidence/lever-phase-a-corpus-sweep-*.md"
@@ -129,6 +131,7 @@ jobs:
           import re
           from pathlib import Path
 
+          from app.services.lever_phase_a_archive import verify_phase_a_external_archive
           from app.services.lever_pilot_ingestion import (
               load_phase_a_baseline,
               render_readiness_markdown,
@@ -137,6 +140,7 @@ jobs:
 
           baseline_path = Path('evidence/lever-phase-a-baseline.csv')
           sources_path = Path('evidence/lever-phase-a-sources.csv')
+          supersessions_path = Path('evidence/lever-phase-a-supersessions.json')
           readiness_json_path = Path('evidence/lever-pilot-readiness.json')
           readiness_markdown_path = Path('evidence/lever-pilot-readiness.md')
           missing_runtime_ledger = Path('evidence-ci/missing-phase-b.jsonl')
@@ -150,21 +154,37 @@ jobs:
           with sources_path.open(encoding='utf-8', newline='') as handle:
               sources = list(csv.DictReader(handle))
           assert sources, 'Lever Phase A provenance cannot be empty.'
-          assert sum(int(row['retained_record_count']) for row in sources) == len(records)
-          assert len({row['workflow_run_id'] for row in sources}) == len(sources)
+          assert all(int(row['retained_record_count']) == 1 for row in sources)
           assert len({row['artifact_id'] for row in sources}) == len(sources)
+          assert len(
+              {(row['workflow_run_id'], row['artifact_id']) for row in sources}
+          ) == len(sources)
           assert all(row['workflow_run_id'].isdigit() for row in sources)
           assert all(row['artifact_id'].isdigit() for row in sources)
           assert all(re.fullmatch(r'[0-9a-f]{64}', row['artifact_digest']) for row in sources)
 
+          supersession = json.loads(supersessions_path.read_text(encoding='utf-8'))
+          superseded = supersession.get('superseded')
+          superseded_records = [superseded] if isinstance(superseded, dict) else []
+          assert supersession['safety']['historical_boundary_preserved'] is True
+          assert supersession['safety']['quota_credit_counted_once'] is True
+          assert len(sources) == len(records) + len(superseded_records)
+
           source_run_ids = {row['workflow_run_id'] for row in sources}
-          for record in records:
+          for record in [*records, *superseded_records]:
               match = re.fullmatch(
                   r'https://github\.com/TheHighBrid/JobTomatik/actions/runs/(\d+)',
                   record['source_reference'],
               )
               assert match, record['source_reference']
               assert match.group(1) in source_run_ids
+
+          for record in records:
+              archive = verify_phase_a_external_archive(
+                  record,
+                  baseline_path=baseline_path,
+              )
+              assert archive['verified'] is True, archive
 
           readiness = read_lever_pilot_readiness(
               baseline_path=baseline_path,
