@@ -97,11 +97,11 @@
     "backend/scripts/export_lever_phase_a_record.py": "8c57eef08757c650610af906c140bbf7129bd083",
     "backend/scripts/certify_lever_pilot_readiness.py": "c878f3f01dcfb42442d543bffb768d399b12eab3",
     "backend/scripts/evaluate_campaign_days_12_22.py": "5ad683bb949ad9f98c3bc46f39045040d2e3c0ab",
-    "backend/scripts/verify_lever_phase_a_checkpoint.py": "84db6531579b2dec02762744bd2cebb8cd8fe856",
+    "backend/scripts/verify_lever_phase_a_checkpoint.py": "d455a19756faee26c35a017e1c19df45ccd89d14",
     ".github/workflows/campaign-artifact-drift.yml": "dfc420ae562ec3b865beda183c65fbd492f37af1",
     ".github/workflows/lever-phase-a-certification.yml": "82b40249789c774e431191fd8d43d1df7c71d00f",
     ".github/workflows/phase-1-release-gate.yml": "9476e311c21c7707eccfc399f703fcb1c832513a",
-    "backend/tests/test_phase_1_release_gate.py": "67eb38709717132f815aa6931a0884a330a35829",
+    "backend/tests/test_phase_1_release_gate.py": "714d9ddd66e1c7c12bc74a0fee6d193a1f814fa5",
     "backend/tests/test_certification_regressions.py": "fd18e7fbb1580a8a85ba655091a4294e6c40c733"
   },
   "generated_outputs": [
