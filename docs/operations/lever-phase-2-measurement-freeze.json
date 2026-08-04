@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "contract_version": "2026-08-03.day12.1",
+  "contract_version": "2026-08-03.day12.2",
   "effective_date": "2026-08-03",
   "campaign_phase": 2,
   "platform": "lever",
@@ -11,8 +11,8 @@
   "historical_evidence_pr": 152,
   "hardening_pr": 159,
   "amendment": {
-    "previous_contract_version": "2026-08-01.day9.1",
-    "purpose": "Refresh exact locked blob identities after the merged 20-run checkpoint and replace stale current-state challenge-count floors with fail-closed equality and zero-violation invariants. The historical Phase 2 launch snapshot remains unchanged.",
+    "previous_contract_version": "2026-08-03.day12.1",
+    "purpose": "Refresh exact locked blob identities after the merged 20-run checkpoint, replace stale current-state challenge-count floors with fail-closed safety invariants, and validate independently archived same-run receipts plus their explicit supersession record. The historical Phase 2 launch snapshot remains unchanged.",
     "qualification_rules_changed": false,
     "qualification_weakened": false,
     "retroactive_credit_added": false,
@@ -97,7 +97,7 @@
     "backend/scripts/certify_lever_pilot_readiness.py": "c878f3f01dcfb42442d543bffb768d399b12eab3",
     "backend/scripts/evaluate_campaign_days_12_22.py": "5ad683bb949ad9f98c3bc46f39045040d2e3c0ab",
     ".github/workflows/campaign-artifact-drift.yml": "dfc420ae562ec3b865beda183c65fbd492f37af1",
-    ".github/workflows/lever-phase-a-certification.yml": "5732073832f0a9d0bb2b8a4927d366cb49653c9e",
+    ".github/workflows/lever-phase-a-certification.yml": "65c06dba32e8a41ec87c70d5b5ed4919cbd10e82",
     ".github/workflows/phase-1-release-gate.yml": "fee70aa1f308382ce3b11fbca30e678156814297",
     "backend/tests/test_phase_1_release_gate.py": "e8af7c4573f636b87d195b9e2dd769d66f57f128",
     "backend/tests/test_certification_regressions.py": "fd18e7fbb1580a8a85ba655091a4294e6c40c733"
