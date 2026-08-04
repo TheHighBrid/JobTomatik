@@ -188,7 +188,7 @@
           "filled_fingerprint": "311f7840f85c7eb0e1d363b9",
           "fields_filled": 4,
           "control_passes": 2,
-          "ts": "2026-08-04T04:04:42.819227"
+          "ts": "2026-08-04T05:30:38.526326"
         },
         {
           "action": "ats_final_submit_ready",
@@ -196,10 +196,65 @@
           "step": 1,
           "submit_clicked": false,
           "fingerprint": "311f7840f85c7eb0e1d363b9",
-          "ts": "2026-08-04T04:04:42.912505"
+          "ts": "2026-08-04T05:30:38.635411"
+        }
+      ],
+      "control_evidence_schema_version": "1.0",
+      "control_evidence": [
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-1",
+          "control_type": "text",
+          "descriptor": "name | name-input | Full name \u2731",
+          "canonical_key": "profile.full_name",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "fc9786971336d7f6",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-2",
+          "control_type": "email",
+          "descriptor": "email | email-input | Email \u2731",
+          "canonical_key": "profile.email",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "0eff8bfd44dd7d69",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-3",
+          "control_type": "text",
+          "descriptor": "phone | phone-input | Phone \u2731",
+          "canonical_key": "profile.phone",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "0241725ce85fe22f",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
         }
       ],
       "control_evidence_count": 3,
+      "policy_evidence_count": 0,
       "final_submit_clicked": false,
       "certification_metadata": {
         "visible_control_count": 9,

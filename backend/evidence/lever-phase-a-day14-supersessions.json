@@ -1,0 +1,747 @@
+{
+  "additions": [
+    {
+      "record": {
+        "adapter_version": "1.1.0",
+        "application_url": "https://jobs.lever.co/ttecdigital/7bc491e1-667a-4fbf-a9fb-95cfca8c48d2/apply",
+        "artifact_path": "lever-phase-a-artifacts/D8-004/lever-phase-a-report.json",
+        "artifact_sha256": "6cf2de069e80be29f35103f03553b037f8848e95fda57a3e0c650dcf327b7550",
+        "completed_at": "2026-08-04T05:26:23.210802+00:00",
+        "controls_blocked": "0",
+        "controls_discovered": "15",
+        "controls_filled": "8",
+        "controls_skipped": "7",
+        "employer": "TTEC Digital",
+        "error": "",
+        "final_status": "dry_run_passed",
+        "handoff_boundary": "",
+        "handoff_reason": "",
+        "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+        "official_posting_inspection_passed": "True",
+        "operator": "github-actions",
+        "policies_used": "0",
+        "posting_id": "7bc491e1-667a-4fbf-a9fb-95cfca8c48d2",
+        "pre_submit_state": "ready_to_submit",
+        "region": "global",
+        "role": "Product Manager - Workspace",
+        "run_id": "github-actions-30880573048-ready-d8-004",
+        "site": "ttecdigital",
+        "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+        "uploads_verified": "1"
+      },
+      "review_id": "D8-004",
+      "source": {
+        "artifact_digest": "8cff0825bf932a7e0ea9c2376a94e1973d635f0b4fd1b2c10a04bae3adef3006",
+        "artifact_id": "8881163614",
+        "retained_record_count": "1",
+        "workflow_run_id": "30880573048"
+      },
+      "target": {
+        "posting_id": "7bc491e1-667a-4fbf-a9fb-95cfca8c48d2",
+        "region": "global",
+        "site": "ttecdigital"
+      }
+    },
+    {
+      "record": {
+        "adapter_version": "1.1.0",
+        "application_url": "https://jobs.lever.co/unitq/3fd381a2-249e-4a40-91bd-01dba365017a/apply",
+        "artifact_path": "lever-phase-a-artifacts/D8-016/lever-phase-a-report.json",
+        "artifact_sha256": "33088ad531b4eefba958c03bd443462af3fe4b8ff4d319410e63a533a4ddb05a",
+        "completed_at": "2026-08-04T05:28:18.530279+00:00",
+        "controls_blocked": "0",
+        "controls_discovered": "29",
+        "controls_filled": "13",
+        "controls_skipped": "16",
+        "employer": "unitQ",
+        "error": "",
+        "final_status": "dry_run_passed",
+        "handoff_boundary": "",
+        "handoff_reason": "",
+        "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+        "official_posting_inspection_passed": "True",
+        "operator": "github-actions",
+        "policies_used": "5",
+        "posting_id": "3fd381a2-249e-4a40-91bd-01dba365017a",
+        "pre_submit_state": "ready_to_submit",
+        "region": "global",
+        "role": "Account Executive",
+        "run_id": "github-actions-30880573048-ready-d8-016",
+        "site": "unitq",
+        "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+        "uploads_verified": "1"
+      },
+      "review_id": "D8-016",
+      "source": {
+        "artifact_digest": "e90433880e9eb095a921621f52734049595ad865b81a19075b527762f93223fc",
+        "artifact_id": "8881199030",
+        "retained_record_count": "1",
+        "workflow_run_id": "30880573048"
+      },
+      "target": {
+        "posting_id": "3fd381a2-249e-4a40-91bd-01dba365017a",
+        "region": "global",
+        "site": "unitq"
+      }
+    }
+  ],
+  "reason": "stronger_serialized_control_evidence",
+  "replacements": [
+    {
+      "review_id": "D8-009",
+      "superseded": {
+        "archive_path": "lever-phase-a-external-archives/D8-009/artifact-8879686088-b4db9064078e74a0b7304c9dd151b20847dd0456d554dbfe421f39d934ff290b.zip",
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/goswift/ae7b1e71-b783-4677-9cfa-dcce51333dfa/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-009/lever-phase-a-report.json",
+          "artifact_sha256": "a8fdaeb802dddb6d48f5bb9e9828e39f1b2a5d0f2868f2846dc90448e8854b67",
+          "completed_at": "2026-08-04T04:01:52.018507+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "41",
+          "controls_filled": "9",
+          "controls_skipped": "32",
+          "employer": "Swiftly, Inc.",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "8",
+          "posting_id": "ae7b1e71-b783-4677-9cfa-dcce51333dfa",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Software Engineer - Full-stack",
+          "run_id": "github-actions-30876050874-ready-d8-009",
+          "site": "goswift",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30876050874",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "b4db9064078e74a0b7304c9dd151b20847dd0456d554dbfe421f39d934ff290b",
+          "artifact_id": "8879686088",
+          "retained_record_count": "1",
+          "workflow_run_id": "30876050874"
+        }
+      },
+      "superseding": {
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/goswift/ae7b1e71-b783-4677-9cfa-dcce51333dfa/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-009/lever-phase-a-report.json",
+          "artifact_sha256": "ebd196920134e8dc255f792d699486ae03c3e50659c0fc7648fa9be32df81dd3",
+          "completed_at": "2026-08-04T05:26:22.017507+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "41",
+          "controls_filled": "9",
+          "controls_skipped": "32",
+          "employer": "Swiftly, Inc.",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "1",
+          "posting_id": "ae7b1e71-b783-4677-9cfa-dcce51333dfa",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Software Engineer - Full-stack",
+          "run_id": "github-actions-30880573048-ready-d8-009",
+          "site": "goswift",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "1ea7cc87a5021ab77e3d2ab6688e31308c462f619a2931adf3b475e1524453aa",
+          "artifact_id": "8881163383",
+          "retained_record_count": "1",
+          "workflow_run_id": "30880573048"
+        }
+      },
+      "target": {
+        "posting_id": "ae7b1e71-b783-4677-9cfa-dcce51333dfa",
+        "region": "global",
+        "site": "goswift"
+      }
+    },
+    {
+      "review_id": "D8-010",
+      "superseded": {
+        "archive_path": "lever-phase-a-external-archives/D8-010/artifact-8879683783-541ecc51ef55573c621ac51a66f6ec6bd88b943cfee97dfdcc80a8105f3c8fd3.zip",
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/air-tek/1cee6a91-291b-4f37-b9ca-2abafb904ba1/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-010/lever-phase-a-report.json",
+          "artifact_sha256": "8fee7ddd52775d074fe2d79dd9f72c1359e5f45e47b4dd9764f136481ccc6997",
+          "completed_at": "2026-08-04T04:01:43.930446+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "11",
+          "controls_filled": "8",
+          "controls_skipped": "3",
+          "employer": "Air-tek",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "7",
+          "posting_id": "1cee6a91-291b-4f37-b9ca-2abafb904ba1",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Senior Software Engineer",
+          "run_id": "github-actions-30876050874-ready-d8-010",
+          "site": "air-tek",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30876050874",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "541ecc51ef55573c621ac51a66f6ec6bd88b943cfee97dfdcc80a8105f3c8fd3",
+          "artifact_id": "8879683783",
+          "retained_record_count": "1",
+          "workflow_run_id": "30876050874"
+        }
+      },
+      "superseding": {
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/air-tek/1cee6a91-291b-4f37-b9ca-2abafb904ba1/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-010/lever-phase-a-report.json",
+          "artifact_sha256": "3fd0de75dd13cf7bc0a6f6dcc68dc658bf0d6ddb5964b9c4a8b223b447224c8b",
+          "completed_at": "2026-08-04T05:26:32.324908+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "11",
+          "controls_filled": "8",
+          "controls_skipped": "3",
+          "employer": "Air-tek",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "0",
+          "posting_id": "1cee6a91-291b-4f37-b9ca-2abafb904ba1",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Senior Software Engineer",
+          "run_id": "github-actions-30880573048-ready-d8-010",
+          "site": "air-tek",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "8662f017d582aeee04e2f98413d8503d56f9f430213d130179971ed87303d99a",
+          "artifact_id": "8881166437",
+          "retained_record_count": "1",
+          "workflow_run_id": "30880573048"
+        }
+      },
+      "target": {
+        "posting_id": "1cee6a91-291b-4f37-b9ca-2abafb904ba1",
+        "region": "global",
+        "site": "air-tek"
+      }
+    },
+    {
+      "review_id": "D8-018",
+      "superseded": {
+        "archive_path": "lever-phase-a-external-archives/D8-018/artifact-8879716261-402c4ff7b407e02686a479261a52da259adfd278b7e820fc04c97122d5e8f426.zip",
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/xsolla/1228b276-5183-4981-8620-4fc06632f268/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-018/lever-phase-a-report.json",
+          "artifact_sha256": "43667e40eb8bce5be5eacfc18de572c1f45befde749b290db58fd66c176770cd",
+          "completed_at": "2026-08-04T04:03:38.301171+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "16",
+          "controls_filled": "8",
+          "controls_skipped": "8",
+          "employer": "Xsolla",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "7",
+          "posting_id": "1228b276-5183-4981-8620-4fc06632f268",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Data Scientist",
+          "run_id": "github-actions-30876050874-ready-d8-018",
+          "site": "xsolla",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30876050874",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "402c4ff7b407e02686a479261a52da259adfd278b7e820fc04c97122d5e8f426",
+          "artifact_id": "8879716261",
+          "retained_record_count": "1",
+          "workflow_run_id": "30876050874"
+        }
+      },
+      "superseding": {
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/xsolla/1228b276-5183-4981-8620-4fc06632f268/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-018/lever-phase-a-report.json",
+          "artifact_sha256": "05ec46cb28baa96519a1526ae48f71d759b16d1633da94a7f9d92584ac322b31",
+          "completed_at": "2026-08-04T05:28:18.603138+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "16",
+          "controls_filled": "8",
+          "controls_skipped": "8",
+          "employer": "Xsolla",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "0",
+          "posting_id": "1228b276-5183-4981-8620-4fc06632f268",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Data Scientist",
+          "run_id": "github-actions-30880573048-ready-d8-018",
+          "site": "xsolla",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "481b5f00c4be39f3a00171e6f579ffbef31bac98b53494f535a54167b37cbcc4",
+          "artifact_id": "8881199158",
+          "retained_record_count": "1",
+          "workflow_run_id": "30880573048"
+        }
+      },
+      "target": {
+        "posting_id": "1228b276-5183-4981-8620-4fc06632f268",
+        "region": "global",
+        "site": "xsolla"
+      }
+    },
+    {
+      "review_id": "D8-020",
+      "superseded": {
+        "archive_path": "lever-phase-a-external-archives/D8-020/artifact-8879704529-ca13f19c869295aa89bd76e4464542914f1774b17bd0bf954260214be47e39b6.zip",
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/drivetrain/b489fddb-b9cf-4e7b-a812-8d859739a7d9/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-020/lever-phase-a-report.json",
+          "artifact_sha256": "58a677fe4425c439516fa088b4a229c8710a26063841120ae11b64079ad5d7ee",
+          "completed_at": "2026-08-04T04:02:56.712990+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "7",
+          "controls_filled": "6",
+          "controls_skipped": "1",
+          "employer": "Drivetrain",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "5",
+          "posting_id": "b489fddb-b9cf-4e7b-a812-8d859739a7d9",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Security Engineer",
+          "run_id": "github-actions-30876050874-ready-d8-020",
+          "site": "drivetrain",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30876050874",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "ca13f19c869295aa89bd76e4464542914f1774b17bd0bf954260214be47e39b6",
+          "artifact_id": "8879704529",
+          "retained_record_count": "1",
+          "workflow_run_id": "30876050874"
+        }
+      },
+      "superseding": {
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/drivetrain/b489fddb-b9cf-4e7b-a812-8d859739a7d9/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-020/lever-phase-a-report.json",
+          "artifact_sha256": "e9f23dc13dd53257fa4c6eb2e1fae9e4be26ea97d3e9827aec630eb45dc75c17",
+          "completed_at": "2026-08-04T05:27:34.887268+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "7",
+          "controls_filled": "6",
+          "controls_skipped": "1",
+          "employer": "Drivetrain",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "1",
+          "posting_id": "b489fddb-b9cf-4e7b-a812-8d859739a7d9",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Security Engineer",
+          "run_id": "github-actions-30880573048-ready-d8-020",
+          "site": "drivetrain",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "9d445c8c891a2289c2b8fea533fc2b198a1b7f671efba446663d585d475876a5",
+          "artifact_id": "8881185996",
+          "retained_record_count": "1",
+          "workflow_run_id": "30880573048"
+        }
+      },
+      "target": {
+        "posting_id": "b489fddb-b9cf-4e7b-a812-8d859739a7d9",
+        "region": "global",
+        "site": "drivetrain"
+      }
+    },
+    {
+      "review_id": "D8-030",
+      "superseded": {
+        "archive_path": "lever-phase-a-external-archives/D8-030/artifact-8879713810-a6e38c03698668fec1c7e06d95b95c334a2b08c647c0a17ac183d207a56e49dd.zip",
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/teamsnap/ca40b841-cace-4c79-a032-bcb51b41004d/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-030/lever-phase-a-report.json",
+          "artifact_sha256": "7dfa73aac4b1cb1eaf6521a115f0bbb9f261bb476754f775604abc567efe20f6",
+          "completed_at": "2026-08-04T04:03:29.726527+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "18",
+          "controls_filled": "9",
+          "controls_skipped": "9",
+          "employer": "TeamSnap",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "8",
+          "posting_id": "ca40b841-cace-4c79-a032-bcb51b41004d",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Senior Product Designer",
+          "run_id": "github-actions-30876050874-ready-d8-030",
+          "site": "teamsnap",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30876050874",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "a6e38c03698668fec1c7e06d95b95c334a2b08c647c0a17ac183d207a56e49dd",
+          "artifact_id": "8879713810",
+          "retained_record_count": "1",
+          "workflow_run_id": "30876050874"
+        }
+      },
+      "superseding": {
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/teamsnap/ca40b841-cace-4c79-a032-bcb51b41004d/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-030/lever-phase-a-report.json",
+          "artifact_sha256": "f4469047c439ff0773e873cddf97c2db915c043cb2ca2567a0ac71959a79c5c2",
+          "completed_at": "2026-08-04T05:29:15.854364+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "18",
+          "controls_filled": "9",
+          "controls_skipped": "9",
+          "employer": "TeamSnap",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "2",
+          "posting_id": "ca40b841-cace-4c79-a032-bcb51b41004d",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Senior Product Designer",
+          "run_id": "github-actions-30880573048-ready-d8-030",
+          "site": "teamsnap",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "6ffd4bd3aa3c2de69dc440a853571b44f4ab532f20d58eaa8da86edb125457fe",
+          "artifact_id": "8881216441",
+          "retained_record_count": "1",
+          "workflow_run_id": "30880573048"
+        }
+      },
+      "target": {
+        "posting_id": "ca40b841-cace-4c79-a032-bcb51b41004d",
+        "region": "global",
+        "site": "teamsnap"
+      }
+    },
+    {
+      "review_id": "D8-034",
+      "superseded": {
+        "archive_path": "lever-phase-a-external-archives/D8-034/artifact-8879725530-17a9e77d796b63440b551f65f71ca50274991169a0a4b55580ced98787214a84.zip",
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/osedea/b6c554bb-e73d-4140-bfda-4a313a2ebe1f/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-034/lever-phase-a-report.json",
+          "artifact_sha256": "d4314ff5c78445b99f6182fde981202210b3fd5a7b5cd5b7c064421f4582ad45",
+          "completed_at": "2026-08-04T04:04:12.459014+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "13",
+          "controls_filled": "7",
+          "controls_skipped": "6",
+          "employer": "OSEDEA",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "6",
+          "posting_id": "b6c554bb-e73d-4140-bfda-4a313a2ebe1f",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Senior Product Designer",
+          "run_id": "github-actions-30876050874-ready-d8-034",
+          "site": "osedea",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30876050874",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "17a9e77d796b63440b551f65f71ca50274991169a0a4b55580ced98787214a84",
+          "artifact_id": "8879725530",
+          "retained_record_count": "1",
+          "workflow_run_id": "30876050874"
+        }
+      },
+      "superseding": {
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/osedea/b6c554bb-e73d-4140-bfda-4a313a2ebe1f/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-034/lever-phase-a-report.json",
+          "artifact_sha256": "fddbf51ab003b06fba5b386db0832300c218bc60524fcfc3dd6036af804542de",
+          "completed_at": "2026-08-04T05:29:32.621748+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "13",
+          "controls_filled": "7",
+          "controls_skipped": "6",
+          "employer": "OSEDEA",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "0",
+          "posting_id": "b6c554bb-e73d-4140-bfda-4a313a2ebe1f",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Senior Product Designer",
+          "run_id": "github-actions-30880573048-ready-d8-034",
+          "site": "osedea",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "2bd0ada993490cb6696ace307ea6adf9c8e74358dad702fb0e4280857b7afba0",
+          "artifact_id": "8881221536",
+          "retained_record_count": "1",
+          "workflow_run_id": "30880573048"
+        }
+      },
+      "target": {
+        "posting_id": "b6c554bb-e73d-4140-bfda-4a313a2ebe1f",
+        "region": "global",
+        "site": "osedea"
+      }
+    },
+    {
+      "review_id": "D8-036",
+      "superseded": {
+        "archive_path": "lever-phase-a-external-archives/D8-036/artifact-8879733204-21afc10c4e0ff07a81a0bad83957917b2c35489a0960d0f4685aa57e9ace3858.zip",
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/crossing-minds/e09ca65c-9d61-4f42-a487-2b3acbfe517b/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-036/lever-phase-a-report.json",
+          "artifact_sha256": "a6f2db595be1bda96b6b8be160772135430f03fbbe6594a16c15ff37b9a75d2d",
+          "completed_at": "2026-08-04T04:04:39.727045+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "11",
+          "controls_filled": "8",
+          "controls_skipped": "3",
+          "employer": "Crossing Minds",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "7",
+          "posting_id": "e09ca65c-9d61-4f42-a487-2b3acbfe517b",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Customer Success Manager",
+          "run_id": "github-actions-30876050874-ready-d8-036",
+          "site": "crossing-minds",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30876050874",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "21afc10c4e0ff07a81a0bad83957917b2c35489a0960d0f4685aa57e9ace3858",
+          "artifact_id": "8879733204",
+          "retained_record_count": "1",
+          "workflow_run_id": "30876050874"
+        }
+      },
+      "superseding": {
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.lever.co/crossing-minds/e09ca65c-9d61-4f42-a487-2b3acbfe517b/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-036/lever-phase-a-report.json",
+          "artifact_sha256": "e7459818fdee3b32437843221b4d33c84480198649926107f00d79fa0879b614",
+          "completed_at": "2026-08-04T05:29:35.410559+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "11",
+          "controls_filled": "8",
+          "controls_skipped": "3",
+          "employer": "Crossing Minds",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "0",
+          "posting_id": "e09ca65c-9d61-4f42-a487-2b3acbfe517b",
+          "pre_submit_state": "ready_to_submit",
+          "region": "global",
+          "role": "Customer Success Manager",
+          "run_id": "github-actions-30880573048-ready-d8-036",
+          "site": "crossing-minds",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "9b1e717811afb5aa2ab483f2b0fa8307b504a3aad3ef1334c134061fa79de21b",
+          "artifact_id": "8881222320",
+          "retained_record_count": "1",
+          "workflow_run_id": "30880573048"
+        }
+      },
+      "target": {
+        "posting_id": "e09ca65c-9d61-4f42-a487-2b3acbfe517b",
+        "region": "global",
+        "site": "crossing-minds"
+      }
+    },
+    {
+      "review_id": "D8-040",
+      "superseded": {
+        "archive_path": "lever-phase-a-external-archives/D8-040/artifact-8879735227-25063c13de07ef702851055b570f1d5c80b70eb6dbc1cc43f7ea2b871577c363.zip",
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.eu.lever.co/easol/e95224e3-6e50-4353-988e-f23aefbcf48f/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-040/lever-phase-a-report.json",
+          "artifact_sha256": "bd8e6a2fc86598534a15510b49b0adeb8b940ed557ec71fa421c260aff966144",
+          "completed_at": "2026-08-04T04:04:47.458087+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "9",
+          "controls_filled": "4",
+          "controls_skipped": "5",
+          "employer": "Easol",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "3",
+          "posting_id": "e95224e3-6e50-4353-988e-f23aefbcf48f",
+          "pre_submit_state": "ready_to_submit",
+          "region": "eu",
+          "role": "Software Engineer - London",
+          "run_id": "github-actions-30876050874-ready-d8-040",
+          "site": "easol",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30876050874",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "25063c13de07ef702851055b570f1d5c80b70eb6dbc1cc43f7ea2b871577c363",
+          "artifact_id": "8879735227",
+          "retained_record_count": "1",
+          "workflow_run_id": "30876050874"
+        }
+      },
+      "superseding": {
+        "record": {
+          "adapter_version": "1.1.0",
+          "application_url": "https://jobs.eu.lever.co/easol/e95224e3-6e50-4353-988e-f23aefbcf48f/apply",
+          "artifact_path": "lever-phase-a-artifacts/D8-040/lever-phase-a-report.json",
+          "artifact_sha256": "a9b0241e3b79b495ecdde10a3dae77af37df710fedb670c50ce3ebd95766503a",
+          "completed_at": "2026-08-04T05:30:43.609920+00:00",
+          "controls_blocked": "0",
+          "controls_discovered": "9",
+          "controls_filled": "4",
+          "controls_skipped": "5",
+          "employer": "Easol",
+          "error": "",
+          "final_status": "dry_run_passed",
+          "handoff_boundary": "",
+          "handoff_reason": "",
+          "notes": "Synthetic ready-to-submit dry run; canonical baseline requires separate review.",
+          "official_posting_inspection_passed": "True",
+          "operator": "github-actions",
+          "policies_used": "0",
+          "posting_id": "e95224e3-6e50-4353-988e-f23aefbcf48f",
+          "pre_submit_state": "ready_to_submit",
+          "region": "eu",
+          "role": "Software Engineer - London",
+          "run_id": "github-actions-30880573048-ready-d8-040",
+          "site": "easol",
+          "source_reference": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30880573048",
+          "uploads_verified": "1"
+        },
+        "source": {
+          "artifact_digest": "feb9b18eff5ef0431880ff8e85a19c99af3d2670c5813437e9788596f4131d9a",
+          "artifact_id": "8881243284",
+          "retained_record_count": "1",
+          "workflow_run_id": "30880573048"
+        }
+      },
+      "target": {
+        "posting_id": "e95224e3-6e50-4353-988e-f23aefbcf48f",
+        "region": "eu",
+        "site": "easol"
+      }
+    }
+  ],
+  "safety": {
+    "addition_count": 2,
+    "final_submit_clicked": false,
+    "historical_archives_preserved": true,
+    "quota_credit_counted_once": true,
+    "replacement_count": 8
+  },
+  "schema_version": "1.0"
+}

@@ -1,0 +1,403 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/ttecdigital/7bc491e1-667a-4fbf-a9fb-95cfca8c48d2/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/ttecdigital/7bc491e1-667a-4fbf-a9fb-95cfca8c48d2/apply",
+      "title": "TTEC Digital - Product Manager-\u2014 Workspace",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/ttecdigital/7bc491e1-667a-4fbf-a9fb-95cfca8c48d2/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Twitter] | Twitter URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Twitter]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[GitHub] | GitHub URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[GitHub]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[gender] | Gender Select ... Male Female Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Male",
+              "Female",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[gender]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[race] | Race Select ... Hispanic or Latino White (Not Hispanic or Latino) Black or African American (Not Hispanic or Latino) Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino) Asian (Not Hispanic or Latino) American Indian or Alaska Native (Not Hispanic or Latino) Two or More Races (Not Hispanic or Latino) Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Hispanic or Latino",
+              "White (Not Hispanic or Latino)",
+              "Black or African American (Not Hispanic or Latino)",
+              "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+              "Asian (Not Hispanic or Latino)",
+              "American Indian or Alaska Native (Not Hispanic or Latino)",
+              "Two or More Races (Not Hispanic or Latino)",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[race]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[veteran] | Veteran status Select ... I identify as one or more of the classifications of protected veteran listed above I am not a protected veteran I decline to self-identify for protected veteran status",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "I identify as one or more of the classifications of protected veteran listed above",
+              "I am not a protected veteran",
+              "I decline to self-identify for protected veteran status"
+            ],
+            "name": "eeo[veteran]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[disability] | disabilitySelectElement | Disability status Select ... Yes, I have a disability, or have had one in the past No, I do not have a disability and have not had one in the past I do not want to answer",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Yes, I have a disability, or have had one in the past",
+              "No, I do not have a disability and have not had one in the past",
+              "I do not want to answer"
+            ],
+            "name": "eeo[disability]",
+            "id": "disabilitySelectElement"
+          }
+        ],
+        "visible_control_count": 15,
+        "required_control_count": 2,
+        "required_custom_controls": [],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "ttecdigital",
+      "posting_id": "7bc491e1-667a-4fbf-a9fb-95cfca8c48d2",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "7bc491e1-667a-4fbf-a9fb-95cfca8c48d2",
+        "title": "Product Manager-\u2014 Workspace",
+        "categories": {
+          "commitment": "Full-Time",
+          "department": "Intellectual Property",
+          "location": "Toronto, Ontario",
+          "team": "IP Product/Engineering",
+          "allLocations": [
+            "Toronto, Ontario"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/ttecdigital/7bc491e1-667a-4fbf-a9fb-95cfca8c48d2",
+        "apply_url": "https://jobs.lever.co/ttecdigital/7bc491e1-667a-4fbf-a9fb-95cfca8c48d2/apply",
+        "site": "ttecdigital",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/ttecdigital/7bc491e1-667a-4fbf-a9fb-95cfca8c48d2/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 8,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "3d62f972865e5b82abab8a7c",
+          "filled_fingerprint": "882a24710e02ef69b5448744",
+          "fields_filled": 8,
+          "control_passes": 2,
+          "ts": "2026-08-04T05:26:18.738269"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "882a24710e02ef69b5448744",
+          "ts": "2026-08-04T05:26:18.832064"
+        }
+      ],
+      "control_evidence_schema_version": "1.0",
+      "control_evidence": [
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-1",
+          "control_type": "text",
+          "descriptor": "name | name-input | Full name \u2731",
+          "canonical_key": "profile.full_name",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "fc9786971336d7f6",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-2",
+          "control_type": "email",
+          "descriptor": "email | email-input | Email \u2731",
+          "canonical_key": "profile.email",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "0eff8bfd44dd7d69",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-3",
+          "control_type": "text",
+          "descriptor": "phone | phone-input | Phone",
+          "canonical_key": "profile.phone",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "0241725ce85fe22f",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-4",
+          "control_type": "text",
+          "descriptor": "urls[LinkedIn] | LinkedIn URL",
+          "canonical_key": "profile.linkedin_url",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "f1889ee8a6511e1d",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-5",
+          "control_type": "text",
+          "descriptor": "urls[GitHub] | GitHub URL",
+          "canonical_key": "profile.github_url",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "23fd3a309a8999fb",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-6",
+          "control_type": "text",
+          "descriptor": "urls[Portfolio] | Portfolio URL",
+          "canonical_key": "profile.portfolio_url",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "09eb46fe0734ec93",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-7",
+          "control_type": "text",
+          "descriptor": "urls[Other] | Other website",
+          "canonical_key": "profile.portfolio_url",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "ae535b57bb28e60f",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        }
+      ],
+      "control_evidence_count": 7,
+      "policy_evidence_count": 0,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 15,
+        "required_control_count": 2,
+        "required_custom_control_count": 0,
+        "policy_count": 0,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "ttecdigital",
+        "posting_id": "7bc491e1-667a-4fbf-a9fb-95cfca8c48d2",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

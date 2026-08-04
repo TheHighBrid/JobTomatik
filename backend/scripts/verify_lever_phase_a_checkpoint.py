@@ -10,6 +10,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+from app.services.lever_day14_supersession import (
+    verify_day14_supersession_ledger,
+)
 from app.services.lever_phase_a_archive import verify_phase_a_external_archive
 from app.services.lever_pilot_ingestion import (
     load_phase_a_baseline,
@@ -22,7 +25,7 @@ _ACTIONS_RUN = re.compile(
 )
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _DIGITS = re.compile(r"[1-9][0-9]*")
-_MIN_QUALIFYING_DRY_RUNS = 28
+_MIN_QUALIFYING_DRY_RUNS = 30
 _TARGET_QUALIFYING_DRY_RUNS = 30
 _EXPECTED_STALE_SOURCE = {
     "workflow_run_id": "30337038142",
@@ -93,6 +96,9 @@ def verify_checkpoint(
     readiness_json_path = evidence_root / "lever-pilot-readiness.json"
     readiness_markdown_path = evidence_root / "lever-pilot-readiness.md"
     supersession_path = evidence_root / "lever-phase-a-supersessions.json"
+    day14_supersession_path = (
+        evidence_root / "lever-phase-a-day14-supersessions.json"
+    )
     missing_runtime_ledger = output_root / "missing-phase-b.jsonl"
 
     output_root.mkdir(parents=True, exist_ok=True)
@@ -187,6 +193,13 @@ def verify_checkpoint(
     assert replacements[0]["qualifies_for_dry_run_matrix"] is True
     assert replacements[0]["final_submit_clicked"] is False
 
+    day14_supersession = verify_day14_supersession_ledger(
+        path=day14_supersession_path,
+        records=records,
+        sources=sources,
+        evidence_root=evidence_root,
+    )
+
     readiness = read_lever_pilot_readiness(
         baseline_path=baseline_path,
         ledger_path=missing_runtime_ledger,
@@ -254,6 +267,7 @@ def verify_checkpoint(
                 "quota_credit_counted_once"
             ],
         },
+        "day14_supersession": day14_supersession,
         "archive_results": archive_results,
         "safety": {
             "final_submit_clicked": False,

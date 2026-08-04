@@ -1,0 +1,48 @@
+{
+  "addition_review_ids": [
+    "D8-004",
+    "D8-016"
+  ],
+  "baseline_record_count_after": 31,
+  "distinct_site_count_after": 30,
+  "qualifying_count_added": 2,
+  "qualifying_count_after": 30,
+  "qualifying_count_before": 28,
+  "regions_covered": [
+    "eu",
+    "global"
+  ],
+  "replacement_review_ids": [
+    "D8-009",
+    "D8-010",
+    "D8-018",
+    "D8-020",
+    "D8-030",
+    "D8-034",
+    "D8-036",
+    "D8-040"
+  ],
+  "requested_review_ids": [
+    "D8-004",
+    "D8-009",
+    "D8-010",
+    "D8-016",
+    "D8-018",
+    "D8-020",
+    "D8-030",
+    "D8-034",
+    "D8-036",
+    "D8-040"
+  ],
+  "safety": {
+    "captcha_bypassed": false,
+    "duplicate_submission_count": 0,
+    "external_archive_failure_count": 0,
+    "false_submitted_count": 0,
+    "final_submit_clicked": false,
+    "maturity_promoted": false,
+    "real_submission_enabled": false
+  },
+  "schema_version": "1.0",
+  "source_receipt_count_after": 32
+}
