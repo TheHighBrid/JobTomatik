@@ -1,11 +1,9 @@
 name: Finalize Lever Phase A corpus resweep
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
-    paths:
-      - ".github/workflows/lever-phase-a-resweep-finalize.yml"
+      - evidence/lever-phase-a-20-run-checkpoint
 
 permissions:
   contents: write
@@ -48,7 +46,6 @@ jobs:
       - name: Check out checkpoint branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -252,7 +249,6 @@ jobs:
       - name: Check out checkpoint branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -343,7 +339,7 @@ jobs:
       - name: Commit canonical 20-run checkpoint
         shell: bash
         env:
-          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           rm -f "$GITHUB_WORKSPACE/.github/workflows/lever-phase-a-resweep-finalize.yml"
