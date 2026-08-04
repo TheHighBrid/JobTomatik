@@ -32,7 +32,7 @@
     "synthetic_profile_required": true,
     "execution_state": "ready_to_submit",
     "outcome": "dry_run_passed",
-    "successful_matching_official_posting_inspection_passed": true,
+    "successful_matching_official_posting_inspection_required": true,
     "immutable_workflow_and_artifact_provenance_required": true,
     "durable_external_archive_required": true,
     "artifact_sha256_required": true,
