@@ -30,6 +30,69 @@ class SupervisedPilotCandidateImportOut(BaseModel):
     runtime_flags_changed: bool = False
 
 
+class LeverPhaseBLaunchSelectionReceipt(BaseModel):
+    path: str
+    sha256: str
+    receipt_id: str
+
+
+class LeverPhaseBLaunchCandidate(BaseModel):
+    application_id: str
+    review_id: str
+    employer: str
+    role: str
+    location: Optional[str] = None
+    application_url: str
+    site: str
+    posting_id: str
+    region: str
+    selection_reference: str
+    selection_receipt_sha256: str
+    dossier_artifact_path: str
+    dossier_artifact_sha256: str
+    dossier_sha256: str
+    source_report_path: str
+    source_report_sha256: str
+    synthetic_preview: bool = True
+    read_only: bool = True
+    one_time_approval_required: bool = True
+    materialized: bool = False
+    job_id: Optional[int] = None
+    materialized_application_id: Optional[int] = None
+    automation_state: Optional[str] = None
+    submission_queued: bool = False
+    approval_issued: bool = False
+    runtime_flags_changed: bool = False
+
+
+class LeverPhaseBLaunchOut(BaseModel):
+    schema_version: str
+    selection_receipt: LeverPhaseBLaunchSelectionReceipt
+    candidate_count: int
+    materialized_count: int
+    preparation_only: bool = True
+    candidates: List[LeverPhaseBLaunchCandidate] = Field(default_factory=list)
+
+
+class LeverPhaseBMaterializeOut(BaseModel):
+    review_id: str
+    launch_application_id: str
+    application_id: int
+    job_id: int
+    created_job: bool
+    created_application: bool
+    employer: str
+    role: str
+    application_url: str
+    automation_state: str
+    selection_policy: str
+    synthetic_preview: bool = True
+    requires_fresh_runtime_preflight: bool = True
+    submission_queued: bool = False
+    approval_issued: bool = False
+    runtime_flags_changed: bool = False
+
+
 class SupervisedPilotPhaseA(BaseModel):
     qualifying_dry_run_count: int = 0
     distinct_employer_count: int = 0
