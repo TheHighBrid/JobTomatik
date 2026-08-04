@@ -320,6 +320,14 @@ async def exercise_live_url(
         if manual_challenge_ready
         else "failed"
     )
+    control_evidence = [
+        dict(item)
+        for item in result.get("control_evidence") or []
+        if isinstance(item, dict)
+    ]
+    policy_evidence_count = sum(
+        1 for item in control_evidence if item.get("source") != "profile"
+    )
     return {
         "url": url,
         "mode": "exercise",
@@ -336,7 +344,10 @@ async def exercise_live_url(
         "validation_errors": result.get("validation_errors") or [],
         "upload_evidence": result.get("upload_evidence") or [],
         "step_evidence": result.get("step_evidence") or [],
-        "control_evidence_count": len(result.get("control_evidence") or []),
+        "control_evidence_schema_version": "1.0",
+        "control_evidence": control_evidence,
+        "control_evidence_count": len(control_evidence),
+        "policy_evidence_count": policy_evidence_count,
         "final_submit_clicked": submit_clicked,
         "certification_metadata": certification_metadata or {},
         "error": result.get("error"),

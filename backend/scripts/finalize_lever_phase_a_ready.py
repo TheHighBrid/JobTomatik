@@ -70,6 +70,115 @@ def require_report_path(report_path: Path, evidence_root: Path) -> str:
     return report.relative_to(root).as_posix()
 
 
+def _validated_control_evidence(exercise: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    if exercise.get("control_evidence_schema_version") != "1.0":
+        raise LeverPhaseAProvenanceError(
+            "The exercise lacks the serialized control-evidence schema"
+        )
+    evidence = exercise.get("control_evidence")
+    if not isinstance(evidence, list) or not evidence:
+        raise LeverPhaseAProvenanceError(
+            "The exercise lacks serialized per-control evidence"
+        )
+    if int(exercise.get("control_evidence_count") or 0) != len(evidence):
+        raise LeverPhaseAProvenanceError(
+            "The control-evidence count does not match the serialized entries"
+        )
+
+    seen: set[tuple[str, str, str, int]] = set()
+    policy_count = 0
+    forbidden_text_keys = {
+        "answer", "input_value", "raw_value", "text_value", "value"
+    }
+    for item in evidence:
+        if not isinstance(item, Mapping):
+            raise LeverPhaseAProvenanceError(
+                "A serialized control-evidence entry is not an object"
+            )
+        if item.get("action") != "control_verified":
+            raise LeverPhaseAProvenanceError(
+                "A serialized control-evidence entry has an invalid action"
+            )
+        if item.get("verification") != "passed":
+            raise LeverPhaseAProvenanceError(
+                "A serialized control-evidence entry was not verified"
+            )
+        required = {
+            "control_id": str(item.get("control_id") or "").strip(),
+            "control_type": str(item.get("control_type") or "").strip(),
+            "descriptor": str(item.get("descriptor") or "").strip(),
+            "canonical_key": str(item.get("canonical_key") or "").strip(),
+        }
+        if not all(required.values()):
+            raise LeverPhaseAProvenanceError(
+                "A serialized control-evidence entry lacks required identity fields"
+            )
+        try:
+            pass_number = int(item.get("pass") or 0)
+        except (TypeError, ValueError) as exc:
+            raise LeverPhaseAProvenanceError(
+                "A serialized control-evidence entry has an invalid pass"
+            ) from exc
+        if pass_number <= 0:
+            raise LeverPhaseAProvenanceError(
+                "A serialized control-evidence entry has an invalid pass"
+            )
+
+        source = str(item.get("source") or "")
+        if source in {"profile", "answer_policy"}:
+            if item.get("value_redacted") is not True:
+                raise LeverPhaseAProvenanceError(
+                    "Text control evidence must explicitly redact its value"
+                )
+            if item.get("selected") != []:
+                raise LeverPhaseAProvenanceError(
+                    "Text control evidence must not serialize a selected value"
+                )
+            if forbidden_text_keys & set(item):
+                raise LeverPhaseAProvenanceError(
+                    "Text control evidence contains a forbidden raw-value field"
+                )
+            if source == "answer_policy" and item.get("policy_id") in (None, ""):
+                raise LeverPhaseAProvenanceError(
+                    "Policy-backed text evidence lacks the resolved policy ID"
+                )
+            if source == "profile" and item.get("policy_id") not in (None, ""):
+                raise LeverPhaseAProvenanceError(
+                    "Profile text evidence must not claim an answer policy"
+                )
+        elif source:
+            raise LeverPhaseAProvenanceError(
+                "A serialized control-evidence entry has an unknown source"
+            )
+
+        signature = (
+            required["control_id"],
+            required["canonical_key"],
+            source,
+            pass_number,
+        )
+        if signature in seen:
+            raise LeverPhaseAProvenanceError(
+                "The serialized control evidence contains a duplicate identity"
+            )
+        seen.add(signature)
+        if source != "profile":
+            policy_count += 1
+
+    reported_policy_count = exercise.get("policy_evidence_count")
+    try:
+        reported_policy_count = int(reported_policy_count)
+    except (TypeError, ValueError) as exc:
+        raise LeverPhaseAProvenanceError(
+            "The exercise lacks a valid policy-evidence count"
+        ) from exc
+    if reported_policy_count != policy_count:
+        raise LeverPhaseAProvenanceError(
+            "The policy-evidence count does not match serialized evidence"
+        )
+    return evidence
+
+
 def validate_ready_report(
     report: Mapping[str, Any],
     target: Mapping[str, Any],
@@ -149,8 +258,7 @@ def validate_ready_report(
         raise LeverPhaseAProvenanceError("The exercise retained an error")
     if int(exercise.get("fields_filled") or 0) <= 0:
         raise LeverPhaseAProvenanceError("The exercise did not fill any fields")
-    if int(exercise.get("control_evidence_count") or 0) <= 0:
-        raise LeverPhaseAProvenanceError("The exercise lacks control evidence")
+    _validated_control_evidence(exercise)
     if not any(
         item.get("verification") == "passed"
         for item in exercise.get("upload_evidence") or []
