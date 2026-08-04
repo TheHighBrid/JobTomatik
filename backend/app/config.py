@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     lever_pilot_ledger_path: str = "evidence/lever-pilot-ledger.jsonl"
     lever_pilot_readiness_json_path: str = "evidence/lever-pilot-readiness.json"
     lever_pilot_readiness_markdown_path: str = "evidence/lever-pilot-readiness.md"
+    lever_phase_b_launch_path: str = "evidence/lever-phase-b-launch.json"
 
     @property
     def cors_origin_list(self) -> List[str]:
