@@ -222,6 +222,9 @@ def verify_checkpoint(
         "supersession": {
             "superseded_run_id": supersession["superseded"]["run_id"],
             "superseding_review_id": "D8-043",
+            "historical_attempt_preserved": supersession["safety"][
+                "historical_boundary_preserved"
+            ],
             "historical_boundary_preserved": supersession["safety"][
                 "historical_boundary_preserved"
             ],
