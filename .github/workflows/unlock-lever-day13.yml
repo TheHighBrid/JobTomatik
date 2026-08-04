@@ -1,0 +1,55 @@
+name: Clear stale Lever Day 13 workflow locks
+
+on:
+  push:
+    branches:
+      - agent/lever-day13-text-evidence
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  unlock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out Day 13 branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Cancel stale Day 13 retention runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs?branch=${GITHUB_REF_NAME}&event=push&per_page=100"
+          curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api" > /tmp/day13-runs.json
+          jq -r '.workflow_runs[] | select(.path == ".github/workflows/lever-day13-retention.yml") | select(.status == "queued" or .status == "in_progress") | .id' /tmp/day13-runs.json \
+            | while read -r run_id; do
+                [[ -n "$run_id" ]] || continue
+                curl -fsSL -X POST \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "Authorization: Bearer ${GH_TOKEN}" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/cancel" \
+                  >/dev/null || true
+                echo "Cancelled stale Day 13 run ${run_id}"
+              done
+
+      - name: Remove unlock workflow and retrigger clean retention
+        env:
+          HEAD_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/unlock-lever-day13.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Restart Lever Day 13 retention on clean lock"
+          git push origin "HEAD:${HEAD_BRANCH}"
