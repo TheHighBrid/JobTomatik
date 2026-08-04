@@ -1,0 +1,1 @@
+Trigger exact-head certification for the completed 30-run dry-run checkpoint.
