@@ -1,0 +1,73 @@
+name: Temporary Lever resweep merge bridge
+
+on:
+  pull_request_target:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-lever-resweep-merge
+  cancel-in-progress: false
+
+jobs:
+  merge-main:
+    if: github.event.pull_request.number == 239 && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'evidence/lever-phase-a-resweep-visible-challenge'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Merge current main with guarded resolutions
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+
+          if git merge --no-edit --no-commit origin/main; then
+            echo "Main staged without conflicts."
+          else
+            mapfile -t conflicted < <(git diff --name-only --diff-filter=U)
+            printf 'Conflicted paths:\n%s\n' "${conflicted[*]}"
+            allowed=(
+              ".github/workflows/lever-phase-a-ready-retention.yml"
+              "backend/app/services/lever_phase_a_archive.py"
+            )
+            for path in "${conflicted[@]}"; do
+              permitted=false
+              for candidate in "${allowed[@]}"; do
+                if [[ "$path" == "$candidate" ]]; then
+                  permitted=true
+                  break
+                fi
+              done
+              if [[ "$permitted" != true ]]; then
+                echo "Unexpected merge conflict: $path" >&2
+                exit 1
+              fi
+              git checkout --ours -- "$path"
+              git add "$path"
+            done
+          fi
+
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "Unresolved merge conflicts remain." >&2
+            exit 1
+          fi
+
+          git rm -f --ignore-unmatch .github/workflows/temporary-lever-resweep-merge.yml
+          git commit -m "Merge main into Lever Phase A resweep branch"
+          git merge-base --is-ancestor origin/main HEAD
+          git push origin "HEAD:${HEAD_BRANCH}"
