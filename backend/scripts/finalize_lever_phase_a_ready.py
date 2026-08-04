@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Mapping, Sequence
@@ -41,6 +42,13 @@ def _same_url(left: Any, right: Any) -> bool:
 
 def _normalized(value: Any) -> str:
     return " ".join(str(value or "").split()).casefold()
+
+
+_TITLE_DASH_PATTERN = re.compile(r"\s*[-‐‑‒–—―−]\s*")
+
+
+def _normalized_title(value: Any) -> str:
+    return _TITLE_DASH_PATTERN.sub("-", _normalized(value))
 
 
 def _load_report(path: Path) -> Dict[str, Any]:
@@ -128,7 +136,7 @@ def validate_ready_report(
         raise LeverPhaseAProvenanceError("Official posting metadata was not certified")
     if posting.get("apply_url_matches_posting") is not True:
         raise LeverPhaseAProvenanceError("The hosted apply URL does not match the posting")
-    if _normalized(posting.get("title")) != _normalized(target.get("role")):
+    if _normalized_title(posting.get("title")) != _normalized_title(target.get("role")):
         raise LeverPhaseAProvenanceError(
             "The official title does not match the frozen role"
         )

@@ -228,3 +228,47 @@ def test_manifest_report_path_normalizes_repository_roots() -> None:
 def test_manifest_report_path_rejects_unsafe_values(value: str) -> None:
     with pytest.raises(LeverPhaseAProvenanceError):
         _normalized_manifest_report_path(value)
+
+
+@pytest.mark.parametrize(
+    "observed_title",
+    [
+        "Lead Data Scientist - Growth & Experimentation",
+        "Lead Data Scientist — Growth & Experimentation",
+        "Lead Data Scientist– Growth & Experimentation",
+        "Lead Data Scientist ‐ Growth & Experimentation",
+    ],
+)
+def test_ready_report_accepts_equivalent_title_dash_variants(
+    observed_title: str,
+) -> None:
+    target = dict(
+        load_locked_target(
+            REVIEW_ID,
+            Path("evidence/lever-phase-a-target-corpus"),
+        )
+    )
+    target["role"] = "Lead Data Scientist - Growth & Experimentation"
+    report = _report()
+    report["reports"][0]["posting_metadata"]["title"] = observed_title
+    result = validate_ready_report(report, target)
+    assert result["review_id"] == REVIEW_ID
+
+
+def test_ready_report_rejects_title_word_changes() -> None:
+    target = dict(
+        load_locked_target(
+            REVIEW_ID,
+            Path("evidence/lever-phase-a-target-corpus"),
+        )
+    )
+    target["role"] = "Staff Data Scientist - Pricing Science"
+    report = _report()
+    report["reports"][0]["posting_metadata"]["title"] = (
+        "Senior Data Scientist — Pricing Science"
+    )
+    with pytest.raises(
+        LeverPhaseAProvenanceError,
+        match="official title",
+    ):
+        validate_ready_report(report, target)
