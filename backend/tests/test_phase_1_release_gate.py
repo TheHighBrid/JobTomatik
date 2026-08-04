@@ -15,6 +15,7 @@ BACKLOG_PATH = ROOT / "docs/roadmaps/2026-07-29-day-07-backlog-surgery.json"
 ROADMAP_PATH = ROOT / "docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md"
 BASELINE_PATH = ROOT / "backend/evidence/lever-phase-a-baseline.csv"
 READINESS_PATH = ROOT / "backend/evidence/lever-pilot-readiness.json"
+SUPERSESSION_PATH = ROOT / "backend/evidence/lever-phase-a-supersessions.json"
 
 
 def _json(path: Path):
@@ -88,14 +89,30 @@ def test_canonical_adapter_manifest_has_no_autonomous_adapter():
 
 def test_lever_phase_2_freeze_keeps_launch_snapshot_separate_from_current_progress(tmp_path):
     freeze = _json(FREEZE_PATH)
+    supersession = _json(SUPERSESSION_PATH)
     calculated = read_lever_pilot_readiness(
         baseline_path=BASELINE_PATH,
         ledger_path=tmp_path / "missing-phase-b-ledger.jsonl",
     )
     current = calculated["summary"]["qualifying_dry_run_count"]
+
     assert freeze["starting_point"]["qualifying_dry_runs"] == 0
+    assert freeze["starting_point"]["manual_challenge_boundary_rows"] == 2
     assert 0 <= current <= freeze["starting_point"]["required_qualifying_dry_runs"]
-    assert calculated["summary"]["manual_challenge_boundary_count"] >= 2
+    assert calculated["summary"]["manual_challenge_boundary_count"] == 1
+    assert supersession["target_identity"] == (
+        "eu:lever:065f4538-7347-4207-909f-4ea68f63b4af"
+    )
+    assert supersession["superseded"]["baseline_row"]["run_id"] == (
+        "github-actions-30337038142-1"
+    )
+    assert supersession["superseding"]["review_id"] == "D8-043"
+    assert supersession["safety"] == {
+        "final_submit_clicked": False,
+        "historical_attempt_preserved": True,
+        "historical_source_receipt_preserved": True,
+        "quota_credit_counted_once": True,
+    }
     assert calculated["summary"]["promotion_ready"] is False
     assert freeze["promotion"]["authorized"] is False
     assert freeze["promotion"]["real_submission_allowed"] is False
