@@ -10,6 +10,8 @@ from app.models.job import Job
 from app.models.user import User
 from app.schemas.supervised_pilot_dossier import SupervisedPilotDossierOut
 from app.schemas.supervised_pilot_roster import (
+    LeverPhaseBLaunchOut,
+    LeverPhaseBMaterializeOut,
     SupervisedPilotCandidateImportIn,
     SupervisedPilotCandidateImportOut,
     SupervisedPilotRosterOut,
@@ -17,6 +19,11 @@ from app.schemas.supervised_pilot_roster import (
 from app.services.greenhouse_pilot_ingestion import (
     GreenhousePilotIngestionError,
     read_greenhouse_pilot_readiness,
+)
+from app.services.lever_phase_b_launch import LeverPhaseBLaunchError
+from app.services.lever_phase_b_runtime import (
+    build_runtime_lever_phase_b_launch_status,
+    materialize_runtime_lever_phase_b_candidate,
 )
 from app.services.lever_pilot_ledger_boundary import (
     LeverPilotIngestionError,
@@ -101,6 +108,43 @@ def import_supervised_pilot_application_candidate(
     except SupervisedPilotIntakeError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    db.commit()
+    return result
+
+
+@router.get(
+    "/lever-launch",
+    response_model=LeverPhaseBLaunchOut,
+)
+def lever_phase_b_launch(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        return build_runtime_lever_phase_b_launch_status(db, current_user)
+    except LeverPhaseBLaunchError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/lever-launch/{review_id}/materialize",
+    response_model=LeverPhaseBMaterializeOut,
+)
+def materialize_lever_phase_b_launch_candidate(
+    review_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = materialize_runtime_lever_phase_b_candidate(
+            db,
+            current_user,
+            review_id=review_id,
+        )
+    except LeverPhaseBLaunchError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     db.commit()
     return result
