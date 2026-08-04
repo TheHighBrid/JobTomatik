@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
@@ -191,9 +192,11 @@ function MaterialCard({ material }) {
 
 export default function EvidenceMaterials() {
   const qc = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [form, setForm] = useState(EMPTY_EVIDENCE)
   const [kindFilter, setKindFilter] = useState('all')
   const [selectedApplicationId, setSelectedApplicationId] = useState('')
+  const requestedApplicationId = searchParams.get('application') || ''
 
   const evidenceQuery = useQuery({
     queryKey: ['evidence-units'],
@@ -213,10 +216,39 @@ export default function EvidenceMaterials() {
   })
 
   useEffect(() => {
-    if (!selectedApplicationId && applicationsQuery.data?.length) {
-      setSelectedApplicationId(String(applicationsQuery.data[0].id))
+    const applications = applicationsQuery.data || []
+    if (!applications.length) return
+
+    const requestedExists = applications.some(
+      (application) => String(application.id) === String(requestedApplicationId),
+    )
+    const nextApplicationId = requestedExists
+      ? String(requestedApplicationId)
+      : String(applications[0].id)
+
+    if (selectedApplicationId !== nextApplicationId) {
+      setSelectedApplicationId(nextApplicationId)
     }
-  }, [applicationsQuery.data, selectedApplicationId])
+    if (requestedApplicationId !== nextApplicationId) {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('application', nextApplicationId)
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [
+    applicationsQuery.data,
+    requestedApplicationId,
+    searchParams,
+    selectedApplicationId,
+    setSearchParams,
+  ])
+
+  const handleApplicationChange = (event) => {
+    const nextApplicationId = event.target.value
+    setSelectedApplicationId(nextApplicationId)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('application', nextApplicationId)
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const rebuildMutation = useMutation({
     mutationFn: rebuildEvidenceLedger,
@@ -253,10 +285,15 @@ export default function EvidenceMaterials() {
 
   const bundleMutation = useMutation({
     mutationFn: () => generateApplicationMaterialBundle(selectedApplicationId),
-    onSuccess: () => {
+    onSuccess: (response) => {
       qc.invalidateQueries({ queryKey: ['application-materials', selectedApplicationId] })
       qc.invalidateQueries({ queryKey: ['application', selectedApplicationId] })
-      toast.success('Verified material bundle generated.')
+      const materials = response.data?.materials || []
+      if (materials.some((material) => material.status === 'needs_review')) {
+        toast.error('Bundle generated, but evidence review is required before this application can advance.')
+      } else {
+        toast.success('Verified material bundle generated.')
+      }
     },
     onError: (error) => toast.error(getApiErrorMessage(error, 'Material generation failed')),
   })
@@ -414,7 +451,7 @@ export default function EvidenceMaterials() {
               <select
                 className="input max-w-2xl"
                 value={selectedApplicationId}
-                onChange={(event) => setSelectedApplicationId(event.target.value)}
+                onChange={handleApplicationChange}
               >
                 {(applicationsQuery.data || []).map((application) => (
                   <option key={application.id} value={application.id}>
