@@ -92,11 +92,16 @@ def test_lever_phase_2_freeze_keeps_launch_snapshot_separate_from_current_progre
         baseline_path=BASELINE_PATH,
         ledger_path=tmp_path / "missing-phase-b-ledger.jsonl",
     )
-    current = calculated["summary"]["qualifying_dry_run_count"]
+    summary = calculated["summary"]
+    current = summary["qualifying_dry_run_count"]
     assert freeze["starting_point"]["qualifying_dry_runs"] == 0
     assert 0 <= current <= freeze["starting_point"]["required_qualifying_dry_runs"]
-    assert calculated["summary"]["manual_challenge_boundary_count"] >= 2
-    assert calculated["summary"]["promotion_ready"] is False
+    assert summary["manual_challenge_boundary_count"] == summary[
+        "manual_challenge_encounter_count"
+    ]
+    assert summary["manual_challenge_violation_count"] == 0
+    assert summary["gates"]["all_manual_challenges_remain_needs_review"] is True
+    assert summary["promotion_ready"] is False
     assert freeze["promotion"]["authorized"] is False
     assert freeze["promotion"]["real_submission_allowed"] is False
 
