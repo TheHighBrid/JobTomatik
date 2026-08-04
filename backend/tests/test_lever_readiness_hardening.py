@@ -181,6 +181,7 @@ def test_ten_fully_safe_phase_b_records_satisfy_only_the_phase_b_gate(tmp_path):
     assert summary["supervised_pilot_evidence_complete"] is False
     assert summary["promotion_ready"] is False
 
+
 def test_candidate_rows_without_retained_artifacts_fail_closed(tmp_path):
     baseline = tmp_path / "phase-a.csv"
     ledger = tmp_path / "phase-b.jsonl"
@@ -232,3 +233,56 @@ def test_duplicate_indicator_on_blocked_phase_b_record_fails_duplicate_gate(tmp_
     assert summary["duplicate_submission_count"] == 1
     assert summary["gates"]["zero_duplicate_submissions"] is False
     assert summary["supervised_pilot_evidence_complete"] is False
+
+
+def test_superseded_manual_challenge_remains_in_safety_counts_without_quota_credit(
+    tmp_path,
+):
+    baseline = tmp_path / "lever-phase-a-baseline.csv"
+    ledger = tmp_path / "phase-b.jsonl"
+    _write_phase_a(
+        baseline,
+        [
+            {
+                "run_id": "current-boundary",
+                "site": "current-site",
+                "posting_id": "current-posting",
+                "region": "global",
+                "pre_submit_state": "manual_challenge_handoff",
+                "final_status": "needs_review",
+                "official_posting_inspection_passed": "false",
+            }
+        ],
+    )
+    (tmp_path / "lever-phase-a-supersessions.json").write_text(
+        json.dumps(
+            {
+                "safety": {
+                    "final_submit_clicked": False,
+                    "historical_attempt_preserved": True,
+                    "historical_source_receipt_preserved": True,
+                    "quota_credit_counted_once": True,
+                },
+                "superseded": {
+                    "baseline_row": {
+                        "run_id": "historical-boundary",
+                        "handoff_reason": "captcha_detected",
+                        "pre_submit_state": "manual_challenge_handoff",
+                        "final_status": "needs_review",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = harden_lever_readiness(
+        _base_readiness(), baseline_path=baseline, ledger_path=ledger
+    )["summary"]
+
+    assert summary["historical_superseded_challenge_count"] == 1
+    assert summary["manual_challenge_encounter_count"] == 2
+    assert summary["manual_challenge_boundary_count"] == 2
+    assert summary["manual_challenge_violation_count"] == 0
+    assert summary["nonqualifying_dry_run_count"] == 1
+    assert summary["qualifying_dry_run_count"] == 0
