@@ -57,6 +57,19 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _policy_evidence_count(exercise: Mapping[str, Any]) -> int:
+    evidence = exercise.get("control_evidence")
+    if isinstance(evidence, list):
+        return sum(
+            1
+            for item in evidence
+            if isinstance(item, Mapping) and item.get("source") != "profile"
+        )
+    if exercise.get("policy_evidence_count") is not None:
+        return int(exercise.get("policy_evidence_count") or 0)
+    return int(exercise.get("control_evidence_count") or 0)
+
+
 def _default_artifact_path(report_path: Path, output_path: Path) -> str:
     """Return a verifier-safe report path relative to the exported CSV.
 
@@ -220,7 +233,7 @@ def build_phase_a_candidate(
         "controls_filled": controls_filled,
         "controls_skipped": controls_skipped,
         "controls_blocked": controls_blocked,
-        "policies_used": int(exercise.get("control_evidence_count") or 0),
+        "policies_used": _policy_evidence_count(exercise),
         "uploads_verified": verified_uploads,
         "handoff_reason": handoff.get("reason_code") if handoff else "",
         "handoff_boundary": (handoff.get("details") or {}).get("handoff_stage") if handoff else "",

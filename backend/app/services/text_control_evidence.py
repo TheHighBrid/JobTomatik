@@ -1,10 +1,4 @@
-"""Privacy-safe evidence for verified text-control fills.
-
-The standards control engine already retains evidence for selects, radio groups,
-checkboxes, and comboboxes. Safe profile and approved-policy text fields are filled
-by the form runner, so this installer records the same kind of durable verification
-without retaining the applicant value itself.
-"""
+"""Privacy-safe evidence for verified text-control fills."""
 
 from __future__ import annotations
 
@@ -21,37 +15,31 @@ from app.services.control_engine import CONTROL_ENGINE_VERSION
 _INSTALLED = False
 
 
-def _canonical_key(entry: Mapping[str, Any]) -> str:
-    explicit = str(entry.get("canonical_key") or "").strip()
-    if explicit:
-        return explicit
-    field = str(entry.get("field") or "").strip()
-    return f"profile.{field}" if field else ""
-
-
 def _text_evidence(
     entry: Mapping[str, Any],
     *,
     step_number: int,
 ) -> Dict[str, Any] | None:
     if (
-        entry.get("action") != "fill"
+        entry.get("action") not in {"fill", "text_control_verified"}
         or entry.get("verified") is not True
         or str(entry.get("source") or "") not in {"profile", "answer_policy"}
     ):
         return None
 
     descriptor = str(entry.get("descriptor") or "").strip()
-    canonical_key = _canonical_key(entry)
-    if not descriptor or not canonical_key:
+    canonical_key = str(entry.get("canonical_key") or "").strip()
+    control_id = str(entry.get("control_id") or "").strip()
+    control_type = str(entry.get("control_type") or "text").strip()
+    source = str(entry.get("source") or "")
+    if not descriptor or not canonical_key or not control_id:
         return None
 
-    source = str(entry.get("source") or "")
     identity = json.dumps(
         {
             "canonical_key": canonical_key,
-            "control_type": "text",
-            "descriptor": descriptor,
+            "control_id": control_id,
+            "control_type": control_type,
             "source": source,
             "step": step_number,
         },
@@ -62,16 +50,20 @@ def _text_evidence(
     return {
         "action": "control_verified",
         "control_engine_version": CONTROL_ENGINE_VERSION,
-        "control_id": f"text-{fingerprint[:16]}",
-        "control_type": "text",
+        "control_id": control_id,
+        "control_type": control_type,
         "descriptor": descriptor,
         "canonical_key": canonical_key,
-        "policy_id": None,
+        "policy_id": entry.get("policy_id"),
         "selected": [],
         "options_fingerprint": fingerprint[:16],
         "verification": "passed",
+        "verification_method": str(
+            entry.get("verification_method") or "browser_input_value_readback"
+        ),
         "pass": step_number,
         "source": source,
+        "prepopulated": bool(entry.get("prepopulated")),
         "value_redacted": True,
     }
 
@@ -81,6 +73,7 @@ def _append_unique(target: list[Dict[str, Any]], item: Dict[str, Any]) -> None:
         item.get("control_id"),
         item.get("canonical_key"),
         item.get("source"),
+        item.get("pass"),
     )
     if any(
         signature
@@ -88,6 +81,7 @@ def _append_unique(target: list[Dict[str, Any]], item: Dict[str, Any]) -> None:
             existing.get("control_id"),
             existing.get("canonical_key"),
             existing.get("source"),
+            existing.get("pass"),
         )
         for existing in target
     ):

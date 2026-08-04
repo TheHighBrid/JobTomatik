@@ -22,7 +22,7 @@ _ACTIONS_RUN = re.compile(
 )
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _DIGITS = re.compile(r"[1-9][0-9]*")
-_MIN_QUALIFYING_DRY_RUNS = 20
+_MIN_QUALIFYING_DRY_RUNS = 28
 _TARGET_QUALIFYING_DRY_RUNS = 30
 _EXPECTED_STALE_SOURCE = {
     "workflow_run_id": "30337038142",
