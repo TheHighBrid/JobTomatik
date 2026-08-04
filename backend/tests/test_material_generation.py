@@ -1,0 +1,170 @@
+from app.models.application import Application, ApplicationAutomationState, ApplicationStatus
+from app.models.job import Job, JobSource, JobStatus
+from app.models.material import ApplicationMaterial, ApplicationMaterialEvidence
+from app.models.user import User
+from app.services.material_generation import generate_application_material
+
+
+def _user(db_session):
+    return db_session.query(User).filter(User.email == "test@example.com").one()
+
+
+def _job(db_session, suffix: str = "1") -> Job:
+    job = Job(
+        external_id=f"material-job-{suffix}",
+        title="Bilingual Fraud Investigator",
+        company="Example Bank",
+        location="Ottawa, ON",
+        salary_min=78000,
+        salary_max=90000,
+        salary_currency="CAD",
+        description="Investigate fraud alerts, review suspicious transactions, and document cases.",
+        requirements="Banking, AML, bilingual English and French, case documentation.",
+        url=f"https://boards.greenhouse.io/example/jobs/{suffix}",
+        source=JobSource.greenhouse,
+        status=JobStatus.approved,
+        skills=["Fraud Investigation", "AML", "Case Documentation"],
+        relevance_score=0.9,
+        raw_data={"official_public_ats": True},
+    )
+    db_session.add(job)
+    db_session.flush()
+    return job
+
+
+def _application(db_session, user: User, job: Job) -> Application:
+    application = Application(
+        user_id=user.id,
+        job_id=job.id,
+        status=ApplicationStatus.pending,
+        automation_state=ApplicationAutomationState.preparing.value,
+        source_listing_url=job.url,
+        submission_idempotency_key=f"material-test:{user.id}:{job.id}",
+    )
+    db_session.add(application)
+    db_session.flush()
+    return application
+
+
+def _complete_profile(user: User):
+    user.full_name = "Test Applicant"
+    user.profile_data = {
+        "current_role": "Fraud Analyst",
+        "years_experience": "4",
+        "employment_history": (
+            "RBC | Fraud Operations | Reviewed suspicious transaction alerts\n"
+            "TD Bank | Customer Service | Supported clients with sensitive account issues"
+        ),
+        "key_achievements": "Maintained clear audit-ready case documentation",
+        "languages": "English; French",
+    }
+    user.job_preferences = {
+        "skills": ["AML", "Fraud Investigation", "Case Documentation"],
+        "preferred_locations": ["Ottawa"],
+    }
+
+
+def test_verified_cover_letter_maps_every_applicant_claim_to_evidence(auth_client, db_session):
+    user = _user(db_session)
+    _complete_profile(user)
+    job = _job(db_session)
+    application = _application(db_session, user, job)
+    db_session.commit()
+
+    material = generate_application_material(
+        db_session,
+        application,
+        user,
+        job,
+        material_type="cover_letter",
+    )
+    db_session.commit()
+
+    assert material.status == "verified"
+    assert material.version == 1
+    assert "RBC" in material.content
+    assert "TD Bank" in material.content
+    assert "Tangerine" not in material.content
+    assert application.cover_letter == material.content
+    assert material.warnings == []
+    applicant_claims = [
+        claim for claim in material.claims if claim.get("applicant_fact", True)
+    ]
+    assert applicant_claims
+    assert all(claim["evidence_unit_ids"] for claim in applicant_claims)
+    assert all(claim["evidence_hashes"] for claim in applicant_claims)
+    assert db_session.query(ApplicationMaterialEvidence).filter(
+        ApplicationMaterialEvidence.material_id == material.id
+    ).count() >= 1
+
+
+def test_material_generation_versions_instead_of_overwriting(auth_client, db_session):
+    user = _user(db_session)
+    _complete_profile(user)
+    job = _job(db_session, "2")
+    application = _application(db_session, user, job)
+    db_session.commit()
+
+    first = generate_application_material(db_session, application, user, job)
+    db_session.commit()
+    second = generate_application_material(db_session, application, user, job)
+    db_session.commit()
+
+    assert first.version == 1
+    assert second.version == 2
+    assert second.supersedes_material_id == first.id
+    assert db_session.query(ApplicationMaterial).filter(
+        ApplicationMaterial.application_id == application.id,
+        ApplicationMaterial.material_type == "cover_letter",
+    ).count() == 2
+
+
+def test_insufficient_evidence_creates_review_material_without_invented_facts(auth_client, db_session):
+    user = _user(db_session)
+    user.full_name = None
+    user.profile_data = {}
+    user.job_preferences = {}
+    job = _job(db_session, "3")
+    application = _application(db_session, user, job)
+    db_session.commit()
+
+    material = generate_application_material(db_session, application, user, job)
+    db_session.commit()
+
+    assert material.status == "needs_review"
+    assert any(
+        warning.startswith("No substantive applicant claim")
+        for warning in material.warnings
+    )
+    assert "TD Bank" not in material.content
+    assert "Mohamed Alem" not in material.content
+    assert "several years" not in material.content
+    applicant_claims = [
+        claim for claim in material.claims if claim.get("applicant_fact", True)
+    ]
+    assert all(claim["evidence_unit_ids"] for claim in applicant_claims)
+
+
+def test_material_api_generates_cover_letter_and_resume_summary(auth_client, db_session):
+    user = _user(db_session)
+    _complete_profile(user)
+    job = _job(db_session, "4")
+    application = _application(db_session, user, job)
+    db_session.commit()
+
+    response = auth_client.post(
+        f"/api/materials/applications/{application.id}/generate-bundle"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert {item["material_type"] for item in payload["materials"]} == {
+        "cover_letter",
+        "resume_summary",
+    }
+
+    listed = auth_client.get(f"/api/materials/applications/{application.id}")
+    assert listed.status_code == 200
+    materials = listed.json()
+    assert len(materials) == 2
+    assert all(item["evidence_links"] for item in materials)
+    assert all(item["claims"] for item in materials)
