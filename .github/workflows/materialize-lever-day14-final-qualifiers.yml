@@ -1,0 +1,70 @@
+name: Materialize Lever Day 14 final qualifiers
+
+on:
+  push:
+    branches:
+      - fix/lever-day14-final-qualifiers
+    paths:
+      - backend/scripts/materialize_lever_day14_final_qualifiers.py
+      - .github/workflows/materialize-lever-day14-final-qualifiers.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-lever-day14-final-qualifiers
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply exact qualifier fixes
+        run: python backend/scripts/materialize_lever_day14_final_qualifiers.py
+
+      - name: Verify syntax and diff
+        run: |
+          python -m py_compile \
+            backend/app/services/lever_certification.py \
+            backend/scripts/finalize_lever_phase_a_ready_compatible.py \
+            backend/tests/test_lever_synthetic_certification.py \
+            backend/tests/test_lever_phase_a_title_compat.py
+          git diff --check
+
+      - name: Refuse stale branch mutation
+        run: |
+          remote_sha="$(git ls-remote origin refs/heads/fix/lever-day14-final-qualifiers | cut -f1)"
+          test "$remote_sha" = "$GITHUB_SHA" || {
+            echo "Branch advanced from $GITHUB_SHA to $remote_sha; refusing stale push." >&2
+            exit 1
+          }
+
+      - name: Commit materialized fixes
+        run: |
+          git rm backend/scripts/materialize_lever_day14_final_qualifiers.py
+          git rm .github/workflows/materialize-lever-day14-final-qualifiers.yml
+          git add \
+            backend/app/services/lever_certification.py \
+            backend/scripts/finalize_lever_phase_a_ready_compatible.py \
+            backend/tests/test_lever_synthetic_certification.py \
+            backend/tests/test_lever_phase_a_title_compat.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "Fix final Lever Phase A qualifiers"
+          remote_sha="$(git ls-remote origin refs/heads/fix/lever-day14-final-qualifiers | cut -f1)"
+          test "$remote_sha" = "$GITHUB_SHA" || {
+            echo "Branch advanced before push; refusing stale commit." >&2
+            exit 1
+          }
+          git push origin HEAD:fix/lever-day14-final-qualifiers
