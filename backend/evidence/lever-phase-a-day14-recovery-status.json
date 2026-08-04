@@ -1,0 +1,15 @@
+{
+  "branch": "checkpoint/lever-phase-a-day14-dry-run",
+  "jobs": [],
+  "run": {
+    "conclusion": "failure",
+    "created_at": "2026-08-04T08:08:12Z",
+    "head_sha": "928106e86d1fed222ca3f0309ed01158e6275f8f",
+    "id": 30890678777,
+    "status": "completed",
+    "updated_at": "2026-08-04T08:08:12Z"
+  },
+  "run_found": true,
+  "schema_version": "1.0",
+  "workflow": "recover-lever-day14-import.yml"
+}
