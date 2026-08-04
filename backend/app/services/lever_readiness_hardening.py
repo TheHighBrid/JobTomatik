@@ -29,6 +29,7 @@ MANUAL_CHALLENGE_REASON_CODES = frozenset(
 PHASE_A_REQUIRED_RECORDS = 30
 PHASE_B_REQUIRED_RECORDS = 10
 VALID_REGIONS = {"global", "eu"}
+SUPERSESSION_FILENAME = "lever-phase-a-supersessions.json"
 
 
 def _truthy(value: Any) -> bool:
@@ -51,6 +52,50 @@ def _phase_a_rows(path: Optional[str | Path]) -> list[Dict[str, Any]]:
             row["_external_archive_errors"] = list(archive["errors"])
             rows.append(row)
     return rows
+
+
+def _superseded_phase_a_rows(path: Optional[str | Path]) -> list[Dict[str, Any]]:
+    """Load preserved challenge attempts without restoring their quota credit."""
+
+    if path is None:
+        return []
+    supersession_path = Path(path).with_name(SUPERSESSION_FILENAME)
+    if not supersession_path.is_file():
+        return []
+
+    try:
+        payload = json.loads(supersession_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid Lever Phase A supersession receipt: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Lever Phase A supersession receipt must be a JSON object")
+
+    safety = payload.get("safety")
+    superseded = payload.get("superseded")
+    row = superseded.get("baseline_row") if isinstance(superseded, dict) else None
+    if not isinstance(safety, dict) or not isinstance(row, dict):
+        raise ValueError("Lever Phase A supersession receipt is missing safety or baseline evidence")
+    required_safety = (
+        "historical_attempt_preserved",
+        "historical_source_receipt_preserved",
+        "quota_credit_counted_once",
+    )
+    if any(safety.get(field) is not True for field in required_safety):
+        raise ValueError("Lever Phase A supersession receipt does not preserve the historical boundary")
+    if safety.get("final_submit_clicked") is not False:
+        raise ValueError("Lever Phase A supersession receipt recorded a final submit click")
+
+    pair = (
+        str(row.get("pre_submit_state") or "").strip(),
+        str(row.get("final_status") or "").strip(),
+    )
+    reason = str(row.get("handoff_reason") or "").strip()
+    if pair != PHASE_A_BOUNDARY_PAIR or reason not in MANUAL_CHALLENGE_REASON_CODES:
+        raise ValueError("Superseded Lever evidence must remain a manual challenge needs-review boundary")
+
+    preserved = dict(row)
+    preserved["_historical_supersession"] = True
+    return [preserved]
 
 
 def _phase_b_rows(path: Optional[str | Path]) -> list[Dict[str, Any]]:
@@ -114,6 +159,7 @@ def harden_lever_readiness(
     gates = dict(summary.get("gates") or {})
 
     phase_a = _phase_a_rows(baseline_path)
+    historical_phase_a = _superseded_phase_a_rows(baseline_path)
     phase_a_candidates = [
         row
         for row in phase_a
@@ -131,7 +177,7 @@ def harden_lever_readiness(
     ]
     challenge_rows = [
         row
-        for row in phase_a
+        for row in [*phase_a, *historical_phase_a]
         if str(row.get("handoff_reason") or "").strip()
         in MANUAL_CHALLENGE_REASON_CODES
         or str(row.get("pre_submit_state") or "").strip()
@@ -240,6 +286,7 @@ def harden_lever_readiness(
         {
             "qualifying_dry_run_count": len(qualifying),
             "nonqualifying_dry_run_count": len(phase_a) - len(qualifying),
+            "historical_superseded_challenge_count": len(historical_phase_a),
             "manual_challenge_encounter_count": len(challenge_rows),
             "manual_challenge_boundary_count": len(boundary_only),
             "manual_challenge_violation_count": len(challenge_violations),
@@ -266,7 +313,7 @@ def harden_lever_readiness(
     summary["supervised_pilot_evidence_complete"] = all(required)
     summary["promotion_ready"] = all(gates.values())
     payload["summary"] = summary
-    payload["readiness_hardening_version"] = "1.3"
+    payload["readiness_hardening_version"] = "1.4"
     return payload
 
 
