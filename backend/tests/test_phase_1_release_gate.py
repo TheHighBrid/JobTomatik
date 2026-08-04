@@ -100,17 +100,18 @@ def test_lever_phase_2_freeze_keeps_launch_snapshot_separate_from_current_progre
     assert freeze["starting_point"]["manual_challenge_boundary_rows"] == 2
     assert 0 <= current <= freeze["starting_point"]["required_qualifying_dry_runs"]
     assert calculated["summary"]["manual_challenge_boundary_count"] == 1
-    assert supersession["target_identity"] == (
-        "eu:lever:065f4538-7347-4207-909f-4ea68f63b4af"
+    assert supersession["target"] == {
+        "region": "eu",
+        "site": "lever",
+        "posting_id": "065f4538-7347-4207-909f-4ea68f63b4af",
+    }
+    assert supersession["superseded"]["run_id"] == "github-actions-30337038142-1"
+    assert supersession["superseding"]["artifact_path"] == (
+        "lever-phase-a-artifacts/D8-043/lever-phase-a-report.json"
     )
-    assert supersession["superseded"]["baseline_row"]["run_id"] == (
-        "github-actions-30337038142-1"
-    )
-    assert supersession["superseding"]["review_id"] == "D8-043"
     assert supersession["safety"] == {
         "final_submit_clicked": False,
-        "historical_attempt_preserved": True,
-        "historical_source_receipt_preserved": True,
+        "historical_boundary_preserved": True,
         "quota_credit_counted_once": True,
     }
     assert calculated["summary"]["promotion_ready"] is False
