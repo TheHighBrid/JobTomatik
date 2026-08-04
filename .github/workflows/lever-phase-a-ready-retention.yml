@@ -12,6 +12,10 @@ on:
       - "backend/scripts/finalize_lever_phase_a_ready.py"
       - "backend/evidence/lever-phase-a-artifacts/**/lever-phase-a-report.json"
       - "backend/evidence/lever-phase-a-artifacts/**/lever-phase-a-synthetic-resume.pdf"
+      - "backend/evidence/lever-phase-a-candidate-*.csv"
+      - "backend/evidence/lever-phase-a-source-*.csv"
+      - "backend/evidence/lever-phase-a-sources.csv"
+      - "backend/evidence/lever-phase-a-external-archives/**"
       - "backend/tests/test_lever_phase_a_ready_provenance.py"
       - ".github/workflows/lever-phase-a-ready-retention.yml"
 
@@ -76,8 +80,11 @@ jobs:
           fi
 
           if (( ${#reports[@]} > 1 )); then
-            printf 'Exactly one ready report may be retained; found %s.\n' "${#reports[@]}" >&2
-            exit 1
+            printf '%s\n' "${reports[@]}" > backend/lever-phase-a-ready-batch-reports.txt
+            echo 'has_report=false' >> "$GITHUB_OUTPUT"
+            echo 'has_batch=true' >> "$GITHUB_OUTPUT"
+            echo "report_count=${#reports[@]}" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if (( ${#reports[@]} == 0 )); then
             if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
@@ -85,6 +92,8 @@ jobs:
               exit 1
             fi
             echo 'has_report=false' >> "$GITHUB_OUTPUT"
+            echo 'has_batch=false' >> "$GITHUB_OUTPUT"
+            echo 'report_count=0' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -99,6 +108,8 @@ jobs:
             exit 1
           }
           echo 'has_report=true' >> "$GITHUB_OUTPUT"
+          echo 'has_batch=false' >> "$GITHUB_OUTPUT"
+          echo 'report_count=1' >> "$GITHUB_OUTPUT"
           echo "review_id=$review_id" >> "$GITHUB_OUTPUT"
           echo "report_path=${report#backend/}" >> "$GITHUB_OUTPUT"
           echo "report_dir=$(dirname "${report#backend/}")" >> "$GITHUB_OUTPUT"
@@ -174,7 +185,144 @@ jobs:
             echo 'Download the artifact metadata and ZIP, then run `scripts/finalize_lever_phase_a_ready.py`.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Validate finalized ready-report batch
+        if: steps.selection.outputs.has_batch == 'true'
+        run: |
+          python - <<'PY'
+          import csv
+          import hashlib
+          import json
+          from pathlib import Path
+
+          from app.services.lever_phase_a_operator import load_locked_target
+          from scripts.finalize_lever_phase_a_ready import (
+              require_report_path,
+              validate_ready_report,
+          )
+
+          evidence = Path('evidence')
+          corpus = evidence / 'lever-phase-a-target-corpus'
+          baseline_path = evidence / 'lever-phase-a-baseline.csv'
+          sources_path = evidence / 'lever-phase-a-sources.csv'
+
+          def rows(path: Path):
+              with path.open(encoding='utf-8', newline='') as handle:
+                  return list(csv.DictReader(handle))
+
+          baseline = rows(baseline_path)
+          canonical_sources = rows(sources_path)
+          paths = [
+              Path(line.strip().removeprefix('backend/'))
+              for line in Path('lever-phase-a-ready-batch-reports.txt').read_text(
+                  encoding='utf-8'
+              ).splitlines()
+              if line.strip()
+          ]
+          assert len(paths) > 1
+          seen_review_ids = set()
+          seen_sites = set()
+
+          for report_path in paths:
+              review_id = report_path.parent.name
+              assert review_id not in seen_review_ids
+              seen_review_ids.add(review_id)
+              target = load_locked_target(review_id, corpus)
+              assert target['site'] not in seen_sites
+              seen_sites.add(target['site'])
+
+              report = json.loads(report_path.read_text(encoding='utf-8'))
+              validate_ready_report(report, target)
+              artifact_path = require_report_path(report_path, evidence)
+              report_sha = hashlib.sha256(report_path.read_bytes()).hexdigest()
+
+              candidate_path = evidence / f'lever-phase-a-candidate-{review_id}.csv'
+              source_path = evidence / f'lever-phase-a-source-{review_id}.csv'
+              assert candidate_path.is_file(), candidate_path
+              assert source_path.is_file(), source_path
+              candidate_rows = rows(candidate_path)
+              source_rows = rows(source_path)
+              assert len(candidate_rows) == 1
+              assert len(source_rows) == 1
+              candidate = candidate_rows[0]
+              source = source_rows[0]
+
+              assert candidate['artifact_path'] == artifact_path
+              assert candidate['artifact_sha256'] == report_sha
+              assert candidate['pre_submit_state'] == 'ready_to_submit'
+              assert candidate['final_status'] == 'dry_run_passed'
+              assert candidate['site'] == target['site']
+              assert candidate['posting_id'] == target['posting_id']
+              assert candidate['region'] == target['region']
+              assert candidate['source_reference'].endswith(
+                  '/' + source['workflow_run_id']
+              )
+
+              matching_baseline = [
+                  item for item in baseline
+                  if item.get('run_id') == candidate['run_id']
+              ]
+              assert matching_baseline == [candidate]
+              matching_source = [
+                  item for item in canonical_sources
+                  if item.get('workflow_run_id') == source['workflow_run_id']
+                  and item.get('artifact_id') == source['artifact_id']
+              ]
+              assert matching_source == [source]
+
+              archive = (
+                  evidence
+                  / 'lever-phase-a-external-archives'
+                  / review_id
+                  / (
+                      'artifact-'
+                      + source['artifact_id']
+                      + '-'
+                      + source['artifact_digest']
+                      + '.zip'
+                  )
+              )
+              assert archive.is_file(), archive
+              assert hashlib.sha256(archive.read_bytes()).hexdigest() == (
+                  source['artifact_digest']
+              )
+
+          print(
+              json.dumps(
+                  {
+                      'batch_report_count': len(paths),
+                      'review_ids': sorted(seen_review_ids),
+                      'distinct_sites': len(seen_sites),
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )
+          )
+          PY
+
+          python scripts/certify_lever_pilot_readiness.py \
+            --baseline evidence/lever-phase-a-baseline.csv \
+            --ledger evidence/.missing-phase-b-runtime.jsonl \
+            --json-output /tmp/lever-batch-certification.json \
+            --markdown-output /tmp/lever-batch-certification.md
+
+          git diff --check
+
+      - name: Record finalized batch validation
+        if: steps.selection.outputs.has_batch == 'true'
+        shell: bash
+        run: |
+          {
+            echo '## Lever Phase A finalized batch validated'
+            echo
+            echo "- Changed ready reports: \`${{ steps.selection.outputs.report_count }}\`"
+            echo '- Every report has a matching canonical baseline row.'
+            echo '- Every report has a matching source receipt and durable archive.'
+            echo '- No new external artifact was created by this validation-only pass.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Record code-only validation
-        if: steps.selection.outputs.has_report != 'true'
+        if: >-
+          steps.selection.outputs.has_report != 'true' &&
+          steps.selection.outputs.has_batch != 'true'
         run: |
           echo 'Ready-retention tooling passed. No evidence report was selected on this code-only change.' >> "$GITHUB_STEP_SUMMARY"

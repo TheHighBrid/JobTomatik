@@ -77,6 +77,69 @@ async def _anonymous_text_context(element: Any) -> Dict[str, Any]:
         return {}
 
 
+async def _text_control_metadata(element: Any) -> Dict[str, str]:
+    """Return a stable per-page identity without retaining the entered value."""
+    try:
+        value = await element.evaluate(
+            """(el) => {
+              let counter = Number(
+                document.documentElement.dataset.jtTextControlCounter || 0
+              );
+              if (!el.dataset.jtTextControlId) {
+                counter += 1;
+                el.dataset.jtTextControlId = `jt-text-${counter}`;
+                document.documentElement.dataset.jtTextControlCounter = String(counter);
+              }
+              return {
+                control_id: el.dataset.jtTextControlId,
+                control_type: (
+                  (el.tagName || '').toLowerCase() === 'textarea'
+                    ? 'textarea'
+                    : (el.getAttribute('type') || 'text').toLowerCase()
+                ),
+                id: el.id || '',
+                name: el.getAttribute('name') || ''
+              };
+            }"""
+        )
+    except Exception:
+        return {}
+    return {
+        "control_id": str(value.get("control_id") or ""),
+        "control_type": str(value.get("control_type") or "text"),
+        "id": str(value.get("id") or ""),
+        "name": str(value.get("name") or ""),
+    }
+
+
+async def _verified_text_log(
+    element: Any,
+    *,
+    action: str,
+    descriptor: str,
+    canonical_key: str,
+    source: str,
+    policy_id: Any = None,
+    prepopulated: bool,
+) -> Dict[str, Any]:
+    metadata = await _text_control_metadata(element)
+    return {
+        "action": action,
+        "descriptor": descriptor[:200],
+        "canonical_key": canonical_key,
+        "source": source,
+        "policy_id": policy_id,
+        "control_id": metadata.get("control_id", ""),
+        "control_type": metadata.get("control_type", "text"),
+        "control_name": metadata.get("name", ""),
+        "control_dom_id": metadata.get("id", ""),
+        "verification_method": "browser_input_value_readback",
+        "prepopulated": prepopulated,
+        "verified": True,
+        "ts": now_iso(),
+    }
+
+
 async def _fill_text_fields(
     surface: Any,
     *,
@@ -125,19 +188,30 @@ async def _fill_text_fields(
             if policy.get("matched"):
                 if policy.get("can_autofill"):
                     answer = str(policy.get("answer") or "")
+                    policy_id = (policy.get("policy") or {}).get("id")
                     if current == answer:
+                        log.append(await _verified_text_log(
+                            element,
+                            action="text_control_verified",
+                            descriptor=descriptor,
+                            canonical_key=str(policy.get("canonical_key") or ""),
+                            source="answer_policy",
+                            policy_id=policy_id,
+                            prepopulated=True,
+                        ))
                         continue
                     await element.fill(answer)
                     if str(await element.input_value()) == answer:
                         filled += 1
-                        log.append({
-                            "action": "fill",
-                            "descriptor": descriptor[:200],
-                            "canonical_key": policy.get("canonical_key"),
-                            "source": "answer_policy",
-                            "verified": True,
-                            "ts": now_iso(),
-                        })
+                        log.append(await _verified_text_log(
+                            element,
+                            action="fill",
+                            descriptor=descriptor,
+                            canonical_key=str(policy.get("canonical_key") or ""),
+                            source="answer_policy",
+                            policy_id=policy_id,
+                            prepopulated=False,
+                        ))
                     else:
                         _append_review(
                             review_items,
@@ -164,18 +238,26 @@ async def _fill_text_fields(
                 value = str(values.get(field, "") or "")
                 if value:
                     if current == value:
+                        log.append(await _verified_text_log(
+                            element,
+                            action="text_control_verified",
+                            descriptor=descriptor,
+                            canonical_key=f"profile.{field}",
+                            source="profile",
+                            prepopulated=True,
+                        ))
                         continue
                     await element.fill(value)
                     if str(await element.input_value()) == value:
                         filled += 1
-                        log.append({
-                            "action": "fill",
-                            "field": field,
-                            "descriptor": descriptor[:200],
-                            "source": "profile",
-                            "verified": True,
-                            "ts": now_iso(),
-                        })
+                        log.append(await _verified_text_log(
+                            element,
+                            action="fill",
+                            descriptor=descriptor,
+                            canonical_key=f"profile.{field}",
+                            source="profile",
+                            prepopulated=False,
+                        ))
                     else:
                         _append_review(
                             review_items,

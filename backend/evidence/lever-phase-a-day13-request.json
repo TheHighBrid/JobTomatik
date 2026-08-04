@@ -1,0 +1,26 @@
+{
+  "base_commit_sha": "5aaf7fb08ef84b74758d7bd9daa2acc3ca46eeb5",
+  "measurement_contract": "2026-07-31.day8.5",
+  "minimum_qualifying_additions": 5,
+  "requested_checkpoint": 25,
+  "requested_review_ids": [
+    "D8-004",
+    "D8-009",
+    "D8-010",
+    "D8-018",
+    "D8-020",
+    "D8-030",
+    "D8-034",
+    "D8-036",
+    "D8-040"
+  ],
+  "safety": {
+    "allow_real_application_submit": false,
+    "autopilot_enabled": false,
+    "final_submit_clicked": false,
+    "maturity_promotion_allowed": false,
+    "resumable_handoffs_enabled": false,
+    "supervised_pilot_enabled": false
+  },
+  "schema_version": "1.0"
+}

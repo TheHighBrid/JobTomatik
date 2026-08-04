@@ -65,7 +65,41 @@ def _report() -> dict:
                         "verification": "passed",
                     }
                 ],
-                "control_evidence_count": 5,
+                "control_evidence_schema_version": "1.0",
+                "control_evidence": [
+                    {
+                        "action": "control_verified",
+                        "control_engine_version": "2.1.0",
+                        "control_id": "jt-text-1",
+                        "control_type": "email",
+                        "descriptor": "Email",
+                        "canonical_key": "profile.email",
+                        "policy_id": None,
+                        "selected": [],
+                        "options_fingerprint": "a" * 16,
+                        "verification": "passed",
+                        "pass": 1,
+                        "source": "profile",
+                        "value_redacted": True,
+                    },
+                    {
+                        "action": "control_verified",
+                        "control_engine_version": "2.1.0",
+                        "control_id": "jt-text-2",
+                        "control_type": "textarea",
+                        "descriptor": "Why this role?",
+                        "canonical_key": "why_this_role",
+                        "policy_id": 7,
+                        "selected": [],
+                        "options_fingerprint": "b" * 16,
+                        "verification": "passed",
+                        "pass": 1,
+                        "source": "answer_policy",
+                        "value_redacted": True,
+                    },
+                ],
+                "control_evidence_count": 2,
+                "policy_evidence_count": 1,
                 "final_submit_clicked": False,
                 "adapter": "lever",
                 "adapter_version": LEVER_ADAPTER_VERSION,
@@ -130,6 +164,53 @@ def test_ready_report_matches_locked_target() -> None:
     result = validate_ready_report(_report(), target)
     assert result["review_id"] == REVIEW_ID
     assert result["exercise"]["ready_to_submit"] is True
+
+
+def test_count_only_control_evidence_is_rejected() -> None:
+    target = load_locked_target(
+        REVIEW_ID,
+        Path("evidence/lever-phase-a-target-corpus"),
+    )
+    report = _report()
+    exercise = report["reports"][1]
+    exercise.pop("control_evidence")
+    with pytest.raises(LeverPhaseAProvenanceError, match="per-control"):
+        validate_ready_report(report, target)
+
+
+def test_policy_text_evidence_requires_resolved_policy_id() -> None:
+    target = load_locked_target(
+        REVIEW_ID,
+        Path("evidence/lever-phase-a-target-corpus"),
+    )
+    report = _report()
+    report["reports"][1]["control_evidence"][1]["policy_id"] = None
+    with pytest.raises(LeverPhaseAProvenanceError, match="policy ID"):
+        validate_ready_report(report, target)
+
+
+def test_text_evidence_rejects_raw_value_fields() -> None:
+    target = load_locked_target(
+        REVIEW_ID,
+        Path("evidence/lever-phase-a-target-corpus"),
+    )
+    report = _report()
+    report["reports"][1]["control_evidence"][0]["value"] = "secret"
+    with pytest.raises(LeverPhaseAProvenanceError, match="raw-value"):
+        validate_ready_report(report, target)
+
+
+def test_duplicate_control_evidence_identity_is_rejected() -> None:
+    target = load_locked_target(
+        REVIEW_ID,
+        Path("evidence/lever-phase-a-target-corpus"),
+    )
+    report = _report()
+    duplicate = dict(report["reports"][1]["control_evidence"][0])
+    report["reports"][1]["control_evidence"].append(duplicate)
+    report["reports"][1]["control_evidence_count"] = 3
+    with pytest.raises(LeverPhaseAProvenanceError, match="duplicate identity"):
+        validate_ready_report(report, target)
 
 
 def test_manual_challenge_report_is_rejected() -> None:
@@ -200,6 +281,7 @@ def test_finalize_writes_candidate_source_and_archive(tmp_path: Path) -> None:
     assert rows[0]["pre_submit_state"] == "ready_to_submit"
     assert rows[0]["final_status"] == "dry_run_passed"
     assert rows[0]["source_reference"].endswith("/actions/runs/" + RUN_ID)
+    assert rows[0]["policies_used"] == "1"
     assert sources == [
         {
             "workflow_run_id": RUN_ID,
