@@ -91,7 +91,8 @@ receipt alone never advances the checkpoint.
 
 ## Truthful current result
 
-At `main` SHA `1175119a3dc787e14cc2d61aada874d4a66b41b4`, retained evidence reports:
+The retained artifacts verified from source snapshot
+`1175119a3dc787e14cc2d61aada874d4a66b41b4` report:
 
 - Lever Phase A: **30/30** qualifying dry runs across **30 distinct sites**;
 - regions covered: global and EU;
