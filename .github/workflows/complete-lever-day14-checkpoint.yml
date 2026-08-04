@@ -1,9 +1,14 @@
 name: Complete Lever Day 14 checkpoint
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/complete-lever-day14-checkpoint
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
     paths:
       - .github/workflows/complete-lever-day14-checkpoint.yml
 
@@ -16,6 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
   PYTHONPATH: .
   DATABASE_URL: sqlite:///./lever-day14-cleanup.db
   REDIS_URL: redis://localhost:6379/0
@@ -36,7 +42,7 @@ jobs:
       - name: Check out immutable cleanup commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.SOURCE_SHA }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -55,8 +61,8 @@ jobs:
       - name: Refuse stale cleanup
         run: |
           remote_sha="$(git ls-remote origin refs/heads/fix/complete-lever-day14-checkpoint | cut -f1)"
-          test "$remote_sha" = "$GITHUB_SHA" || {
-            echo "Branch advanced from $GITHUB_SHA to $remote_sha; refusing stale cleanup." >&2
+          test "$remote_sha" = "$SOURCE_SHA" || {
+            echo "Branch advanced from $SOURCE_SHA to $remote_sha; refusing stale cleanup." >&2
             exit 1
           }
 
@@ -315,7 +321,7 @@ jobs:
         run: |
           set -euo pipefail
           remote_sha="$(git ls-remote origin refs/heads/fix/complete-lever-day14-checkpoint | cut -f1)"
-          test "$remote_sha" = "$GITHUB_SHA" || {
+          test "$remote_sha" = "$SOURCE_SHA" || {
             echo "Branch advanced before commit; refusing stale push." >&2
             exit 1
           }
@@ -332,7 +338,7 @@ jobs:
           git status --short
           git commit -m "Complete Lever Phase A 30-run dry-run checkpoint"
           remote_sha="$(git ls-remote origin refs/heads/fix/complete-lever-day14-checkpoint | cut -f1)"
-          test "$remote_sha" = "$GITHUB_SHA" || {
+          test "$remote_sha" = "$SOURCE_SHA" || {
             echo "Branch advanced before push; refusing stale commit." >&2
             exit 1
           }
