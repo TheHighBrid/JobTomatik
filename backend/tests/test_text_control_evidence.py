@@ -1,3 +1,4 @@
+import inspect
 import json
 import os
 import re
@@ -5,7 +6,11 @@ import re
 import pytest
 import pytest_asyncio
 
+from app.services import form_filler_v3
 from app.services.form_filler_v3 import _fill_step_fields
+from app.services.greenhouse_phone_widget import (
+    install_greenhouse_phone_widget_compat,
+)
 from app.services.lever_certification import _synthetic_policy
 
 
@@ -104,3 +109,9 @@ async def test_policy_textarea_emits_one_redacted_evidence_record(page):
     assert evidence["control_type"] == "textarea"
     assert await page.locator("#why").input_value() == raw_value
     assert_redacted(evidence, raw_value)
+
+
+def test_phone_widget_compat_forwards_text_evidence_argument():
+    install_greenhouse_phone_widget_compat()
+    signature = inspect.signature(form_filler_v3._fill_text_fields)
+    assert "control_evidence" in signature.parameters
