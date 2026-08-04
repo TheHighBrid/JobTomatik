@@ -20,6 +20,11 @@ from app.models.intelligence import (
     RecruiterInteraction,
     SelectorStrategy,
 )
+from app.models.material import (
+    ApplicationMaterial,
+    ApplicationMaterialEvidence,
+    EvidenceUnit,
+)
 from app.models.notification import Notification
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_evidence_review import SubmissionEvidenceReview
@@ -49,6 +54,9 @@ __all__ = [
     "SelectorStrategy",
     "AgentRun",
     "AgentTask",
+    "EvidenceUnit",
+    "ApplicationMaterial",
+    "ApplicationMaterialEvidence",
     "Notification",
     "SubmissionApproval",
     "SubmissionEvidenceReview",
