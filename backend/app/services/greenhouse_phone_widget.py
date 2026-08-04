@@ -147,7 +147,11 @@ async def _same_shell_phone_control(
     if not scored:
         return None, ""
     top_score = max(score for score, _, _ in scored)
-    strongest = [(candidate, descriptor) for score, candidate, descriptor in scored if score == top_score]
+    strongest = [
+        (candidate, descriptor)
+        for score, candidate, descriptor in scored
+        if score == top_score
+    ]
     if len(strongest) != 1:
         return None, ""
     return strongest[0]
@@ -160,6 +164,7 @@ async def _reconcile_phone_review(
     cover_letter: str,
     log: List[Dict[str, Any]],
     review_items: List[Dict[str, Any]],
+    control_evidence: List[Dict[str, Any]],
 ) -> int:
     expected = str(_profile_values(profile, cover_letter).get("phone") or "")
     if not expected:
@@ -204,16 +209,17 @@ async def _reconcile_phone_review(
             await phone_control.evaluate(
                 "(el) => el.setAttribute('data-jt-phone-format-verified', 'true')"
             )
+            verification_method = (
+                "same_shell_keyboard_significant_digits"
+                if keyboard_retry
+                else "same_shell_significant_digits"
+            )
             log.append({
                 "action": "phone_format_verified",
                 "field": "phone",
                 "descriptor": marker_descriptor[:200],
                 "control_descriptor": control_descriptor[:200],
-                "verification": (
-                    "same_shell_keyboard_significant_digits"
-                    if keyboard_retry
-                    else "same_shell_significant_digits"
-                ),
+                "verification": verification_method,
                 "proxy_reconciled": phone_control is not marker,
                 "actual_digit_count": len(_digits(actual)),
                 "expected_digit_count": len(_digits(expected)),
@@ -221,6 +227,19 @@ async def _reconcile_phone_review(
                 "verified": True,
             })
             if not already_verified:
+                from app.services import form_filler_v3
+
+                evidence = await form_filler_v3._verified_text_control_evidence(
+                    phone_control,
+                    descriptor=control_descriptor or marker_descriptor,
+                    value=actual,
+                    canonical_key="profile.phone",
+                    source="profile",
+                )
+                evidence["verification_method"] = verification_method
+                evidence["semantic_verification"] = "significant_digits"
+                control_evidence.append(evidence)
+                log.append(dict(evidence))
                 reconciled += 1
         except Exception:
             continue
@@ -246,6 +265,7 @@ def install_greenhouse_phone_widget_compat() -> None:
         policies: List[Dict[str, Any]],
         log: List[Dict[str, Any]],
         review_items: List[Dict[str, Any]],
+        control_evidence: List[Dict[str, Any]],
     ) -> int:
         filled = await _ORIGINAL_FILL_TEXT_FIELDS(
             surface,
@@ -254,6 +274,7 @@ def install_greenhouse_phone_widget_compat() -> None:
             policies=policies,
             log=log,
             review_items=review_items,
+            control_evidence=control_evidence,
         )
         filled += await _reconcile_phone_review(
             surface,
@@ -261,6 +282,7 @@ def install_greenhouse_phone_widget_compat() -> None:
             cover_letter=cover_letter,
             log=log,
             review_items=review_items,
+            control_evidence=control_evidence,
         )
         return filled
 
