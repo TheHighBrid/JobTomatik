@@ -323,11 +323,96 @@ async def inspect_lever_application_dom(surface: Any) -> Dict[str, Any]:
     }
 
 
+_APPLICATION_SOURCE_MARKERS = (
+    "indeed",
+    "glassdoor",
+    "referral",
+    "employee",
+    "career site",
+    "company website",
+    "job board",
+    "monster",
+    "career fair",
+    "talent acquisition",
+    "recruiter",
+)
+
+
+def _application_source_group_plan(
+    records: List[Dict[str, Any]],
+) -> Tuple[Dict[int, Dict[str, Any]], set[int]]:
+    """Identify only unmistakable synthetic application-source choice groups.
+
+    Lever sometimes omits the question legend and exposes each option as a separate
+    required record. Grouping is allowed only when the controls share one non-empty
+    name, are native choice controls, expose LinkedIn, and contain at least two other
+    independent recruitment-source markers. This helper is used only to build the
+    fictional certification profile and is never part of real-user answer selection.
+    """
+
+    grouped: Dict[Tuple[str, str], List[Tuple[int, Dict[str, Any]]]] = {}
+    for index, record in enumerate(records):
+        name = str(record.get("name") or "").strip()
+        control_type = str(record.get("control_type") or "").strip()
+        if not name or control_type not in {"radio", "checkbox"}:
+            continue
+        grouped.setdefault((name, control_type), []).append((index, record))
+
+    plans: Dict[int, Dict[str, Any]] = {}
+    member_indices: set[int] = set()
+    for (name, control_type), members in grouped.items():
+        if len(members) < 2:
+            continue
+        option_text: List[str] = []
+        for _, record in members:
+            option_text.extend(str(value) for value in record.get("options") or [])
+        normalized = _normalize(" ".join(option_text))
+        if "linkedin" not in normalized:
+            continue
+        markers = {
+            marker for marker in _APPLICATION_SOURCE_MARKERS
+            if marker in normalized
+        }
+        if len(markers) < 2:
+            continue
+
+        first_index = members[0][0]
+        indices = {index for index, _ in members}
+        plans[first_index] = {
+            "name": name,
+            "control_type": control_type,
+            "answer": "LinkedIn",
+            "indices": indices,
+            "markers": sorted(markers),
+        }
+        member_indices.update(indices)
+    return plans, member_indices
+
+
 def build_synthetic_profile(dom_inventory: Dict[str, Any]) -> Dict[str, Any]:
     policies: List[Dict[str, Any]] = []
-    for policy_id, record in enumerate(
-        dom_inventory.get("required_custom_controls") or [], start=1
-    ):
+    records = list(dom_inventory.get("required_custom_controls") or [])
+    source_plans, source_members = _application_source_group_plan(records)
+    next_policy_id = 1
+
+    for index, record in enumerate(records):
+        source_plan = source_plans.get(index)
+        if source_plan is not None:
+            policies.append(
+                _synthetic_policy(
+                    next_policy_id,
+                    canonical_key="custom.application_source",
+                    category="application_source",
+                    sensitivity="standard",
+                    answer=str(source_plan["answer"]),
+                    descriptor=str(source_plan["name"]),
+                )
+            )
+            next_policy_id += 1
+            continue
+        if index in source_members:
+            continue
+
         descriptor = str(record.get("descriptor") or "").strip()
         if not descriptor:
             continue
@@ -339,10 +424,10 @@ def build_synthetic_profile(dom_inventory: Dict[str, Any]) -> Dict[str, Any]:
         )
         canonical_key = classification.get("canonical_key")
         if canonical_key == "custom.unclassified":
-            canonical_key = f"custom.lever_synthetic_{policy_id}"
+            canonical_key = f"custom.lever_synthetic_{next_policy_id}"
         policies.append(
             _synthetic_policy(
-                policy_id,
+                next_policy_id,
                 canonical_key=str(canonical_key),
                 category=str(
                     classification.get("category") or "synthetic_certification"
@@ -354,6 +439,7 @@ def build_synthetic_profile(dom_inventory: Dict[str, Any]) -> Dict[str, Any]:
                 descriptor=descriptor,
             )
         )
+        next_policy_id += 1
 
     # Lever's current-location widget is commonly a required ARIA combobox. It is
     # included explicitly if the DOM inventory classified it as a profile-like field.

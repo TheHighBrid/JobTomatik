@@ -8,7 +8,7 @@ from typing import Any, Mapping
 
 from scripts import finalize_lever_phase_a_ready as base
 
-_TITLE_DASH_PATTERN = re.compile(r"\s*[-‐‑‒–—―−]\s*")
+_TITLE_DASH_PATTERN = re.compile(r"\s*[-‐‑‒–—―−]+\s*")
 _ORIGINAL_VALIDATE = base.validate_ready_report
 
 

@@ -6,6 +6,7 @@ import pytest_asyncio
 # Install the Lever Phase A compatibility layer before importing the synthetic
 # answer helper that the certification profile uses.
 from app.services import form_filler as _form_filler  # noqa: F401
+from app.services.control_policy import resolve_control_policy
 from app.services.lever_certification import (
     SYNTHETIC_LOCATION,
     build_synthetic_profile,
@@ -119,3 +120,74 @@ def test_desired_salary_uses_numeric_synthetic_value() -> None:
         control_type="text",
     )
     assert answer == "150000"
+
+
+def test_application_source_group_collapses_to_one_synthetic_policy() -> None:
+    name = "cards[source-question][field0]"
+    options = [
+        "Linkedin",
+        "Glassdoor",
+        "Indeed",
+        "Current/Former Employee",
+        "School/Alumni Job Board",
+        "Monster",
+        "Career Fair",
+        "Other",
+    ]
+    inventory = {
+        "required_custom_controls": [
+            {
+                "descriptor": f"{name} | {option}",
+                "control_type": "radio",
+                "required": True,
+                "options": options,
+                "name": name,
+                "id": "",
+            }
+            for option in options[1:]
+        ],
+        "controls": [],
+    }
+
+    profile = build_synthetic_profile(inventory)
+    source_policies = [
+        policy for policy in profile["answer_policies"]
+        if policy["canonical_key"] == "custom.application_source"
+    ]
+
+    assert len(source_policies) == 1
+    policy = source_policies[0]
+    assert policy["match_phrases"] == [name]
+    assert policy["answer_value"] == "LinkedIn"
+    assert policy["category"] == "application_source"
+    assert policy["consent_metadata"]["synthetic_only"] is True
+
+    resolved = resolve_control_policy(f"{name} | Linkedin", profile["answer_policies"])
+    assert resolved["can_autofill"] is True
+    assert resolved["answer"] == "LinkedIn"
+    assert resolved["policy"]["id"] == policy["id"]
+
+
+def test_application_source_group_does_not_reclassify_generic_link_group() -> None:
+    name = "cards[social-profile][field0]"
+    options = ["Linkedin", "Twitter", "Other"]
+    inventory = {
+        "required_custom_controls": [
+            {
+                "descriptor": f"{name} | {option}",
+                "control_type": "radio",
+                "required": True,
+                "options": options,
+                "name": name,
+                "id": "",
+            }
+            for option in options
+        ],
+        "controls": [],
+    }
+
+    profile = build_synthetic_profile(inventory)
+    assert not any(
+        policy["canonical_key"] == "custom.application_source"
+        for policy in profile["answer_policies"]
+    )
