@@ -12,6 +12,11 @@ def test_title_normalization_accepts_typography_only_dash_variants():
     ) == _normalized_title(
         "Staff Data Scientist - Pricing Science"
     )
+    assert _normalized_title(
+        "Principal Scientist − Applied AI"
+    ) == _normalized_title(
+        "Principal Scientist - Applied AI"
+    )
 
 
 def test_title_normalization_does_not_hide_word_changes():
