@@ -183,7 +183,7 @@ export default function ApplicationDetail() {
   const genCLMut = useMutation({
     mutationFn: () => generateCoverLetter(id),
     onSuccess: () => {
-      toast('Cover letter generation started. Refresh in a moment.')
+      toast('Verified cover-letter generation started. Source-backed claims will be used, and insufficient evidence will route to review.')
       setTimeout(() => qc.invalidateQueries(['application', id]), 5000)
     },
   })
@@ -442,7 +442,7 @@ export default function ApplicationDetail() {
             className="btn-secondary w-full flex items-center gap-2 justify-center"
           >
             {genCLMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {app.cover_letter ? 'Regenerate Cover Letter' : 'Generate Cover Letter'}
+            {app.cover_letter ? 'Regenerate Verified Cover Letter' : 'Generate Verified Cover Letter'}
           </button>
 
           {!applicationFinished && (
@@ -493,8 +493,14 @@ export default function ApplicationDetail() {
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-            <FileText className="w-4 h-4" /> Cover Letter
+            <FileText className="w-4 h-4" /> Verified Cover Letter
           </h2>
+          <Link
+            to={`/evidence-materials?application=${id}`}
+            className="text-xs font-semibold text-tomato-600 hover:underline"
+          >
+            Open claim audit
+          </Link>
         </div>
         {app.cover_letter ? (
           <pre className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed font-sans bg-gray-50 rounded-lg p-4">
@@ -502,10 +508,10 @@ export default function ApplicationDetail() {
           </pre>
         ) : (
           <div className="text-center py-6 text-gray-400 text-sm">
-            No cover letter yet.{' '}
-            <button onClick={() => genCLMut.mutate()} className="text-tomato-600 hover:underline">
-              Generate one with AI
-            </button>
+            No verified cover letter yet.{' '}
+            <Link to={`/evidence-materials?application=${id}`} className="text-tomato-600 hover:underline">
+              Build source-backed materials
+            </Link>
           </div>
         )}
       </div>
