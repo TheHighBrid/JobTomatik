@@ -1,0 +1,70 @@
+name: Merge main into Lever resweep
+
+on:
+  pull_request:
+    branches:
+      - temp-lever-resweep-base
+
+permissions:
+  contents: write
+
+concurrency:
+  group: merge-main-into-lever-resweep
+  cancel-in-progress: false
+
+jobs:
+  merge-main:
+    if: github.head_ref == 'evidence/lever-phase-a-resweep-visible-challenge'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out resweep branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Merge current main with guarded resolutions
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+
+          if git merge --no-edit origin/main; then
+            echo "Main merged without conflicts."
+          else
+            mapfile -t conflicted < <(git diff --name-only --diff-filter=U)
+            printf 'Conflicted paths:\n%s\n' "${conflicted[*]}"
+            allowed=(
+              ".github/workflows/lever-phase-a-ready-retention.yml"
+              "backend/app/services/lever_phase_a_archive.py"
+            )
+            for path in "${conflicted[@]}"; do
+              permitted=false
+              for candidate in "${allowed[@]}"; do
+                if [[ "$path" == "$candidate" ]]; then
+                  permitted=true
+                  break
+                fi
+              done
+              if [[ "$permitted" != true ]]; then
+                echo "Unexpected merge conflict: $path" >&2
+                exit 1
+              fi
+              git checkout --ours -- "$path"
+              git add "$path"
+            done
+            if git diff --name-only --diff-filter=U | grep -q .; then
+              echo "Unresolved merge conflicts remain." >&2
+              exit 1
+            fi
+            git commit --no-edit
+          fi
+
+          git merge-base --is-ancestor origin/main HEAD
+          git push origin "HEAD:${HEAD_BRANCH}"
