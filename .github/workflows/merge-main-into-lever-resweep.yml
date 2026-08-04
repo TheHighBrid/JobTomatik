@@ -68,3 +68,5 @@ jobs:
 
           git merge-base --is-ancestor origin/main HEAD
           git push origin "HEAD:${HEAD_BRANCH}"
+
+# Connector-triggered guarded merge refresh.
