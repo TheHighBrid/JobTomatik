@@ -1,0 +1,38 @@
+{
+  "receipt_id": "lever-phase-b-selection-2026-08-04-d8-026-d8-028",
+  "recorded_at": "2026-08-04T07:00:00-04:00",
+  "requested_action": {
+    "authorize_adapter_promotion": false,
+    "authorize_final_submit": false,
+    "authorize_supervised_submission": false,
+    "build_read_only_dossiers": true,
+    "run_no_submit_previews": true
+  },
+  "safety": {
+    "final_submit_must_remain_false": true,
+    "no_captcha_bypass": true,
+    "no_sensitive_or_legal_answer_inference": true,
+    "one_time_approval_still_required": true
+  },
+  "schema_version": "1.0",
+  "selected_applications": [
+    {
+      "application_url": "https://jobs.lever.co/cin7/7d4a0f39-7771-4d19-b328-e8705cac1623/apply",
+      "employer": "Cin7",
+      "posting_id": "7d4a0f39-7771-4d19-b328-e8705cac1623",
+      "review_id": "D8-026",
+      "role": "Customer Success Manager",
+      "site": "cin7"
+    },
+    {
+      "application_url": "https://jobs.lever.co/PocketHealth/b7c95155-37e5-4a9f-b1fb-be00710c1820/apply",
+      "employer": "PocketHealth",
+      "posting_id": "b7c95155-37e5-4a9f-b1fb-be00710c1820",
+      "review_id": "D8-028",
+      "role": "Customer Success Manager",
+      "site": "PocketHealth"
+    }
+  ],
+  "selected_by_user": true,
+  "selection_quote": "I select D8-026 Cin7 Customer Success Manager and D8-028 PocketHealth Customer Success Manager for the Lever Phase B read-only dossiers and no-submit previews."
+}
