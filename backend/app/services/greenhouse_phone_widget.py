@@ -164,7 +164,7 @@ async def _reconcile_phone_review(
     cover_letter: str,
     log: List[Dict[str, Any]],
     review_items: List[Dict[str, Any]],
-    control_evidence: List[Dict[str, Any]],
+    control_evidence: Optional[List[Dict[str, Any]]] = None,
 ) -> int:
     expected = str(_profile_values(profile, cover_letter).get("phone") or "")
     if not expected:
@@ -214,18 +214,6 @@ async def _reconcile_phone_review(
                 if keyboard_retry
                 else "same_shell_significant_digits"
             )
-            log.append({
-                "action": "phone_format_verified",
-                "field": "phone",
-                "descriptor": marker_descriptor[:200],
-                "control_descriptor": control_descriptor[:200],
-                "verification": verification_method,
-                "proxy_reconciled": phone_control is not marker,
-                "actual_digit_count": len(_digits(actual)),
-                "expected_digit_count": len(_digits(expected)),
-                "counted": not already_verified,
-                "verified": True,
-            })
             if not already_verified:
                 from app.services import form_filler_v3
 
@@ -238,9 +226,22 @@ async def _reconcile_phone_review(
                 )
                 evidence["verification_method"] = verification_method
                 evidence["semantic_verification"] = "significant_digits"
-                control_evidence.append(evidence)
+                if control_evidence is not None:
+                    control_evidence.append(evidence)
                 log.append(dict(evidence))
                 reconciled += 1
+            log.append({
+                "action": "phone_format_verified",
+                "field": "phone",
+                "descriptor": marker_descriptor[:200],
+                "control_descriptor": control_descriptor[:200],
+                "verification": verification_method,
+                "proxy_reconciled": phone_control is not marker,
+                "actual_digit_count": len(_digits(actual)),
+                "expected_digit_count": len(_digits(expected)),
+                "counted": not already_verified,
+                "verified": True,
+            })
         except Exception:
             continue
     return reconciled
