@@ -55,6 +55,30 @@ unsupported
 - Do not attempt to evade CAPTCHA, MFA, identity verification, or third-party security controls. Where a site explicitly requires a human action, preserve state and request the smallest necessary intervention.
 - Ask before making a change that materially alters the project's product direction, business purpose, or final operating model.
 
+## Multi-agent cooperation
+
+Multiple AI contributors may work in parallel when the repository owner authorizes a task split.
+
+The current cooperation board is:
+
+- `docs/operations/AI_COOPERATION_BOARD.md`
+- GitHub issue #252
+
+All contributors must follow these rules:
+
+- Use one dedicated branch per agent and task. Never share a working branch.
+- Claim the task, branch, base SHA, intended files, and acceptance tests on the coordination issue before editing.
+- Respect recorded file and task ownership. Do not silently take over another agent's lane.
+- Open draft pull requests early so overlap, assumptions, and conflicts are visible.
+- Do not fabricate prerequisite evidence to unblock a later roadmap day.
+- Treat future-day scripts, fixtures, tests, evaluators, and documentation as readiness infrastructure, not completion evidence.
+- Do not overwrite canonical evidence, generated readiness artifacts, maturity manifests, or state-machine changes owned by another active lane.
+- When shared-file overlap is unavoidable, stop and coordinate the exact change before editing.
+- Refresh from current `main` before final validation.
+- Include an exact handoff receipt with base/head SHAs, files, commands, results, artifacts, invariants, blockers, assumptions, intentionally unchanged files, and the recommended integration action.
+
+The integration lead named on the cooperation board owns cross-branch reconciliation and combined gate review. Passing focused tests does not authorize an agent to merge its own lane or execute a user-gated action.
+
 ## Decision rule
 
 When implementation safety and product direction appear to conflict, do not unilaterally change the product direction. Present the engineering tradeoff and implement the option selected by the repository owner.
