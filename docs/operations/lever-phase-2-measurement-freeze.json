@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "contract_version": "2026-08-01.day9.1",
-  "effective_date": "2026-08-01",
+  "contract_version": "2026-08-03.day12.1",
+  "effective_date": "2026-08-03",
   "campaign_phase": 2,
   "platform": "lever",
   "canonical_maturity": "dry_run",
@@ -11,9 +11,9 @@
   "historical_evidence_pr": 152,
   "hardening_pr": 159,
   "amendment": {
-    "previous_contract_version": "2026-07-31.day8.5",
-    "purpose": "Freeze the durable external GitHub artifact archive verifier and the readiness gate that now qualifies retained Lever Phase A evidence.",
-    "qualification_rules_changed": true,
+    "previous_contract_version": "2026-08-01.day9.1",
+    "purpose": "Refresh exact locked blob identities after the merged 20-run checkpoint and replace stale current-state challenge-count floors with fail-closed equality and zero-violation invariants. The historical Phase 2 launch snapshot remains unchanged.",
+    "qualification_rules_changed": false,
     "qualification_weakened": false,
     "retroactive_credit_added": false,
     "canonical_qualifying_count_changed": false
@@ -87,7 +87,7 @@
   ],
   "locked_input_blobs": {
     "backend/app/services/ats_lever.py": "d6fb6c9858edba1c98419f9d226542ed6bd68d5e",
-    "backend/app/services/lever_phase_a_archive.py": "5f64db4e256c0f77e3cca6fd47ca16b52fc507ca",
+    "backend/app/services/lever_phase_a_archive.py": "f513d632738a3c06124e0f1dd98ab6af8306e746",
     "backend/app/services/lever_phase_a_evidence.py": "89d987156be88afb967b45fa39c13f84ee18ee49",
     "backend/app/services/lever_pilot_ingestion.py": "4c3cfab3830b5af79fb149bad35c275feba39f3f",
     "backend/app/services/lever_pilot_ledger_boundary.py": "b6c3d4c609daaa894bcf2bf06b69a7bc28d1818e",
@@ -97,9 +97,9 @@
     "backend/scripts/certify_lever_pilot_readiness.py": "c878f3f01dcfb42442d543bffb768d399b12eab3",
     "backend/scripts/evaluate_campaign_days_12_22.py": "5ad683bb949ad9f98c3bc46f39045040d2e3c0ab",
     ".github/workflows/campaign-artifact-drift.yml": "dfc420ae562ec3b865beda183c65fbd492f37af1",
-    ".github/workflows/lever-phase-a-certification.yml": "e3f0af543c3555fede296176c59453cbb7f17f9a",
-    ".github/workflows/phase-1-release-gate.yml": "9476e311c21c7707eccfc399f703fcb1c832513a",
-    "backend/tests/test_phase_1_release_gate.py": "7533d434dd5cec939b2c2f1463fc9c70fd1b9c13",
+    ".github/workflows/lever-phase-a-certification.yml": "5732073832f0a9d0bb2b8a4927d366cb49653c9e",
+    ".github/workflows/phase-1-release-gate.yml": "fee70aa1f308382ce3b11fbca30e678156814297",
+    "backend/tests/test_phase_1_release_gate.py": "e8af7c4573f636b87d195b9e2dd769d66f57f128",
     "backend/tests/test_certification_regressions.py": "fd18e7fbb1580a8a85ba655091a4294e6c40c733"
   },
   "generated_outputs": [
