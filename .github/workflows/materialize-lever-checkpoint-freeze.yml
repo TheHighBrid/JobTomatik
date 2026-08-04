@@ -87,7 +87,7 @@ jobs:
                   'f513d632738a3c06124e0f1dd98ab6af8306e746'
               ),
               'backend/scripts/verify_lever_phase_a_checkpoint.py': (
-                  'af7380981421dba4645fa8bf1b3ce0008b5ba541'
+                  '16b8b6b7262df3871bb3f1e3442c61c89eb2bc99'
               ),
               '.github/workflows/lever-phase-a-certification.yml': (
                   '0e923eb6ea5317279ab2a878e2936cd88713461f'
@@ -96,7 +96,7 @@ jobs:
                   'b51e50716c4697c7e0bdec0f439d32c0cf5c33a9'
               ),
               'backend/tests/test_phase_1_release_gate.py': (
-                  '51404bda7bdf328e4419021f12456b1b4db350e9'
+                  'b76ec4ec5771192a776e9e169d1ffb8ee3392c72'
               ),
               'backend/tests/test_lever_phase_a_multi_archive.py': (
                   'a74b029772194fc457dfca2d140363b02644c321'
