@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Dict, List, Mapping, Optional
 
 from app.services.ats_flow import run_ats_application_flow
@@ -77,6 +78,58 @@ async def _anonymous_text_context(element: Any) -> Dict[str, Any]:
         return {}
 
 
+async def _verified_text_control_evidence(
+    element: Any,
+    *,
+    descriptor: str,
+    value: str,
+    canonical_key: str,
+    source: str,
+    policy_id: Any = None,
+) -> Dict[str, Any]:
+    metadata = await element.evaluate(
+        """(el) => {
+          let counter = Number(document.documentElement.dataset.jtTextEvidenceCounter || 0);
+          if (!el.dataset.jtTextEvidenceId) {
+            counter += 1;
+            el.dataset.jtTextEvidenceId = `jt-text-${counter}`;
+            document.documentElement.dataset.jtTextEvidenceCounter = String(counter);
+          }
+          return {
+            controlId: el.dataset.jtTextEvidenceId,
+            tag: (el.tagName || '').toLowerCase(),
+            inputType: el.getAttribute('type') || '',
+            name: el.getAttribute('name') || '',
+            id: el.id || ''
+          };
+        }"""
+    )
+    control_id = str(metadata.get("controlId") or "")
+    control_type = (
+        "textarea"
+        if metadata.get("tag") == "textarea"
+        else str(metadata.get("inputType") or "text").lower()
+    )
+    fingerprint_input = (
+        f"jobtomatik-text-evidence-v1\0{control_id}\0{value}"
+    ).encode("utf-8")
+    return {
+        "action": "text_fill_verified",
+        "control_id": control_id,
+        "control_type": control_type,
+        "descriptor": descriptor[:200],
+        "canonical_key": canonical_key,
+        "policy_id": policy_id,
+        "source": source,
+        "verification": "passed",
+        "verification_method": "browser_input_value_readback",
+        "value_sha256": hashlib.sha256(fingerprint_input).hexdigest(),
+        "value_length": len(value),
+        "name": str(metadata.get("name") or ""),
+        "id": str(metadata.get("id") or ""),
+    }
+
+
 async def _fill_text_fields(
     surface: Any,
     *,
@@ -85,6 +138,7 @@ async def _fill_text_fields(
     policies: List[Dict[str, Any]],
     log: List[Dict[str, Any]],
     review_items: List[Dict[str, Any]],
+    control_evidence: List[Dict[str, Any]],
 ) -> int:
     values = _profile_values(profile, cover_letter)
     filled = 0
@@ -138,6 +192,16 @@ async def _fill_text_fields(
                             "verified": True,
                             "ts": now_iso(),
                         })
+                        evidence = await _verified_text_control_evidence(
+                            element,
+                            descriptor=descriptor,
+                            value=answer,
+                            canonical_key=str(policy.get("canonical_key") or ""),
+                            source="answer_policy",
+                            policy_id=(policy.get("policy") or {}).get("id"),
+                        )
+                        control_evidence.append(evidence)
+                        log.append(dict(evidence))
                     else:
                         _append_review(
                             review_items,
@@ -176,6 +240,15 @@ async def _fill_text_fields(
                             "verified": True,
                             "ts": now_iso(),
                         })
+                        evidence = await _verified_text_control_evidence(
+                            element,
+                            descriptor=descriptor,
+                            value=value,
+                            canonical_key=f"profile.{field}",
+                            source="profile",
+                        )
+                        control_evidence.append(evidence)
+                        log.append(dict(evidence))
                     else:
                         _append_review(
                             review_items,
@@ -247,6 +320,7 @@ async def _fill_step_fields(
 ) -> Dict[str, Any]:
     policies = list(profile.get("answer_policies") or [])
     review_items: List[Dict[str, Any]] = []
+    text_evidence: List[Dict[str, Any]] = []
     filled = 0
 
     filled += await _fill_text_fields(
@@ -256,6 +330,7 @@ async def _fill_step_fields(
         policies=policies,
         log=log,
         review_items=review_items,
+        control_evidence=text_evidence,
     )
 
     control_outcome = await fill_policy_controls(surface, policies, log)
@@ -269,6 +344,7 @@ async def _fill_step_fields(
         policies=policies,
         log=log,
         review_items=review_items,
+        control_evidence=text_evidence,
     )
 
     upload_outcome = await fill_upload_fields(
@@ -284,7 +360,7 @@ async def _fill_step_fields(
     return {
         "filled_count": filled,
         "review_items": review_items,
-        "control_evidence": control_outcome.evidence,
+        "control_evidence": text_evidence + control_outcome.evidence,
         "control_passes": control_outcome.passes,
         "upload_evidence": upload_outcome.evidence,
         "step": step_number,
