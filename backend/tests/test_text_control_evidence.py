@@ -104,7 +104,7 @@ async def test_policy_textarea_emits_one_redacted_evidence_record(page):
     assert len(outcome["control_evidence"]) == 1
     evidence = outcome["control_evidence"][0]
     assert evidence["source"] == "answer_policy"
-    assert evidence["canonical_key"] == "custom.why_role"
+    assert evidence["canonical_key"] == "why_this_role"
     assert evidence["policy_id"] == 77
     assert evidence["control_type"] == "textarea"
     assert await page.locator("#why").input_value() == raw_value
