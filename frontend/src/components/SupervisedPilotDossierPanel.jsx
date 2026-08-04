@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
   CheckCircle2,
   Download,
+  FileCheck2,
   FileKey2,
   Fingerprint,
   Loader2,
@@ -127,13 +129,21 @@ export default function SupervisedPilotDossierPanel({ applicationId, enabled = t
               One deterministic, sanitized snapshot for this exact application. It contains hashes and safety state, never raw profile answers, and exposes no approval or submit action.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={downloadDossier}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-400 bg-indigo-900 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-800"
-          >
-            <Download className="h-4 w-4" /> Download JSON
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to={`/evidence-materials?application=${applicationId}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300/40 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100 hover:bg-emerald-400/20"
+            >
+              <FileCheck2 className="h-4 w-4" /> Verified materials
+            </Link>
+            <button
+              type="button"
+              onClick={downloadDossier}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-400 bg-indigo-900 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-800"
+            >
+              <Download className="h-4 w-4" /> Download JSON
+            </button>
+          </div>
         </div>
       </div>
 
