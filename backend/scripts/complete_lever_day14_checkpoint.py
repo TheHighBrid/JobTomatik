@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -34,6 +35,11 @@ EXPECTED_IDS = {
 }
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _request_bytes(url: str) -> bytes:
     token = os.environ["GH_TOKEN"]
     request = urllib.request.Request(
@@ -45,7 +51,21 @@ def _request_bytes(url: str) -> bytes:
             "User-Agent": "JobTomatik-Day14-Cleanup",
         },
     )
-    with urllib.request.urlopen(request, timeout=120) as response:
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(request, timeout=120) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code not in {301, 302, 303, 307, 308}:
+            raise
+        location = exc.headers.get("Location")
+        if not location:
+            raise RuntimeError("Artifact redirect omitted its signed location") from exc
+    redirected = urllib.request.Request(
+        location,
+        headers={"User-Agent": "JobTomatik-Day14-Cleanup"},
+    )
+    with urllib.request.urlopen(redirected, timeout=120) as response:
         return response.read()
 
 
