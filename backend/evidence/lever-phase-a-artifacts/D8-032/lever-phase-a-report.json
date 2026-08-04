@@ -1,0 +1,408 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/knix/9a46a21d-1c81-4544-8d3c-d7629b90d7f7/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/knix/9a46a21d-1c81-4544-8d3c-d7629b90d7f7/apply",
+      "title": "Knix - Sr. UX/UI Designer",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/knix/9a46a21d-1c81-4544-8d3c-d7629b90d7f7/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Twitter] | Twitter URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Twitter]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[GitHub] | GitHub URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[GitHub]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field0]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field2] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field2] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field3]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field4]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field5] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field5] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field6] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field7]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field7]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 22,
+        "required_control_count": 10,
+        "required_custom_controls": [
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field2] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field2] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field5] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field5] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f1a0402b-836c-440d-93da-761246b7433a][field6] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[f1a0402b-836c-440d-93da-761246b7433a][field6]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "knix",
+      "posting_id": "9a46a21d-1c81-4544-8d3c-d7629b90d7f7",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "9a46a21d-1c81-4544-8d3c-d7629b90d7f7",
+        "title": "Sr. UX/UI Designer",
+        "categories": {
+          "commitment": "Full Time Permanent - Team Member (HQ)",
+          "department": "Technology",
+          "location": "Toronto, ON",
+          "team": "Digital Product & Design",
+          "allLocations": [
+            "Toronto, ON"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/knix/9a46a21d-1c81-4544-8d3c-d7629b90d7f7",
+        "apply_url": "https://jobs.lever.co/knix/9a46a21d-1c81-4544-8d3c-d7629b90d7f7/apply",
+        "site": "knix",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/knix/9a46a21d-1c81-4544-8d3c-d7629b90d7f7/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 12,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "1c46ccaa276937cd182d184c",
+          "filled_fingerprint": "ee12311cb220c31928fe7011",
+          "fields_filled": 12,
+          "control_passes": 2,
+          "ts": "2026-08-04T02:28:25.638741"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "ee12311cb220c31928fe7011",
+          "ts": "2026-08-04T02:28:25.732843"
+        }
+      ],
+      "control_evidence_count": 3,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 22,
+        "required_control_count": 10,
+        "required_custom_control_count": 7,
+        "policy_count": 7,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "knix",
+        "posting_id": "9a46a21d-1c81-4544-8d3c-d7629b90d7f7",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

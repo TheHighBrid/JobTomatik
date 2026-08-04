@@ -1,0 +1,735 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/cscgeneration-2/9567b1eb-f32b-4734-a673-476f0262179e/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/cscgeneration-2/9567b1eb-f32b-4734-a673-476f0262179e/apply",
+      "title": "CSC Generation - Staff Data Scientist\u2013 Pricing Science",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/cscgeneration-2/9567b1eb-f32b-4734-a673-476f0262179e/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "opportunityLocationId | opportunity-location-select",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "San Fransisco, CA",
+              "Austin, TX",
+              "Salt Lake City, UT",
+              "Remote - Canada"
+            ],
+            "name": "opportunityLocationId",
+            "id": ""
+          },
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | He/him",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | She/her",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | They/them",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Xe/xem",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Ze/hir",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Ey/em",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Hir/hir",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Fae/faer",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Hu/hu",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | useNameOnlyPronounsOption | Use name only",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": "useNameOnlyPronounsOption"
+          },
+          {
+            "descriptor": "customPronounsOption | Custom",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "",
+            "id": "customPronounsOption"
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[GitHub] | GitHub URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[GitHub]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field0] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field0] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1] | Yes, I would need an H1b transfer",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I would need an H1b transfer",
+              "Yes, I would need full H1b sponsorship",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1] | Yes, I would need full H1b sponsorship",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I would need an H1b transfer",
+              "Yes, I would need full H1b sponsorship",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I would need an H1b transfer",
+              "Yes, I would need full H1b sponsorship",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9aad739c-60c5-4271-a19d-cb99218be954][field0]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[9aad739c-60c5-4271-a19d-cb99218be954][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9aad739c-60c5-4271-a19d-cb99218be954][field1]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[9aad739c-60c5-4271-a19d-cb99218be954][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9aad739c-60c5-4271-a19d-cb99218be954][field2]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[9aad739c-60c5-4271-a19d-cb99218be954][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[6548da6d-d091-4b33-879c-619da8ffac65][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[6548da6d-d091-4b33-879c-619da8ffac65][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[94f341fb-8d00-4cb9-b121-4678a9f0c0a1][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[94f341fb-8d00-4cb9-b121-4678a9f0c0a1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ad06db1-f358-4214-80f2-633a952fb079][field0] | Yes",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "Yes \u2013 require sponsorship",
+              "No"
+            ],
+            "name": "cards[2ad06db1-f358-4214-80f2-633a952fb079][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ad06db1-f358-4214-80f2-633a952fb079][field0] | Yes \u2013 require sponsorship",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "Yes \u2013 require sponsorship",
+              "No"
+            ],
+            "name": "cards[2ad06db1-f358-4214-80f2-633a952fb079][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[2ad06db1-f358-4214-80f2-633a952fb079][field0] | No",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "Yes \u2013 require sponsorship",
+              "No"
+            ],
+            "name": "cards[2ad06db1-f358-4214-80f2-633a952fb079][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[gender] | Gender Select ... Male Female Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Male",
+              "Female",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[gender]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[race] | Race Select ... Hispanic or Latino White (Not Hispanic or Latino) Black or African American (Not Hispanic or Latino) Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino) Asian (Not Hispanic or Latino) American Indian or Alaska Native (Not Hispanic or Latino) Two or More Races (Not Hispanic or Latino) Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Hispanic or Latino",
+              "White (Not Hispanic or Latino)",
+              "Black or African American (Not Hispanic or Latino)",
+              "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+              "Asian (Not Hispanic or Latino)",
+              "American Indian or Alaska Native (Not Hispanic or Latino)",
+              "Two or More Races (Not Hispanic or Latino)",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[race]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[veteran] | Veteran status Select ... I am a veteran I am not a veteran Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "I am a veteran",
+              "I am not a veteran",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[veteran]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 38,
+        "required_control_count": 13,
+        "required_custom_controls": [
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field0] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field0] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1] | Yes, I would need an H1b transfer",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I would need an H1b transfer",
+              "Yes, I would need full H1b sponsorship",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1] | Yes, I would need full H1b sponsorship",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I would need an H1b transfer",
+              "Yes, I would need full H1b sponsorship",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I would need an H1b transfer",
+              "Yes, I would need full H1b sponsorship",
+              "No"
+            ],
+            "name": "cards[bfb14973-3985-4400-9e7b-aba19ee315bc][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9aad739c-60c5-4271-a19d-cb99218be954][field0]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[9aad739c-60c5-4271-a19d-cb99218be954][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[6548da6d-d091-4b33-879c-619da8ffac65][field0] | Type your response",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "cards[6548da6d-d091-4b33-879c-619da8ffac65][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[94f341fb-8d00-4cb9-b121-4678a9f0c0a1][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[94f341fb-8d00-4cb9-b121-4678a9f0c0a1][field0]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "cscgeneration-2",
+      "posting_id": "9567b1eb-f32b-4734-a673-476f0262179e",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "9567b1eb-f32b-4734-a673-476f0262179e",
+        "title": "Staff Data Scientist\u2013 Pricing Science",
+        "categories": {
+          "commitment": "Full Time",
+          "department": "CSC Generation (Shared Services - CAN)",
+          "location": "San Fransisco, CA",
+          "team": "Engineering",
+          "allLocations": [
+            "San Fransisco, CA",
+            "Austin, TX",
+            "Salt Lake City, UT",
+            "Remote - Canada"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/cscgeneration-2/9567b1eb-f32b-4734-a673-476f0262179e",
+        "apply_url": "https://jobs.lever.co/cscgeneration-2/9567b1eb-f32b-4734-a673-476f0262179e/apply",
+        "site": "cscgeneration-2",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/cscgeneration-2/9567b1eb-f32b-4734-a673-476f0262179e/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 14,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "57cbbe508039838f70112c80",
+          "filled_fingerprint": "1142dcee179ac1744658cff2",
+          "fields_filled": 14,
+          "control_passes": 2,
+          "ts": "2026-08-04T02:29:36.197289"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "1142dcee179ac1744658cff2",
+          "ts": "2026-08-04T02:29:36.294524"
+        }
+      ],
+      "control_evidence_count": 3,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 38,
+        "required_control_count": 13,
+        "required_custom_control_count": 10,
+        "policy_count": 10,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "cscgeneration-2",
+        "posting_id": "9567b1eb-f32b-4734-a673-476f0262179e",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

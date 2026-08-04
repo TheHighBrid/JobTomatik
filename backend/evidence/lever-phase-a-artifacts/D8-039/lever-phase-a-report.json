@@ -1,0 +1,1852 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.eu.lever.co/efficioconsulting/465aa855-c6ef-4001-8125-5719e2b1dbc0/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.eu.lever.co/efficioconsulting/465aa855-c6ef-4001-8125-5719e2b1dbc0/apply",
+      "title": "Efficio - Management Consultant - Senior Consultant - London",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.eu.lever.co/efficioconsulting/465aa855-c6ef-4001-8125-5719e2b1dbc0/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field0] | Yes",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field0] | No",
+            "control_type": "radio",
+            "required": false,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field2]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field3] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field3] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | Yes, I am a British citizen",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | Yes, I have EU settled or pre-settled status",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | Yes, I hold a residency visa",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | Yes, I hold a graduate visa",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | I am sponsored by my current employer and would require a visa",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | I require a visa",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5] | Happy to travel on a weekly basis",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Happy to travel on a weekly basis",
+              "Happy to work in another region for over 50% of my time",
+              "Happy to second to another region (at some point in Efficio career)",
+              "Not able to travel"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5] | Happy to work in another region for over 50% of my time",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Happy to travel on a weekly basis",
+              "Happy to work in another region for over 50% of my time",
+              "Happy to second to another region (at some point in Efficio career)",
+              "Not able to travel"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5] | Happy to second to another region (at some point in Efficio career)",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Happy to travel on a weekly basis",
+              "Happy to work in another region for over 50% of my time",
+              "Happy to second to another region (at some point in Efficio career)",
+              "Not able to travel"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5] | Not able to travel",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Happy to travel on a weekly basis",
+              "Happy to work in another region for over 50% of my time",
+              "Happy to second to another region (at some point in Efficio career)",
+              "Not able to travel"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 1 Week",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 2 Weeks",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 4 Weeks",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 2 Months",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 3 Months",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field7] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field7]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field7] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field7]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Arabic",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Cantonese",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Danish",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Dutch",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Finnish",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | French",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | German",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Italian",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Mandarin",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Norwegian",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Portuguese",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Spanish",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Swedish",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | None",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field9]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field9]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10] | Female",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Female",
+              "Male",
+              "Other",
+              "Prefer not to say"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10] | Male",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Female",
+              "Male",
+              "Other",
+              "Prefer not to say"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10] | Other",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Female",
+              "Male",
+              "Other",
+              "Prefer not to say"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10] | Prefer not to say",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Female",
+              "Male",
+              "Other",
+              "Prefer not to say"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field11]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field11]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field12]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field12]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "Currently enrolled",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13] | Currently enrolled",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "Currently enrolled",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "Currently enrolled",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Advertisement",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Agency",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Efficio careers page",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | University careers fair or service",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Word of mouth",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Alumni Platform",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Other",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field15]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field15]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 61,
+        "required_control_count": 52,
+        "required_custom_controls": [
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field3] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field3] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | Yes, I am a British citizen",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | Yes, I have EU settled or pre-settled status",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | Yes, I hold a residency visa",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | Yes, I hold a graduate visa",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | I am sponsored by my current employer and would require a visa",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4] | I require a visa",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes, I am a British citizen",
+              "Yes, I have EU settled or pre-settled status",
+              "Yes, I hold a residency visa",
+              "Yes, I hold a graduate visa",
+              "I am sponsored by my current employer and would require a visa",
+              "I require a visa"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5] | Happy to travel on a weekly basis",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Happy to travel on a weekly basis",
+              "Happy to work in another region for over 50% of my time",
+              "Happy to second to another region (at some point in Efficio career)",
+              "Not able to travel"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5] | Happy to work in another region for over 50% of my time",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Happy to travel on a weekly basis",
+              "Happy to work in another region for over 50% of my time",
+              "Happy to second to another region (at some point in Efficio career)",
+              "Not able to travel"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5] | Happy to second to another region (at some point in Efficio career)",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Happy to travel on a weekly basis",
+              "Happy to work in another region for over 50% of my time",
+              "Happy to second to another region (at some point in Efficio career)",
+              "Not able to travel"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5] | Not able to travel",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Happy to travel on a weekly basis",
+              "Happy to work in another region for over 50% of my time",
+              "Happy to second to another region (at some point in Efficio career)",
+              "Not able to travel"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 1 Week",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 2 Weeks",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 4 Weeks",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 2 Months",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6] | 3 Months",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "1 Week",
+              "2 Weeks",
+              "4 Weeks",
+              "2 Months",
+              "3 Months",
+              ">3 Months"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field7] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field7]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field7] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field7]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Arabic",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Cantonese",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Danish",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Dutch",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Finnish",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | French",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | German",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Italian",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Mandarin",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Norwegian",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Portuguese",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Spanish",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | Swedish",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8] | None",
+            "control_type": "checkbox",
+            "required": true,
+            "options": [
+              "Arabic",
+              "Cantonese",
+              "Danish",
+              "Dutch",
+              "Finnish",
+              "French",
+              "German",
+              "Italian",
+              "Mandarin",
+              "Norwegian",
+              "Portuguese",
+              "Spanish",
+              "Swedish",
+              "None"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field8]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10] | Female",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Female",
+              "Male",
+              "Other",
+              "Prefer not to say"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10] | Male",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Female",
+              "Male",
+              "Other",
+              "Prefer not to say"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10] | Other",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Female",
+              "Male",
+              "Other",
+              "Prefer not to say"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10] | Prefer not to say",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Female",
+              "Male",
+              "Other",
+              "Prefer not to say"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field10]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field11]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field11]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field12]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field12]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "Currently enrolled",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13] | Currently enrolled",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "Currently enrolled",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "Currently enrolled",
+              "No"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field13]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Advertisement",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Agency",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Efficio careers page",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | University careers fair or service",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Word of mouth",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Alumni Platform",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14] | Other",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Advertisement",
+              "Agency",
+              "Efficio careers page",
+              "University careers fair or service",
+              "Word of mouth",
+              "Alumni Platform",
+              "Other"
+            ],
+            "name": "cards[c0276cc9-284b-40b6-a4a9-8dbd9a15a00c][field14]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "efficioconsulting",
+      "posting_id": "465aa855-c6ef-4001-8125-5719e2b1dbc0",
+      "region": "eu",
+      "posting_metadata": {
+        "posting_id": "465aa855-c6ef-4001-8125-5719e2b1dbc0",
+        "title": "Management Consultant - Senior Consultant - London",
+        "categories": {
+          "commitment": "Permanent",
+          "department": "Consulting",
+          "location": "London",
+          "team": "Consulting Team",
+          "allLocations": [
+            "London"
+          ]
+        },
+        "hosted_url": "https://jobs.eu.lever.co/efficioconsulting/465aa855-c6ef-4001-8125-5719e2b1dbc0",
+        "apply_url": "https://jobs.eu.lever.co/efficioconsulting/465aa855-c6ef-4001-8125-5719e2b1dbc0/apply",
+        "site": "efficioconsulting",
+        "region": "eu",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.eu.lever.co/efficioconsulting/465aa855-c6ef-4001-8125-5719e2b1dbc0/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 16,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "c0bfaf38685ce517494bc2dd",
+          "filled_fingerprint": "75e8cc93dcfb39233f212074",
+          "fields_filled": 16,
+          "control_passes": 2,
+          "ts": "2026-08-04T02:24:27.774166"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "75e8cc93dcfb39233f212074",
+          "ts": "2026-08-04T02:24:27.862427"
+        }
+      ],
+      "control_evidence_count": 10,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 61,
+        "required_control_count": 52,
+        "required_custom_control_count": 50,
+        "policy_count": 50,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "efficioconsulting",
+        "posting_id": "465aa855-c6ef-4001-8125-5719e2b1dbc0",
+        "region": "eu",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

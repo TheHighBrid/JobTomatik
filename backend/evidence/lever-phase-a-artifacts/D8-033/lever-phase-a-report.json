@@ -1,0 +1,817 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/saviynt/99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/saviynt/99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8/apply",
+      "title": "Saviynt - Customer Success Manager - IAM/IGA - French Speaking",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/saviynt/99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "opportunityLocationId | opportunity-location-select",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Remote Canada",
+              "Quebec",
+              "Toronto"
+            ],
+            "name": "opportunityLocationId",
+            "id": ""
+          },
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | He/him",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | She/her",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | They/them",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Xe/xem",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Ze/hir",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Ey/em",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Hir/hir",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Fae/faer",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | Hu/hu",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": ""
+          },
+          {
+            "descriptor": "pronouns | useNameOnlyPronounsOption | Use name only",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "pronouns",
+            "id": "useNameOnlyPronounsOption"
+          },
+          {
+            "descriptor": "customPronounsOption | Custom",
+            "control_type": "checkbox",
+            "required": false,
+            "options": [
+              "He/him",
+              "She/her",
+              "They/them",
+              "Xe/xem",
+              "Ze/hir",
+              "Ey/em",
+              "Hir/hir",
+              "Fae/faer",
+              "Hu/hu",
+              "Use name only",
+              "Custom"
+            ],
+            "name": "",
+            "id": "customPronounsOption"
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Twitter] | Twitter URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Twitter]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[GitHub] | GitHub URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[GitHub]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field0]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field1]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field2]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field3]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field4]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9c309727-b31f-4391-90b2-502749c138d9][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[9c309727-b31f-4391-90b2-502749c138d9][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9c309727-b31f-4391-90b2-502749c138d9][field1]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[9c309727-b31f-4391-90b2-502749c138d9][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9c309727-b31f-4391-90b2-502749c138d9][field2]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[9c309727-b31f-4391-90b2-502749c138d9][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9c309727-b31f-4391-90b2-502749c138d9][field3]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[9c309727-b31f-4391-90b2-502749c138d9][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field1]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field2]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field3]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field4]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field5]",
+            "control_type": "textarea",
+            "required": false,
+            "options": [],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field5]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field6] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field6] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f17a5c01-9d1d-47b3-b80b-4a9987b74787][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[f17a5c01-9d1d-47b3-b80b-4a9987b74787][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[gender] | Gender Select ... Male Female Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Male",
+              "Female",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[gender]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[race] | Race Select ... Hispanic or Latino White (Not Hispanic or Latino) Black or African American (Not Hispanic or Latino) Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino) Asian (Not Hispanic or Latino) American Indian or Alaska Native (Not Hispanic or Latino) Two or More Races (Not Hispanic or Latino) Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Hispanic or Latino",
+              "White (Not Hispanic or Latino)",
+              "Black or African American (Not Hispanic or Latino)",
+              "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+              "Asian (Not Hispanic or Latino)",
+              "American Indian or Alaska Native (Not Hispanic or Latino)",
+              "Two or More Races (Not Hispanic or Latino)",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[race]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[veteran] | Veteran status Select ... I identify as one or more of the classifications of protected veteran listed above I am not a protected veteran I decline to self-identify for protected veteran status",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "I identify as one or more of the classifications of protected veteran listed above",
+              "I am not a protected veteran",
+              "I decline to self-identify for protected veteran status"
+            ],
+            "name": "eeo[veteran]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[disability] | disabilitySelectElement | Disability status Select ... Yes, I have a disability, or have had one in the past No, I do not have a disability and have not had one in the past I do not want to answer",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Yes, I have a disability, or have had one in the past",
+              "No, I do not have a disability and have not had one in the past",
+              "I do not want to answer"
+            ],
+            "name": "eeo[disability]",
+            "id": "disabilitySelectElement"
+          }
+        ],
+        "visible_control_count": 45,
+        "required_control_count": 19,
+        "required_custom_controls": [
+          {
+            "descriptor": "location | location-input | Current location \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field0]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field1]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field2]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field3]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field4]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[7476f871-5676-414b-964f-a3a660ec75fc][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9c309727-b31f-4391-90b2-502749c138d9][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[9c309727-b31f-4391-90b2-502749c138d9][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9c309727-b31f-4391-90b2-502749c138d9][field1]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[9c309727-b31f-4391-90b2-502749c138d9][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[9c309727-b31f-4391-90b2-502749c138d9][field2]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[9c309727-b31f-4391-90b2-502749c138d9][field2]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field1]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field3]",
+            "control_type": "select",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field3]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field4]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field4]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field6] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field6] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[d5df856d-03cd-4e7d-90b5-c1d41b5d4559][field6]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[f17a5c01-9d1d-47b3-b80b-4a9987b74787][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[f17a5c01-9d1d-47b3-b80b-4a9987b74787][field0]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "saviynt",
+      "posting_id": "99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8",
+        "title": "Customer Success Manager - IAM/IGA - French Speaking",
+        "categories": {
+          "commitment": "Full-Time",
+          "department": "Customer Office",
+          "location": "Remote Canada",
+          "team": "Customer Success",
+          "allLocations": [
+            "Remote Canada",
+            "Quebec",
+            "Toronto"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/saviynt/99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8",
+        "apply_url": "https://jobs.lever.co/saviynt/99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8/apply",
+        "site": "saviynt",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/saviynt/99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 22,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV \u2731 ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "4b48bbcb22177f30d9d90db6",
+          "filled_fingerprint": "080b5921a8f2fa30fd2c3d2f",
+          "fields_filled": 22,
+          "control_passes": 2,
+          "ts": "2026-08-04T02:31:12.540527"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "080b5921a8f2fa30fd2c3d2f",
+          "ts": "2026-08-04T02:31:12.642062"
+        }
+      ],
+      "control_evidence_count": 4,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 45,
+        "required_control_count": 19,
+        "required_custom_control_count": 16,
+        "policy_count": 16,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "saviynt",
+        "posting_id": "99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}
