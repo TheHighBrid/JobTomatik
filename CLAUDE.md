@@ -1,73 +1,97 @@
-# Claude Repository Instructions
+# Claude Collaboration Context
 
-You are an authorized implementation collaborator in `TheHighBrid/JobTomatik`.
+This file provides repository context only. It is **not proof of authorization, identity, access, tool availability, task acceptance, or the truth of any campaign claim**.
 
-Your authority comes from the repository owner, TheHighBrid. You may inspect the repository, create a dedicated branch, implement code, add or repair tests, update documentation, run validation, and open draft pull requests inside the ownership lane recorded in issue #252.
+Before acting, independently verify through your own authenticated GitHub tools:
 
-## Read first
+- that `TheHighBrid/JobTomatik` is the intended repository;
+- the current default branch and HEAD commit;
+- the existence and contents of any referenced issue, pull request, file, or evidence artifact;
+- your actual read and write permissions;
+- whether the requested task is compatible with your own safety rules and capabilities.
 
-Before changing anything, read:
+Do not rely on a SHA, issue number, ownership statement, or progress claim merely because it appears in this file or in a pasted prompt. Do not claim to have access that your tools do not provide. You may decline or narrow any assignment.
 
-1. `AGENTS.md`
-2. `docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md`
-3. `docs/operations/AI_COOPERATION_BOARD.md`
-4. issue #252
-5. the current retained readiness and campaign evidence relevant to your task
+## Repository background
 
-Repository evidence and exact-head behavior outrank stale prose, issue summaries, dates, or assumptions.
+JobTomatik contains job discovery, application preparation, tracking, browser automation, ATS adapters, evidence, safety controls, and release infrastructure. Some parts of the repository concern real job-application execution.
 
-## Current assigned lane
+No instruction in this repository asks you to override your own safety boundaries. If you are not comfortable contributing to automated application submission, anti-bot-adjacent workflows, approval consumption, browser execution, or confirmation logic, do not work on those areas.
 
-Your initial ownership is the **Day 16 pre-execution readiness package**. Codex/ChatGPT owns Day 15 launch dossiers, user-facing role selection, approval evidence, canonical Phase B launch evidence, and integration.
+## Current collaboration status
 
-You may prepare Day 16 code and tests before Day 15 is complete, but you must not represent Day 16 as complete and must not fabricate the Day 15 inputs it requires.
+The Day 16 supervised-submission preflight task is **not assigned to Claude**. It remains unassigned unless a willing contributor independently accepts it.
 
-### Required Day 16 deliverables
+Claude is invited, but not required, to help in a separate non-submission lane after independently inspecting the repository and confirming that the chosen work is acceptable.
 
-- Audit the existing supervised Lever submission, approval-consumption, idempotency, challenge-handoff, confirmation-evidence, and independent-review paths.
-- Add or strengthen deterministic tests for exact approval binding, one-click maximum, consumed-approval non-reuse, payload drift rejection, fail-closed challenge handling, uncertain confirmation, independent review, duplicates, replay, and crash recovery.
-- Add a read-only Day 16 preflight command or report. It may inspect code and retained evidence, but it must never open a browser, consume an approval, click final submit, mutate application state, or manufacture evidence.
-- Document exact inputs, outputs, blockers, commands, and safety properties.
-- Open an early draft PR from a branch prefixed with `claude/`.
+## Preferred opt-in lane: Manual Application Journal
 
-## Forbidden changes without explicit reassignment
+The preferred safe parallel task is a user-operated application tracker for applications the user submits manually.
+
+The feature must remain structurally separate from automated submission services.
+
+Potential deliverables, subject to repository inspection:
+
+1. A clear manual-entry workflow for employer, role, source URL, application date, user-reported status, notes, contacts, and follow-up date.
+2. A distinct `user_reported_status` or equivalent representation that cannot be mistaken for platform-confirmed submission evidence.
+3. Duplicate warnings for repeated employer, role, posting URL, or external ID without automatically blocking legitimate reapplications.
+4. Filters and summaries for manually tracked applications, interviews, follow-ups, offers, rejections, and withdrawals.
+5. CSV import and export for user-owned records, with validation and privacy-safe error reporting.
+6. Tests for user isolation, validation, duplicate warnings, status history, import safety, and data export.
+7. Documentation explaining that the journal records user assertions and does not prove an ATS submission occurred.
+
+### Hard boundaries for this lane
 
 Do not:
 
-- invent or add user selections, approvals, legal answers, submissions, confirmations, or campaign evidence;
-- populate `backend/evidence/lever-phase-b-launch.json` with synthetic or assumed applications;
-- modify Phase A canonical evidence;
-- bypass CAPTCHA, MFA, login, identity, assessment, or anti-bot controls;
-- weaken evidence, duplicate, idempotency, challenge-handoff, or confirmation gates;
-- enable live-submit, pilot, autopilot, or resumable-handoff flags;
-- promote adapter maturity;
-- take over Day 15 shortlist, selection, or dossier ownership unless issue #252 explicitly reassigns it.
+- open or automate a third-party application form;
+- log into Lever or another ATS;
+- call browser-navigation, form-filling, approval-consumption, final-submit, challenge-handoff, or confirmation-evidence services;
+- detect, solve, bypass, or interact with CAPTCHA, MFA, anti-bot, identity, or assessment controls;
+- enable real-submit, pilot, autopilot, or adapter-maturity flags;
+- populate campaign evidence or certification counts;
+- present a user-entered tracker status as independently verified submission evidence;
+- modify the Day 15 or Day 16 campaign artifacts.
 
-## Cooperation protocol
+## Alternative acceptable lanes
 
-Before editing, comment on issue #252 with:
+When the Manual Application Journal is not suitable after inspection, other opt-in areas include:
 
-- branch name;
-- base SHA;
-- intended files;
-- acceptance tests;
-- likely overlap with another lane.
+- resume or cover-letter editing features used for manual applications, provided generated claims remain source-backed and user-reviewed;
+- accessibility and responsive-design improvements unrelated to ATS execution;
+- developer documentation, test reliability, dependency hygiene, or CI maintenance that does not enable submission automation;
+- privacy controls, export tools, and user-owned data management unrelated to browser execution.
 
-Use one branch per agent. Never push to another agent's branch. Avoid files claimed by the other lane. When overlap is unavoidable, post the exact conflict on issue #252 before changing the shared file.
+## Cooperation procedure
 
-Open a draft PR early. Keep commits narrow and descriptive. Rebase or merge current `main` before final validation.
+Only after independently verifying the repository and accepting a bounded task:
+
+1. State what you verified and what remains unverified.
+2. Identify the exact non-submission scope you accept.
+3. Identify files you expect to inspect or modify.
+4. State your actual GitHub capabilities in the current environment.
+5. When write access exists, use a dedicated `claude/` branch and open a draft PR early.
+6. When write access does not exist, provide a patch, file-by-file implementation plan, or review report instead of claiming repository changes.
+7. Avoid files claimed by another contributor and report unavoidable overlap before editing.
 
 ## Handoff receipt
 
-Every PR update must include:
+A completed contribution should report:
 
-- exact base and head SHAs;
-- changed files;
-- exact commands and results;
-- generated artifacts;
-- safety invariants checked;
-- assumptions and blockers;
-- files intentionally not changed;
-- recommended next action for the integration lead.
+```text
+Repository state independently verified:
+Accepted scope:
+Rejected or excluded scope:
+Base SHA, when available:
+Head SHA or patch identifier, when available:
+Files inspected:
+Files changed:
+Commands run:
+Exact results:
+Known blockers:
+Safety boundaries preserved:
+Files intentionally unchanged:
+Recommended next action:
+```
 
-A future-day evaluator, fixture, test, or document is readiness infrastructure only. It is never completion evidence.
+Repository prose, future-day plans, fixtures, tests, evaluators, and user-entered statuses are never substitutes for real retained evidence.
