@@ -1,0 +1,99 @@
+name: Materialize Lever Day 13 evidence integrity
+
+on:
+  push:
+    branches:
+      - fix/lever-day13-evidence-integrity
+    paths:
+      - backend/scripts/materialize_lever_day13_evidence_integrity.py
+      - .github/workflows/materialize-lever-day13-evidence-integrity.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-lever-day13-evidence-integrity
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply exact reviewed repair
+        run: python backend/scripts/materialize_lever_day13_evidence_integrity.py
+
+      - name: Verify syntax, diff, and locked blob identities
+        run: |
+          python -m py_compile \
+            backend/app/services/form_filler_v3.py \
+            backend/app/services/text_control_evidence.py \
+            backend/scripts/certify_lever_live.py \
+            backend/scripts/export_lever_phase_a_record.py \
+            backend/scripts/finalize_lever_phase_a_ready.py \
+            backend/scripts/verify_lever_phase_a_checkpoint.py \
+            backend/tests/test_text_control_evidence.py \
+            backend/tests/test_lever_control_evidence_integrity.py \
+            backend/tests/test_lever_phase_a_ready_provenance.py \
+            backend/tests/test_lever_phase_a_checkpoint_progression.py
+          git diff --check
+          python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          root = Path.cwd()
+          freeze = json.loads(
+              (root / 'docs/operations/lever-phase-2-measurement-freeze.json').read_text()
+          )
+          for path, expected in freeze['locked_input_blobs'].items():
+              actual = subprocess.check_output(
+                  ['git', 'hash-object', path], text=True
+              ).strip()
+              assert actual == expected, (path, expected, actual)
+          print('LOCKED BLOBS VERIFIED')
+          PY
+
+      - name: Refuse stale branch mutation
+        run: |
+          remote_sha="$(git ls-remote origin refs/heads/fix/lever-day13-evidence-integrity | cut -f1)"
+          test "$remote_sha" = "$GITHUB_SHA" || {
+            echo "Branch advanced from $GITHUB_SHA to $remote_sha; refusing stale push." >&2
+            exit 1
+          }
+
+      - name: Commit materialized repair
+        run: |
+          git rm backend/scripts/materialize_lever_day13_evidence_integrity.py
+          git rm .github/workflows/materialize-lever-day13-evidence-integrity.yml
+          git add \
+            backend/app/services/form_filler_v3.py \
+            backend/app/services/text_control_evidence.py \
+            backend/scripts/certify_lever_live.py \
+            backend/scripts/export_lever_phase_a_record.py \
+            backend/scripts/finalize_lever_phase_a_ready.py \
+            backend/scripts/verify_lever_phase_a_checkpoint.py \
+            backend/tests/test_text_control_evidence.py \
+            backend/tests/test_lever_control_evidence_integrity.py \
+            backend/tests/test_lever_phase_a_ready_provenance.py \
+            backend/tests/test_lever_phase_a_checkpoint_progression.py \
+            docs/operations/lever-phase-2-measurement-freeze.json
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "Harden Lever Day 13 control evidence"
+          remote_sha="$(git ls-remote origin refs/heads/fix/lever-day13-evidence-integrity | cut -f1)"
+          test "$remote_sha" = "$GITHUB_SHA" || {
+            echo "Branch advanced before push; refusing stale commit." >&2
+            exit 1
+          }
+          git push origin HEAD:fix/lever-day13-evidence-integrity
