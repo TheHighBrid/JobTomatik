@@ -194,11 +194,52 @@ def _verify_phase_a_source(
     report, raw = _read_json(path, "Lever Phase A source report")
     if _sha256_bytes(raw) != expected_sha:
         raise LeverPhaseBLaunchError("Phase A source report hash mismatch")
-    if report.get("passed") is not True:
-        raise LeverPhaseBLaunchError("Phase A source report did not pass")
     if report.get("final_submit_clicked") is not False:
         raise LeverPhaseBLaunchError(
             "Phase A source report indicates a submit click"
+        )
+
+    records = [
+        dict(item)
+        for item in report.get("reports") or []
+        if isinstance(item, Mapping)
+    ]
+    if len(records) != len(report.get("reports") or []):
+        raise LeverPhaseBLaunchError(
+            "Phase A source report contains malformed records"
+        )
+    inspections = [item for item in records if item.get("mode") == "inspect"]
+    exercises = [item for item in records if item.get("mode") == "exercise"]
+    if len(inspections) != 1 or len(exercises) != 1:
+        raise LeverPhaseBLaunchError(
+            "Phase A source report must contain one inspection and one exercise"
+        )
+
+    inspection = inspections[0]
+    exercise = exercises[0]
+    if inspection.get("passed") is not True:
+        raise LeverPhaseBLaunchError("Phase A inspection did not pass")
+    if inspection.get("posting_available") is not True:
+        raise LeverPhaseBLaunchError("Phase A posting was not available")
+    if inspection.get("final_submit_clicked") is not False:
+        raise LeverPhaseBLaunchError(
+            "Phase A inspection indicates a submit click"
+        )
+    if exercise.get("passed") is not True:
+        raise LeverPhaseBLaunchError("Phase A exercise did not pass")
+    if exercise.get("certification_outcome") != "ready_to_submit":
+        raise LeverPhaseBLaunchError(
+            "Phase A exercise is not retained as ready_to_submit"
+        )
+    if exercise.get("ready_to_submit") is not True:
+        raise LeverPhaseBLaunchError("Phase A exercise is not marked ready")
+    if exercise.get("requires_manual_review") is not False:
+        raise LeverPhaseBLaunchError(
+            "Phase A exercise still requires manual review"
+        )
+    if exercise.get("final_submit_clicked") is not False:
+        raise LeverPhaseBLaunchError(
+            "Phase A exercise indicates a submit click"
         )
 
 
