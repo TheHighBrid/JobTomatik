@@ -4,9 +4,9 @@ Canonical maturity remains `dry_run`.
 
 ## Progress
 
-- Qualifying Phase A dry runs: **20/30**
+- Qualifying Phase A dry runs: **28/30**
 - Non-qualifying Phase A rows: **1**
-- Distinct Lever sites: **20/30**
+- Distinct Lever sites: **28/30**
 - Regions covered: **eu, global**
 - Confirmed supervised submissions: **0/10**
 
