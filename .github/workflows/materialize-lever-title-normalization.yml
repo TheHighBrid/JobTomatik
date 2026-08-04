@@ -122,7 +122,7 @@ jobs:
               ):
                   validate_ready_report(report, target)
           ''')
-          tests.write_text(test_source + additions + '\n', encoding='utf-8')
+          tests.write_text((test_source + additions).rstrip() + '\n', encoding='utf-8')
           PY
 
           rm -f .github/workflows/lever-phase-a-corpus-resweep.yml
