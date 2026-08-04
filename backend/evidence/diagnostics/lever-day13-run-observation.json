@@ -1,0 +1,4613 @@
+{
+  "matching_run_count": 4,
+  "runs": [
+    {
+      "actor": {
+        "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+        "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+        "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+        "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+        "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+        "gravatar_id": "",
+        "html_url": "https://github.com/TheHighBrid",
+        "id": 120822557,
+        "login": "TheHighBrid",
+        "node_id": "U_kgDOBzObHQ",
+        "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+        "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+        "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+        "site_admin": false,
+        "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+        "type": "User",
+        "url": "https://api.github.com/users/TheHighBrid",
+        "user_view_type": "public"
+      },
+      "artifacts_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30876050874/artifacts",
+      "cancel_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30876050874/cancel",
+      "check_suite_id": 83725696907,
+      "check_suite_node_id": "CS_kwDOTD4NXc8AAAATfnC_iw",
+      "check_suite_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/check-suites/83725696907",
+      "conclusion": null,
+      "created_at": "2026-08-04T03:53:55Z",
+      "display_title": "Trigger trusted Lever Day 13 retention",
+      "event": "push",
+      "head_branch": "agent/lever-day13-text-evidence",
+      "head_commit": {
+        "author": {
+          "email": "120822557+TheHighBrid@users.noreply.github.com",
+          "name": "TheHighBrid"
+        },
+        "committer": {
+          "email": "120822557+TheHighBrid@users.noreply.github.com",
+          "name": "TheHighBrid"
+        },
+        "id": "c7d50f68809789ddd4e8d0b514375f3390c9580a",
+        "message": "Trigger trusted Lever Day 13 retention",
+        "timestamp": "2026-08-04T03:53:53Z",
+        "tree_id": "ea2b16ee7c9192b9604058b00213b13450ca9f41"
+      },
+      "head_repository": {
+        "archive_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/{archive_format}{/ref}",
+        "assignees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/assignees{/user}",
+        "blobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/blobs{/sha}",
+        "branches_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/branches{/branch}",
+        "collaborators_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/collaborators{/collaborator}",
+        "comments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/comments{/number}",
+        "commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/compare/{base}...{head}",
+        "contents_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contents/{+path}",
+        "contributors_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contributors",
+        "deployments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/deployments",
+        "description": "Targeted Automated Job Look-up, Keyword Tagging, Job Selection, Form Filling, Personalized Cover Letter Generating, Resume Attaching, Application Submitting, Application Status Monitorig, Application Follow-up, User Notifications.",
+        "downloads_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/downloads",
+        "events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/events",
+        "fork": false,
+        "forks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/forks",
+        "full_name": "TheHighBrid/JobTomatik",
+        "git_commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/commits{/sha}",
+        "git_refs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/tags{/sha}",
+        "hooks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/hooks",
+        "html_url": "https://github.com/TheHighBrid/JobTomatik",
+        "id": 1279135069,
+        "issue_comment_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/comments{/number}",
+        "issue_events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/events{/number}",
+        "issues_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues{/number}",
+        "keys_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/keys{/key_id}",
+        "labels_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/labels{/name}",
+        "languages_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/languages",
+        "merges_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/merges",
+        "milestones_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/milestones{/number}",
+        "name": "JobTomatik",
+        "node_id": "R_kgDOTD4NXQ",
+        "notifications_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/notifications{?since,all,participating}",
+        "owner": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+          "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+          "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+          "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+          "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/TheHighBrid",
+          "id": 120822557,
+          "login": "TheHighBrid",
+          "node_id": "U_kgDOBzObHQ",
+          "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+          "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+          "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/TheHighBrid",
+          "user_view_type": "public"
+        },
+        "private": false,
+        "pulls_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls{/number}",
+        "releases_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/releases{/id}",
+        "stargazers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/stargazers",
+        "statuses_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/statuses/{sha}",
+        "subscribers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscribers",
+        "subscription_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscription",
+        "tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/tags",
+        "teams_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/teams",
+        "trees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/trees{/sha}",
+        "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+      },
+      "head_sha": "c7d50f68809789ddd4e8d0b514375f3390c9580a",
+      "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30876050874",
+      "id": 30876050874,
+      "jobs": [
+        {
+          "conclusion": "success",
+          "id": 91888368967,
+          "name": "certify-instrumentation",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Verify privacy-safe text evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91888543454,
+          "name": "exercise-and-retain (D8-009)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91888543458,
+          "name": "exercise-and-retain (D8-004)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": null,
+          "id": 91888543460,
+          "name": "exercise-and-retain (D8-040)",
+          "status": "in_progress",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": null,
+              "name": "Upload independently retained ready evidence",
+              "status": "in_progress"
+            },
+            {
+              "conclusion": null,
+              "name": "Download and finalize official retained artifact",
+              "status": "pending"
+            },
+            {
+              "conclusion": null,
+              "name": "Stage independently finalized package",
+              "status": "pending"
+            },
+            {
+              "conclusion": null,
+              "name": "Upload finalized Day 13 package",
+              "status": "pending"
+            },
+            {
+              "conclusion": null,
+              "name": "Post Run actions/setup-python@v7",
+              "status": "pending"
+            },
+            {
+              "conclusion": null,
+              "name": "Post Run actions/checkout@v7",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91888543470,
+          "name": "exercise-and-retain (D8-020)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91888543484,
+          "name": "exercise-and-retain (D8-030)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91888543513,
+          "name": "exercise-and-retain (D8-034)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91888543550,
+          "name": "exercise-and-retain (D8-036)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91888543565,
+          "name": "exercise-and-retain (D8-010)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91888543566,
+          "name": "exercise-and-retain (D8-018)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        }
+      ],
+      "jobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30876050874/jobs",
+      "logs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30876050874/logs",
+      "name": "Retain Lever Phase A Day 13 checkpoint",
+      "node_id": "WFR_kwLOTD4NXc8AAAAHMFslug",
+      "path": ".github/workflows/lever-day13-retention.yml",
+      "previous_attempt_url": null,
+      "pull_requests": [
+        {
+          "base": {
+            "ref": "main",
+            "repo": {
+              "id": 1279135069,
+              "name": "JobTomatik",
+              "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+            },
+            "sha": "5aaf7fb08ef84b74758d7bd9daa2acc3ca46eeb5"
+          },
+          "head": {
+            "ref": "agent/lever-day13-text-evidence",
+            "repo": {
+              "id": 1279135069,
+              "name": "JobTomatik",
+              "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+            },
+            "sha": "c7d50f68809789ddd4e8d0b514375f3390c9580a"
+          },
+          "id": 4199904613,
+          "number": 246,
+          "url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls/246"
+        }
+      ],
+      "referenced_workflows": [],
+      "repository": {
+        "archive_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/{archive_format}{/ref}",
+        "assignees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/assignees{/user}",
+        "blobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/blobs{/sha}",
+        "branches_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/branches{/branch}",
+        "collaborators_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/collaborators{/collaborator}",
+        "comments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/comments{/number}",
+        "commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/compare/{base}...{head}",
+        "contents_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contents/{+path}",
+        "contributors_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contributors",
+        "deployments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/deployments",
+        "description": "Targeted Automated Job Look-up, Keyword Tagging, Job Selection, Form Filling, Personalized Cover Letter Generating, Resume Attaching, Application Submitting, Application Status Monitorig, Application Follow-up, User Notifications.",
+        "downloads_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/downloads",
+        "events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/events",
+        "fork": false,
+        "forks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/forks",
+        "full_name": "TheHighBrid/JobTomatik",
+        "git_commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/commits{/sha}",
+        "git_refs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/tags{/sha}",
+        "hooks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/hooks",
+        "html_url": "https://github.com/TheHighBrid/JobTomatik",
+        "id": 1279135069,
+        "issue_comment_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/comments{/number}",
+        "issue_events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/events{/number}",
+        "issues_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues{/number}",
+        "keys_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/keys{/key_id}",
+        "labels_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/labels{/name}",
+        "languages_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/languages",
+        "merges_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/merges",
+        "milestones_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/milestones{/number}",
+        "name": "JobTomatik",
+        "node_id": "R_kgDOTD4NXQ",
+        "notifications_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/notifications{?since,all,participating}",
+        "owner": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+          "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+          "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+          "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+          "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/TheHighBrid",
+          "id": 120822557,
+          "login": "TheHighBrid",
+          "node_id": "U_kgDOBzObHQ",
+          "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+          "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+          "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/TheHighBrid",
+          "user_view_type": "public"
+        },
+        "private": false,
+        "pulls_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls{/number}",
+        "releases_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/releases{/id}",
+        "stargazers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/stargazers",
+        "statuses_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/statuses/{sha}",
+        "subscribers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscribers",
+        "subscription_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscription",
+        "tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/tags",
+        "teams_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/teams",
+        "trees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/trees{/sha}",
+        "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+      },
+      "rerun_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30876050874/rerun",
+      "run_attempt": 1,
+      "run_number": 4,
+      "run_started_at": "2026-08-04T03:53:55Z",
+      "status": "in_progress",
+      "triggering_actor": {
+        "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+        "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+        "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+        "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+        "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+        "gravatar_id": "",
+        "html_url": "https://github.com/TheHighBrid",
+        "id": 120822557,
+        "login": "TheHighBrid",
+        "node_id": "U_kgDOBzObHQ",
+        "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+        "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+        "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+        "site_admin": false,
+        "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+        "type": "User",
+        "url": "https://api.github.com/users/TheHighBrid",
+        "user_view_type": "public"
+      },
+      "updated_at": "2026-08-04T04:03:43Z",
+      "url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30876050874",
+      "workflow_id": 326685537,
+      "workflow_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/workflows/326685537"
+    },
+    {
+      "actor": {
+        "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+        "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+        "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+        "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+        "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+        "gravatar_id": "",
+        "html_url": "https://github.com/TheHighBrid",
+        "id": 120822557,
+        "login": "TheHighBrid",
+        "node_id": "U_kgDOBzObHQ",
+        "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+        "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+        "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+        "site_admin": false,
+        "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+        "type": "User",
+        "url": "https://api.github.com/users/TheHighBrid",
+        "user_view_type": "public"
+      },
+      "artifacts_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875933713/artifacts",
+      "cancel_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875933713/cancel",
+      "check_suite_id": 83725407943,
+      "check_suite_node_id": "CS_kwDOTD4NXc8AAAATfmxWxw",
+      "check_suite_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/check-suites/83725407943",
+      "conclusion": "failure",
+      "created_at": "2026-08-04T03:51:34Z",
+      "display_title": "Clear stale Lever Day 13 workflow locks",
+      "event": "push",
+      "head_branch": "agent/lever-day13-text-evidence",
+      "head_commit": {
+        "author": {
+          "email": "120822557+TheHighBrid@users.noreply.github.com",
+          "name": "TheHighBrid"
+        },
+        "committer": {
+          "email": "120822557+TheHighBrid@users.noreply.github.com",
+          "name": "TheHighBrid"
+        },
+        "id": "0cdaf7e27ffd17eb0166d7f3e4bab9d79f6060da",
+        "message": "Clear stale Lever Day 13 workflow locks",
+        "timestamp": "2026-08-04T03:51:31Z",
+        "tree_id": "8223ee333cd5f5725f3a2151789d12266a8c6e72"
+      },
+      "head_repository": {
+        "archive_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/{archive_format}{/ref}",
+        "assignees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/assignees{/user}",
+        "blobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/blobs{/sha}",
+        "branches_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/branches{/branch}",
+        "collaborators_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/collaborators{/collaborator}",
+        "comments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/comments{/number}",
+        "commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/compare/{base}...{head}",
+        "contents_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contents/{+path}",
+        "contributors_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contributors",
+        "deployments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/deployments",
+        "description": "Targeted Automated Job Look-up, Keyword Tagging, Job Selection, Form Filling, Personalized Cover Letter Generating, Resume Attaching, Application Submitting, Application Status Monitorig, Application Follow-up, User Notifications.",
+        "downloads_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/downloads",
+        "events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/events",
+        "fork": false,
+        "forks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/forks",
+        "full_name": "TheHighBrid/JobTomatik",
+        "git_commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/commits{/sha}",
+        "git_refs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/tags{/sha}",
+        "hooks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/hooks",
+        "html_url": "https://github.com/TheHighBrid/JobTomatik",
+        "id": 1279135069,
+        "issue_comment_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/comments{/number}",
+        "issue_events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/events{/number}",
+        "issues_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues{/number}",
+        "keys_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/keys{/key_id}",
+        "labels_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/labels{/name}",
+        "languages_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/languages",
+        "merges_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/merges",
+        "milestones_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/milestones{/number}",
+        "name": "JobTomatik",
+        "node_id": "R_kgDOTD4NXQ",
+        "notifications_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/notifications{?since,all,participating}",
+        "owner": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+          "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+          "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+          "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+          "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/TheHighBrid",
+          "id": 120822557,
+          "login": "TheHighBrid",
+          "node_id": "U_kgDOBzObHQ",
+          "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+          "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+          "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/TheHighBrid",
+          "user_view_type": "public"
+        },
+        "private": false,
+        "pulls_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls{/number}",
+        "releases_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/releases{/id}",
+        "stargazers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/stargazers",
+        "statuses_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/statuses/{sha}",
+        "subscribers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscribers",
+        "subscription_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscription",
+        "tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/tags",
+        "teams_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/teams",
+        "trees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/trees{/sha}",
+        "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+      },
+      "head_sha": "0cdaf7e27ffd17eb0166d7f3e4bab9d79f6060da",
+      "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30875933713",
+      "id": 30875933713,
+      "jobs": [
+        {
+          "conclusion": "success",
+          "id": 91887348639,
+          "name": "certify-instrumentation",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Verify privacy-safe text evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91887617910,
+          "name": "exercise-and-retain (D8-018)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91887617919,
+          "name": "exercise-and-retain (D8-009)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91887617920,
+          "name": "exercise-and-retain (D8-020)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91887617927,
+          "name": "exercise-and-retain (D8-030)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91887617944,
+          "name": "exercise-and-retain (D8-010)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91887617946,
+          "name": "exercise-and-retain (D8-040)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91887617952,
+          "name": "exercise-and-retain (D8-034)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91887617953,
+          "name": "exercise-and-retain (D8-036)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91887617980,
+          "name": "exercise-and-retain (D8-004)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "failure",
+          "id": 91888271210,
+          "name": "import-checkpoint",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download finalized packages",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Import at least five verified packages",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Regenerate and verify campaign checkpoint",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Certify Day 13 evidence boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Commit canonical Day 13 checkpoint",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        }
+      ],
+      "jobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875933713/jobs",
+      "logs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875933713/logs",
+      "name": "Retain Lever Phase A Day 13 checkpoint",
+      "node_id": "WFR_kwLOTD4NXc8AAAAHMFlcEQ",
+      "path": ".github/workflows/lever-day13-retention.yml",
+      "previous_attempt_url": null,
+      "pull_requests": [
+        {
+          "base": {
+            "ref": "main",
+            "repo": {
+              "id": 1279135069,
+              "name": "JobTomatik",
+              "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+            },
+            "sha": "5aaf7fb08ef84b74758d7bd9daa2acc3ca46eeb5"
+          },
+          "head": {
+            "ref": "agent/lever-day13-text-evidence",
+            "repo": {
+              "id": 1279135069,
+              "name": "JobTomatik",
+              "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+            },
+            "sha": "c7d50f68809789ddd4e8d0b514375f3390c9580a"
+          },
+          "id": 4199904613,
+          "number": 246,
+          "url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls/246"
+        }
+      ],
+      "referenced_workflows": [],
+      "repository": {
+        "archive_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/{archive_format}{/ref}",
+        "assignees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/assignees{/user}",
+        "blobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/blobs{/sha}",
+        "branches_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/branches{/branch}",
+        "collaborators_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/collaborators{/collaborator}",
+        "comments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/comments{/number}",
+        "commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/compare/{base}...{head}",
+        "contents_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contents/{+path}",
+        "contributors_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contributors",
+        "deployments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/deployments",
+        "description": "Targeted Automated Job Look-up, Keyword Tagging, Job Selection, Form Filling, Personalized Cover Letter Generating, Resume Attaching, Application Submitting, Application Status Monitorig, Application Follow-up, User Notifications.",
+        "downloads_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/downloads",
+        "events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/events",
+        "fork": false,
+        "forks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/forks",
+        "full_name": "TheHighBrid/JobTomatik",
+        "git_commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/commits{/sha}",
+        "git_refs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/tags{/sha}",
+        "hooks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/hooks",
+        "html_url": "https://github.com/TheHighBrid/JobTomatik",
+        "id": 1279135069,
+        "issue_comment_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/comments{/number}",
+        "issue_events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/events{/number}",
+        "issues_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues{/number}",
+        "keys_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/keys{/key_id}",
+        "labels_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/labels{/name}",
+        "languages_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/languages",
+        "merges_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/merges",
+        "milestones_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/milestones{/number}",
+        "name": "JobTomatik",
+        "node_id": "R_kgDOTD4NXQ",
+        "notifications_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/notifications{?since,all,participating}",
+        "owner": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+          "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+          "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+          "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+          "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/TheHighBrid",
+          "id": 120822557,
+          "login": "TheHighBrid",
+          "node_id": "U_kgDOBzObHQ",
+          "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+          "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+          "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/TheHighBrid",
+          "user_view_type": "public"
+        },
+        "private": false,
+        "pulls_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls{/number}",
+        "releases_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/releases{/id}",
+        "stargazers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/stargazers",
+        "statuses_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/statuses/{sha}",
+        "subscribers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscribers",
+        "subscription_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscription",
+        "tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/tags",
+        "teams_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/teams",
+        "trees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/trees{/sha}",
+        "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+      },
+      "rerun_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875933713/rerun",
+      "run_attempt": 1,
+      "run_number": 3,
+      "run_started_at": "2026-08-04T03:51:34Z",
+      "status": "completed",
+      "triggering_actor": {
+        "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+        "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+        "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+        "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+        "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+        "gravatar_id": "",
+        "html_url": "https://github.com/TheHighBrid",
+        "id": 120822557,
+        "login": "TheHighBrid",
+        "node_id": "U_kgDOBzObHQ",
+        "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+        "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+        "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+        "site_admin": false,
+        "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+        "type": "User",
+        "url": "https://api.github.com/users/TheHighBrid",
+        "user_view_type": "public"
+      },
+      "updated_at": "2026-08-04T03:59:27Z",
+      "url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875933713",
+      "workflow_id": 326685537,
+      "workflow_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/workflows/326685537"
+    },
+    {
+      "actor": {
+        "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+        "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+        "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+        "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+        "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+        "gravatar_id": "",
+        "html_url": "https://github.com/TheHighBrid",
+        "id": 120822557,
+        "login": "TheHighBrid",
+        "node_id": "U_kgDOBzObHQ",
+        "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+        "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+        "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+        "site_admin": false,
+        "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+        "type": "User",
+        "url": "https://api.github.com/users/TheHighBrid",
+        "user_view_type": "public"
+      },
+      "artifacts_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875781074/artifacts",
+      "cancel_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875781074/cancel",
+      "check_suite_id": 83725013968,
+      "check_suite_node_id": "CS_kwDOTD4NXc8AAAATfmZT0A",
+      "check_suite_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/check-suites/83725013968",
+      "conclusion": "cancelled",
+      "created_at": "2026-08-04T03:48:11Z",
+      "display_title": "Run Lever Phase A Day 13 retention on current main",
+      "event": "push",
+      "head_branch": "agent/lever-day13-text-evidence",
+      "head_commit": {
+        "author": {
+          "email": "120822557+TheHighBrid@users.noreply.github.com",
+          "name": "TheHighBrid"
+        },
+        "committer": {
+          "email": "120822557+TheHighBrid@users.noreply.github.com",
+          "name": "TheHighBrid"
+        },
+        "id": "fc8bdfaf52f5120a682e7f43b452bc5990896193",
+        "message": "Run Lever Phase A Day 13 retention on current main",
+        "timestamp": "2026-08-04T03:48:09Z",
+        "tree_id": "6075ee8fdc5989d0f25995152c2e047cc62e87e3"
+      },
+      "head_repository": {
+        "archive_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/{archive_format}{/ref}",
+        "assignees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/assignees{/user}",
+        "blobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/blobs{/sha}",
+        "branches_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/branches{/branch}",
+        "collaborators_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/collaborators{/collaborator}",
+        "comments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/comments{/number}",
+        "commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/compare/{base}...{head}",
+        "contents_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contents/{+path}",
+        "contributors_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contributors",
+        "deployments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/deployments",
+        "description": "Targeted Automated Job Look-up, Keyword Tagging, Job Selection, Form Filling, Personalized Cover Letter Generating, Resume Attaching, Application Submitting, Application Status Monitorig, Application Follow-up, User Notifications.",
+        "downloads_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/downloads",
+        "events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/events",
+        "fork": false,
+        "forks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/forks",
+        "full_name": "TheHighBrid/JobTomatik",
+        "git_commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/commits{/sha}",
+        "git_refs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/tags{/sha}",
+        "hooks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/hooks",
+        "html_url": "https://github.com/TheHighBrid/JobTomatik",
+        "id": 1279135069,
+        "issue_comment_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/comments{/number}",
+        "issue_events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/events{/number}",
+        "issues_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues{/number}",
+        "keys_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/keys{/key_id}",
+        "labels_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/labels{/name}",
+        "languages_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/languages",
+        "merges_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/merges",
+        "milestones_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/milestones{/number}",
+        "name": "JobTomatik",
+        "node_id": "R_kgDOTD4NXQ",
+        "notifications_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/notifications{?since,all,participating}",
+        "owner": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+          "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+          "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+          "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+          "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/TheHighBrid",
+          "id": 120822557,
+          "login": "TheHighBrid",
+          "node_id": "U_kgDOBzObHQ",
+          "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+          "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+          "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/TheHighBrid",
+          "user_view_type": "public"
+        },
+        "private": false,
+        "pulls_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls{/number}",
+        "releases_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/releases{/id}",
+        "stargazers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/stargazers",
+        "statuses_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/statuses/{sha}",
+        "subscribers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscribers",
+        "subscription_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscription",
+        "tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/tags",
+        "teams_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/teams",
+        "trees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/trees{/sha}",
+        "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+      },
+      "head_sha": "fc8bdfaf52f5120a682e7f43b452bc5990896193",
+      "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30875781074",
+      "id": 30875781074,
+      "jobs": [
+        {
+          "conclusion": "success",
+          "id": 91886834330,
+          "name": "certify-instrumentation",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Verify privacy-safe text evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91886998165,
+          "name": "exercise-and-retain (D8-004)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "cancelled",
+          "id": 91886998187,
+          "name": "exercise-and-retain (D8-030)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "cancelled",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "cancelled",
+          "id": 91886998193,
+          "name": "exercise-and-retain (D8-020)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "cancelled",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "cancelled",
+          "id": 91886998195,
+          "name": "exercise-and-retain (D8-018)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "cancelled",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91886998197,
+          "name": "exercise-and-retain (D8-010)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "cancelled",
+          "id": 91886998201,
+          "name": "exercise-and-retain (D8-040)",
+          "status": "completed",
+          "steps": []
+        },
+        {
+          "conclusion": "cancelled",
+          "id": 91886998210,
+          "name": "exercise-and-retain (D8-036)",
+          "status": "completed",
+          "steps": []
+        },
+        {
+          "conclusion": "success",
+          "id": 91886998229,
+          "name": "exercise-and-retain (D8-009)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m pip install -q --disable-pip-version-check -r requirements.txt",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run python -m playwright install --with-deps chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/setup-python@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "cancelled",
+          "id": 91886998231,
+          "name": "exercise-and-retain (D8-034)",
+          "status": "completed",
+          "steps": []
+        },
+        {
+          "conclusion": "cancelled",
+          "id": 91887348416,
+          "name": "import-checkpoint",
+          "status": "completed",
+          "steps": []
+        }
+      ],
+      "jobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875781074/jobs",
+      "logs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875781074/logs",
+      "name": "Retain Lever Phase A Day 13 checkpoint",
+      "node_id": "WFR_kwLOTD4NXc8AAAAHMFcH0g",
+      "path": ".github/workflows/lever-day13-retention.yml",
+      "previous_attempt_url": null,
+      "pull_requests": [
+        {
+          "base": {
+            "ref": "main",
+            "repo": {
+              "id": 1279135069,
+              "name": "JobTomatik",
+              "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+            },
+            "sha": "5aaf7fb08ef84b74758d7bd9daa2acc3ca46eeb5"
+          },
+          "head": {
+            "ref": "agent/lever-day13-text-evidence",
+            "repo": {
+              "id": 1279135069,
+              "name": "JobTomatik",
+              "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+            },
+            "sha": "c7d50f68809789ddd4e8d0b514375f3390c9580a"
+          },
+          "id": 4199904613,
+          "number": 246,
+          "url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls/246"
+        }
+      ],
+      "referenced_workflows": [],
+      "repository": {
+        "archive_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/{archive_format}{/ref}",
+        "assignees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/assignees{/user}",
+        "blobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/blobs{/sha}",
+        "branches_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/branches{/branch}",
+        "collaborators_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/collaborators{/collaborator}",
+        "comments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/comments{/number}",
+        "commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/compare/{base}...{head}",
+        "contents_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contents/{+path}",
+        "contributors_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contributors",
+        "deployments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/deployments",
+        "description": "Targeted Automated Job Look-up, Keyword Tagging, Job Selection, Form Filling, Personalized Cover Letter Generating, Resume Attaching, Application Submitting, Application Status Monitorig, Application Follow-up, User Notifications.",
+        "downloads_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/downloads",
+        "events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/events",
+        "fork": false,
+        "forks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/forks",
+        "full_name": "TheHighBrid/JobTomatik",
+        "git_commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/commits{/sha}",
+        "git_refs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/tags{/sha}",
+        "hooks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/hooks",
+        "html_url": "https://github.com/TheHighBrid/JobTomatik",
+        "id": 1279135069,
+        "issue_comment_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/comments{/number}",
+        "issue_events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/events{/number}",
+        "issues_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues{/number}",
+        "keys_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/keys{/key_id}",
+        "labels_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/labels{/name}",
+        "languages_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/languages",
+        "merges_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/merges",
+        "milestones_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/milestones{/number}",
+        "name": "JobTomatik",
+        "node_id": "R_kgDOTD4NXQ",
+        "notifications_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/notifications{?since,all,participating}",
+        "owner": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+          "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+          "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+          "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+          "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/TheHighBrid",
+          "id": 120822557,
+          "login": "TheHighBrid",
+          "node_id": "U_kgDOBzObHQ",
+          "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+          "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+          "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/TheHighBrid",
+          "user_view_type": "public"
+        },
+        "private": false,
+        "pulls_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls{/number}",
+        "releases_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/releases{/id}",
+        "stargazers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/stargazers",
+        "statuses_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/statuses/{sha}",
+        "subscribers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscribers",
+        "subscription_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscription",
+        "tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/tags",
+        "teams_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/teams",
+        "trees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/trees{/sha}",
+        "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+      },
+      "rerun_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875781074/rerun",
+      "run_attempt": 1,
+      "run_number": 2,
+      "run_started_at": "2026-08-04T03:48:11Z",
+      "status": "completed",
+      "triggering_actor": {
+        "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+        "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+        "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+        "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+        "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+        "gravatar_id": "",
+        "html_url": "https://github.com/TheHighBrid",
+        "id": 120822557,
+        "login": "TheHighBrid",
+        "node_id": "U_kgDOBzObHQ",
+        "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+        "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+        "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+        "site_admin": false,
+        "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+        "type": "User",
+        "url": "https://api.github.com/users/TheHighBrid",
+        "user_view_type": "public"
+      },
+      "updated_at": "2026-08-04T03:52:06Z",
+      "url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875781074",
+      "workflow_id": 326685537,
+      "workflow_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/workflows/326685537"
+    },
+    {
+      "actor": {
+        "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+        "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+        "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+        "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+        "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+        "gravatar_id": "",
+        "html_url": "https://github.com/TheHighBrid",
+        "id": 120822557,
+        "login": "TheHighBrid",
+        "node_id": "U_kgDOBzObHQ",
+        "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+        "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+        "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+        "site_admin": false,
+        "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+        "type": "User",
+        "url": "https://api.github.com/users/TheHighBrid",
+        "user_view_type": "public"
+      },
+      "artifacts_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875261946/artifacts",
+      "cancel_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875261946/cancel",
+      "check_suite_id": 83723670946,
+      "check_suite_node_id": "CS_kwDOTD4NXc8AAAATflHVog",
+      "check_suite_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/check-suites/83723670946",
+      "conclusion": "failure",
+      "created_at": "2026-08-04T03:37:01Z",
+      "display_title": "Run Lever Phase A Day 13 retention",
+      "event": "push",
+      "head_branch": "agent/lever-day13-text-evidence",
+      "head_commit": {
+        "author": {
+          "email": "120822557+TheHighBrid@users.noreply.github.com",
+          "name": "TheHighBrid"
+        },
+        "committer": {
+          "email": "120822557+TheHighBrid@users.noreply.github.com",
+          "name": "TheHighBrid"
+        },
+        "id": "3e0e5da68874a54555e45bf3b00d76431e9e97a2",
+        "message": "Run Lever Phase A Day 13 retention",
+        "timestamp": "2026-08-04T03:36:59Z",
+        "tree_id": "0319cbc9ee4f164304a04deef61c9ef037757205"
+      },
+      "head_repository": {
+        "archive_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/{archive_format}{/ref}",
+        "assignees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/assignees{/user}",
+        "blobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/blobs{/sha}",
+        "branches_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/branches{/branch}",
+        "collaborators_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/collaborators{/collaborator}",
+        "comments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/comments{/number}",
+        "commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/compare/{base}...{head}",
+        "contents_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contents/{+path}",
+        "contributors_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contributors",
+        "deployments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/deployments",
+        "description": "Targeted Automated Job Look-up, Keyword Tagging, Job Selection, Form Filling, Personalized Cover Letter Generating, Resume Attaching, Application Submitting, Application Status Monitorig, Application Follow-up, User Notifications.",
+        "downloads_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/downloads",
+        "events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/events",
+        "fork": false,
+        "forks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/forks",
+        "full_name": "TheHighBrid/JobTomatik",
+        "git_commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/commits{/sha}",
+        "git_refs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/tags{/sha}",
+        "hooks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/hooks",
+        "html_url": "https://github.com/TheHighBrid/JobTomatik",
+        "id": 1279135069,
+        "issue_comment_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/comments{/number}",
+        "issue_events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/events{/number}",
+        "issues_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues{/number}",
+        "keys_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/keys{/key_id}",
+        "labels_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/labels{/name}",
+        "languages_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/languages",
+        "merges_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/merges",
+        "milestones_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/milestones{/number}",
+        "name": "JobTomatik",
+        "node_id": "R_kgDOTD4NXQ",
+        "notifications_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/notifications{?since,all,participating}",
+        "owner": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+          "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+          "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+          "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+          "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/TheHighBrid",
+          "id": 120822557,
+          "login": "TheHighBrid",
+          "node_id": "U_kgDOBzObHQ",
+          "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+          "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+          "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/TheHighBrid",
+          "user_view_type": "public"
+        },
+        "private": false,
+        "pulls_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls{/number}",
+        "releases_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/releases{/id}",
+        "stargazers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/stargazers",
+        "statuses_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/statuses/{sha}",
+        "subscribers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscribers",
+        "subscription_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscription",
+        "tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/tags",
+        "teams_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/teams",
+        "trees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/trees{/sha}",
+        "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+      },
+      "head_sha": "3e0e5da68874a54555e45bf3b00d76431e9e97a2",
+      "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/30875261946",
+      "id": 30875261946,
+      "jobs": [
+        {
+          "conclusion": "success",
+          "id": 91885341723,
+          "name": "certify-instrumentation",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Verify privacy-safe text evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91885492504,
+          "name": "exercise-and-retain (D8-009)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert the immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete Day 13 attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91885492515,
+          "name": "exercise-and-retain (D8-004)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert the immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete Day 13 attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91885492535,
+          "name": "exercise-and-retain (D8-020)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert the immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete Day 13 attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91885492536,
+          "name": "exercise-and-retain (D8-018)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert the immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete Day 13 attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91885492540,
+          "name": "exercise-and-retain (D8-034)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert the immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete Day 13 attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91885492545,
+          "name": "exercise-and-retain (D8-010)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert the immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete Day 13 attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91885492560,
+          "name": "exercise-and-retain (D8-040)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert the immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete Day 13 attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91885492564,
+          "name": "exercise-and-retain (D8-030)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert the immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete Day 13 attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "success",
+          "id": 91885492580,
+          "name": "exercise-and-retain (D8-036)",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install Chromium",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Resolve frozen target",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Exercise exact target without submission",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Assert the immutable safety boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate frozen qualification contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload complete Day 13 attempt evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build one-record retention manifest",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload independently retained ready evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download and finalize official retained artifact",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Stage independently finalized package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Upload finalized Day 13 package",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "conclusion": "failure",
+          "id": 91886389918,
+          "name": "import-checkpoint",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Install backend dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Download finalized Day 13 packages",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Import at least five independently verified packages",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Regenerate campaign checkpoint",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Certify Day 13 evidence boundary",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Commit canonical Day 13 checkpoint",
+              "status": "completed"
+            },
+            {
+              "conclusion": "skipped",
+              "name": "Post Set up Python",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Check out Day 13 branch",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ]
+        }
+      ],
+      "jobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875261946/jobs",
+      "logs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875261946/logs",
+      "name": "Retain Lever Phase A Day 13 checkpoint",
+      "node_id": "WFR_kwLOTD4NXc8AAAAHME8b-g",
+      "path": ".github/workflows/lever-day13-retention.yml",
+      "previous_attempt_url": null,
+      "pull_requests": [
+        {
+          "base": {
+            "ref": "main",
+            "repo": {
+              "id": 1279135069,
+              "name": "JobTomatik",
+              "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+            },
+            "sha": "5aaf7fb08ef84b74758d7bd9daa2acc3ca46eeb5"
+          },
+          "head": {
+            "ref": "agent/lever-day13-text-evidence",
+            "repo": {
+              "id": 1279135069,
+              "name": "JobTomatik",
+              "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+            },
+            "sha": "c7d50f68809789ddd4e8d0b514375f3390c9580a"
+          },
+          "id": 4199904613,
+          "number": 246,
+          "url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls/246"
+        }
+      ],
+      "referenced_workflows": [],
+      "repository": {
+        "archive_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/{archive_format}{/ref}",
+        "assignees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/assignees{/user}",
+        "blobs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/blobs{/sha}",
+        "branches_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/branches{/branch}",
+        "collaborators_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/collaborators{/collaborator}",
+        "comments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/comments{/number}",
+        "commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/commits{/sha}",
+        "compare_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/compare/{base}...{head}",
+        "contents_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contents/{+path}",
+        "contributors_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/contributors",
+        "deployments_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/deployments",
+        "description": "Targeted Automated Job Look-up, Keyword Tagging, Job Selection, Form Filling, Personalized Cover Letter Generating, Resume Attaching, Application Submitting, Application Status Monitorig, Application Follow-up, User Notifications.",
+        "downloads_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/downloads",
+        "events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/events",
+        "fork": false,
+        "forks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/forks",
+        "full_name": "TheHighBrid/JobTomatik",
+        "git_commits_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/commits{/sha}",
+        "git_refs_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/refs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/tags{/sha}",
+        "hooks_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/hooks",
+        "html_url": "https://github.com/TheHighBrid/JobTomatik",
+        "id": 1279135069,
+        "issue_comment_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/comments{/number}",
+        "issue_events_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues/events{/number}",
+        "issues_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/issues{/number}",
+        "keys_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/keys{/key_id}",
+        "labels_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/labels{/name}",
+        "languages_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/languages",
+        "merges_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/merges",
+        "milestones_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/milestones{/number}",
+        "name": "JobTomatik",
+        "node_id": "R_kgDOTD4NXQ",
+        "notifications_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/notifications{?since,all,participating}",
+        "owner": {
+          "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+          "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+          "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+          "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+          "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+          "gravatar_id": "",
+          "html_url": "https://github.com/TheHighBrid",
+          "id": 120822557,
+          "login": "TheHighBrid",
+          "node_id": "U_kgDOBzObHQ",
+          "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+          "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+          "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+          "site_admin": false,
+          "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+          "type": "User",
+          "url": "https://api.github.com/users/TheHighBrid",
+          "user_view_type": "public"
+        },
+        "private": false,
+        "pulls_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/pulls{/number}",
+        "releases_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/releases{/id}",
+        "stargazers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/stargazers",
+        "statuses_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/statuses/{sha}",
+        "subscribers_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscribers",
+        "subscription_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/subscription",
+        "tags_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/tags",
+        "teams_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/teams",
+        "trees_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/git/trees{/sha}",
+        "url": "https://api.github.com/repos/TheHighBrid/JobTomatik"
+      },
+      "rerun_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875261946/rerun",
+      "run_attempt": 1,
+      "run_number": 1,
+      "run_started_at": "2026-08-04T03:37:01Z",
+      "status": "completed",
+      "triggering_actor": {
+        "avatar_url": "https://avatars.githubusercontent.com/u/120822557?v=4",
+        "events_url": "https://api.github.com/users/TheHighBrid/events{/privacy}",
+        "followers_url": "https://api.github.com/users/TheHighBrid/followers",
+        "following_url": "https://api.github.com/users/TheHighBrid/following{/other_user}",
+        "gists_url": "https://api.github.com/users/TheHighBrid/gists{/gist_id}",
+        "gravatar_id": "",
+        "html_url": "https://github.com/TheHighBrid",
+        "id": 120822557,
+        "login": "TheHighBrid",
+        "node_id": "U_kgDOBzObHQ",
+        "organizations_url": "https://api.github.com/users/TheHighBrid/orgs",
+        "received_events_url": "https://api.github.com/users/TheHighBrid/received_events",
+        "repos_url": "https://api.github.com/users/TheHighBrid/repos",
+        "site_admin": false,
+        "starred_url": "https://api.github.com/users/TheHighBrid/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/TheHighBrid/subscriptions",
+        "type": "User",
+        "url": "https://api.github.com/users/TheHighBrid",
+        "user_view_type": "public"
+      },
+      "updated_at": "2026-08-04T03:45:27Z",
+      "url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/runs/30875261946",
+      "workflow_id": 326685537,
+      "workflow_url": "https://api.github.com/repos/TheHighBrid/JobTomatik/actions/workflows/326685537"
+    }
+  ],
+  "schema_version": "1.0",
+  "target_branch": "agent/lever-day13-text-evidence",
+  "workflow_path": ".github/workflows/lever-day13-retention.yml"
+}
