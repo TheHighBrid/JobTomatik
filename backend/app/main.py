@@ -19,6 +19,7 @@ from app.api import (
     intelligence,
     jobs,
     lever_pilot_ledger,
+    materials,
     notifications,
     pilot_ledger,
     profile,
@@ -40,6 +41,7 @@ from app.services.ats_manifest import ats_certification_manifest
 from app.services.autonomy_certification import build_autonomy_certification_manifest
 from app.services.control_engine import certification_manifest
 from app.services.handoff_integration import install_handoff_task_integration
+from app.services.material_task_integration import install_verified_material_task_integration
 from app.services.operations_policy import operations_readiness_manifest
 from app.services.supervised_submission_integration import (
     install_supervised_submission_task_gate,
@@ -50,6 +52,7 @@ settings = get_settings()
 install_handoff_task_integration()
 install_application_target_handoff_task_persistence()
 install_application_target_task_integration()
+install_verified_material_task_integration()
 install_supervised_submission_task_gate()
 # Keep this outermost so closed applications stop before approval consumption.
 install_closed_application_task_gate()
@@ -230,6 +233,7 @@ app.include_router(adapter_health.router, prefix="/api")
 app.include_router(handoffs.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
 app.include_router(answer_policies.router, prefix="/api")
+app.include_router(materials.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(settings_api.router, prefix="/api")
