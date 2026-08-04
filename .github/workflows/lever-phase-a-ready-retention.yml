@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "backend/scripts/finalize_lever_phase_a_ready.py"
+      - "backend/scripts/finalize_lever_phase_a_ready_compatible.py"
       - "backend/evidence/lever-phase-a-artifacts/**/lever-phase-a-report.json"
       - "backend/evidence/lever-phase-a-artifacts/**/lever-phase-a-synthetic-resume.pdf"
       - "backend/evidence/lever-phase-a-candidate-*.csv"
@@ -17,6 +18,7 @@ on:
       - "backend/evidence/lever-phase-a-sources.csv"
       - "backend/evidence/lever-phase-a-external-archives/**"
       - "backend/tests/test_lever_phase_a_ready_provenance.py"
+      - "backend/tests/test_lever_phase_a_title_compat.py"
       - ".github/workflows/lever-phase-a-ready-retention.yml"
 
 permissions:
@@ -51,8 +53,12 @@ jobs:
 
       - name: Compile and test ready-retention tooling
         run: |
-          python -m py_compile scripts/finalize_lever_phase_a_ready.py
-          pytest -q --tb=short -ra tests/test_lever_phase_a_ready_provenance.py
+          python -m py_compile \
+            scripts/finalize_lever_phase_a_ready.py \
+            scripts/finalize_lever_phase_a_ready_compatible.py
+          pytest -q --tb=short -ra \
+            tests/test_lever_phase_a_ready_provenance.py \
+            tests/test_lever_phase_a_title_compat.py
 
       - name: Select ready report
         id: selection
@@ -120,7 +126,7 @@ jobs:
           REVIEW_ID: ${{ steps.selection.outputs.review_id }}
           REPORT_PATH: ${{ steps.selection.outputs.report_path }}
         run: |
-          python scripts/finalize_lever_phase_a_ready.py \
+          python scripts/finalize_lever_phase_a_ready_compatible.py \
             --validate-only \
             --review-id "$REVIEW_ID" \
             --report "$REPORT_PATH"
@@ -182,7 +188,7 @@ jobs:
             echo "- Artifact digest: \`${{ steps.upload.outputs.artifact-digest }}\`"
             echo '- Retained record count: `1`'
             echo
-            echo 'Download the artifact metadata and ZIP, then run `scripts/finalize_lever_phase_a_ready.py`.'
+            echo 'Download the artifact metadata and ZIP, then run `scripts/finalize_lever_phase_a_ready_compatible.py`.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate finalized ready-report batch
@@ -195,8 +201,8 @@ jobs:
           from pathlib import Path
 
           from app.services.lever_phase_a_operator import load_locked_target
-          from scripts.finalize_lever_phase_a_ready import (
-              require_report_path,
+          from scripts.finalize_lever_phase_a_ready import require_report_path
+          from scripts.finalize_lever_phase_a_ready_compatible import (
               validate_ready_report,
           )
 

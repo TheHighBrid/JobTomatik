@@ -1,0 +1,883 @@
+{
+  "certification": "lever_supervised_live_dry_run",
+  "final_submit_clicked": false,
+  "url_count": 1,
+  "exercise_enabled": true,
+  "reports": [
+    {
+      "url": "https://jobs.lever.co/unitq/3fd381a2-249e-4a40-91bd-01dba365017a/apply",
+      "mode": "inspect",
+      "passed": true,
+      "final_submit_clicked": false,
+      "posting_available": true,
+      "loaded_url": "https://jobs.lever.co/unitq/3fd381a2-249e-4a40-91bd-01dba365017a/apply",
+      "title": "unitQ - Account Executive",
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "navigation_log": [],
+      "surface_url": "https://jobs.lever.co/unitq/3fd381a2-249e-4a40-91bd-01dba365017a/apply",
+      "dom": {
+        "controls": [
+          {
+            "descriptor": "resume | resume-upload-input | input-resume | Resume/CV ATTACH RESUME/CV",
+            "control_type": "file",
+            "required": false,
+            "options": [],
+            "name": "resume",
+            "id": "resume-upload-input"
+          },
+          {
+            "descriptor": "name | name-input | Full name \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "name",
+            "id": ""
+          },
+          {
+            "descriptor": "email | email-input | Email \u2731",
+            "control_type": "text",
+            "required": true,
+            "options": [],
+            "name": "email",
+            "id": ""
+          },
+          {
+            "descriptor": "phone | phone-input | Phone",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "phone",
+            "id": ""
+          },
+          {
+            "descriptor": "location | location-input | Current location",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "location",
+            "id": "location-input"
+          },
+          {
+            "descriptor": "org | org-input | Current company",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "org",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[LinkedIn] | LinkedIn URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[LinkedIn]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Twitter] | Twitter URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Twitter]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[GitHub] | GitHub URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[GitHub]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Portfolio] | Portfolio URL",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Portfolio]",
+            "id": ""
+          },
+          {
+            "descriptor": "urls[Other] | Other website",
+            "control_type": "text",
+            "required": false,
+            "options": [],
+            "name": "urls[Other]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[a419d865-cc7f-4b8f-9dc5-c0f110087456][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[a419d865-cc7f-4b8f-9dc5-c0f110087456][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Linkedin",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Glassdoor",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Indeed",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Current/Former Employee",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | School/Alumni Job Board",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Monster",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Career Fair",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Other",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[gender] | Gender Select ... Male Female Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Male",
+              "Female",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[gender]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[race] | Race Select ... Hispanic or Latino White (Not Hispanic or Latino) Black or African American (Not Hispanic or Latino) Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino) Asian (Not Hispanic or Latino) American Indian or Alaska Native (Not Hispanic or Latino) Two or More Races (Not Hispanic or Latino) Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "Hispanic or Latino",
+              "White (Not Hispanic or Latino)",
+              "Black or African American (Not Hispanic or Latino)",
+              "Native Hawaiian or Other Pacific Islander (Not Hispanic or Latino)",
+              "Asian (Not Hispanic or Latino)",
+              "American Indian or Alaska Native (Not Hispanic or Latino)",
+              "Two or More Races (Not Hispanic or Latino)",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[race]",
+            "id": ""
+          },
+          {
+            "descriptor": "eeo[veteran] | Veteran status Select ... I am a veteran I am not a veteran Decline to self-identify",
+            "control_type": "select",
+            "required": false,
+            "options": [
+              "I am a veteran",
+              "I am not a veteran",
+              "Decline to self-identify"
+            ],
+            "name": "eeo[veteran]",
+            "id": ""
+          }
+        ],
+        "visible_control_count": 29,
+        "required_control_count": 17,
+        "required_custom_controls": [
+          {
+            "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[a419d865-cc7f-4b8f-9dc5-c0f110087456][field0]",
+            "control_type": "textarea",
+            "required": true,
+            "options": [],
+            "name": "cards[a419d865-cc7f-4b8f-9dc5-c0f110087456][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Glassdoor",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Indeed",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Current/Former Employee",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | School/Alumni Job Board",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Monster",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Career Fair",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Other",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Linkedin",
+              "Glassdoor",
+              "Indeed",
+              "Current/Former Employee",
+              "School/Alumni Job Board",
+              "Monster",
+              "Career Fair",
+              "Other"
+            ],
+            "name": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0] | Yes",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0]",
+            "id": ""
+          },
+          {
+            "descriptor": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0] | No",
+            "control_type": "radio",
+            "required": true,
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "name": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0]",
+            "id": ""
+          }
+        ],
+        "final_submit_clicked": false
+      },
+      "next_control_present": false,
+      "submit_control_present": true,
+      "site": "unitq",
+      "posting_id": "3fd381a2-249e-4a40-91bd-01dba365017a",
+      "region": "global",
+      "posting_metadata": {
+        "posting_id": "3fd381a2-249e-4a40-91bd-01dba365017a",
+        "title": "Account Executive",
+        "categories": {
+          "commitment": "Full Time",
+          "location": "New York, NY",
+          "team": "Sales",
+          "allLocations": [
+            "New York, NY"
+          ]
+        },
+        "hosted_url": "https://jobs.lever.co/unitq/3fd381a2-249e-4a40-91bd-01dba365017a",
+        "apply_url": "https://jobs.lever.co/unitq/3fd381a2-249e-4a40-91bd-01dba365017a/apply",
+        "site": "unitq",
+        "region": "global",
+        "apply_url_matches_posting": true,
+        "present_fields": [
+          "applyUrl",
+          "categories",
+          "description",
+          "descriptionPlain",
+          "hostedUrl",
+          "id",
+          "text"
+        ],
+        "missing_fields": [],
+        "system_required_fields": [
+          "name",
+          "email"
+        ],
+        "custom_questions_exposed_by_official_api": false,
+        "custom_questions_require_dom_inspection": true,
+        "posting_metadata_certified": true
+      },
+      "posting_http_status": 200
+    },
+    {
+      "url": "https://jobs.lever.co/unitq/3fd381a2-249e-4a40-91bd-01dba365017a/apply",
+      "mode": "exercise",
+      "passed": true,
+      "certification_outcome": "ready_to_submit",
+      "manual_challenge_ready": false,
+      "adapter": "lever",
+      "adapter_version": "1.1.0",
+      "ready_to_submit": true,
+      "requires_manual_review": false,
+      "steps_completed": 1,
+      "fields_filled": 13,
+      "review_items": [],
+      "validation_errors": [],
+      "upload_evidence": [
+        {
+          "action": "upload_verified",
+          "upload_type": "resume",
+          "descriptor": "resume | resume-upload-input | input-resume | Resume/CV ATTACH RESUME/CV",
+          "filename": "lever-phase-a-synthetic-resume.pdf",
+          "files": [
+            {
+              "name": "lever-phase-a-synthetic-resume.pdf",
+              "size": 16511,
+              "type": "application/pdf"
+            }
+          ],
+          "accept": "",
+          "verification": "passed"
+        }
+      ],
+      "step_evidence": [
+        {
+          "action": "ats_step_filled",
+          "adapter": "lever",
+          "adapter_version": "1.1.0",
+          "step": 1,
+          "entry_fingerprint": "160c8cee92af9e7e1d168c69",
+          "filled_fingerprint": "2b58153c0c4527f60b5aeccf",
+          "fields_filled": 13,
+          "control_passes": 2,
+          "ts": "2026-08-04T05:28:13.562358"
+        },
+        {
+          "action": "ats_final_submit_ready",
+          "adapter": "lever",
+          "step": 1,
+          "submit_clicked": false,
+          "fingerprint": "2b58153c0c4527f60b5aeccf",
+          "ts": "2026-08-04T05:28:13.666864"
+        }
+      ],
+      "control_evidence_schema_version": "1.0",
+      "control_evidence": [
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "name:cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0]",
+          "control_type": "radio",
+          "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0] | Yes",
+          "canonical_key": "custom.unclassified",
+          "policy_id": 1,
+          "selected": [
+            {
+              "label": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field0] | No",
+              "value": "No"
+            }
+          ],
+          "options_fingerprint": "a1a519d99cd26741",
+          "verification": "passed",
+          "pass": 1
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "name:cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1]",
+          "control_type": "radio",
+          "descriptor": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1] | Yes",
+          "canonical_key": "custom.unclassified",
+          "policy_id": 3,
+          "selected": [
+            {
+              "label": "cards[86c9d984-5826-4e8f-a9f4-124320d6f7a6][field1] | No",
+              "value": "No"
+            }
+          ],
+          "options_fingerprint": "5c11de5d3b36a989",
+          "verification": "passed",
+          "pass": 1
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "name:cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0]",
+          "control_type": "radio",
+          "descriptor": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Linkedin",
+          "canonical_key": "custom.unclassified",
+          "policy_id": 6,
+          "selected": [
+            {
+              "label": "cards[0bffe64c-d183-4d06-a86c-3c6a6077b3d5][field0] | Linkedin",
+              "value": "Linkedin"
+            }
+          ],
+          "options_fingerprint": "0eb18bc9f3aeda78",
+          "verification": "passed",
+          "pass": 1
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "name:cards[76257009-b46d-4169-8921-dda4be1efcc1][field0]",
+          "control_type": "radio",
+          "descriptor": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0] | Yes",
+          "canonical_key": "custom.unclassified",
+          "policy_id": 7,
+          "selected": [
+            {
+              "label": "cards[76257009-b46d-4169-8921-dda4be1efcc1][field0] | No",
+              "value": "No"
+            }
+          ],
+          "options_fingerprint": "4f5f63a51b2e143f",
+          "verification": "passed",
+          "pass": 1
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-1",
+          "control_type": "text",
+          "descriptor": "name | name-input | Full name \u2731",
+          "canonical_key": "profile.full_name",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "fc9786971336d7f6",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-2",
+          "control_type": "email",
+          "descriptor": "email | email-input | Email \u2731",
+          "canonical_key": "profile.email",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "0eff8bfd44dd7d69",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-3",
+          "control_type": "text",
+          "descriptor": "phone | phone-input | Phone",
+          "canonical_key": "profile.phone",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "0241725ce85fe22f",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-4",
+          "control_type": "text",
+          "descriptor": "urls[LinkedIn] | LinkedIn URL",
+          "canonical_key": "profile.linkedin_url",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "f1889ee8a6511e1d",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-5",
+          "control_type": "text",
+          "descriptor": "urls[GitHub] | GitHub URL",
+          "canonical_key": "profile.github_url",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "23fd3a309a8999fb",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-6",
+          "control_type": "text",
+          "descriptor": "urls[Portfolio] | Portfolio URL",
+          "canonical_key": "profile.portfolio_url",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "09eb46fe0734ec93",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-7",
+          "control_type": "text",
+          "descriptor": "urls[Other] | Other website",
+          "canonical_key": "profile.portfolio_url",
+          "policy_id": null,
+          "selected": [],
+          "options_fingerprint": "ae535b57bb28e60f",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "profile",
+          "prepopulated": false,
+          "value_redacted": true
+        },
+        {
+          "action": "control_verified",
+          "control_engine_version": "2.1.0",
+          "control_id": "jt-text-8",
+          "control_type": "textarea",
+          "descriptor": "cards[a419d865-cc7f-4b8f-9dc5-c0f110087456][field0]",
+          "canonical_key": "custom.unclassified",
+          "policy_id": 5,
+          "selected": [],
+          "options_fingerprint": "7c3ff9aa1ce17a20",
+          "verification": "passed",
+          "verification_method": "browser_input_value_readback",
+          "pass": 1,
+          "source": "answer_policy",
+          "prepopulated": false,
+          "value_redacted": true
+        }
+      ],
+      "control_evidence_count": 12,
+      "policy_evidence_count": 5,
+      "final_submit_clicked": false,
+      "certification_metadata": {
+        "visible_control_count": 29,
+        "required_control_count": 17,
+        "required_custom_control_count": 14,
+        "policy_count": 8,
+        "custom_questions_source": "hosted_dom",
+        "official_api_custom_questions_exposed": false,
+        "site": "unitq",
+        "posting_id": "3fd381a2-249e-4a40-91bd-01dba365017a",
+        "region": "global",
+        "synthetic_profile": true
+      },
+      "error": null
+    }
+  ],
+  "passed": true
+}

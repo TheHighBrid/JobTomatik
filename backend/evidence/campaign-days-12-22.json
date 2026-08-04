@@ -4,8 +4,8 @@
       "blockers": [],
       "day": 12,
       "facts": {
-        "distinct_sites": 28,
-        "qualifying_dry_runs": 28,
+        "distinct_sites": 30,
+        "qualifying_dry_runs": 30,
         "regions_covered": [
           "eu",
           "global"
@@ -21,11 +21,11 @@
       "day": 13,
       "facts": {
         "all_manual_challenges_remain_needs_review": true,
-        "distinct_sites": 28,
+        "distinct_sites": 30,
         "manual_challenge_boundaries": 1,
         "manual_challenge_encounters": 1,
         "manual_challenge_violations": 0,
-        "qualifying_dry_runs": 28,
+        "qualifying_dry_runs": 30,
         "regions_covered": [
           "eu",
           "global"
@@ -37,33 +37,29 @@
       "title": "Lever dry runs 21 through 25 and challenge boundaries"
     },
     {
-      "blockers": [
-        "thirty_qualifying_dry_runs",
-        "thirty_distinct_lever_sites"
-      ],
+      "blockers": [],
       "day": 14,
       "facts": {
-        "distinct_sites": 28,
+        "distinct_sites": 30,
         "gate_state": {
           "all_manual_challenges_remain_needs_review": true,
           "all_phase_a_records_have_successful_matching_inspection": true,
           "global_and_eu_hosts_covered": true,
-          "thirty_distinct_lever_sites": false,
-          "thirty_qualifying_dry_runs": false
+          "thirty_distinct_lever_sites": true,
+          "thirty_qualifying_dry_runs": true
         },
-        "qualifying_dry_runs": 28,
+        "qualifying_dry_runs": 30,
         "regions_covered": [
           "eu",
           "global"
         ]
       },
-      "passed": false,
-      "status": "blocked_by_evidence_or_user_gate",
+      "passed": true,
+      "status": "complete",
       "title": "Lever Phase A certification"
     },
     {
       "blockers": [
-        "complete Lever Phase A",
         "retain two exact user-selected Lever applications with byte-verified, application-bound read-only dossiers and successful no-submit dry previews"
       ],
       "day": 15,
@@ -74,7 +70,7 @@
         "duplicate_application_count": 0,
         "invalid_dossier_count": 0,
         "malformed_record_count": 0,
-        "phase_a_complete": false,
+        "phase_a_complete": true,
         "ready_application_count": 0,
         "ready_application_ids": [],
         "selected_application_count": 0,
@@ -88,13 +84,12 @@
     },
     {
       "blockers": [
-        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 2 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 16,
       "facts": {
-        "phase_a_complete": false,
+        "phase_a_complete": true,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -111,13 +106,12 @@
     },
     {
       "blockers": [
-        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 4 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 17,
       "facts": {
-        "phase_a_complete": false,
+        "phase_a_complete": true,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -134,13 +128,12 @@
     },
     {
       "blockers": [
-        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 6 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 18,
       "facts": {
-        "phase_a_complete": false,
+        "phase_a_complete": true,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -157,13 +150,12 @@
     },
     {
       "blockers": [
-        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 8 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 19,
       "facts": {
-        "phase_a_complete": false,
+        "phase_a_complete": true,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -180,13 +172,12 @@
     },
     {
       "blockers": [
-        "complete Lever Phase A",
         "obtain exact user approvals and independently verify 10 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 20,
       "facts": {
-        "phase_a_complete": false,
+        "phase_a_complete": true,
         "phase_b_safety_gates": {
           "all_evidence_hashes_match_consumed_approvals": true,
           "all_success_evidence_independently_reviewed": false,
@@ -203,7 +194,6 @@
     },
     {
       "blockers": [
-        "complete Lever Phase A",
         "complete all Lever Phase B evidence gates",
         "canonical readiness must report promotion_ready=true",
         "owner approval and a separate maturity-promotion change are required"
@@ -212,7 +202,7 @@
       "facts": {
         "canonical_maturity": "dry_run",
         "explicit_promotion_approval": false,
-        "phase_a_complete": false,
+        "phase_a_complete": true,
         "phase_b_complete": false,
         "promotion_ready": false
       },
@@ -274,7 +264,6 @@
   "scope": "roadmap_days_12_through_22",
   "summary": {
     "blocked_days": [
-      14,
       15,
       16,
       17,
@@ -286,8 +275,9 @@
     ],
     "complete_days": [
       12,
-      13
+      13,
+      14
     ],
-    "next_action": "thirty_qualifying_dry_runs"
+    "next_action": "retain two exact user-selected Lever applications with byte-verified, application-bound read-only dossiers and successful no-submit dry previews"
   }
 }
