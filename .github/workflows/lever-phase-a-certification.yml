@@ -182,7 +182,11 @@ jobs:
               1 for record in records if record['qualifies_for_dry_run_matrix'] is True
           )
           assert summary['qualifying_dry_run_count'] == qualifying
-          assert summary['manual_challenge_boundary_count'] >= 2
+          assert summary['manual_challenge_boundary_count'] == summary[
+              'manual_challenge_encounter_count'
+          ]
+          assert summary['manual_challenge_violation_count'] == 0
+          assert summary['gates']['all_manual_challenges_remain_needs_review'] is True
           assert summary['nonqualifying_dry_run_count'] == len(records) - qualifying
           assert summary['phase_a_inspection_failure_count'] == 0
           assert summary['supervised_confirmed_count'] == 0
@@ -245,7 +249,11 @@ jobs:
           assert report['safety']['maturity_promoted'] is False
           assert summary['canonical_maturity'] == 'dry_run'
           assert summary['qualifying_dry_run_count'] >= 0
-          assert summary['manual_challenge_boundary_count'] >= 2
+          assert summary['manual_challenge_boundary_count'] == summary[
+              'manual_challenge_encounter_count'
+          ]
+          assert summary['manual_challenge_violation_count'] == 0
+          assert summary['gates']['all_manual_challenges_remain_needs_review'] is True
           assert summary['phase_a_inspection_failure_count'] == 0
           assert summary['supervised_confirmed_count'] == 0
           assert summary['promotion_ready'] is False
