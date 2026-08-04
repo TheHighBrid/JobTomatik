@@ -70,3 +70,5 @@ jobs:
 
           git merge-base --is-ancestor origin/main HEAD
           git push origin "HEAD:${HEAD_BRANCH}"
+
+# Synchronize after temporary-base retarget.
