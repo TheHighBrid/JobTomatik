@@ -22,6 +22,8 @@ _ACTIONS_RUN = re.compile(
 )
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _DIGITS = re.compile(r"[1-9][0-9]*")
+_MIN_QUALIFYING_DRY_RUNS = 20
+_TARGET_QUALIFYING_DRY_RUNS = 30
 _EXPECTED_STALE_SOURCE = {
     "workflow_run_id": "30337038142",
     "artifact_id": "8679562746",
@@ -95,14 +97,40 @@ def verify_checkpoint(
 
     output_root.mkdir(parents=True, exist_ok=True)
     records = load_phase_a_baseline(baseline_path)
-    assert len(records) == 21
+    qualifying_records = [
+        record
+        for record in records
+        if record["qualifies_for_dry_run_matrix"] is True
+    ]
+    nonqualifying_records = [
+        record
+        for record in records
+        if record["qualifies_for_dry_run_matrix"] is not True
+    ]
+    qualifying_count = len(qualifying_records)
+
+    assert _MIN_QUALIFYING_DRY_RUNS <= qualifying_count <= _TARGET_QUALIFYING_DRY_RUNS
+    assert len(nonqualifying_records) == 1
+    assert len(records) == qualifying_count + 1
     assert all(record["mode"] == "dry_run" for record in records)
     assert all(record["synthetic_profile"] is True for record in records)
     assert all(record["final_submit_clicked"] is False for record in records)
     assert len({record["run_id"] for record in records}) == len(records)
+    assert len(
+        {
+            (
+                record["region"],
+                record["site"],
+                record["posting_id"],
+            )
+            for record in qualifying_records
+        }
+    ) == qualifying_count
 
     sources = _load_csv(sources_path)
-    assert len(sources) == 22
+    # Every canonical record has one source receipt, plus the preserved source
+    # receipt for the superseded D8-043 manual boundary.
+    assert len(sources) == len(records) + 1
     assert all(source["retained_record_count"] == "1" for source in sources)
     assert all(_DIGITS.fullmatch(source["workflow_run_id"]) for source in sources)
     assert all(_DIGITS.fullmatch(source["artifact_id"]) for source in sources)
@@ -170,9 +198,9 @@ def verify_checkpoint(
 
     summary = readiness["summary"]
     expected = {
-        "record_count": 21,
-        "qualifying_dry_run_count": 20,
-        "distinct_site_count": 20,
+        "record_count": len(records),
+        "qualifying_dry_run_count": qualifying_count,
+        "distinct_site_count": qualifying_count,
         "manual_challenge_boundary_count": 1,
         "manual_challenge_encounter_count": 1,
         "manual_challenge_violation_count": 0,
@@ -186,7 +214,7 @@ def verify_checkpoint(
         "promotion_ready": False,
         "supervised_confirmed_count": 0,
     }
-    assert readiness["baseline_record_count"] == 21
+    assert readiness["baseline_record_count"] == len(records)
     assert readiness["runtime_record_count"] == 0
     for key, expected_value in expected.items():
         assert summary[key] == expected_value, (key, summary[key], expected_value)
@@ -195,7 +223,9 @@ def verify_checkpoint(
         "all_qualifying_phase_a_records_have_durable_external_archives"
     ] is True
     assert summary["gates"]["global_and_eu_hosts_covered"] is True
-    assert summary["gates"]["thirty_qualifying_dry_runs"] is False
+    target_reached = qualifying_count == _TARGET_QUALIFYING_DRY_RUNS
+    assert summary["gates"]["thirty_qualifying_dry_runs"] is target_reached
+    assert summary["gates"]["thirty_distinct_lever_sites"] is target_reached
     assert summary["gates"]["explicit_separate_promotion_approval"] is False
 
     (output_root / "lever-pilot-readiness.json").write_text(
@@ -207,7 +237,7 @@ def verify_checkpoint(
         encoding="utf-8",
     )
     result = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "passed": True,
         "record_count": len(records),
         "source_receipt_count": len(sources),
@@ -216,6 +246,7 @@ def verify_checkpoint(
         "manual_challenge_boundary_count": summary[
             "manual_challenge_boundary_count"
         ],
+        "phase_a_target_reached": target_reached,
         "supersession": {
             "superseded_run_id": supersession["superseded"]["run_id"],
             "superseding_review_id": "D8-043",
