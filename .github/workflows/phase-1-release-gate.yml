@@ -186,7 +186,9 @@ jobs:
           assert report['passed'] is True
           assert freeze['starting_point']['qualifying_dry_runs'] == 0
           assert 0 <= current <= required
-          assert summary['manual_challenge_boundary_count'] >= freeze['starting_point']['manual_challenge_boundary_rows']
+          assert summary['manual_challenge_boundary_count'] == summary['manual_challenge_encounter_count']
+          assert summary['manual_challenge_violation_count'] == 0
+          assert summary['gates']['all_manual_challenges_remain_needs_review'] is True
           assert summary['phase_a_inspection_failure_count'] == 0
           assert summary['promotion_ready'] is False
           assert freeze['starting_point']['historical_rows_counted_toward_quota'] == 0
