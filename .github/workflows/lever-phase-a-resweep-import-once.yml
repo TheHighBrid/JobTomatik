@@ -1,4 +1,4 @@
-# Connector-authored synchronize after restoring the PR base to main.
+# Final connector-authored launch after synchronizing current main.
 name: Import finalized Lever Phase A resweep
 
 on:
