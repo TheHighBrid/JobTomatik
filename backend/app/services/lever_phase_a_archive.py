@@ -73,6 +73,18 @@ def _review_id_from_artifact_path(artifact_path: Any) -> str:
     return _retention_descriptor(artifact_path)[0]
 
 
+def _normalized_manifest_report_path(value: Any) -> str:
+    path = PurePosixPath(str(value or "").strip())
+    if path.is_absolute() or ".." in path.parts:
+        return ""
+    parts = list(path.parts)
+    if parts[:1] == ["backend"]:
+        parts = parts[1:]
+    if parts[:1] == ["evidence"]:
+        parts = parts[1:]
+    return PurePosixPath(*parts).as_posix() if parts else ""
+
+
 def _load_artifact_payload(
     row: Mapping[str, Any],
     *,
@@ -240,7 +252,8 @@ def verify_phase_a_external_archive(
         or str(manifest.get("workflow_run_id") or "") != run_id
         or manifest.get("retained_record_count") != 1
         or manifest_report.get("review_id") != review_id
-        or manifest_report.get("path") != artifact_path
+        or _normalized_manifest_report_path(manifest_report.get("path"))
+        != artifact_path
         or manifest_report.get("sha256") != report_digest
     ):
         result["errors"].append("durable_retention_manifest_mismatch")
