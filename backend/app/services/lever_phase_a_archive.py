@@ -153,6 +153,28 @@ def _safe_archive_names(archive: zipfile.ZipFile) -> list[str]:
     return names
 
 
+def _source_values(source: Mapping[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(source.get("artifact_id") or "").strip(),
+        str(source.get("artifact_digest") or "").strip().lower(),
+        str(source.get("retained_record_count") or "").strip(),
+    )
+
+
+def _source_archive_path(
+    evidence_root: Path,
+    review_id: str,
+    source: Mapping[str, Any],
+) -> Path:
+    artifact_id, artifact_digest, _ = _source_values(source)
+    return (
+        evidence_root
+        / ARCHIVE_ROOT_NAME
+        / review_id
+        / f"artifact-{artifact_id}-{artifact_digest}.zip"
+    )
+
+
 def verify_phase_a_external_archive(
     row: Mapping[str, Any],
     *,
@@ -164,6 +186,10 @@ def verify_phase_a_external_archive(
     contract that existed when they were retained. New interactive-handoff and ordinary
     ready-retention candidates fail closed unless the canonical source manifest and
     durable GitHub artifact zip agree with the retained report.
+
+    One workflow run may retain multiple independently archived candidates. In that
+    case, the row is bound to the single source receipt whose archive exists inside the
+    row's review-ID directory. Missing or ambiguous bindings fail closed.
     """
 
     required = _requires_external_archive(row, baseline_path=baseline_path)
@@ -189,20 +215,44 @@ def verify_phase_a_external_archive(
         result["errors"].append("invalid_external_artifact_path")
     if not _HEX64.fullmatch(report_digest):
         result["errors"].append("invalid_report_digest")
+    if result["errors"]:
+        return result
 
     source_rows = [
         source
         for source in _load_source_rows(evidence_root / SOURCE_MANIFEST_NAME)
         if str(source.get("workflow_run_id") or "").strip() == run_id
     ]
-    if len(source_rows) != 1:
+    if not source_rows:
         result["errors"].append("missing_or_duplicate_source_manifest_row")
         return result
 
-    source = source_rows[0]
-    artifact_id = str(source.get("artifact_id") or "").strip()
-    artifact_digest = str(source.get("artifact_digest") or "").strip().lower()
-    retained_count = str(source.get("retained_record_count") or "").strip()
+    archive_path: Path | None = None
+    if len(source_rows) == 1:
+        source = source_rows[0]
+    else:
+        matches: list[tuple[Dict[str, str], Path]] = []
+        for candidate in source_rows:
+            artifact_id, artifact_digest, retained_count = _source_values(candidate)
+            if (
+                not _DIGITS.fullmatch(artifact_id)
+                or not _HEX64.fullmatch(artifact_digest)
+                or retained_count != "1"
+            ):
+                continue
+            candidate_path = _source_archive_path(
+                evidence_root,
+                review_id,
+                candidate,
+            )
+            if candidate_path.is_file():
+                matches.append((candidate, candidate_path))
+        if len(matches) != 1:
+            result["errors"].append("missing_or_duplicate_source_manifest_row")
+            return result
+        source, archive_path = matches[0]
+
+    artifact_id, artifact_digest, retained_count = _source_values(source)
     if not _DIGITS.fullmatch(artifact_id):
         result["errors"].append("invalid_source_artifact_id")
     if not _HEX64.fullmatch(artifact_digest):
@@ -212,12 +262,8 @@ def verify_phase_a_external_archive(
     if result["errors"]:
         return result
 
-    archive_path = (
-        evidence_root
-        / ARCHIVE_ROOT_NAME
-        / review_id
-        / f"artifact-{artifact_id}-{artifact_digest}.zip"
-    )
+    if archive_path is None:
+        archive_path = _source_archive_path(evidence_root, review_id, source)
     result["archive_path"] = archive_path.relative_to(evidence_root).as_posix()
     if not archive_path.is_file():
         result["errors"].append("durable_external_archive_missing")
