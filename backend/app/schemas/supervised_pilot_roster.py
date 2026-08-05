@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -66,10 +66,17 @@ class LeverPhaseBLaunchCandidate(BaseModel):
     resume_present: bool = False
     application_cover_letter_present: bool = False
     application_cover_letter_matches_latest: bool = False
+    official_posting_context_present: bool = False
+    official_posting_sha256: Optional[str] = None
+    cover_letter_material_id: Optional[int] = None
     cover_letter_material_status: Optional[str] = None
     cover_letter_material_version: Optional[int] = None
+    cover_letter_review_status: Optional[str] = None
+    resume_summary_material_id: Optional[int] = None
     resume_summary_material_status: Optional[str] = None
     resume_summary_material_version: Optional[int] = None
+    resume_summary_review_status: Optional[str] = None
+    material_review_eligible: bool = False
     open_review_count: int = 0
     active_approval_reference: Optional[str] = None
     active_approval_expires_at: Optional[datetime] = None
@@ -107,6 +114,57 @@ class LeverPhaseBMaterializeOut(BaseModel):
     submission_queued: bool = False
     approval_issued: bool = False
     runtime_flags_changed: bool = False
+
+
+class LeverPhaseBPreparedMaterial(BaseModel):
+    id: int
+    material_type: str
+    version: int
+    status: str
+    warning_count: int = 0
+    review_status: str = "pending"
+
+
+class LeverPhaseBPrepareMaterialsOut(BaseModel):
+    review_id: str
+    launch_application_id: str
+    application_id: int
+    job_id: int
+    posting_sha256: str
+    posting_source: str
+    resume_filename: str
+    resume_evidence_count: int
+    evidence_unit_count: int
+    evidence_digest: str
+    evidence_rebuild: Dict[str, Any] = Field(default_factory=dict)
+    review_eligible: bool
+    critical_errors: List[str] = Field(default_factory=list)
+    materials: List[LeverPhaseBPreparedMaterial] = Field(default_factory=list)
+    automation_state: str
+    requires_explicit_material_review: bool = True
+    requires_fresh_runtime_preflight: bool = True
+    approval_issued: bool = False
+    submission_queued: bool = False
+
+
+class LeverPhaseBMaterialReviewIn(BaseModel):
+    approved: bool
+    notes: Optional[str] = Field(default=None, max_length=5000)
+
+
+class LeverPhaseBMaterialReviewOut(BaseModel):
+    review_id: str
+    application_id: int
+    approved: bool
+    material_review_status: str
+    ready_for_fresh_preflight: bool
+    automation_state: str
+    open_review_count: int
+    posting_sha256: Optional[str] = None
+    evidence_digest: Optional[str] = None
+    requires_fresh_runtime_preflight: bool = True
+    approval_issued: bool = False
+    submission_queued: bool = False
 
 
 class SupervisedPilotPhaseA(BaseModel):
