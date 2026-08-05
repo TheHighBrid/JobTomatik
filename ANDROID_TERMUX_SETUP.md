@@ -2,7 +2,17 @@
 
 The Android app must be able to reach a running JobTomatik backend before login
 or registration can succeed. The frontend adds `/api` automatically, so enter the
-base URL only, for example `http://127.0.0.1:8000`.
+base URL only.
+
+For the canonical same-device Android/Termux setup, use:
+
+```text
+http://127.0.0.1:8010
+```
+
+Do **not** use port `3000` as the Backend API URL. Port 3000 is the React/Vite
+frontend development server. Sending APK authentication through that frontend
+proxy can produce a misleading HTTP 500 when the proxy cannot reach FastAPI.
 
 ## Recommended local Android setup
 
@@ -37,32 +47,54 @@ ENV
 mkdir -p uploads
 ```
 
-Start the backend:
+Start the same-device Android backend:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8010
 ```
 
-Test health before trying auth in the app:
+The repository root helper performs the same setup and launch:
 
 ```bash
-curl http://127.0.0.1:8000/health
+bash termux-start.sh
+```
+
+Test the exact backend health endpoint before trying auth in the app:
+
+```bash
+curl http://127.0.0.1:8010/api/system/health
 ```
 
 Expected response:
 
 ```json
-{"status":"ok","service":"JobTomatik API"}
+{"status":"ok","service":"JobTomatik API","version":"1.0.0"}
 ```
 
-Then open the app login screen, expand **API connection**, set
-`http://127.0.0.1:8000`, tap **Test connection**, save, and try signup/login.
+Then open the app login screen, expand **API connection**, tap **Reset** or set
+`http://127.0.0.1:8010`, tap **Test connection**, and try signup/login.
+
+## Backend running on another computer
+
+When FastAPI runs on another computer, bind it to the network and use that
+computer's LAN address:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Example APK Backend API URL:
+
+```text
+http://192.168.1.25:8000
+```
 
 ## Notes
 
 - Do not add `/api` to the API connection field.
-- On Android, `localhost` only works when the backend is running on the same
-  device. If the backend runs on a computer, use that computer's LAN IP, such as
-  `http://192.168.1.25:8000`.
+- On Android, `127.0.0.1` is correct only when the backend runs on the same device.
+- Port `8010` is the repository's canonical same-device Termux backend port.
+- Port `8000` is the standard Docker or remote-computer backend port.
+- Port `3000` is frontend-only and must not be saved as the APK Backend API URL.
 - Playwright automation is not included in `requirements.android-server.txt` and
   should run on a normal Linux backend/worker.
