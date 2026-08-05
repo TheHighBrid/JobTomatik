@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import {
   AlertTriangle,
   ArrowUpRight,
   CheckCircle2,
   ClipboardCheck,
   FileCheck2,
-  FilePlus2,
   Fingerprint,
   Loader2,
   LockKeyhole,
+  RefreshCw,
   ShieldCheck,
 } from 'lucide-react'
 import api, { getApiErrorMessage } from '../api/client'
@@ -17,22 +18,22 @@ import api, { getApiErrorMessage } from '../api/client'
 const STAGES = {
   not_materialized: {
     label: 'Not in workspace',
-    description: 'Create the local preparation record before adding real materials.',
+    description: 'Prepare the local record, exact official posting context, résumé evidence, and source-backed materials.',
     badge: 'border-slate-200 bg-slate-100 text-slate-700',
   },
   verified_materials_required: {
     label: 'Verified materials required',
-    description: 'Complete the real résumé, source-backed cover letter, and résumé summary.',
+    description: 'Refresh the official posting and build both real, source-backed materials from the owner résumé.',
     badge: 'border-amber-200 bg-amber-100 text-amber-800',
   },
   review_required: {
     label: 'Review required',
-    description: 'A material, review task, or application state must be resolved first.',
+    description: 'Read the latest cover letter and résumé summary, inspect every source-linked claim, then approve or reject the bundle.',
     badge: 'border-red-200 bg-red-100 text-red-800',
   },
   fresh_preflight_required: {
     label: 'Ready for fresh preflight',
-    description: 'Local preparation is complete. The official target and exact real payload are not yet revalidated.',
+    description: 'Local preparation and material review are complete. The official application form and exact real payload are not yet revalidated.',
     badge: 'border-blue-200 bg-blue-100 text-blue-800',
   },
   active_approval_present: {
@@ -49,15 +50,19 @@ const STAGES = {
 
 const BLOCKER_LABELS = {
   materialize_preparation_record: 'Preparation record not created',
-  resume_required: 'Real résumé required',
+  resume_required: 'Readable owner résumé required',
+  official_posting_context_required: 'Exact official Lever posting context required',
   verified_cover_letter_required: 'Verified cover letter required',
   application_cover_letter_required: 'Verified cover letter not attached to application',
+  application_cover_letter_out_of_sync: 'Attached cover letter does not match the latest version',
   verified_resume_summary_required: 'Verified résumé summary required',
-  application_not_ready_to_apply: 'Application is not ready to apply',
+  cover_letter_user_review_required: 'Cover letter requires explicit owner review',
+  resume_summary_user_review_required: 'Résumé summary requires explicit owner review',
+  application_not_ready_to_apply: 'Application is not locally ready for preflight',
   open_manual_review_tasks: 'Open manual review tasks',
   application_needs_review: 'Application is in needs-review state',
-  cover_letter_review_required: 'Cover letter requires review',
-  resume_summary_review_required: 'Résumé summary requires review',
+  cover_letter_review_required: 'Cover letter has source-validation blockers',
+  resume_summary_review_required: 'Résumé summary has source-validation blockers',
 }
 
 function shortHash(value) {
@@ -70,51 +75,55 @@ function readable(value) {
     || String(value || '').replaceAll('_', ' ')
 }
 
-function MaterialStatus({ label, status, version }) {
+function MaterialStatus({ label, status, version, reviewStatus }) {
   const verified = status === 'verified'
   const review = status === 'needs_review'
-  const text = status
+  const statusText = status
     ? `${readable(status)}${version ? ` · v${version}` : ''}`
     : 'Not generated'
+  const reviewText = reviewStatus
+    ? ` · ${readable(reviewStatus)}`
+    : ''
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px]">
       <span className="font-medium text-slate-600">{label}</span>
       <span className={verified ? 'font-semibold text-emerald-700' : review ? 'font-semibold text-red-700' : 'font-semibold text-slate-500'}>
-        {text}
+        {statusText}{reviewText}
       </span>
     </div>
   )
 }
 
-function CandidateAction({ candidate, materialize, isPending }) {
-  if (candidate.preparation_next_action === 'materialize') {
+function CandidateAction({ candidate, prepareMaterials, isPending }) {
+  if (
+    candidate.preparation_next_action === 'materialize'
+    || candidate.preparation_next_action === 'build_verified_materials'
+  ) {
+    const refresh = candidate.materialized
     return (
       <button
         type="button"
-        onClick={() => materialize.mutate(candidate.review_id)}
-        disabled={materialize.isPending}
+        onClick={() => prepareMaterials.mutate(candidate.review_id)}
+        disabled={prepareMaterials.isPending}
         className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isPending ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : refresh ? (
+          <RefreshCw className="h-3.5 w-3.5" />
         ) : (
-          <FilePlus2 className="h-3.5 w-3.5" />
+          <FileCheck2 className="h-3.5 w-3.5" />
         )}
-        Add preparation record
+        {refresh ? 'Refresh real material bundle' : 'Prepare real material bundle'}
       </button>
     )
   }
 
   const applicationId = candidate.materialized_application_id
   const actions = {
-    build_verified_materials: {
-      to: `/evidence-materials?application=${applicationId}`,
-      label: 'Build verified materials',
-      icon: FileCheck2,
-    },
     resolve_review: {
-      to: `/applications/${applicationId}`,
-      label: 'Resolve review',
+      to: `/evidence-materials?application=${applicationId}`,
+      label: 'Review generated bundle',
       icon: AlertTriangle,
     },
     open_fresh_preflight: {
@@ -155,18 +164,30 @@ export default function LeverPhaseBLaunchPanel() {
     select: (response) => response.data,
     retry: false,
   })
-  const materialize = useMutation({
+  const prepareMaterials = useMutation({
     mutationFn: (reviewId) => api.post(
-      `/supervised-pilot/lever-launch/${encodeURIComponent(reviewId)}/materialize`,
+      `/supervised-pilot/lever-launch/${encodeURIComponent(reviewId)}/prepare-materials`,
     ),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
+      const applicationId = response.data?.application_id
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['lever-phase-b-launch'] }),
         queryClient.invalidateQueries({ queryKey: ['applications'] }),
         queryClient.invalidateQueries({ queryKey: ['appStats'] }),
         queryClient.invalidateQueries({ queryKey: ['supervised-pilot-roster'] }),
+        applicationId
+          ? queryClient.invalidateQueries({ queryKey: ['application-materials', String(applicationId)] })
+          : Promise.resolve(),
       ])
+      if (response.data?.review_eligible) {
+        toast.success('Real material bundle prepared. Read and review both materials next.')
+      } else {
+        toast.error('The bundle was generated, but source-validation blockers must be resolved.')
+      }
     },
+    onError: (error) => toast.error(
+      getApiErrorMessage(error, 'The real material bundle could not be prepared.'),
+    ),
   })
 
   if (launchQuery.isLoading) {
@@ -209,7 +230,7 @@ export default function LeverPhaseBLaunchPanel() {
               <h2 className="font-semibold">Lever Day 16 launch candidates</h2>
             </div>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-300">
-              Each stage is derived from your local JobTomatik records. This overview never contacts Lever, issues approval, queues work, or submits.
+              Preparation refreshes the exact public Lever posting metadata and builds source-linked materials locally. It never opens the application form, issues approval, queues work, or submits.
             </p>
           </div>
           <div className="rounded-full border border-blue-300/30 bg-blue-300/10 px-3 py-1 text-xs font-semibold text-blue-100">
@@ -220,13 +241,13 @@ export default function LeverPhaseBLaunchPanel() {
 
       <div className="space-y-4 p-5">
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
-          The retained previews use a synthetic profile. “Ready for fresh preflight” means local preparation is complete only. It does not mean the current Lever posting, exact payload, execution flags, or final-submit boundary have passed.
+          The retained previews use a synthetic profile. “Ready for fresh preflight” requires a readable owner résumé, current official posting context, two source-valid materials, explicit owner review, and zero unresolved local reviews. It still does not mean the current Lever form or exact payload has passed preflight.
         </div>
 
         <div className="grid gap-3 lg:grid-cols-2">
           {data.candidates.map((candidate) => {
-            const isPending = materialize.isPending
-              && materialize.variables === candidate.review_id
+            const isPending = prepareMaterials.isPending
+              && prepareMaterials.variables === candidate.review_id
             const stage = STAGES[candidate.preparation_stage] || STAGES.not_materialized
             return (
               <article
@@ -285,16 +306,18 @@ export default function LeverPhaseBLaunchPanel() {
                       label="Cover letter"
                       status={candidate.cover_letter_material_status}
                       version={candidate.cover_letter_material_version}
+                      reviewStatus={candidate.cover_letter_review_status}
                     />
                     <MaterialStatus
                       label="Résumé summary"
                       status={candidate.resume_summary_material_status}
                       version={candidate.resume_summary_material_version}
+                      reviewStatus={candidate.resume_summary_review_status}
                     />
                     <div className="grid grid-cols-2 gap-2 text-[11px]">
                       <div className="rounded-lg border border-slate-200 px-3 py-2 text-slate-600">
                         Résumé: <strong className={candidate.resume_present ? 'text-emerald-700' : 'text-amber-700'}>
-                          {candidate.resume_present ? 'Present' : 'Missing'}
+                          {candidate.resume_present ? 'Readable' : 'Missing'}
                         </strong>
                       </div>
                       <div className="rounded-lg border border-slate-200 px-3 py-2 text-slate-600">
@@ -302,6 +325,13 @@ export default function LeverPhaseBLaunchPanel() {
                           {candidate.open_review_count || 0}
                         </strong>
                       </div>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
+                      Official posting: <strong className={candidate.official_posting_context_present ? 'text-emerald-700' : 'text-amber-700'}>
+                        {candidate.official_posting_context_present
+                          ? shortHash(candidate.official_posting_sha256)
+                          : 'Not refreshed'}
+                      </strong>
                     </div>
                   </div>
                 )}
@@ -328,7 +358,7 @@ export default function LeverPhaseBLaunchPanel() {
                 <div className="mt-3">
                   <CandidateAction
                     candidate={candidate}
-                    materialize={materialize}
+                    prepareMaterials={prepareMaterials}
                     isPending={isPending}
                   />
                 </div>
@@ -337,17 +367,8 @@ export default function LeverPhaseBLaunchPanel() {
           })}
         </div>
 
-        {materialize.isError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">
-            {getApiErrorMessage(
-              materialize.error,
-              'The retained candidate could not be materialized.',
-            )}
-          </div>
-        )}
-
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-          Preparation stages do not advance the campaign checkpoint. Day 16 counts only independently reviewed confirmation evidence from two distinct supervised submissions.
+          Preparation and review do not advance the campaign checkpoint. Day 16 counts only independently reviewed confirmation evidence from two distinct supervised submissions.
         </div>
       </div>
     </section>
