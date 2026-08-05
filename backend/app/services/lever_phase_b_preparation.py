@@ -28,7 +28,6 @@ from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
 
 
-MATERIAL_TYPES = ("cover_letter", "resume_summary")
 SUBMISSION_STATES = {
     ApplicationAutomationState.applying.value,
     ApplicationAutomationState.submission_uncertain.value,
@@ -230,17 +229,6 @@ def enrich_lever_phase_b_preparation_status(
             candidates.append(candidate)
             continue
 
-        if approval:
-            candidate.update(
-                {
-                    "preparation_stage": "active_approval_present",
-                    "preparation_blockers": [],
-                    "preparation_next_action": "review_active_approval",
-                }
-            )
-            candidates.append(candidate)
-            continue
-
         review_blockers = []
         if open_reviews:
             review_blockers.append("open_manual_review_tasks")
@@ -256,6 +244,17 @@ def enrich_lever_phase_b_preparation_status(
                     "preparation_stage": "review_required",
                     "preparation_blockers": list(dict.fromkeys(review_blockers)),
                     "preparation_next_action": "resolve_review",
+                }
+            )
+            candidates.append(candidate)
+            continue
+
+        if approval:
+            candidate.update(
+                {
+                    "preparation_stage": "active_approval_present",
+                    "preparation_blockers": [],
+                    "preparation_next_action": "review_active_approval",
                 }
             )
             candidates.append(candidate)
