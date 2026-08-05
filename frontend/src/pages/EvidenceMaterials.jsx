@@ -14,8 +14,9 @@ import {
   RefreshCw,
   ShieldCheck,
   Trash2,
+  XCircle,
 } from 'lucide-react'
-import {
+import api, {
   createEvidenceUnit,
   deactivateEvidenceUnit,
   generateApplicationMaterialBundle,
@@ -42,8 +43,9 @@ function sourceLabel(unit) {
 }
 
 function statusClasses(status) {
-  if (status === 'verified') return 'bg-emerald-100 text-emerald-700'
-  if (status === 'needs_review') return 'bg-amber-100 text-amber-800'
+  if (status === 'verified' || status === 'approved') return 'bg-emerald-100 text-emerald-700'
+  if (status === 'needs_review' || status === 'pending') return 'bg-amber-100 text-amber-800'
+  if (status === 'rejected') return 'bg-red-100 text-red-800'
   return 'bg-slate-100 text-slate-700'
 }
 
@@ -95,6 +97,7 @@ function MaterialCard({ material }) {
     ),
     [material.evidence_links],
   )
+  const userReview = material.source_snapshot?.user_review || {}
 
   const copyMaterial = async () => {
     try {
@@ -121,10 +124,15 @@ function MaterialCard({ material }) {
             Version {material.version} · {material.generator_version}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClasses(material.status)}`}>
             {material.status.replaceAll('_', ' ')}
           </span>
+          {userReview.status && (
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClasses(userReview.status)}`}>
+              Owner review: {userReview.status.replaceAll('_', ' ')}
+            </span>
+          )}
           <button type="button" onClick={copyMaterial} className="btn-secondary inline-flex items-center gap-2 text-sm">
             <Clipboard className="h-4 w-4" /> Copy
           </button>
@@ -135,7 +143,7 @@ function MaterialCard({ material }) {
         {material.warnings?.length > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex items-center gap-2 font-semibold text-amber-900">
-              <AlertTriangle className="h-4 w-4" /> Review required
+              <AlertTriangle className="h-4 w-4" /> Review warnings
             </div>
             <ul className="mt-2 space-y-1 text-sm text-amber-800">
               {material.warnings.map((warning) => <li key={warning}>• {warning}</li>)}
@@ -196,6 +204,7 @@ export default function EvidenceMaterials() {
   const [form, setForm] = useState(EMPTY_EVIDENCE)
   const [kindFilter, setKindFilter] = useState('all')
   const [selectedApplicationId, setSelectedApplicationId] = useState('')
+  const [reviewNotes, setReviewNotes] = useState('')
   const requestedApplicationId = searchParams.get('application') || ''
 
   const evidenceQuery = useQuery({
@@ -245,6 +254,7 @@ export default function EvidenceMaterials() {
   const handleApplicationChange = (event) => {
     const nextApplicationId = event.target.value
     setSelectedApplicationId(nextApplicationId)
+    setReviewNotes('')
     const nextParams = new URLSearchParams(searchParams)
     nextParams.set('application', nextApplicationId)
     setSearchParams(nextParams, { replace: true })
@@ -306,12 +316,82 @@ export default function EvidenceMaterials() {
   const selectedApplication = (applicationsQuery.data || []).find(
     (application) => String(application.id) === String(selectedApplicationId),
   )
+  const retainedReviewId = selectedApplication?.application_target_metadata?.review_id || ''
+  const retainedPlatform = selectedApplication?.application_target_metadata?.platform || ''
+  const isRetainedLever = Boolean(retainedReviewId && retainedPlatform === 'lever')
   const latestMaterials = Object.values(
     (materialsQuery.data || []).reduce((accumulator, material) => {
       if (!accumulator[material.material_type]) accumulator[material.material_type] = material
       return accumulator
     }, {}),
   )
+  const retainedBundle = ['cover_letter', 'resume_summary']
+    .map((materialType) => latestMaterials.find((material) => material.material_type === materialType))
+    .filter(Boolean)
+  const retainedPreparation = retainedBundle.map(
+    (material) => material.source_snapshot?.lever_phase_b_preparation || {},
+  )
+  const retainedReviewEligible = isRetainedLever
+    && retainedBundle.length === 2
+    && retainedPreparation.every(
+      (snapshot) => snapshot.review_id === retainedReviewId && snapshot.review_eligible === true,
+    )
+  const retainedReviewApproved = retainedBundle.length === 2
+    && retainedBundle.every(
+      (material) => material.source_snapshot?.user_review?.status === 'approved',
+    )
+
+  const retainedPrepareMutation = useMutation({
+    mutationFn: () => api.post(
+      `/supervised-pilot/lever-launch/${encodeURIComponent(retainedReviewId)}/prepare-materials`,
+    ),
+    onSuccess: async (response) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['evidence-units'] }),
+        qc.invalidateQueries({ queryKey: ['application-materials', selectedApplicationId] }),
+        qc.invalidateQueries({ queryKey: ['application', selectedApplicationId] }),
+        qc.invalidateQueries({ queryKey: ['applications-for-materials'] }),
+        qc.invalidateQueries({ queryKey: ['lever-phase-b-launch'] }),
+      ])
+      if (response.data?.review_eligible) {
+        toast.success('Retained Lever bundle prepared. Review both materials below.')
+      } else {
+        toast.error('The bundle has source-validation blockers that must be resolved.')
+      }
+    },
+    onError: (error) => toast.error(
+      getApiErrorMessage(error, 'Retained Lever material preparation failed'),
+    ),
+  })
+
+  const retainedReviewMutation = useMutation({
+    mutationFn: (approved) => api.post(
+      `/supervised-pilot/lever-launch/${encodeURIComponent(retainedReviewId)}/review-materials`,
+      {
+        approved,
+        notes: reviewNotes.trim() || null,
+      },
+    ),
+    onSuccess: async (response) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['application-materials', selectedApplicationId] }),
+        qc.invalidateQueries({ queryKey: ['application', selectedApplicationId] }),
+        qc.invalidateQueries({ queryKey: ['applications-for-materials'] }),
+        qc.invalidateQueries({ queryKey: ['lever-phase-b-launch'] }),
+      ])
+      setReviewNotes('')
+      if (response.data?.ready_for_fresh_preflight) {
+        toast.success('Material bundle approved. This application is ready for a fresh preflight.')
+      } else if (response.data?.approved) {
+        toast.error('Materials were approved, but another local review blocker remains.')
+      } else {
+        toast.success('Material bundle rejected and kept in review.')
+      }
+    },
+    onError: (error) => toast.error(
+      getApiErrorMessage(error, 'Material review could not be recorded'),
+    ),
+  })
 
   return (
     <div className="space-y-8 pb-24 md:pb-8">
@@ -462,20 +542,36 @@ export default function EvidenceMaterials() {
             </div>
             <button
               type="button"
-              onClick={() => bundleMutation.mutate()}
-              disabled={!selectedApplicationId || bundleMutation.isPending}
+              onClick={() => (
+                isRetainedLever
+                  ? retainedPrepareMutation.mutate()
+                  : bundleMutation.mutate()
+              )}
+              disabled={
+                !selectedApplicationId
+                || bundleMutation.isPending
+                || retainedPrepareMutation.isPending
+              }
               className="btn-primary inline-flex items-center justify-center gap-2"
             >
-              {bundleMutation.isPending
+              {(bundleMutation.isPending || retainedPrepareMutation.isPending)
                 ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <FileCheck2 className="h-4 w-4" />}
-              Generate verified bundle
+                : isRetainedLever
+                  ? <RefreshCw className="h-4 w-4" />
+                  : <FileCheck2 className="h-4 w-4" />}
+              {isRetainedLever ? 'Prepare official-source bundle' : 'Generate verified bundle'}
             </button>
           </div>
           {selectedApplication && (
             <p className="mt-3 text-xs text-gray-400">
               Current application state: {selectedApplication.automation_state?.replaceAll('_', ' ')}
+              {isRetainedLever ? ` · retained candidate ${retainedReviewId}` : ''}
             </p>
+          )}
+          {isRetainedLever && (
+            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
+              This retained Lever workflow refreshes the exact public posting description before generation. Generic material generation is disabled for this candidate so stale or title-only context cannot be mistaken for a tailored bundle.
+            </div>
           )}
         </div>
 
@@ -492,6 +588,80 @@ export default function EvidenceMaterials() {
             {applicationsQuery.data?.length
               ? 'No source-mapped materials exist for this application yet.'
               : 'Create an application before generating materials.'}
+          </div>
+        )}
+
+        {isRetainedLever && retainedBundle.length > 0 && (
+          <div className="card border border-blue-200 p-5">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-700" />
+              <div>
+                <h3 className="font-semibold text-gray-900">Retained Lever material decision</h3>
+                <p className="mt-1 text-sm leading-relaxed text-gray-600">
+                  Approve only after reading both latest materials and checking the claim audit above. This decision approves the local text bundle only. It does not approve, queue, or submit an application.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {retainedBundle.map((material) => {
+                const preparation = material.source_snapshot?.lever_phase_b_preparation || {}
+                const review = material.source_snapshot?.user_review || {}
+                return (
+                  <div key={material.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">
+                    <div className="font-semibold capitalize text-gray-900">
+                      {material.material_type.replaceAll('_', ' ')} · v{material.version}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      Source validation: {preparation.review_eligible ? 'eligible' : 'blocked'} · owner review: {review.status || 'not recorded'}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <label className="label mt-4">Review notes</label>
+            <textarea
+              className="input min-h-[90px] resize-y"
+              value={reviewNotes}
+              onChange={(event) => setReviewNotes(event.target.value)}
+              placeholder="Record corrections, accepted warnings, or why the bundle is being rejected."
+            />
+
+            {!retainedReviewEligible && !retainedReviewApproved && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+                Approval remains disabled because both latest materials are not source-valid for the same official posting and evidence snapshot. Refresh the bundle or correct the evidence first.
+              </div>
+            )}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => retainedReviewMutation.mutate(false)}
+                disabled={retainedReviewMutation.isPending || retainedBundle.length !== 2}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {retainedReviewMutation.isPending
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <XCircle className="h-4 w-4" />}
+                Reject bundle
+              </button>
+              <button
+                type="button"
+                onClick={() => retainedReviewMutation.mutate(true)}
+                disabled={
+                  retainedReviewMutation.isPending
+                  || !retainedReviewEligible
+                  || retainedReviewApproved
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {retainedReviewMutation.isPending
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <CheckCircle2 className="h-4 w-4" />}
+                {retainedReviewApproved ? 'Bundle approved' : 'Approve reviewed bundle'}
+              </button>
+            </div>
           </div>
         )}
       </section>
