@@ -65,6 +65,7 @@ class LeverPhaseBLaunchCandidate(BaseModel):
     preparation_next_action: str = "materialize"
     resume_present: bool = False
     application_cover_letter_present: bool = False
+    application_cover_letter_matches_latest: bool = False
     cover_letter_material_status: Optional[str] = None
     cover_letter_material_version: Optional[int] = None
     resume_summary_material_status: Optional[str] = None
