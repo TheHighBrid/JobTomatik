@@ -7,6 +7,8 @@ queues a task, opens a browser, or contacts Lever.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
@@ -21,13 +23,14 @@ from app.models.application import (
     ManualReviewTask,
 )
 from app.models.job import Job
-from app.models.material import ApplicationMaterial
+from app.models.material import ApplicationMaterial, EvidenceUnit
 from app.models.submission_approval import (
     SubmissionApproval,
     SubmissionApprovalStatus,
 )
 from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
+from app.services.evidence_ledger import eligible_evidence_query
 
 
 SUBMISSION_STATES = {
@@ -115,6 +118,24 @@ def _latest_attempt(
     )
 
 
+def _evidence_digest(db: Session, user_id: int) -> str:
+    units = eligible_evidence_query(db, user_id).order_by(EvidenceUnit.id).all()
+    payload = [
+        {
+            "id": unit.id,
+            "source_hash": unit.source_hash,
+            "source_type": unit.source_type,
+            "source_ref": unit.source_ref,
+        }
+        for unit in units
+    ]
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
 def _review_status(material: Optional[ApplicationMaterial]) -> Optional[str]:
     if not material:
         return None
@@ -144,6 +165,7 @@ def _material_snapshot(material: Optional[ApplicationMaterial]) -> Dict[str, Any
         "review_status": _review_status(material),
         "review_eligible": bool(preparation.get("review_eligible")),
         "posting_sha256": preparation.get("posting_sha256"),
+        "evidence_digest": preparation.get("evidence_digest"),
     }
 
 
@@ -182,6 +204,7 @@ def enrich_lever_phase_b_preparation_status(
 ) -> Dict[str, Any]:
     """Add deterministic local preparation stages to a verified launch status."""
 
+    current_evidence_digest = _evidence_digest(db, user.id)
     candidates = []
     for raw_candidate in launch_status.get("candidates") or []:
         candidate = _base_stage(raw_candidate)
@@ -240,11 +263,19 @@ def enrich_lever_phase_b_preparation_status(
             and application_cover_letter
             and application_cover_letter == str(cover_letter.content or "").strip()
         )
+        cover_source_current = bool(
+            cover_snapshot["posting_sha256"] == posting_sha256
+            and cover_snapshot["evidence_digest"] == current_evidence_digest
+        )
+        resume_source_current = bool(
+            resume_snapshot["posting_sha256"] == posting_sha256
+            and resume_snapshot["evidence_digest"] == current_evidence_digest
+        )
         material_review_eligible = bool(
             cover_snapshot["review_eligible"]
             and resume_snapshot["review_eligible"]
-            and cover_snapshot["posting_sha256"] == posting_sha256
-            and resume_snapshot["posting_sha256"] == posting_sha256
+            and cover_source_current
+            and resume_source_current
         )
 
         candidate.update(
@@ -309,6 +340,10 @@ def enrich_lever_phase_b_preparation_status(
             review_blockers.append("cover_letter_user_review_required")
         if resume_summary and resume_snapshot["review_status"] != "approved":
             review_blockers.append("resume_summary_user_review_required")
+        if (cover_letter and not cover_source_current) or (
+            resume_summary and not resume_source_current
+        ):
+            review_blockers.append("material_source_snapshot_out_of_date")
         if review_blockers:
             candidate.update(
                 {
@@ -352,6 +387,10 @@ def enrich_lever_phase_b_preparation_status(
             material_blockers.append("cover_letter_user_review_required")
         if resume_summary and resume_snapshot["review_status"] != "approved":
             material_blockers.append("resume_summary_user_review_required")
+        if (cover_letter and not cover_source_current) or (
+            resume_summary and not resume_source_current
+        ):
+            material_blockers.append("material_source_snapshot_out_of_date")
         if state != ApplicationAutomationState.ready_to_apply.value:
             material_blockers.append("application_not_ready_to_apply")
         if material_blockers:
