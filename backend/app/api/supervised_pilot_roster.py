@@ -11,7 +11,10 @@ from app.models.user import User
 from app.schemas.supervised_pilot_dossier import SupervisedPilotDossierOut
 from app.schemas.supervised_pilot_roster import (
     LeverPhaseBLaunchOut,
+    LeverPhaseBMaterialReviewIn,
+    LeverPhaseBMaterialReviewOut,
     LeverPhaseBMaterializeOut,
+    LeverPhaseBPrepareMaterialsOut,
     SupervisedPilotCandidateImportIn,
     SupervisedPilotCandidateImportOut,
     SupervisedPilotRosterOut,
@@ -23,6 +26,11 @@ from app.services.greenhouse_pilot_ingestion import (
 from app.services.lever_phase_b_launch import LeverPhaseBLaunchError
 from app.services.lever_phase_b_preparation import (
     enrich_lever_phase_b_preparation_status,
+)
+from app.services.lever_phase_b_reviewed_materials import (
+    LeverPhaseBReviewedMaterialsError,
+    prepare_retained_lever_materials,
+    review_retained_lever_materials,
 )
 from app.services.lever_phase_b_runtime import (
     build_runtime_lever_phase_b_launch_status,
@@ -151,6 +159,55 @@ def materialize_lever_phase_b_launch_candidate(
             review_id=review_id,
         )
     except LeverPhaseBLaunchError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    db.commit()
+    return result
+
+
+@router.post(
+    "/lever-launch/{review_id}/prepare-materials",
+    response_model=LeverPhaseBPrepareMaterialsOut,
+)
+def prepare_lever_phase_b_launch_materials(
+    review_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = prepare_retained_lever_materials(
+            db,
+            current_user,
+            review_id=review_id,
+        )
+    except (LeverPhaseBLaunchError, LeverPhaseBReviewedMaterialsError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    db.commit()
+    return result
+
+
+@router.post(
+    "/lever-launch/{review_id}/review-materials",
+    response_model=LeverPhaseBMaterialReviewOut,
+)
+def review_lever_phase_b_launch_materials(
+    review_id: str,
+    data: LeverPhaseBMaterialReviewIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = review_retained_lever_materials(
+            db,
+            current_user,
+            review_id=review_id,
+            approved=data.approved,
+            notes=data.notes,
+        )
+    except (LeverPhaseBLaunchError, LeverPhaseBReviewedMaterialsError) as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
