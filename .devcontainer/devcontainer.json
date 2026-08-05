@@ -1,0 +1,63 @@
+{
+  "name": "JobTomatik Workbench",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "20.19.0"
+    },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "installMaven": "false",
+      "installGradle": "false"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [3000, 8000, 8010],
+  "portsAttributes": {
+    "3000": {
+      "label": "JobTomatik frontend",
+      "onAutoForward": "openPreview"
+    },
+    "8000": {
+      "label": "JobTomatik API",
+      "onAutoForward": "notify"
+    },
+    "8010": {
+      "label": "JobTomatik Android API compatibility",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "bash scripts/codespaces/bootstrap.sh",
+  "postStartCommand": "bash scripts/codespaces/start.sh --quiet",
+  "remoteEnv": {
+    "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerEnv:PATH}",
+    "PYTHON_BIN": "${containerWorkspaceFolder}/.venv/bin/python"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/.pytest_cache": true
+        }
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "github.vscode-pull-request-github",
+        "redhat.vscode-yaml"
+      ]
+    }
+  },
+  "remoteUser": "vscode",
+  "shutdownAction": "stopContainer"
+}
