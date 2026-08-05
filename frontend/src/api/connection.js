@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { normalizeApiBaseUrl } from './url'
+import { normalizeApiBaseUrl } from './url.js'
 
 export const JOBTOMATIK_API_SERVICE = 'JobTomatik API'
 export const ANDROID_TERMUX_API_URL = 'http://127.0.0.1:8010'
