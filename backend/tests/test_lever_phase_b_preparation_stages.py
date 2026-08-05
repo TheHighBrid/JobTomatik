@@ -7,6 +7,7 @@ from app.models.application import (
     ManualReviewStatus,
     ManualReviewTask,
 )
+from app.models.job import Job
 from app.models.material import ApplicationMaterial
 from app.models.submission_approval import (
     SubmissionApproval,
@@ -20,6 +21,7 @@ from app.models.user import User
 
 
 REVIEW_ID = "D8-026"
+POSTING_SHA = "9" * 64
 
 
 def _candidate(auth_client):
@@ -49,6 +51,23 @@ def _records(db_session, application_id):
     return user, application
 
 
+def _reviewed_snapshot(*, approved=True, review_eligible=True):
+    return {
+        "lever_phase_b_preparation": {
+            "posting_sha256": POSTING_SHA,
+            "evidence_digest": "8" * 64,
+            "review_eligible": review_eligible,
+            "critical_errors": [],
+        },
+        "user_review": {
+            "status": "approved" if approved else "pending",
+            "reviewed_at": datetime.utcnow().isoformat() if approved else None,
+            "reviewed_by_user_id": 1 if approved else None,
+            "notes": None,
+        },
+    }
+
+
 def _add_material(
     db_session,
     user,
@@ -57,6 +76,7 @@ def _add_material(
     material_type,
     version=1,
     status="verified",
+    source_snapshot=None,
 ):
     material = ApplicationMaterial(
         user_id=user.id,
@@ -67,7 +87,7 @@ def _add_material(
         content=f"{material_type} v{version}",
         claims=[],
         warnings=[] if status == "verified" else ["Review required"],
-        source_snapshot={},
+        source_snapshot=source_snapshot or {},
         generator_version="verified-material-v1",
     )
     db_session.add(material)
@@ -107,17 +127,25 @@ def _prepare_verified_materials(db_session, user, application, tmp_path):
     user.resume_path = str(resume)
     application.cover_letter = "cover_letter v1"
     application.automation_state = ApplicationAutomationState.ready_to_apply.value
+    job = db_session.query(Job).filter(Job.id == application.job_id).one()
+    job.description = "Verified official Lever posting description."
+    job.raw_data = {
+        **(job.raw_data or {}),
+        "lever_official_posting_sha256": POSTING_SHA,
+    }
     _add_material(
         db_session,
         user,
         application,
         material_type="cover_letter",
+        source_snapshot=_reviewed_snapshot(),
     )
     _add_material(
         db_session,
         user,
         application,
         material_type="resume_summary",
+        source_snapshot=_reviewed_snapshot(),
     )
 
 
@@ -148,11 +176,13 @@ def test_materialized_candidate_reports_exact_missing_materials(
     assert candidate["preparation_next_action"] == "build_verified_materials"
     assert candidate["preparation_blockers"] == [
         "resume_required",
+        "official_posting_context_required",
         "verified_cover_letter_required",
         "application_cover_letter_required",
         "verified_resume_summary_required",
         "application_not_ready_to_apply",
     ]
+    assert candidate["official_posting_context_present"] is False
     assert candidate["cover_letter_material_status"] is None
     assert candidate["resume_summary_material_status"] is None
     assert candidate["open_review_count"] == 0
@@ -160,7 +190,7 @@ def test_materialized_candidate_reports_exact_missing_materials(
     assert db_session.query(SubmissionAttempt).count() == 0
 
 
-def test_verified_latest_materials_reach_fresh_preflight_boundary(
+def test_reviewed_latest_materials_reach_fresh_preflight_boundary(
     auth_client,
     db_session,
     tmp_path,
@@ -176,10 +206,14 @@ def test_verified_latest_materials_reach_fresh_preflight_boundary(
     assert candidate["preparation_blockers"] == []
     assert candidate["preparation_next_action"] == "open_fresh_preflight"
     assert candidate["resume_present"] is True
+    assert candidate["official_posting_context_present"] is True
+    assert candidate["official_posting_sha256"] == POSTING_SHA
     assert candidate["application_cover_letter_present"] is True
     assert candidate["application_cover_letter_matches_latest"] is True
     assert candidate["cover_letter_material_status"] == "verified"
     assert candidate["resume_summary_material_status"] == "verified"
+    assert candidate["cover_letter_review_status"] == "approved"
+    assert candidate["resume_summary_review_status"] == "approved"
     assert candidate["active_approval_reference"] is None
     assert candidate["latest_attempt_reference"] is None
 
@@ -235,6 +269,12 @@ def test_latest_needs_review_material_blocks_preflight(
     user.resume_path = str(resume)
     application.cover_letter = "cover_letter v1"
     application.automation_state = ApplicationAutomationState.ready_to_apply.value
+    job = db_session.query(Job).filter(Job.id == application.job_id).one()
+    job.description = "Verified official Lever posting description."
+    job.raw_data = {
+        **(job.raw_data or {}),
+        "lever_official_posting_sha256": POSTING_SHA,
+    }
     _add_material(
         db_session,
         user,
@@ -242,6 +282,7 @@ def test_latest_needs_review_material_blocks_preflight(
         material_type="cover_letter",
         version=1,
         status="verified",
+        source_snapshot=_reviewed_snapshot(),
     )
     _add_material(
         db_session,
@@ -250,6 +291,7 @@ def test_latest_needs_review_material_blocks_preflight(
         material_type="cover_letter",
         version=2,
         status="needs_review",
+        source_snapshot=_reviewed_snapshot(approved=False),
     )
     _add_material(
         db_session,
@@ -257,6 +299,7 @@ def test_latest_needs_review_material_blocks_preflight(
         application,
         material_type="resume_summary",
         status="verified",
+        source_snapshot=_reviewed_snapshot(),
     )
     db_session.commit()
 
