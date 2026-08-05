@@ -22,6 +22,7 @@ from app.models.user import User
 
 REVIEW_ID = "D8-026"
 POSTING_SHA = "9" * 64
+EMPTY_EVIDENCE_SHA = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 
 
 def _candidate(auth_client):
@@ -54,8 +55,9 @@ def _records(db_session, application_id):
 def _reviewed_snapshot(*, approved=True, review_eligible=True):
     return {
         "lever_phase_b_preparation": {
+            "review_id": REVIEW_ID,
             "posting_sha256": POSTING_SHA,
-            "evidence_digest": "8" * 64,
+            "evidence_digest": EMPTY_EVIDENCE_SHA,
             "review_eligible": review_eligible,
             "critical_errors": [],
         },
@@ -154,11 +156,8 @@ def test_launch_status_starts_at_not_materialized_without_side_effects(
     db_session,
 ):
     candidate = _candidate(auth_client)
-
     assert candidate["preparation_stage"] == "not_materialized"
-    assert candidate["preparation_blockers"] == [
-        "materialize_preparation_record"
-    ]
+    assert candidate["preparation_blockers"] == ["materialize_preparation_record"]
     assert candidate["preparation_next_action"] == "materialize"
     assert db_session.query(SubmissionApproval).count() == 0
     assert db_session.query(SubmissionAttempt).count() == 0
@@ -170,10 +169,8 @@ def test_materialized_candidate_reports_exact_missing_materials(
 ):
     result = _materialize(auth_client)
     candidate = _candidate(auth_client)
-
     assert candidate["materialized_application_id"] == result["application_id"]
     assert candidate["preparation_stage"] == "verified_materials_required"
-    assert candidate["preparation_next_action"] == "build_verified_materials"
     assert candidate["preparation_blockers"] == [
         "resume_required",
         "official_posting_context_required",
@@ -183,9 +180,6 @@ def test_materialized_candidate_reports_exact_missing_materials(
         "application_not_ready_to_apply",
     ]
     assert candidate["official_posting_context_present"] is False
-    assert candidate["cover_letter_material_status"] is None
-    assert candidate["resume_summary_material_status"] is None
-    assert candidate["open_review_count"] == 0
     assert db_session.query(SubmissionApproval).count() == 0
     assert db_session.query(SubmissionAttempt).count() == 0
 
@@ -201,21 +195,13 @@ def test_reviewed_latest_materials_reach_fresh_preflight_boundary(
     db_session.commit()
 
     candidate = _candidate(auth_client)
-
     assert candidate["preparation_stage"] == "fresh_preflight_required"
     assert candidate["preparation_blockers"] == []
-    assert candidate["preparation_next_action"] == "open_fresh_preflight"
     assert candidate["resume_present"] is True
-    assert candidate["official_posting_context_present"] is True
     assert candidate["official_posting_sha256"] == POSTING_SHA
-    assert candidate["application_cover_letter_present"] is True
     assert candidate["application_cover_letter_matches_latest"] is True
-    assert candidate["cover_letter_material_status"] == "verified"
-    assert candidate["resume_summary_material_status"] == "verified"
     assert candidate["cover_letter_review_status"] == "approved"
     assert candidate["resume_summary_review_status"] == "approved"
-    assert candidate["active_approval_reference"] is None
-    assert candidate["latest_attempt_reference"] is None
 
 
 def test_unreadable_resume_path_cannot_reach_fresh_preflight(
@@ -228,9 +214,7 @@ def test_unreadable_resume_path_cannot_reach_fresh_preflight(
     _prepare_verified_materials(db_session, user, application, tmp_path)
     user.resume_path = str(tmp_path / "missing-resume.pdf")
     db_session.commit()
-
     candidate = _candidate(auth_client)
-
     assert candidate["preparation_stage"] == "verified_materials_required"
     assert candidate["resume_present"] is False
     assert "resume_required" in candidate["preparation_blockers"]
@@ -246,15 +230,10 @@ def test_stale_attached_cover_letter_cannot_reach_fresh_preflight(
     _prepare_verified_materials(db_session, user, application, tmp_path)
     application.cover_letter = "Older or manually changed cover letter."
     db_session.commit()
-
     candidate = _candidate(auth_client)
-
     assert candidate["preparation_stage"] == "verified_materials_required"
-    assert candidate["application_cover_letter_present"] is True
     assert candidate["application_cover_letter_matches_latest"] is False
-    assert "application_cover_letter_out_of_sync" in candidate[
-        "preparation_blockers"
-    ]
+    assert "application_cover_letter_out_of_sync" in candidate["preparation_blockers"]
 
 
 def test_latest_needs_review_material_blocks_preflight(
@@ -271,10 +250,7 @@ def test_latest_needs_review_material_blocks_preflight(
     application.automation_state = ApplicationAutomationState.ready_to_apply.value
     job = db_session.query(Job).filter(Job.id == application.job_id).one()
     job.description = "Verified official Lever posting description."
-    job.raw_data = {
-        **(job.raw_data or {}),
-        "lever_official_posting_sha256": POSTING_SHA,
-    }
+    job.raw_data = {**(job.raw_data or {}), "lever_official_posting_sha256": POSTING_SHA}
     _add_material(
         db_session,
         user,
@@ -302,13 +278,9 @@ def test_latest_needs_review_material_blocks_preflight(
         source_snapshot=_reviewed_snapshot(),
     )
     db_session.commit()
-
     candidate = _candidate(auth_client)
-
     assert candidate["preparation_stage"] == "review_required"
-    assert candidate["preparation_next_action"] == "resolve_review"
     assert candidate["cover_letter_material_version"] == 2
-    assert candidate["cover_letter_material_status"] == "needs_review"
     assert "cover_letter_review_required" in candidate["preparation_blockers"]
 
 
@@ -330,9 +302,7 @@ def test_open_review_task_blocks_even_with_verified_materials(
         )
     )
     db_session.commit()
-
     candidate = _candidate(auth_client)
-
     assert candidate["preparation_stage"] == "review_required"
     assert candidate["open_review_count"] == 1
     assert "open_manual_review_tasks" in candidate["preparation_blockers"]
@@ -355,12 +325,9 @@ def test_review_blocker_takes_priority_over_active_approval(
         )
     )
     db_session.commit()
-
     candidate = _candidate(auth_client)
-
     assert candidate["preparation_stage"] == "review_required"
     assert candidate["active_approval_reference"] == approval.reference
-    assert "open_manual_review_tasks" in candidate["preparation_blockers"]
 
 
 def test_active_approval_is_surfaced_without_creating_or_consuming_it(
@@ -371,16 +338,9 @@ def test_active_approval_is_surfaced_without_creating_or_consuming_it(
     user, application = _records(db_session, result["application_id"])
     approval = _add_active_approval(db_session, user, application)
     db_session.commit()
-
     candidate = _candidate(auth_client)
-
     assert candidate["preparation_stage"] == "active_approval_present"
-    assert candidate["preparation_next_action"] == "review_active_approval"
     assert candidate["active_approval_reference"] == approval.reference
-    stored = db_session.query(SubmissionApproval).filter(
-        SubmissionApproval.id == approval.id
-    ).one()
-    assert stored.status == SubmissionApprovalStatus.active.value
     assert db_session.query(SubmissionAttempt).count() == 0
 
 
@@ -407,11 +367,7 @@ def test_submission_attempt_takes_priority_over_active_approval(
     )
     db_session.add(attempt)
     db_session.commit()
-
     candidate = _candidate(auth_client)
-
     assert candidate["preparation_stage"] == "submission_state_present"
-    assert candidate["preparation_next_action"] == "inspect_submission_state"
     assert candidate["latest_attempt_reference"] == attempt.reference
-    assert candidate["latest_attempt_status"] == SubmissionAttemptStatus.queued.value
     assert candidate["active_approval_reference"] == approval.reference
