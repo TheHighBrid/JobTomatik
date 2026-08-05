@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { getApiErrorMessage, isNetworkError, register } from '../api/client'
+import { getApiBaseUrl, getApiErrorMessage, isNetworkError, register } from '../api/client'
+import { getApiRoutingErrorMessage, isApiConfigurationError } from '../api/connection'
 import ApiBaseUrlField from '../components/ApiBaseUrlField'
 import { BrandMark } from '../components/BrandLogo'
 import { useAuthStore } from '../store'
@@ -23,9 +24,15 @@ export default function Register() {
       navigate('/')
     },
     onError: (err) => {
-      const message = getApiErrorMessage(err, 'Registration failed')
+      const apiBaseUrl = getApiBaseUrl()
+      const message = (
+        getApiRoutingErrorMessage(err, apiBaseUrl) ||
+        getApiErrorMessage(err, 'Registration failed')
+      )
       setError(message)
-      if (isNetworkError(err)) setShowApiConnection(true)
+      if (isNetworkError(err) || isApiConfigurationError(err, apiBaseUrl)) {
+        setShowApiConnection(true)
+      }
       toast.error(message)
     },
   })
