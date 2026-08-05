@@ -21,6 +21,9 @@ from app.services.greenhouse_pilot_ingestion import (
     read_greenhouse_pilot_readiness,
 )
 from app.services.lever_phase_b_launch import LeverPhaseBLaunchError
+from app.services.lever_phase_b_preparation import (
+    enrich_lever_phase_b_preparation_status,
+)
 from app.services.lever_phase_b_runtime import (
     build_runtime_lever_phase_b_launch_status,
     materialize_runtime_lever_phase_b_candidate,
@@ -122,7 +125,12 @@ def lever_phase_b_launch(
     db: Session = Depends(get_db),
 ):
     try:
-        return build_runtime_lever_phase_b_launch_status(db, current_user)
+        retained = build_runtime_lever_phase_b_launch_status(db, current_user)
+        return enrich_lever_phase_b_preparation_status(
+            db,
+            current_user,
+            retained,
+        )
     except LeverPhaseBLaunchError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

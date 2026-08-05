@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -60,6 +60,21 @@ class LeverPhaseBLaunchCandidate(BaseModel):
     job_id: Optional[int] = None
     materialized_application_id: Optional[int] = None
     automation_state: Optional[str] = None
+    preparation_stage: str = "not_materialized"
+    preparation_blockers: List[str] = Field(default_factory=list)
+    preparation_next_action: str = "materialize"
+    resume_present: bool = False
+    application_cover_letter_present: bool = False
+    application_cover_letter_matches_latest: bool = False
+    cover_letter_material_status: Optional[str] = None
+    cover_letter_material_version: Optional[int] = None
+    resume_summary_material_status: Optional[str] = None
+    resume_summary_material_version: Optional[int] = None
+    open_review_count: int = 0
+    active_approval_reference: Optional[str] = None
+    active_approval_expires_at: Optional[datetime] = None
+    latest_attempt_reference: Optional[str] = None
+    latest_attempt_status: Optional[str] = None
     submission_queued: bool = False
     approval_issued: bool = False
     runtime_flags_changed: bool = False
@@ -71,6 +86,7 @@ class LeverPhaseBLaunchOut(BaseModel):
     candidate_count: int
     materialized_count: int
     preparation_only: bool = True
+    preparation_stage_counts: Dict[str, int] = Field(default_factory=dict)
     candidates: List[LeverPhaseBLaunchCandidate] = Field(default_factory=list)
 
 
