@@ -8,6 +8,7 @@ queues a task, opens a browser, or contacts Lever.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
 from sqlalchemy.orm import Session
@@ -128,6 +129,7 @@ def _base_stage(candidate: Mapping[str, Any]) -> Dict[str, Any]:
         "preparation_next_action": "materialize",
         "resume_present": False,
         "application_cover_letter_present": False,
+        "application_cover_letter_matches_latest": False,
         "cover_letter_material_status": None,
         "cover_letter_material_version": None,
         "resume_summary_material_status": None,
@@ -185,14 +187,21 @@ def enrich_lever_phase_b_preparation_status(
             getattr(application.status, "value", application.status)
             or ApplicationStatus.pending.value
         )
+        application_cover_letter = str(application.cover_letter or "").strip()
+        resume_path = str(user.resume_path or "").strip()
+        cover_matches_latest = bool(
+            cover_letter
+            and cover_letter.status == "verified"
+            and application_cover_letter
+            and application_cover_letter == str(cover_letter.content or "").strip()
+        )
 
         candidate.update(
             {
                 "automation_state": state,
-                "resume_present": bool(str(user.resume_path or "").strip()),
-                "application_cover_letter_present": bool(
-                    str(application.cover_letter or "").strip()
-                ),
+                "resume_present": bool(resume_path and Path(resume_path).is_file()),
+                "application_cover_letter_present": bool(application_cover_letter),
+                "application_cover_letter_matches_latest": cover_matches_latest,
                 "cover_letter_material_status": cover_snapshot["status"],
                 "cover_letter_material_version": cover_snapshot["version"],
                 "resume_summary_material_status": resume_snapshot["status"],
@@ -267,6 +276,12 @@ def enrich_lever_phase_b_preparation_status(
             material_blockers.append("verified_cover_letter_required")
         if not candidate["application_cover_letter_present"]:
             material_blockers.append("application_cover_letter_required")
+        elif (
+            cover_letter
+            and cover_letter.status == "verified"
+            and not candidate["application_cover_letter_matches_latest"]
+        ):
+            material_blockers.append("application_cover_letter_out_of_sync")
         if resume_summary is None or resume_summary.status != "verified":
             material_blockers.append("verified_resume_summary_required")
         if state != ApplicationAutomationState.ready_to_apply.value:
