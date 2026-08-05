@@ -22,7 +22,6 @@ from app.models.application import (
     Application,
     ApplicationAutomationState,
     ApplicationEvent,
-    ManualReviewReason,
     ManualReviewStatus,
     ManualReviewTask,
 )
@@ -30,7 +29,6 @@ from app.models.job import Job
 from app.models.material import ApplicationMaterial, EvidenceUnit
 from app.models.user import User
 from app.services.application_state import (
-    create_manual_review_task,
     normalize_state,
     transition_application_state,
 )
@@ -43,7 +41,6 @@ from app.services.evidence_ledger import (
     eligible_evidence_query,
     rebuild_user_evidence,
 )
-from app.services.lever_phase_b_launch import LeverPhaseBLaunchError
 from app.services.lever_phase_b_runtime import (
     build_runtime_lever_phase_b_launch_status,
     canonical_lever_application_url,
@@ -57,6 +54,7 @@ from app.services.material_generation import (
 
 
 REVIEW_STAGE = "lever_phase_b_material_review"
+REVIEW_REASON = "lever_phase_b_material_review_required"
 SUPPORTED_LOCAL_STATES = {
     ApplicationAutomationState.preparing.value,
     ApplicationAutomationState.ready_to_apply.value,
@@ -252,15 +250,6 @@ def _application_records(
     return application, job
 
 
-def _active_resume_evidence(db: Session, user_id: int) -> list[EvidenceUnit]:
-    return (
-        eligible_evidence_query(db, user_id)
-        .filter(EvidenceUnit.source_type == "resume_pdf")
-        .order_by(EvidenceUnit.id.asc())
-        .all()
-    )
-
-
 def _latest_material(
     db: Session,
     application_id: int,
@@ -346,6 +335,120 @@ def _evidence_digest(units: Iterable[EvidenceUnit]) -> str:
     ).hexdigest()
 
 
+def _upsert_material_review_task(
+    db: Session,
+    application: Application,
+    *,
+    summary: str,
+    details: Mapping[str, Any],
+    blocking_url: str,
+) -> ManualReviewTask:
+    tasks = (
+        db.query(ManualReviewTask)
+        .filter(
+            ManualReviewTask.application_id == application.id,
+            ManualReviewTask.reason_code == REVIEW_REASON,
+            ManualReviewTask.status.in_(
+                [
+                    ManualReviewStatus.open.value,
+                    ManualReviewStatus.in_progress.value,
+                ]
+            ),
+        )
+        .order_by(ManualReviewTask.id.asc())
+        .all()
+    )
+    task = next(
+        (
+            item
+            for item in tasks
+            if (item.details or {}).get("stage") == REVIEW_STAGE
+        ),
+        None,
+    )
+    if task is None:
+        task = ManualReviewTask(
+            application_id=application.id,
+            reason_code=REVIEW_REASON,
+            status=ManualReviewStatus.open.value,
+            summary=summary,
+            details=dict(details),
+            blocking_url=blocking_url,
+        )
+        db.add(task)
+    else:
+        task.status = ManualReviewStatus.open.value
+        task.summary = summary
+        task.details = dict(details)
+        task.blocking_url = blocking_url
+        task.resolved_at = None
+        task.resolution_notes = None
+
+    current_state = normalize_state(application.automation_state)
+    if current_state != ApplicationAutomationState.needs_review.value:
+        transition_application_state(
+            db,
+            application,
+            ApplicationAutomationState.needs_review,
+            "lever_phase_b_material_review_required",
+            {
+                "stage": REVIEW_STAGE,
+                "review_id": details.get("review_id"),
+                "review_eligible": bool(details.get("review_eligible")),
+                "critical_error_count": len(details.get("critical_errors") or []),
+                "approval_issued": False,
+                "submission_queued": False,
+            },
+        )
+    db.flush()
+    return task
+
+
+def _resolve_material_review_tasks(
+    db: Session,
+    application_id: int,
+    *,
+    notes: Optional[str],
+) -> None:
+    tasks = (
+        db.query(ManualReviewTask)
+        .filter(
+            ManualReviewTask.application_id == application_id,
+            ManualReviewTask.reason_code == REVIEW_REASON,
+            ManualReviewTask.status.in_(
+                [
+                    ManualReviewStatus.open.value,
+                    ManualReviewStatus.in_progress.value,
+                ]
+            ),
+        )
+        .all()
+    )
+    for task in tasks:
+        if (task.details or {}).get("stage") != REVIEW_STAGE:
+            continue
+        task.status = ManualReviewStatus.resolved.value
+        task.resolved_at = datetime.utcnow()
+        task.resolution_notes = notes or "Latest materials explicitly reviewed."
+    db.flush()
+
+
+def _open_review_count(db: Session, application_id: int) -> int:
+    return (
+        db.query(ManualReviewTask.id)
+        .filter(
+            ManualReviewTask.application_id == application_id,
+            ManualReviewTask.status.in_(
+                [
+                    ManualReviewStatus.open.value,
+                    ManualReviewStatus.in_progress.value,
+                ]
+            ),
+        )
+        .count()
+    )
+
+
 def prepare_retained_lever_materials(
     db: Session,
     user: User,
@@ -354,10 +457,9 @@ def prepare_retained_lever_materials(
 ) -> Dict[str, Any]:
     resume_path = _required_resume_path(user)
     candidate = _retained_candidate(review_id)
-    posting_payload = _fetch_official_posting(candidate)
     posting_snapshot, posting_sha256 = _posting_snapshot(
         candidate,
-        posting_payload,
+        _fetch_official_posting(candidate),
     )
 
     materialized = materialize_runtime_lever_phase_b_candidate(
@@ -372,30 +474,22 @@ def prepare_retained_lever_materials(
         int(materialized["job_id"]),
     )
 
-    raw = dict(job.raw_data or {})
-    raw.update(
-        {
-            "lever_official_posting": posting_snapshot,
-            "lever_official_posting_sha256": posting_sha256,
-            "lever_official_posting_refreshed_at": _utcnow(),
-            "material_preparation_source": REVIEW_STAGE,
-        }
-    )
-    job.raw_data = raw
+    refreshed_at = _utcnow()
+    job.raw_data = {
+        **(job.raw_data or {}),
+        "lever_official_posting": posting_snapshot,
+        "lever_official_posting_sha256": posting_sha256,
+        "lever_official_posting_refreshed_at": refreshed_at,
+        "material_preparation_source": REVIEW_STAGE,
+    }
     job.description = posting_snapshot["description_plain"]
     job.requirements = posting_snapshot.get("requirements_plain")
-
-    target_metadata = dict(application.application_target_metadata or {})
-    target_metadata.update(
-        {
-            "lever_official_posting_sha256": posting_sha256,
-            "lever_official_posting_refreshed_at": raw[
-                "lever_official_posting_refreshed_at"
-            ],
-            "requires_fresh_runtime_preflight": True,
-        }
-    )
-    application.application_target_metadata = target_metadata
+    application.application_target_metadata = {
+        **(application.application_target_metadata or {}),
+        "lever_official_posting_sha256": posting_sha256,
+        "lever_official_posting_refreshed_at": refreshed_at,
+        "requires_fresh_runtime_preflight": True,
+    }
     application.resume_path = str(resume_path)
 
     evidence_result = rebuild_user_evidence(db, user)
@@ -450,11 +544,10 @@ def prepare_retained_lever_materials(
         )
 
     unique_critical = sorted(set(all_critical_errors))
-    create_manual_review_task(
+    _upsert_material_review_task(
         db,
         application,
-        ManualReviewReason.validation_error,
-        (
+        summary=(
             "Generated Lever materials have source-validation blockers."
             if unique_critical
             else "Review both latest source-backed Lever materials before preflight."
@@ -472,10 +565,8 @@ def prepare_retained_lever_materials(
             "critical_errors": unique_critical,
         },
         blocking_url=candidate["application_url"],
-        target_state=ApplicationAutomationState.needs_review,
     )
 
-    db.flush()
     return {
         "review_id": candidate["review_id"],
         "launch_application_id": candidate["application_id"],
@@ -509,60 +600,10 @@ def prepare_retained_lever_materials(
     }
 
 
-def _material_review_snapshot(material: ApplicationMaterial) -> Dict[str, Any]:
-    snapshot = material.source_snapshot or {}
-    review = snapshot.get("user_review")
-    return dict(review) if isinstance(review, Mapping) else {}
-
-
 def _preparation_snapshot(material: ApplicationMaterial) -> Dict[str, Any]:
     snapshot = material.source_snapshot or {}
     preparation = snapshot.get("lever_phase_b_preparation")
     return dict(preparation) if isinstance(preparation, Mapping) else {}
-
-
-def _resolve_material_review_tasks(
-    db: Session,
-    application_id: int,
-    *,
-    notes: Optional[str],
-) -> None:
-    tasks = (
-        db.query(ManualReviewTask)
-        .filter(
-            ManualReviewTask.application_id == application_id,
-            ManualReviewTask.status.in_(
-                [
-                    ManualReviewStatus.open.value,
-                    ManualReviewStatus.in_progress.value,
-                ]
-            ),
-        )
-        .all()
-    )
-    for task in tasks:
-        details = task.details or {}
-        if details.get("stage") != REVIEW_STAGE:
-            continue
-        task.status = ManualReviewStatus.resolved.value
-        task.resolved_at = datetime.utcnow()
-        task.resolution_notes = notes or "Latest materials explicitly reviewed."
-
-
-def _open_review_count(db: Session, application_id: int) -> int:
-    return (
-        db.query(ManualReviewTask.id)
-        .filter(
-            ManualReviewTask.application_id == application_id,
-            ManualReviewTask.status.in_(
-                [
-                    ManualReviewStatus.open.value,
-                    ManualReviewStatus.in_progress.value,
-                ]
-            ),
-        )
-        .count()
-    )
 
 
 def review_retained_lever_materials(
@@ -636,25 +677,25 @@ def review_retained_lever_materials(
     reviewed_at = _utcnow()
     for material in materials.values():
         assert material is not None
-        snapshot = dict(material.source_snapshot or {})
-        snapshot["user_review"] = {
-            "status": "approved" if approved else "rejected",
-            "reviewed_at": reviewed_at,
-            "reviewed_by_user_id": user.id,
-            "notes": str(notes or "").strip() or None,
-            "accepted_warning_count": (
-                len(material.warnings or []) if approved else 0
-            ),
+        material.source_snapshot = {
+            **(material.source_snapshot or {}),
+            "user_review": {
+                "status": "approved" if approved else "rejected",
+                "reviewed_at": reviewed_at,
+                "reviewed_by_user_id": user.id,
+                "notes": str(notes or "").strip() or None,
+                "accepted_warning_count": (
+                    len(material.warnings or []) if approved else 0
+                ),
+            },
         }
-        material.source_snapshot = snapshot
         material.status = "verified" if approved else "needs_review"
 
     if not approved:
-        create_manual_review_task(
+        _upsert_material_review_task(
             db,
             application,
-            ManualReviewReason.validation_error,
-            "The owner rejected the latest retained Lever material bundle.",
+            summary="The owner rejected the latest retained Lever material bundle.",
             details={
                 "stage": REVIEW_STAGE,
                 "review_id": candidate["review_id"],
@@ -664,9 +705,7 @@ def review_retained_lever_materials(
                 "owner_rejected": True,
             },
             blocking_url=candidate["application_url"],
-            target_state=ApplicationAutomationState.needs_review,
         )
-        db.flush()
         return {
             "review_id": candidate["review_id"],
             "application_id": application.id,
