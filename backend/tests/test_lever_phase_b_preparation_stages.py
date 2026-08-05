@@ -101,6 +101,26 @@ def _add_active_approval(db_session, user, application):
     return approval
 
 
+def _prepare_verified_materials(db_session, user, application, tmp_path):
+    resume = tmp_path / "owner-resume.pdf"
+    resume.write_bytes(b"%PDF-1.4\nOwner resume\n")
+    user.resume_path = str(resume)
+    application.cover_letter = "cover_letter v1"
+    application.automation_state = ApplicationAutomationState.ready_to_apply.value
+    _add_material(
+        db_session,
+        user,
+        application,
+        material_type="cover_letter",
+    )
+    _add_material(
+        db_session,
+        user,
+        application,
+        material_type="resume_summary",
+    )
+
+
 def test_launch_status_starts_at_not_materialized_without_side_effects(
     auth_client,
     db_session,
@@ -147,23 +167,7 @@ def test_verified_latest_materials_reach_fresh_preflight_boundary(
 ):
     result = _materialize(auth_client)
     user, application = _records(db_session, result["application_id"])
-    resume = tmp_path / "owner-resume.pdf"
-    resume.write_bytes(b"%PDF-1.4\nOwner resume\n")
-    user.resume_path = str(resume)
-    application.cover_letter = "Source-backed verified cover letter."
-    application.automation_state = ApplicationAutomationState.ready_to_apply.value
-    _add_material(
-        db_session,
-        user,
-        application,
-        material_type="cover_letter",
-    )
-    _add_material(
-        db_session,
-        user,
-        application,
-        material_type="resume_summary",
-    )
+    _prepare_verified_materials(db_session, user, application, tmp_path)
     db_session.commit()
 
     candidate = _candidate(auth_client)
@@ -173,10 +177,50 @@ def test_verified_latest_materials_reach_fresh_preflight_boundary(
     assert candidate["preparation_next_action"] == "open_fresh_preflight"
     assert candidate["resume_present"] is True
     assert candidate["application_cover_letter_present"] is True
+    assert candidate["application_cover_letter_matches_latest"] is True
     assert candidate["cover_letter_material_status"] == "verified"
     assert candidate["resume_summary_material_status"] == "verified"
     assert candidate["active_approval_reference"] is None
     assert candidate["latest_attempt_reference"] is None
+
+
+def test_unreadable_resume_path_cannot_reach_fresh_preflight(
+    auth_client,
+    db_session,
+    tmp_path,
+):
+    result = _materialize(auth_client)
+    user, application = _records(db_session, result["application_id"])
+    _prepare_verified_materials(db_session, user, application, tmp_path)
+    user.resume_path = str(tmp_path / "missing-resume.pdf")
+    db_session.commit()
+
+    candidate = _candidate(auth_client)
+
+    assert candidate["preparation_stage"] == "verified_materials_required"
+    assert candidate["resume_present"] is False
+    assert "resume_required" in candidate["preparation_blockers"]
+
+
+def test_stale_attached_cover_letter_cannot_reach_fresh_preflight(
+    auth_client,
+    db_session,
+    tmp_path,
+):
+    result = _materialize(auth_client)
+    user, application = _records(db_session, result["application_id"])
+    _prepare_verified_materials(db_session, user, application, tmp_path)
+    application.cover_letter = "Older or manually changed cover letter."
+    db_session.commit()
+
+    candidate = _candidate(auth_client)
+
+    assert candidate["preparation_stage"] == "verified_materials_required"
+    assert candidate["application_cover_letter_present"] is True
+    assert candidate["application_cover_letter_matches_latest"] is False
+    assert "application_cover_letter_out_of_sync" in candidate[
+        "preparation_blockers"
+    ]
 
 
 def test_latest_needs_review_material_blocks_preflight(
@@ -189,7 +233,7 @@ def test_latest_needs_review_material_blocks_preflight(
     resume = tmp_path / "owner-resume.pdf"
     resume.write_bytes(b"%PDF-1.4\nOwner resume\n")
     user.resume_path = str(resume)
-    application.cover_letter = "Source-backed verified cover letter."
+    application.cover_letter = "cover_letter v1"
     application.automation_state = ApplicationAutomationState.ready_to_apply.value
     _add_material(
         db_session,
@@ -232,13 +276,7 @@ def test_open_review_task_blocks_even_with_verified_materials(
 ):
     result = _materialize(auth_client)
     user, application = _records(db_session, result["application_id"])
-    resume = tmp_path / "owner-resume.pdf"
-    resume.write_bytes(b"%PDF-1.4\nOwner resume\n")
-    user.resume_path = str(resume)
-    application.cover_letter = "Source-backed verified cover letter."
-    application.automation_state = ApplicationAutomationState.ready_to_apply.value
-    _add_material(db_session, user, application, material_type="cover_letter")
-    _add_material(db_session, user, application, material_type="resume_summary")
+    _prepare_verified_materials(db_session, user, application, tmp_path)
     db_session.add(
         ManualReviewTask(
             application_id=application.id,
@@ -254,6 +292,31 @@ def test_open_review_task_blocks_even_with_verified_materials(
 
     assert candidate["preparation_stage"] == "review_required"
     assert candidate["open_review_count"] == 1
+    assert "open_manual_review_tasks" in candidate["preparation_blockers"]
+
+
+def test_review_blocker_takes_priority_over_active_approval(
+    auth_client,
+    db_session,
+):
+    result = _materialize(auth_client)
+    user, application = _records(db_session, result["application_id"])
+    approval = _add_active_approval(db_session, user, application)
+    db_session.add(
+        ManualReviewTask(
+            application_id=application.id,
+            reason_code=ManualReviewReason.validation_error.value,
+            status=ManualReviewStatus.open.value,
+            summary="Review required after approval was issued.",
+            details={"stage": "verified_material_generation"},
+        )
+    )
+    db_session.commit()
+
+    candidate = _candidate(auth_client)
+
+    assert candidate["preparation_stage"] == "review_required"
+    assert candidate["active_approval_reference"] == approval.reference
     assert "open_manual_review_tasks" in candidate["preparation_blockers"]
 
 
