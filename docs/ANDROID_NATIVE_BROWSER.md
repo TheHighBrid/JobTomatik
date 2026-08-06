@@ -1,46 +1,58 @@
 # Android-native application browser
 
-JobTomatik can run fully on an Android device without launching the Playwright Chromium binary inside Ubuntu PRoot.
+JobTomatik can run fully on one Android device without launching the Playwright Chromium binary inside Ubuntu PRoot.
 
-The browser runs natively in Termux/X11. The backend and Celery worker attach to it over Chrome DevTools Protocol (CDP) through `127.0.0.1:9222`.
+The browser runs natively in Termux/X11. FastAPI and Celery run in Ubuntu PRoot and attach to that browser over Chrome DevTools Protocol (CDP) through `127.0.0.1:9222`.
 
-## 1. Start Chromium from native Termux
+## Components
 
-Run this outside Ubuntu PRoot:
+- `backend/scripts/start_android_browser_cdp.sh` runs in native Termux. It keeps the authenticated Chromium profile alive, holds a Termux wake lock when available, and automatically restarts Chromium if the browser process exits.
+- `backend/scripts/prepare_android_runtime.py` runs in Ubuntu PRoot. It backs up an existing SQLite database when schema repair is needed, creates missing runtime tables, verifies critical discovery tables, and reports browser reachability.
+- `backend/scripts/manage_android_stack.sh` runs in Ubuntu PRoot. It repairs the schema, starts Redis when necessary, and supervises FastAPI, Celery, and Vite through PID files and logs.
 
-```bash
-mkdir -p "$HOME/.jobtomatik-chromium"
-export DISPLAY=:0
+## Native Termux browser supervisor
 
-chromium-browser \
-  --no-sandbox \
-  --disable-dev-shm-usage \
-  --disable-gpu \
-  --disable-features=Vulkan,WebGPU \
-  --ozone-platform=x11 \
-  --no-first-run \
-  --no-default-browser-check \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/.jobtomatik-chromium" \
-  "https://www.linkedin.com/login"
-```
-
-Keep Chromium open. Log into LinkedIn in this persistent profile.
-
-Verify the endpoint from native Termux:
+Install the repository launcher into native Termux once:
 
 ```bash
-curl -sS http://127.0.0.1:9222/json/version
+mkdir -p /data/data/com.termux/files/home/.local/bin
+cp /root/JobTomatik/backend/scripts/start_android_browser_cdp.sh \
+  /data/data/com.termux/files/home/.local/bin/jobtomatik-browser
+chmod +x /data/data/com.termux/files/home/.local/bin/jobtomatik-browser
 ```
 
-The response must contain `webSocketDebuggerUrl`.
+The copy step is normally executed while inside Ubuntu PRoot because the repository lives there. After installation, run the launcher from native Termux:
 
-## 2. Configure the Ubuntu PRoot backend
+```bash
+$HOME/.local/bin/jobtomatik-browser start
+```
 
-Inside `backend/.env` set:
+Useful commands:
+
+```bash
+$HOME/.local/bin/jobtomatik-browser status
+$HOME/.local/bin/jobtomatik-browser restart
+$HOME/.local/bin/jobtomatik-browser stop
+```
+
+The successful start marker is:
+
+```text
+ANDROID_BROWSER_CDP_CONNECTED
+```
+
+The persistent authenticated profile remains at:
+
+```text
+$HOME/.jobtomatik-chromium
+```
+
+## Ubuntu PRoot configuration
+
+Inside `backend/.env`:
 
 ```env
+DATABASE_URL=sqlite:///./jobtomatik.db
 APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9222
 APPLICATION_BROWSER_HEADLESS=false
 APPLICATION_TARGET_HUMAN_WAIT_SECONDS=600
@@ -54,26 +66,44 @@ When `APPLICATION_BROWSER_CDP_ENDPOINT` is set, JobTomatik:
 - does not terminate the native browser after a task
 - preserves CDP-backed manual handoffs
 
-Verify Ubuntu PRoot can reach the browser:
+## PRoot stack supervisor
+
+From Ubuntu PRoot:
 
 ```bash
-curl -sS http://127.0.0.1:9222/json/version
+cd /root/JobTomatik
+bash backend/scripts/manage_android_stack.sh restart
 ```
 
-## 3. Start Celery with the applications queue
+Successful startup ends with:
+
+```text
+JOBTOMATIK_RUNTIME_SCHEMA_READY
+JOBTOMATIK_ANDROID_STACK_READY
+```
+
+Status and shutdown commands:
 
 ```bash
-cd /root/JobTomatik/backend
-source .venv/bin/activate
-
-celery -A app.celery_app worker \
-  --loglevel=info \
-  --pool=solo \
-  -Q applications,celery,followup,scraping
+bash backend/scripts/manage_android_stack.sh status
+bash backend/scripts/manage_android_stack.sh stop
 ```
 
-## 4. Safety and ownership
+Runtime logs are stored under:
 
-The native Chromium process belongs to the operator, not JobTomatik. Closing or restarting Celery does not close the browser. JobTomatik only disconnects its Playwright controller when a task finishes.
+```text
+backend/.runtime/logs/
+```
 
-Do not expose port `9222` to the public network. Keep the remote-debugging address bound to `127.0.0.1`.
+## Failure behavior
+
+- Celery creates newly introduced SQLAlchemy tables before it accepts tasks, even when the API was not restarted first.
+- Job discovery releases the search controls after `FAILURE`, `REVOKED`, or a bounded timeout. A Celery `RETRY` state is shown as an automatic retry rather than a frozen search.
+- The browser supervisor restarts native Chromium after an unexpected exit. JobTomatik waits briefly for the CDP endpoint to return.
+- SQLite is backed up before missing critical tables are created by the Android runtime preflight.
+
+## Safety
+
+The native Chromium process belongs to the operator, not JobTomatik. JobTomatik only disconnects its Playwright controller when a task finishes.
+
+Do not expose port `9222` to the public network. The remote-debugging address remains bound to `127.0.0.1`.
