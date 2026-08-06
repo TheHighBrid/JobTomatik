@@ -34,10 +34,17 @@ def is_listing_source(url: str) -> bool:
     return False
 
 
-def is_valid_application_target(source_url: str, target_url: str) -> bool:
+def is_valid_application_target(
+    source_url: str,
+    target_url: str,
+    *,
+    application_form_detected: bool = False,
+) -> bool:
     parsed = urlparse(target_url or "")
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return False
+    if application_form_detected:
+        return True
     if is_listing_source(target_url):
         return False
     source_host = (urlparse(source_url or "").hostname or "").lower()
@@ -65,6 +72,11 @@ def _event(
     ))
 
 
+def _stored_form_evidence(app: Application) -> bool:
+    metadata = dict(app.application_target_metadata or {})
+    return bool(metadata.get("application_form_detected"))
+
+
 def initialize_application_target(db, app: Application, job: Job) -> Optional[str]:
     source_url = (app.source_listing_url or job.url or "").strip()
     if source_url and not app.source_listing_url:
@@ -73,6 +85,7 @@ def initialize_application_target(db, app: Application, job: Job) -> Optional[st
     if app.application_target_url and is_valid_application_target(
         source_url,
         app.application_target_url,
+        application_form_detected=_stored_form_evidence(app),
     ):
         app.application_target_status = ApplicationTargetStatus.resolved.value
         return app.application_target_url
@@ -124,8 +137,13 @@ def record_application_target(
     method: str,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> str:
+    target_metadata = dict(metadata or {})
     source_url = app.source_listing_url or ""
-    if not is_valid_application_target(source_url, target_url):
+    if not is_valid_application_target(
+        source_url,
+        target_url,
+        application_form_detected=bool(target_metadata.get("application_form_detected")),
+    ):
         raise ValueError("Resolved application target is not a valid employer or ATS URL.")
     previous = app.application_target_status or ApplicationTargetStatus.unresolved.value
     app.application_target_url = target_url
@@ -133,7 +151,7 @@ def record_application_target(
     app.application_target_resolved_at = datetime.utcnow()
     app.application_target_metadata = {
         **dict(app.application_target_metadata or {}),
-        **dict(metadata or {}),
+        **target_metadata,
         "resolution_method": method,
     }
     _event(
@@ -146,6 +164,7 @@ def record_application_target(
             "source_listing_url": source_url,
             "application_target_url": target_url,
             "resolution_method": method,
+            "application_form_detected": bool(target_metadata.get("application_form_detected")),
         },
     )
     return target_url
@@ -200,7 +219,11 @@ def record_target_failure(
 def target_url_for_application(app: Application, job: Job) -> Optional[str]:
     source_url = app.source_listing_url or job.url or ""
     target_url = app.application_target_url or ""
-    if is_valid_application_target(source_url, target_url):
+    if is_valid_application_target(
+        source_url,
+        target_url,
+        application_form_detected=_stored_form_evidence(app),
+    ):
         return target_url
     if source_url and not is_listing_source(source_url):
         return source_url
