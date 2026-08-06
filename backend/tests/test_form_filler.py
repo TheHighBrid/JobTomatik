@@ -18,6 +18,17 @@ class FakeAnchor:
         return self.text
 
 
+class FakeLocator:
+    def __init__(self, anchors):
+        self.anchors = anchors
+
+    async def count(self):
+        return len(self.anchors)
+
+    def nth(self, index):
+        return self.anchors[index]
+
+
 class FakeControl:
     def __init__(self, on_click=None):
         self.clicked = False
@@ -57,6 +68,9 @@ class FakePage:
         if "jobs-apply-button" in selector or "Show how to apply" in selector:
             return self.control
         return None
+
+    def locator(self, selector):
+        return FakeLocator(self.anchors if selector == "a[href]" else [])
 
     async def wait_for_load_state(self, state, timeout=None):
         return None
