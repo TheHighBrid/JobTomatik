@@ -7,21 +7,20 @@ The browser runs natively in Termux/X11. FastAPI and Celery run in Ubuntu PRoot 
 ## Components
 
 - `backend/scripts/start_android_browser_cdp.sh` runs in native Termux. It keeps the authenticated Chromium profile alive, holds a Termux wake lock when available, and automatically restarts Chromium if the browser process exits.
+- `backend/scripts/install_android_native_browser_launcher.sh` installs that supervisor into native Termux from the PRoot repository.
 - `backend/scripts/prepare_android_runtime.py` runs in Ubuntu PRoot. It backs up an existing SQLite database when schema repair is needed, creates missing runtime tables, verifies critical discovery tables, and reports browser reachability.
 - `backend/scripts/manage_android_stack.sh` runs in Ubuntu PRoot. It repairs the schema, starts Redis when necessary, and supervises FastAPI, Celery, and Vite through PID files and logs.
 
 ## Native Termux browser supervisor
 
-Install the repository launcher into native Termux once:
+Install the repository launcher into native Termux once, from Ubuntu PRoot:
 
 ```bash
-mkdir -p /data/data/com.termux/files/home/.local/bin
-cp /root/JobTomatik/backend/scripts/start_android_browser_cdp.sh \
-  /data/data/com.termux/files/home/.local/bin/jobtomatik-browser
-chmod +x /data/data/com.termux/files/home/.local/bin/jobtomatik-browser
+cd /root/JobTomatik
+bash backend/scripts/install_android_native_browser_launcher.sh
 ```
 
-The copy step is normally executed while inside Ubuntu PRoot because the repository lives there. After installation, run the launcher from native Termux:
+After installation, run the launcher from native Termux:
 
 ```bash
 $HOME/.local/bin/jobtomatik-browser start
