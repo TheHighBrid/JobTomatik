@@ -57,3 +57,34 @@ def test_termux_wrapper_does_not_assume_a_proot_storage_layout():
     assert "containers/" not in wrapper
     assert "install_android_native_browser_launcher.sh" in wrapper
     assert "proot-distro login" in wrapper
+
+
+def test_android_stack_manager_never_kills_untracked_terminal_processes():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "pkill" not in manager
+    assert "stop_pid_file" in manager
+    assert "ADOPTED_EXISTING_READY_PROCESS" in manager
+
+
+def test_android_worker_is_dedicated_and_consumes_all_runtime_queues():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "jobtomatik-android@%h" in manager
+    assert "--pool=solo" in manager
+    assert "--concurrency=1" in manager
+    assert "-Q applications,celery,followup,scraping" in manager
+
+
+def test_restart_preserves_a_healthy_authenticated_browser():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    restart_case = wrapper.split("restart)", 1)[1].split(";;", 1)[0]
+
+    assert '"$BROWSER_COMMAND" start' in restart_case
+    assert '"$BROWSER_COMMAND" restart' not in restart_case
