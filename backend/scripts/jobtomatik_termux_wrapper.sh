@@ -12,7 +12,11 @@ run_stack() {
 }
 
 case "$ACTION" in
-  start|restart)
+  start)
+    "$BROWSER_COMMAND" start
+    run_stack start
+    ;;
+  restart)
     "$BROWSER_COMMAND" restart
     run_stack restart
     ;;
