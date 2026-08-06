@@ -1,7 +1,9 @@
+import os
 from pathlib import Path
 
 from scripts.repair_android_database_url import (
     DEFAULT_ANDROID_DATABASE_URL,
+    MAX_ENV_BACKUPS,
     read_env_value,
     repair_android_database_url,
 )
@@ -95,3 +97,28 @@ def test_remote_postgres_is_never_rewritten_by_android_repair(tmp_path):
     assert selected == configured
     assert backup is None
     assert changed is False
+
+
+def test_android_env_backup_retention_is_bounded(tmp_path):
+    env_file = tmp_path / ".env"
+    runtime_dir = tmp_path / ".runtime"
+    backup_dir = runtime_dir / "env-backups"
+    backup_dir.mkdir(parents=True)
+
+    for index in range(MAX_ENV_BACKUPS + 2):
+        backup = backup_dir / f"backend.env.before-local-postgres-fallback-20260806T00000{index}Z"
+        backup.write_text(str(index), encoding="utf-8")
+        os.utime(backup, (100 + index, 100 + index))
+
+    env_file.write_text(
+        "DATABASE_URL=postgresql://jobtomatik:secret@localhost:5432/jobtomatik\n",
+        encoding="utf-8",
+    )
+    repair_android_database_url(
+        env_file,
+        runtime_dir,
+        connector=_refuse_connection,
+    )
+
+    backups = list(backup_dir.glob("backend.env.before-local-postgres-fallback-*"))
+    assert len(backups) == MAX_ENV_BACKUPS
