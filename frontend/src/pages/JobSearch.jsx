@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Building2,
   ShieldCheck,
+  AlertCircle,
 } from 'lucide-react'
 
 const SOURCES = [
@@ -22,6 +23,7 @@ const SOURCES = [
   { value: 'ashby', label: 'Ashby' },
 ]
 const ATS_SOURCES = ['greenhouse', 'lever', 'ashby']
+const TERMINAL_TASK_STATES = new Set(['SUCCESS', 'FAILURE', 'REVOKED'])
 const JOB_TYPES = [
   { value: 'full_time', label: 'Full Time' },
   { value: 'part_time', label: 'Part Time' },
@@ -45,6 +47,14 @@ function parseTargets(provider, value) {
     })
 }
 
+function discoveryStatusMessage(status) {
+  if (status === 'PENDING') return 'Waiting for the discovery worker.'
+  if (status === 'RECEIVED') return 'Discovery worker received the search.'
+  if (status === 'STARTED') return 'Searching and evaluating matching roles.'
+  if (status === 'RETRY') return 'A source failed temporarily. JobTomatik is retrying automatically.'
+  return `Discovery task status: ${status || 'queued'}.`
+}
+
 export default function JobSearch() {
   const qc = useQueryClient()
   const [form, setForm] = useState({
@@ -63,6 +73,8 @@ export default function JobSearch() {
   })
   const [taskId, setTaskId] = useState(null)
   const [taskStatus, setTaskStatus] = useState(null)
+  const [taskMessage, setTaskMessage] = useState('')
+  const [isPolling, setIsPolling] = useState(false)
 
   const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
   const setAts = (provider) => (event) =>
@@ -77,30 +89,47 @@ export default function JobSearch() {
     }))
 
   const pollTask = async (id) => {
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      try {
-        const response = await getTaskStatus(id)
-        const { status, result } = response.data
-        setTaskStatus(status)
-        if (status === 'SUCCESS') {
-          const saved = result?.saved || 0
-          const evaluated = result?.evaluations_created || 0
-          toast.success(`Saved ${saved} jobs and created ${evaluated} evaluations.`)
-          qc.invalidateQueries({ queryKey: ['jobQueue'] })
-          qc.invalidateQueries({ queryKey: ['appStats'] })
-          qc.invalidateQueries({ queryKey: ['intelligenceOverview'] })
-          return
+    const deadline = Date.now() + 6 * 60 * 1000
+    setIsPolling(true)
+
+    try {
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        try {
+          const response = await getTaskStatus(id)
+          const { status, result } = response.data
+          setTaskStatus(status)
+          setTaskMessage(discoveryStatusMessage(status))
+
+          if (status === 'SUCCESS') {
+            const saved = result?.saved || 0
+            const evaluated = result?.evaluations_created || 0
+            setTaskMessage(`Saved ${saved} jobs and created ${evaluated} evaluations.`)
+            toast.success(`Saved ${saved} jobs and created ${evaluated} evaluations.`)
+            qc.invalidateQueries({ queryKey: ['jobQueue'] })
+            qc.invalidateQueries({ queryKey: ['appStats'] })
+            qc.invalidateQueries({ queryKey: ['intelligenceOverview'] })
+            return
+          }
+
+          if (status === 'FAILURE' || status === 'REVOKED') {
+            setTaskMessage('Discovery stopped before completion. You can start a new search now.')
+            toast.error('Job discovery failed. The search controls have been released.')
+            return
+          }
+
+          if (TERMINAL_TASK_STATES.has(status)) return
+        } catch {
+          setTaskMessage('The status check was interrupted. JobTomatik is reconnecting automatically.')
         }
-        if (status === 'FAILURE') {
-          toast.error('Search failed. Please try again.')
-          return
-        }
-      } catch {
-        // Polling retries until the bounded loop expires.
       }
+
+      setTaskStatus('TIMEOUT')
+      setTaskMessage('The search exceeded its waiting window. The controls have been released.')
+      toast.error('Discovery timed out. You can start a new search.')
+    } finally {
+      setIsPolling(false)
     }
-    toast('Search is taking longer than expected. Check your queue in a moment.')
   }
 
   const mutation = useMutation({
@@ -119,18 +148,29 @@ export default function JobSearch() {
         limit: parseInt(form.limit, 10),
       })
     },
+    onMutate: () => {
+      setTaskId(null)
+      setTaskStatus(null)
+      setTaskMessage('Submitting the discovery request.')
+    },
     onSuccess: (response) => {
       const id = response.data.task_id
       setTaskId(id)
       setTaskStatus('PENDING')
+      setTaskMessage(discoveryStatusMessage('PENDING'))
       toast('Discovery started. Matching roles will be scored and evaluated.')
       pollTask(id)
     },
-    onError: (error) => toast.error(error.response?.data?.detail || 'Search failed'),
+    onError: (error) => {
+      setTaskStatus('FAILURE')
+      setTaskMessage('The discovery request could not be queued. You can retry now.')
+      toast.error(error.response?.data?.detail || 'Search failed')
+    },
   })
 
-  const isRunning = mutation.isPending || (taskStatus && !['SUCCESS', 'FAILURE'].includes(taskStatus))
+  const isRunning = mutation.isPending || isPolling
   const selectedAtsSources = ATS_SOURCES.filter((provider) => form.sources.includes(provider))
+  const taskFailed = ['FAILURE', 'REVOKED', 'TIMEOUT'].includes(taskStatus)
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
@@ -315,7 +355,21 @@ export default function JobSearch() {
         {taskId && taskStatus === 'SUCCESS' && (
           <div className="flex items-center gap-2 text-green-700 text-sm bg-green-50 px-4 py-3 rounded-lg">
             <CheckCircle2 className="w-4 h-4" />
-            Discovery complete. Jobs, evaluations, and intelligence records are ready.
+            {taskMessage || 'Discovery complete. Jobs, evaluations, and intelligence records are ready.'}
+          </div>
+        )}
+
+        {taskId && isRunning && taskMessage && (
+          <div className="flex items-start gap-2 text-amber-800 text-sm bg-amber-50 px-4 py-3 rounded-lg">
+            <Loader2 className="w-4 h-4 mt-0.5 animate-spin shrink-0" />
+            {taskMessage}
+          </div>
+        )}
+
+        {taskFailed && (
+          <div className="flex items-start gap-2 text-red-700 text-sm bg-red-50 px-4 py-3 rounded-lg">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            {taskMessage || 'Discovery stopped. The search controls are available again.'}
           </div>
         )}
       </div>
