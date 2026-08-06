@@ -22,9 +22,17 @@ if [[ ! -d "$DEST_DIR" ]]; then
   exit 1
 fi
 
-cp "$BROWSER_SOURCE" "$BROWSER_DEST"
-cp "$STACK_SOURCE" "$STACK_DEST"
-chmod 755 "$BROWSER_DEST" "$STACK_DEST"
+install_atomically() {
+  local source_file="$1"
+  local destination="$2"
+  local temporary="${destination}.tmp.$$"
+  cp "$source_file" "$temporary"
+  chmod 755 "$temporary"
+  mv -f "$temporary" "$destination"
+}
+
+install_atomically "$BROWSER_SOURCE" "$BROWSER_DEST"
+install_atomically "$STACK_SOURCE" "$STACK_DEST"
 
 echo "ANDROID_BROWSER_LAUNCHER_INSTALLED"
 echo "Browser command: $BROWSER_DEST"
