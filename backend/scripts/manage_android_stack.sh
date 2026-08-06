@@ -82,8 +82,8 @@ stop_pid_file() {
 }
 
 stop_stack() {
-  # Stop only processes launched and tracked by this manager. Never use broad
-  # pkill patterns that terminate operator-owned terminal sessions.
+  # Stop only services launched and tracked by this manager. Operator-owned
+  # terminal sessions and manually launched processes remain untouched.
   stop_pid_file "$FRONTEND_PID_FILE"
   stop_pid_file "$CELERY_PID_FILE"
   stop_pid_file "$API_PID_FILE"
