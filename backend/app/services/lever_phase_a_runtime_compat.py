@@ -114,9 +114,125 @@ async def _visible_captcha_evidence(page: Any) -> Optional[Dict[str, Any]]:
         '[data-sitekey]',
     )
     for selector in selectors:
-        evidence = await browser_navigation._visible_challenge_element(page, selector)
-        if evidence:
-            return evidence
+        try:
+            elements = await page.query_selector_all(selector)
+        except Exception:
+            continue
+        for element in elements:
+            try:
+                if not await element.is_visible():
+                    continue
+                source = str(await element.get_attribute("src") or "").lower()
+                if "size=invisible" in source or "invisible=true" in source:
+                    continue
+
+                presentation = await element.evaluate(
+                    """(el) => {
+                      const rect = el.getBoundingClientRect();
+                      let node = el;
+                      let effectiveOpacity = 1;
+                      let hiddenByStyle = false;
+                      let hiddenByAttribute = false;
+                      let invisibleContainer = false;
+                      let pointerEvents = '';
+
+                      while (node && node.nodeType === Node.ELEMENT_NODE) {
+                        const style = window.getComputedStyle(node);
+                        const parsedOpacity = Number.parseFloat(style.opacity || '1');
+                        effectiveOpacity *= Number.isFinite(parsedOpacity) ? parsedOpacity : 1;
+                        hiddenByStyle = hiddenByStyle
+                          || style.display === 'none'
+                          || style.visibility === 'hidden'
+                          || style.visibility === 'collapse';
+                        hiddenByAttribute = hiddenByAttribute
+                          || node.hidden
+                          || node.getAttribute('aria-hidden') === 'true'
+                          || node.hasAttribute('inert');
+                        invisibleContainer = invisibleContainer
+                          || String(node.getAttribute('data-size') || '').toLowerCase() === 'invisible'
+                          || node.classList.contains('grecaptcha-badge');
+                        if (node === el) {
+                          pointerEvents = style.pointerEvents || '';
+                        }
+                        node = node.parentElement;
+                      }
+
+                      const intersectsViewport = rect.bottom > 0
+                        && rect.right > 0
+                        && rect.top < window.innerHeight
+                        && rect.left < window.innerWidth;
+                      let hitTested = null;
+                      if (intersectsViewport && rect.width > 0 && rect.height > 0) {
+                        const x = Math.max(0, Math.min(
+                          window.innerWidth - 1,
+                          rect.left + rect.width / 2
+                        ));
+                        const y = Math.max(0, Math.min(
+                          window.innerHeight - 1,
+                          rect.top + rect.height / 2
+                        ));
+                        const top = document.elementFromPoint(x, y);
+                        hitTested = Boolean(
+                          top && (top === el || el.contains(top) || top.contains(el))
+                        );
+                      }
+
+                      return {
+                        width: rect.width,
+                        height: rect.height,
+                        effectiveOpacity,
+                        hiddenByStyle,
+                        hiddenByAttribute,
+                        invisibleContainer,
+                        pointerEvents,
+                        intersectsViewport,
+                        hitTested,
+                        title: el.getAttribute('title') || '',
+                      };
+                    }"""
+                )
+
+                if presentation.get("hiddenByStyle"):
+                    continue
+                if presentation.get("hiddenByAttribute"):
+                    continue
+                if presentation.get("invisibleContainer"):
+                    continue
+                if float(presentation.get("effectiveOpacity") or 0) <= 0.05:
+                    continue
+                if str(presentation.get("pointerEvents") or "").lower() == "none":
+                    continue
+                if (
+                    presentation.get("intersectsViewport")
+                    and presentation.get("hitTested") is False
+                ):
+                    continue
+
+                width = float(presentation.get("width") or 0)
+                height = float(presentation.get("height") or 0)
+                if selector.startswith("iframe"):
+                    if width < 120 or height < 40:
+                        continue
+                elif width < 20 or height < 20:
+                    continue
+
+                return {
+                    "selector": selector,
+                    "width": round(width, 2),
+                    "height": round(height, 2),
+                    "source": source[:300],
+                    "title": str(presentation.get("title") or "")[:200],
+                    "effective_opacity": round(
+                        float(presentation.get("effectiveOpacity") or 0), 3
+                    ),
+                    "intersects_viewport": bool(
+                        presentation.get("intersectsViewport")
+                    ),
+                    "hit_tested": presentation.get("hitTested"),
+                    "visible": True,
+                }
+            except Exception:
+                continue
     return None
 
 
