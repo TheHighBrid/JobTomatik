@@ -17,10 +17,23 @@ run_stack_foreground() {
     "cd '$PROOT_REPO' && bash backend/scripts/manage_android_stack.sh '$action'"
 }
 
+supervisor_alive() {
+  [[ -f "$STACK_PID_FILE" ]] || return 1
+  local pid
+  pid="$(cat "$STACK_PID_FILE" 2>/dev/null || true)"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
 start_stack_detached() {
   local action="$1"
-  : > "$STACK_LOG"
+  if [[ "$action" == "start" ]] && supervisor_alive; then
+    if run_stack_foreground status; then
+      echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
+      return 0
+    fi
+  fi
 
+  : > "$STACK_LOG"
   nohup proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "cd '$PROOT_REPO' && bash backend/scripts/manage_android_stack.sh '$action' && exec sleep infinity" \
     > "$STACK_LOG" 2>&1 </dev/null &
@@ -28,35 +41,33 @@ start_stack_detached() {
   local proot_pid=$!
   echo "$proot_pid" > "$STACK_PID_FILE"
 
-  for _ in {1..180}; do
+  for _ in {1..360}; do
     if grep -q 'JOBTOMATIK_ANDROID_STACK_READY' "$STACK_LOG" 2>/dev/null; then
-      tail -n 20 "$STACK_LOG"
+      tail -n 30 "$STACK_LOG"
       echo "PROOT stack PID: $proot_pid"
       return 0
     fi
     if ! kill -0 "$proot_pid" 2>/dev/null; then
       echo "The PRoot stack process exited before JobTomatik became ready." >&2
-      tail -n 100 "$STACK_LOG" >&2 || true
+      tail -n 140 "$STACK_LOG" >&2 || true
       return 1
     fi
     sleep 1
   done
 
-  echo "The PRoot stack did not become ready within 180 seconds." >&2
-  tail -n 100 "$STACK_LOG" >&2 || true
+  echo "The PRoot stack did not become ready within 360 seconds." >&2
+  tail -n 140 "$STACK_LOG" >&2 || true
   return 1
 }
 
 stop_stack_supervisor() {
   run_stack_foreground stop || true
-  if [[ -f "$STACK_PID_FILE" ]]; then
+  if supervisor_alive; then
     local stack_pid
-    stack_pid="$(cat "$STACK_PID_FILE" 2>/dev/null || true)"
-    if [[ -n "$stack_pid" ]] && kill -0 "$stack_pid" 2>/dev/null; then
-      kill -TERM "$stack_pid" 2>/dev/null || true
-    fi
-    rm -f "$STACK_PID_FILE"
+    stack_pid="$(cat "$STACK_PID_FILE")"
+    kill -TERM "$stack_pid" 2>/dev/null || true
   fi
+  rm -f "$STACK_PID_FILE"
 }
 
 install_native_commands() {
@@ -71,7 +82,8 @@ case "$ACTION" in
     ;;
   restart)
     stop_stack_supervisor
-    "$BROWSER_COMMAND" restart
+    # Keep a healthy authenticated browser and its active handoff page intact.
+    "$BROWSER_COMMAND" start
     start_stack_detached restart
     ;;
   status)
@@ -87,7 +99,7 @@ case "$ACTION" in
       "cd '$PROOT_REPO' && git pull --ff-only"
     install_native_commands
     stop_stack_supervisor
-    "$BROWSER_COMMAND" restart
+    "$BROWSER_COMMAND" start
     start_stack_detached restart
     ;;
   *)
