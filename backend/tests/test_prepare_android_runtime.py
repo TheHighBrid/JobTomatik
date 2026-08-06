@@ -1,3 +1,5 @@
+import os
+
 from scripts.prepare_android_runtime import MAX_RUNTIME_BACKUPS, _prune_runtime_backups
 
 
@@ -6,7 +8,7 @@ def test_runtime_backup_pruning_keeps_only_newest_three(tmp_path):
     for index in range(5):
         backup = tmp_path / f"jobtomatik.db.before-schema-20260806T00000{index}Z"
         backup.write_text(str(index), encoding="utf-8")
-        backup.touch()
+        os.utime(backup, (100 + index, 100 + index))
         backups.append(backup)
 
     _prune_runtime_backups(tmp_path, "jobtomatik.db")
