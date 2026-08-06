@@ -12,6 +12,7 @@ SUPERVISOR_LOG="$RUNTIME_DIR/chromium-supervisor.log"
 BROWSER_LOG="$RUNTIME_DIR/chromium.log"
 DEFAULT_URL="https://www.linkedin.com/feed/"
 SCRIPT_PATH="$(cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")"
+MAX_LOG_BYTES="${JOBTOMATIK_ANDROID_MAX_LOG_BYTES:-5242880}"
 
 ACTION="${1:-start}"
 case "$ACTION" in
@@ -45,6 +46,18 @@ cdp_url() {
 
 is_healthy() {
   curl -fsS --max-time 2 "$(cdp_url)" 2>/dev/null | grep -q 'webSocketDebuggerUrl'
+}
+
+rotate_log() {
+  local log_file="$1"
+  if [[ -f "$log_file" ]]; then
+    local size
+    size="$(wc -c < "$log_file" 2>/dev/null || echo 0)"
+    if (( size >= MAX_LOG_BYTES )); then
+      rm -f "$log_file.1"
+      mv "$log_file" "$log_file.1"
+    fi
+  fi
 }
 
 browser_command() {
@@ -124,6 +137,7 @@ case "$ACTION" in
     trap 'touch "$STOP_FILE"' TERM INT HUP
     echo "$$" > "$SUPERVISOR_PID_FILE"
     while [[ ! -f "$STOP_FILE" ]]; do
+      rotate_log "$BROWSER_LOG"
       echo "[$(date -Iseconds)] starting Chromium on CDP port $CDP_PORT" >> "$SUPERVISOR_LOG"
       set +e
       browser_command >> "$BROWSER_LOG" 2>&1
@@ -161,6 +175,8 @@ case "$ACTION" in
       rm -f "$SUPERVISOR_PID_FILE"
     fi
 
+    rotate_log "$SUPERVISOR_LOG"
+    rotate_log "$BROWSER_LOG"
     nohup "$SCRIPT_PATH" supervise "$START_URL" \
       >> "$SUPERVISOR_LOG" 2>&1 </dev/null &
     supervisor_pid=$!
