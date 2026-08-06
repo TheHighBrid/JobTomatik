@@ -24,6 +24,7 @@ CRITICAL_TABLES = {
     "agent_tasks",
     "opportunity_evaluations",
 }
+MAX_RUNTIME_BACKUPS = 3
 
 
 def _sqlite_database_path() -> Path | None:
@@ -38,6 +39,16 @@ def _sqlite_database_path() -> Path | None:
     return path.resolve()
 
 
+def _prune_runtime_backups(backup_dir: Path, database_name: str) -> None:
+    backups = sorted(
+        backup_dir.glob(f"{database_name}.before-schema-*"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
+    for stale_backup in backups[MAX_RUNTIME_BACKUPS:]:
+        stale_backup.unlink(missing_ok=True)
+
+
 def _backup_database_if_needed(missing_tables: set[str]) -> Path | None:
     database_path = _sqlite_database_path()
     if database_path is None or not database_path.exists() or not missing_tables:
@@ -48,6 +59,7 @@ def _backup_database_if_needed(missing_tables: set[str]) -> Path | None:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_path = backup_dir / f"{database_path.name}.before-schema-{stamp}"
     shutil.copy2(database_path, backup_path)
+    _prune_runtime_backups(backup_dir, database_path.name)
     return backup_path
 
 
