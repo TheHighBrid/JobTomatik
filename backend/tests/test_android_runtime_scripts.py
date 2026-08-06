@@ -46,3 +46,14 @@ def test_android_launcher_installer_copies_native_commands(tmp_path):
     assert os.access(stack_command, os.X_OK)
     assert "remote-debugging-port" in browser_command.read_text(encoding="utf-8")
     assert "proot-distro login" in stack_command.read_text(encoding="utf-8")
+
+
+def test_termux_wrapper_does_not_assume_a_proot_storage_layout():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "installed-rootfs" not in wrapper
+    assert "containers/" not in wrapper
+    assert "install_android_native_browser_launcher.sh" in wrapper
+    assert "proot-distro login" in wrapper
