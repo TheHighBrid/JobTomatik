@@ -117,7 +117,7 @@ case "$ACTION" in
 
   foreground)
     rm -f "$STOP_FILE"
-    exec env DISPLAY="$DISPLAY_VALUE" bash -c 'browser_command' 2>/dev/null || browser_command
+    browser_command
     ;;
 
   supervise)
