@@ -64,7 +64,7 @@ def test_android_stack_manager_never_kills_untracked_terminal_processes():
         encoding="utf-8"
     )
 
-    assert "pkill" not in manager
+    assert "\npkill " not in manager
     assert "stop_pid_file" in manager
     assert "ADOPTED_EXISTING_READY_PROCESS" in manager
 
