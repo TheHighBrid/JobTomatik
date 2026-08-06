@@ -26,7 +26,7 @@ case "$ACTION" in
     ;;
   update)
     proot-distro login ubuntu --shared-tmp -- bash -lc \
-      "cd '$PROOT_REPO' && git pull --ff-only"
+      "cd '$PROOT_REPO' && git pull --ff-only && bash backend/scripts/install_android_native_browser_launcher.sh"
     "$BROWSER_COMMAND" restart
     run_stack restart
     ;;
