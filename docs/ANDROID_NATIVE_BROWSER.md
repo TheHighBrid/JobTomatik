@@ -11,16 +11,23 @@ The browser runs natively in Termux/X11. FastAPI and Celery run in Ubuntu PRoot 
 - `backend/scripts/prepare_android_runtime.py` runs in Ubuntu PRoot. It backs up an existing SQLite database when schema repair is needed, creates missing runtime tables, verifies critical discovery tables, and reports browser reachability.
 - `backend/scripts/manage_android_stack.sh` runs in Ubuntu PRoot. It repairs the schema, starts Redis when necessary, and supervises FastAPI, Celery, and Vite through PID files and logs.
 
-## One-time native command installation
+## One-time activation from native Termux
 
-From Ubuntu PRoot:
+Pull the selected branch inside Ubuntu PRoot, then install the native commands from the PRoot root filesystem:
 
 ```bash
-cd /root/JobTomatik
-bash backend/scripts/install_android_native_browser_launcher.sh
+ROOTFS="$PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu"
+
+proot-distro login ubuntu --shared-tmp -- bash -lc '
+  cd /root/JobTomatik &&
+  git pull --ff-only origin fix/android-native-cdp-browser
+'
+
+bash "$ROOTFS/root/JobTomatik/backend/scripts/install_android_native_browser_launcher.sh"
+jobtomatik restart
 ```
 
-This installs two commands into the native Termux executable path:
+This installs two commands into native Termux:
 
 ```text
 jobtomatik
@@ -29,15 +36,21 @@ jobtomatik-browser
 
 ## Daily operation from native Termux
 
-Start or repair the entire Android runtime:
+Start the complete Android runtime while preserving a healthy browser process:
+
+```bash
+jobtomatik start
+```
+
+Restart and repair every component:
 
 ```bash
 jobtomatik restart
 ```
 
-That single command:
+The command:
 
-1. restarts native Chromium under its automatic supervisor
+1. starts native Chromium under its automatic supervisor
 2. reuses the authenticated LinkedIn profile
 3. enters Ubuntu PRoot with shared X11 sockets
 4. repairs missing SQLite tables
@@ -52,7 +65,7 @@ jobtomatik stop
 jobtomatik update
 ```
 
-`jobtomatik update` pulls the currently checked-out Git branch and restarts the full runtime.
+`jobtomatik update` pulls the currently checked-out Git branch, refreshes the native command files atomically, and restarts the full runtime.
 
 The successful markers are:
 
@@ -60,6 +73,10 @@ The successful markers are:
 ANDROID_BROWSER_CDP_CONNECTED
 JOBTOMATIK_RUNTIME_SCHEMA_READY
 JOBTOMATIK_ANDROID_STACK_READY
+API: READY
+FRONTEND: READY
+CELERY: READY
+ANDROID_BROWSER_CDP: READY
 ```
 
 The persistent authenticated browser profile remains at:
