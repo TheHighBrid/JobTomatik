@@ -5,6 +5,7 @@ BACKEND_ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 REPO_ROOT="$(cd -- "$BACKEND_ROOT/.." && pwd)"
 FRONTEND_ROOT="$REPO_ROOT/frontend"
 VENV="$BACKEND_ROOT/.venv"
+ENV_FILE="$BACKEND_ROOT/.env"
 RUNTIME_DIR="$BACKEND_ROOT/.runtime"
 LOG_DIR="$RUNTIME_DIR/logs"
 API_PID_FILE="$RUNTIME_DIR/api.pid"
@@ -18,6 +19,15 @@ if [[ ! -x "$VENV/bin/python" ]]; then
   echo "Backend virtual environment is missing at $VENV" >&2
   exit 1
 fi
+
+ensure_env_default() {
+  local key="$1"
+  local value="$2"
+  touch "$ENV_FILE"
+  if ! grep -q "^${key}=" "$ENV_FILE"; then
+    printf '\n%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
 
 stop_pid_file() {
   local pid_file="$1"
@@ -114,6 +124,12 @@ start_stack() {
   stop_stack >/dev/null
 
   cd "$BACKEND_ROOT"
+  bash scripts/install_android_native_browser_launcher.sh | tee "$LOG_DIR/launcher-install.log"
+
+  ensure_env_default DATABASE_URL 'sqlite:///./jobtomatik.db'
+  ensure_env_default APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
+  ensure_env_default APPLICATION_BROWSER_HEADLESS 'false'
+  ensure_env_default APPLICATION_TARGET_HUMAN_WAIT_SECONDS '600'
 
   if ! "$VENV/bin/python" -c 'import jwt; assert jwt.__version__' >/dev/null 2>&1; then
     "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.13.0'
