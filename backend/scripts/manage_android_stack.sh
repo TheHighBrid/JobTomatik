@@ -124,7 +124,6 @@ start_stack() {
   stop_stack >/dev/null
 
   cd "$BACKEND_ROOT"
-  bash scripts/install_android_native_browser_launcher.sh | tee "$LOG_DIR/launcher-install.log"
 
   ensure_env_default DATABASE_URL 'sqlite:///./jobtomatik.db'
   ensure_env_default APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
