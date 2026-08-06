@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 from app.models.application import Application
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
+from app.services.application_entry import application_form_evidence, open_application_entry
 from app.services.application_target import (
     is_valid_application_target,
     record_application_target,
@@ -26,8 +27,12 @@ _ATS_REASON_TO_CHALLENGE = {
 }
 
 
+def _metadata(session: ManualHandoffSession) -> Dict[str, Any]:
+    return dict(session.handoff_metadata or {})
+
+
 def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
-    metadata = dict(session.handoff_metadata or {})
+    metadata = _metadata(session)
     if (
         metadata.get("target_resolution_only") is False
         and metadata.get("stage") == "ats_application"
@@ -37,12 +42,21 @@ def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
     return (
         session.challenge_type == HandoffChallengeType.navigation.value
         or bool(metadata.get("target_resolution_only"))
-        or metadata.get("stage") == "application_target_resolution"
+        or str(metadata.get("stage") or "").startswith("application_target_")
+    )
+
+
+def _is_target_security_session(session: ManualHandoffSession) -> bool:
+    metadata = _metadata(session)
+    return (
+        _is_target_navigation_session(session)
+        and session.challenge_type != HandoffChallengeType.navigation.value
+        and str(metadata.get("stage") or "").startswith("application_target_")
     )
 
 
 def _source_url(session: ManualHandoffSession) -> str:
-    metadata = dict(session.handoff_metadata or {})
+    metadata = _metadata(session)
     return str(metadata.get("source_listing_url") or session.current_url or "")
 
 
@@ -61,6 +75,26 @@ def _next_challenge_type(result: Dict[str, Any]) -> str | None:
     return None
 
 
+async def _resolve_target_after_human_boundary(
+    page: Any,
+    source_url: str,
+) -> Dict[str, Any]:
+    log: list[Dict[str, Any]] = []
+    observed = await external_target_from_browser(page, source_url, log)
+    if observed:
+        evidence = await application_form_evidence(page)
+        return {
+            "application_url": observed,
+            "resolution_method": "existing_external_target",
+            "application_form_detected": evidence.present,
+            "form_evidence": evidence.as_dict(),
+            "log": log,
+        }
+    resolved = await open_application_entry(page, log)
+    resolved["log"] = log
+    return resolved
+
+
 def install_application_target_handoff_support() -> None:
     global _INSTALLED, _ORIGINAL_VERIFY, _ORIGINAL_RESUME
     if _INSTALLED:
@@ -74,17 +108,32 @@ def install_application_target_handoff_support() -> None:
     async def target_aware_verify(session: ManualHandoffSession):
         if not _is_target_navigation_session(session):
             return await _ORIGINAL_VERIFY(session)
+        if _is_target_security_session(session):
+            return await _ORIGINAL_VERIFY(session)
 
         playwright, _, context, page = await browser_handoff._connect_local_cdp(session)
         try:
             source_url = _source_url(session)
             target_url = await external_target_from_browser(page, source_url)
-            valid = bool(target_url and is_valid_application_target(source_url, target_url))
+            evidence = await application_form_evidence(page)
+            valid = bool(target_url and is_valid_application_target(
+                source_url,
+                target_url,
+                application_form_detected=evidence.present,
+            ))
+            if not target_url and evidence.present:
+                target_url = str(getattr(page, "url", "") or source_url)
+                valid = is_valid_application_target(
+                    source_url,
+                    target_url,
+                    application_form_detected=True,
+                )
             if valid:
                 session.current_url = target_url
                 session.handoff_metadata = {
-                    **dict(session.handoff_metadata or {}),
+                    **_metadata(session),
                     "resolved_target_url": target_url,
+                    "application_form_detected": evidence.present,
                 }
                 active_page = await _target_page(context, target_url, page)
             else:
@@ -100,6 +149,7 @@ def install_application_target_handoff_support() -> None:
                     "source_listing_url": source_url,
                     "application_target_url": target_url,
                     "target_resolved": valid,
+                    "application_form_detected": evidence.present,
                 },
             )
         finally:
@@ -123,38 +173,49 @@ def install_application_target_handoff_support() -> None:
             )
 
         playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
+        source_url = _source_url(session)
         try:
-            source_url = _source_url(session)
-            target_url = await external_target_from_browser(page, source_url)
-            if not target_url or not is_valid_application_target(source_url, target_url):
+            doorway = await _resolve_target_after_human_boundary(page, source_url)
+            target_url = str(doorway.get("application_url") or "")
+            form_detected = bool(doorway.get("application_form_detected"))
+            if not target_url or not is_valid_application_target(
+                source_url,
+                target_url,
+                application_form_detected=form_detected,
+            ):
                 return {
                     "success": False,
                     "dry_run": dry_run,
                     "url": page.url,
                     "source_listing_url": source_url,
-                    "application_target_status": "requires_human",
-                    "log": [{
-                        "action": "application_target_still_unresolved",
-                        "url": page.url,
-                        "ts": now_iso(),
-                    }],
-                    "error": "The browser is still on the discovery listing. Click Apply and wait for the employer page to open.",
+                    "application_target_status": "failed",
+                    "log": [
+                        *list(doorway.get("log") or []),
+                        {
+                            "action": "application_target_still_unresolved_after_boundary",
+                            "url": page.url,
+                            "manual_apply_click_requested": False,
+                            "ts": now_iso(),
+                        },
+                    ],
+                    "error": (
+                        "The security boundary cleared, but JobTomatik still could not "
+                        "open the application form automatically."
+                    ),
                     "fields_filled": 0,
-                    "requires_manual_review": True,
-                    "review_items": [{
-                        "reason_code": "application_target_required",
-                        "summary": "The employer application destination has not opened yet.",
-                        "details": {"stage": "application_target_resolution", "submit_clicked": False},
-                    }],
+                    "requires_manual_review": False,
+                    "review_items": [],
                     "ready_to_submit": False,
                     "target_resolution_only": True,
                 }
             session.current_url = target_url
             session.handoff_metadata = {
-                **dict(session.handoff_metadata or {}),
+                **_metadata(session),
                 "resolved_target_url": target_url,
                 "target_resolution_only": False,
                 "stage": "ats_application",
+                "application_form_detected": form_detected,
+                "form_evidence": dict(doorway.get("form_evidence") or {}),
             }
         finally:
             await browser_handoff._disconnect(playwright)
@@ -170,18 +231,21 @@ def install_application_target_handoff_support() -> None:
         if next_challenge:
             session.challenge_type = next_challenge
             session.handoff_metadata = {
-                **dict(session.handoff_metadata or {}),
+                **_metadata(session),
                 "stage": "ats_application",
                 "target_resolution_only": False,
             }
         result["source_listing_url"] = source_url
         result["application_target_url"] = target_url
         result["application_target_status"] = "resolved"
+        result["application_form_detected"] = form_detected
         result["target_resolution_only"] = False
         result.setdefault("log", []).insert(0, {
-            "action": "application_target_resolved_during_handoff",
+            "action": "application_target_resolved_after_human_boundary",
             "source_listing_url": source_url,
             "application_target_url": target_url,
+            "application_form_detected": form_detected,
+            "automatic_apply_navigation": True,
             "ts": now_iso(),
         })
         return result
@@ -189,8 +253,6 @@ def install_application_target_handoff_support() -> None:
     browser_handoff.verify_browser_handoff_completion = target_aware_verify
     browser_handoff.resume_handoff_application = target_aware_resume
 
-    # API and task modules import these functions directly, so update their bound
-    # references when they are already loaded.
     try:
         from app.api import handoffs as handoff_api
         handoff_api.verify_browser_handoff_completion = target_aware_verify
@@ -222,7 +284,12 @@ def install_application_target_handoff_task_persistence() -> None:
             return result
         target_url = str(result.get("application_target_url") or "")
         source_url = str(result.get("source_listing_url") or "")
-        if not target_url or not is_valid_application_target(source_url, target_url):
+        form_detected = bool(result.get("application_form_detected"))
+        if not target_url or not is_valid_application_target(
+            source_url,
+            target_url,
+            application_form_detected=form_detected,
+        ):
             return result
 
         db = handoff_tasks.SessionLocal()
@@ -241,8 +308,11 @@ def install_application_target_handoff_task_persistence() -> None:
                     db,
                     app,
                     target_url=target_url,
-                    method="human_handoff_navigation",
-                    metadata={"handoff_public_id": handoff_public_id},
+                    method="automatic_navigation_after_human_boundary",
+                    metadata={
+                        "handoff_public_id": handoff_public_id,
+                        "application_form_detected": form_detected,
+                    },
                 )
                 db.commit()
         finally:
