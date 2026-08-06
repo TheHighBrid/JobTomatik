@@ -11,6 +11,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
     "relative_path",
     [
         "scripts/start_android_browser_cdp.sh",
+        "scripts/jobtomatik_termux_wrapper.sh",
         "scripts/install_android_native_browser_launcher.sh",
         "scripts/manage_android_stack.sh",
     ],
