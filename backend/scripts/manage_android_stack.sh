@@ -29,6 +29,26 @@ ensure_env_default() {
   fi
 }
 
+repair_database_configuration() {
+  "$VENV/bin/python" scripts/repair_android_database_url.py \
+    --env-file "$ENV_FILE" \
+    --runtime-dir "$RUNTIME_DIR"
+
+  local selected_database_url
+  selected_database_url="$(
+    "$VENV/bin/python" -c \
+      'from pathlib import Path; from scripts.repair_android_database_url import read_env_value; import sys; print(read_env_value(Path(sys.argv[1]), "DATABASE_URL") or "")' \
+      "$ENV_FILE"
+  )"
+
+  if [[ -z "$selected_database_url" ]]; then
+    echo "DATABASE_URL could not be resolved after Android runtime repair." >&2
+    exit 1
+  fi
+
+  export DATABASE_URL="$selected_database_url"
+}
+
 stop_pid_file() {
   local pid_file="$1"
   if [[ ! -f "$pid_file" ]]; then
@@ -116,6 +136,7 @@ status_stack() {
     echo "ANDROID_BROWSER_CDP: READY"
   else
     echo "ANDROID_BROWSER_CDP: DOWN"
+    failed=1
   fi
   return "$failed"
 }
@@ -125,10 +146,10 @@ start_stack() {
 
   cd "$BACKEND_ROOT"
 
-  ensure_env_default DATABASE_URL 'sqlite:///./jobtomatik.db'
   ensure_env_default APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
   ensure_env_default APPLICATION_BROWSER_HEADLESS 'false'
   ensure_env_default APPLICATION_TARGET_HUMAN_WAIT_SECONDS '600'
+  repair_database_configuration
 
   if ! "$VENV/bin/python" -c 'import jwt; assert jwt.__version__' >/dev/null 2>&1; then
     "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.13.0'
@@ -182,7 +203,7 @@ start_stack() {
 
   cd "$BACKEND_ROOT"
   echo "JOBTOMATIK_ANDROID_STACK_READY"
-  status_stack || true
+  status_stack
   echo "Logs: $LOG_DIR"
 }
 
