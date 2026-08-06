@@ -12,7 +12,7 @@ from app.models.application import (
     ManualReviewStatus,
     ManualReviewTask,
 )
-from app.models.handoff import ACTIVE_HANDOFF_STATUSES, ManualHandoffSession
+from app.models.handoff import ACTIVE_HANDOFF_STATUSES, HandoffChallengeType, ManualHandoffSession
 from app.models.job import Job
 from app.models.notification import Notification, NotificationType
 from app.services.application_state import normalize_state, transition_application_state
@@ -33,6 +33,12 @@ _ACTIVE_APPLICATION_TARGET: ContextVar[Optional[str]] = ContextVar(
     "jobtomatik_active_application_target",
     default=None,
 )
+_CHALLENGE_TO_REASON = {
+    HandoffChallengeType.captcha.value: "captcha_detected",
+    HandoffChallengeType.mfa.value: "mfa_required",
+    HandoffChallengeType.login.value: "login_required",
+    HandoffChallengeType.anti_bot.value: "anti_bot_challenge",
+}
 
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
@@ -57,7 +63,7 @@ def _restore_retryable_state(db, app: Application) -> None:
 
 
 def _apply_target_review_copy(db, app: Application, result: Dict[str, Any], reason_value: str) -> None:
-    """Replace the generic question-review copy with the doorway instruction."""
+    """Bind the target-resolution review to the actual observed boundary."""
     matching_item = next(
         (
             item
@@ -86,17 +92,17 @@ def _apply_target_review_copy(db, app: Application, result: Dict[str, Any], reas
     review.summary = str(
         matching_item.get("summary")
         or result.get("error")
-        or "One browser navigation step requires your input."
+        or "A security or identity boundary requires your input."
     )
     review.details = {
         **dict(review.details or {}),
-        "stage": "application_target_resolution",
+        "stage": "application_target_security_boundary",
         "source_listing_url": result.get("source_listing_url"),
     }
 
 
 def _active_target_handoff_result(db, app: Application, source_url: str) -> Optional[Dict[str, Any]]:
-    """Return the existing live browser handoff instead of opening the profile twice."""
+    """Return an existing security handoff instead of opening the profile twice."""
     if app.application_target_status != ApplicationTargetStatus.requires_human.value:
         return None
     session = (
@@ -110,6 +116,15 @@ def _active_target_handoff_result(db, app: Application, source_url: str) -> Opti
     )
     if not session:
         return None
+    reason_code = _CHALLENGE_TO_REASON.get(
+        str(session.challenge_type or ""),
+        "application_target_required",
+    )
+    summary = (
+        "Complete the existing security or identity boundary in the retained browser."
+        if reason_code != "application_target_required"
+        else "The retained browser is waiting for an unresolved application destination."
+    )
     return {
         "success": False,
         "dry_run": True,
@@ -119,15 +134,12 @@ def _active_target_handoff_result(db, app: Application, source_url: str) -> Opti
         "application_target_status": ApplicationTargetStatus.requires_human.value,
         "target_resolution_only": True,
         "requires_manual_review": True,
-        "error": (
-            "A retained browser handoff is already active. Complete that browser step "
-            "instead of starting another application attempt."
-        ),
+        "error": summary,
         "review_items": [{
-            "reason_code": "application_target_required",
-            "summary": "Click Apply once in the existing retained browser session.",
+            "reason_code": reason_code,
+            "summary": summary,
             "details": {
-                "stage": "application_target_resolution",
+                "stage": "application_target_security_boundary",
                 "source_listing_url": source_url,
                 "submit_clicked": False,
             },
@@ -137,6 +149,7 @@ def _active_target_handoff_result(db, app: Application, source_url: str) -> Opti
         "log": [{
             "action": "existing_application_target_handoff_reused",
             "handoff_public_id": session.public_id,
+            "reason_code": reason_code,
         }],
         "submitted_at": None,
         "fields_filled": 0,
@@ -210,8 +223,12 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
                 db,
                 app,
                 target_url=target_url,
-                method=str(result.get("resolution_method") or "browser_navigation"),
-                metadata={"resolver_log_entries": len(result.get("log") or [])},
+                method=str(result.get("resolution_method") or "automatic_apply_navigation"),
+                metadata={
+                    "resolver_log_entries": len(result.get("log") or []),
+                    "application_form_detected": bool(result.get("application_form_detected")),
+                    "form_evidence": dict(result.get("form_evidence") or {}),
+                },
             )
             db.commit()
             return {"target_url": target_url, "source_url": source_url}
@@ -222,7 +239,7 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
                 app,
                 metadata={
                     "source_listing_url": source_url,
-                    "handoff_stage": "application_target_resolution",
+                    "handoff_stage": "application_target_security_boundary",
                 },
             )
             app.status = ApplicationStatus.pending
@@ -238,14 +255,14 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
             db.add(Notification(
                 user_id=app.user_id,
                 type=NotificationType.system,
-                title=f"Application destination needed: {job.title}",
-                message=result.get("error") or "One browser navigation step requires your input.",
+                title=f"Security step required: {job.title}",
+                message=result.get("error") or "A security or identity boundary requires your input.",
                 data={
                     "job_id": job.id,
                     "application_id": app.id,
                     "reason": reason_value,
                     "handoff_public_id": result.get("handoff_public_id"),
-                    "stage": "application_target_resolution",
+                    "stage": "application_target_security_boundary",
                 },
             ))
             db.commit()
@@ -256,7 +273,10 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
             db,
             app,
             error=error,
-            metadata={"source_listing_url": source_url},
+            metadata={
+                "source_listing_url": source_url,
+                "manual_handoff_created": False,
+            },
         )
         app.status = ApplicationStatus.pending
         current_state = normalize_state(app.automation_state)
@@ -266,7 +286,7 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
                 app,
                 ApplicationAutomationState.failed,
                 "application_target_resolution_failed",
-                {"error": error[:500]},
+                {"error": error[:500], "manual_handoff_created": False},
             )
         db.commit()
         return {"terminal_result": result}
@@ -301,8 +321,6 @@ def install_application_target_task_integration() -> None:
         try:
             return _ORIGINAL_ENSURE_APPLICATION_METHOD(job)
         finally:
-            # Preserve the discovery URL even when the legacy resolver assigns a
-            # selected external target inside this ORM session.
             job.url = original_url
 
     def wrapped_run(application_id: int, dry_run: bool = True, **kwargs):
