@@ -53,25 +53,50 @@ CAPTCHA_RESPONSE_SELECTORS = (
     'input[name="cf-turnstile-response"]',
     'textarea[name="cf-turnstile-response"]',
 )
+_VISIBLE_CAPTCHA_SELECTORS = (
+    'iframe[src*="recaptcha" i]',
+    'iframe[src*="hcaptcha" i]',
+    'iframe[src*="challenges.cloudflare.com" i]',
+    '[class*="captcha" i]',
+    '[id*="captcha" i]',
+    '[data-sitekey]',
+)
 _BLOCKING_CHALLENGES = [
     (
         "captcha_detected",
-        re.compile(r"captcha|recaptcha|hcaptcha|verify you are human", re.IGNORECASE),
+        re.compile(
+            r"verify you are human|confirm you are human|prove you are human|"
+            r"(?:complete|solve)\s+(?:the\s+)?(?:captcha|recaptcha|hcaptcha)|"
+            r"(?:captcha|recaptcha|hcaptcha)\s+(?:is\s+)?(?:required|failed|expired|invalid)",
+            re.IGNORECASE,
+        ),
         "A CAPTCHA or human-verification challenge requires manual completion.",
     ),
     (
         "anti_bot_challenge",
-        re.compile(r"cloudflare|checking your browser|security challenge|unusual traffic", re.IGNORECASE),
+        re.compile(
+            r"checking your browser|unusual traffic|access denied|security verification|"
+            r"browser integrity check|cloudflare ray id|attention required",
+            re.IGNORECASE,
+        ),
         "A security challenge requires manual completion.",
     ),
     (
         "mfa_required",
-        re.compile(r"verification code|two-factor|multi-factor|one-time code|mfa", re.IGNORECASE),
+        re.compile(
+            r"enter (?:the|your|a) verification code|two-factor authentication|"
+            r"multi-factor authentication|one-time (?:passcode|code)|authenticator code",
+            re.IGNORECASE,
+        ),
         "A multi-factor authentication step requires manual completion.",
     ),
     (
         "assessment_required",
-        re.compile(r"complete (?:the|an) assessment|skills assessment|take (?:the|a) test", re.IGNORECASE),
+        re.compile(
+            r"begin (?:the|your|an) assessment|complete (?:the|your|an) assessment to continue|"
+            r"start (?:the|your|an) skills assessment|take (?:the|your|an) required test",
+            re.IGNORECASE,
+        ),
         "An employer assessment requires manual completion.",
     ),
 ]
@@ -274,9 +299,19 @@ async def navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[st
 
     scan_url = page.url or current_url
     await page.wait_for_timeout(1000)
-    for anchor in await page.query_selector_all("a[href]"):
-        href = await anchor.get_attribute("href") or ""
-        text = normalize_text(await anchor.inner_text())
+    try:
+        anchors = page.locator("a[href]")
+        anchor_count = await anchors.count()
+    except Exception:
+        anchors = None
+        anchor_count = 0
+    for index in range(anchor_count):
+        anchor = anchors.nth(index)
+        try:
+            href = await anchor.get_attribute("href") or ""
+            text = normalize_text(await anchor.inner_text())
+        except Exception:
+            continue
         if not _probable_apply_href(href, scan_url) and not any(
             hint in text for hint in APPLY_LINK_HINTS
         ):
@@ -359,46 +394,163 @@ async def captcha_response_state(page: Any) -> Dict[str, Any]:
     }
 
 
-async def detect_blocking_challenge(page) -> Optional[Dict[str, Any]]:
-    response_state = await captcha_response_state(page)
-    captcha_completed = bool(response_state["has_completed_response"])
-    for selector in (
-        'iframe[src*="recaptcha" i]',
-        'iframe[src*="hcaptcha" i]',
-        '[class*="captcha" i]',
-        '[id*="captcha" i]',
-    ):
+async def _visible_challenge_element(page: Any, selector: str) -> Optional[Dict[str, Any]]:
+    try:
+        elements = await page.query_selector_all(selector)
+    except Exception:
+        return None
+    for element in elements:
         try:
-            if await page.query_selector(selector):
-                if captcha_completed:
+            if not await element.is_visible():
+                continue
+            source = str(await element.get_attribute("src") or "").lower()
+            class_name = str(await element.get_attribute("class") or "").lower()
+            aria_hidden = str(await element.get_attribute("aria-hidden") or "").lower()
+            if aria_hidden == "true" or "grecaptcha-badge" in class_name:
+                continue
+            if "size=invisible" in source or "invisible=true" in source:
+                continue
+            box = await element.bounding_box()
+            if not box:
+                continue
+            width = float(box.get("width") or 0)
+            height = float(box.get("height") or 0)
+            if selector.startswith("iframe"):
+                if width < 120 or height < 40:
                     continue
-                return {
-                    "reason_code": "captcha_detected",
-                    "summary": "A CAPTCHA or human-verification challenge requires manual completion.",
-                    "details": {"selector": selector},
-                }
+            elif width < 20 or height < 20:
+                continue
+            return {
+                "selector": selector,
+                "width": round(width, 2),
+                "height": round(height, 2),
+                "source": source[:300],
+                "visible": True,
+            }
         except Exception:
-            pass
+            continue
+    return None
 
+
+async def challenge_page_context(page: Any) -> Dict[str, Any]:
+    """Collect high-signal visible challenge context without scanning footer copy."""
+    try:
+        payload = await page.evaluate(
+            """() => {
+              const visible = (el) => {
+                const style = window.getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                return !el.hidden
+                  && el.getAttribute('aria-hidden') !== 'true'
+                  && style.display !== 'none'
+                  && style.visibility !== 'hidden'
+                  && Number.parseFloat(style.opacity || '1') > 0.05
+                  && rect.width > 0
+                  && rect.height > 0;
+              };
+              const texts = (selector, limit = 12) => Array.from(document.querySelectorAll(selector))
+                .filter(visible)
+                .slice(0, limit)
+                .map((el) => (el.innerText || el.textContent || '').trim())
+                .filter(Boolean);
+              const controls = Array.from(document.querySelectorAll(
+                'input:not([type=hidden]),textarea,select,button,[role=button],[role=combobox]'
+              )).filter(visible);
+              const applicantControls = controls.filter((el) => /first.?name|last.?name|full.?name|email|phone|resume|résumé|cv|cover.?letter/i.test([
+                el.name || '', el.id || '', el.type || '', el.placeholder || '',
+                el.getAttribute('aria-label') || ''
+              ].join(' '))).length;
+              const main = document.querySelector('main,[role=main],form') || document.body;
+              return {
+                title: document.title || '',
+                url: location.href,
+                headings: texts('h1,h2,h3,[role=heading]', 10),
+                alerts: texts('[role=alert],[aria-live=assertive],[aria-live=polite]', 10),
+                dialogs: texts('[role=dialog],[aria-modal=true]', 6),
+                mainText: visible(main) ? (main.innerText || '').trim().slice(0, 12000) : '',
+                visibleControlCount: controls.length,
+                applicantControlCount: applicantControls,
+              };
+            }"""
+        )
+        if isinstance(payload, dict):
+            return payload
+    except Exception:
+        pass
     try:
         title = await page.title()
     except Exception:
         title = ""
-    try:
-        body = (await page.inner_text("body"))[:20000]
-    except Exception:
-        body = ""
-    haystack = f"{title}\n{body}"
+    return {
+        "title": title,
+        "url": str(getattr(page, "url", "") or ""),
+        "headings": [],
+        "alerts": [],
+        "dialogs": [],
+        "mainText": "",
+        "visibleControlCount": 0,
+        "applicantControlCount": 0,
+    }
+
+
+def classify_challenge_context(context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Classify only active challenge screens, not incidental job-description text."""
+    priority_parts = [
+        str(context.get("title") or ""),
+        *[str(value) for value in context.get("headings") or []],
+        *[str(value) for value in context.get("alerts") or []],
+        *[str(value) for value in context.get("dialogs") or []],
+    ]
+    priority = "\n".join(priority_parts)
+    main_text = str(context.get("mainText") or "")
+    visible_controls = int(context.get("visibleControlCount") or 0)
+    applicant_controls = int(context.get("applicantControlCount") or 0)
+    challenge_focused_page = bool(
+        applicant_controls == 0
+        and visible_controls <= 6
+        and len(main_text) <= 12000
+    )
+
     for reason_code, pattern, summary in _BLOCKING_CHALLENGES:
-        if reason_code == "captcha_detected" and captcha_completed:
-            continue
-        if pattern.search(haystack):
+        if pattern.search(priority):
             return {
                 "reason_code": reason_code,
                 "summary": summary,
-                "details": {"matched_text": pattern.pattern},
+                "details": {
+                    "matched_text": pattern.pattern,
+                    "evidence_source": "title_heading_alert_or_dialog",
+                },
+            }
+        if reason_code != "captcha_detected" and challenge_focused_page and pattern.search(main_text):
+            return {
+                "reason_code": reason_code,
+                "summary": summary,
+                "details": {
+                    "matched_text": pattern.pattern,
+                    "evidence_source": "challenge_focused_main_content",
+                },
             }
     return None
+
+
+async def detect_blocking_challenge(page) -> Optional[Dict[str, Any]]:
+    response_state = await captcha_response_state(page)
+    captcha_completed = bool(response_state["has_completed_response"])
+    if not captcha_completed:
+        for selector in _VISIBLE_CAPTCHA_SELECTORS:
+            evidence = await _visible_challenge_element(page, selector)
+            if evidence:
+                return {
+                    "reason_code": "captcha_detected",
+                    "summary": "A CAPTCHA or human-verification challenge requires manual completion.",
+                    "details": evidence,
+                }
+
+    context = await challenge_page_context(page)
+    challenge = classify_challenge_context(context)
+    if challenge and challenge.get("reason_code") == "captcha_detected" and captcha_completed:
+        return None
+    return challenge
 
 
 async def find_submit_button(page):
