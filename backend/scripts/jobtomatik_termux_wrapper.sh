@@ -24,7 +24,7 @@ start_stack_detached() {
   : > "$STACK_LOG"
 
   nohup proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "cd '$PROOT_REPO' && exec bash backend/scripts/manage_android_stack.sh '$action'" \
+    "cd '$PROOT_REPO' && bash backend/scripts/manage_android_stack.sh '$action' && exec sleep infinity" \
     > "$STACK_LOG" 2>&1 </dev/null &
 
   local proot_pid=$!
