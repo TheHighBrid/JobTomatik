@@ -59,12 +59,13 @@ def test_termux_wrapper_does_not_assume_a_proot_storage_layout():
     assert "proot-distro login" in wrapper
 
 
-def test_android_stack_manager_never_kills_untracked_terminal_processes():
+def test_android_stack_manager_never_uses_broad_process_matching():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
     )
 
-    assert "\npkill " not in manager
+    assert "pkill" not in manager
+    assert "killall" not in manager
     assert "stop_pid_file" in manager
     assert "ADOPTED_EXISTING_READY_PROCESS" in manager
 
