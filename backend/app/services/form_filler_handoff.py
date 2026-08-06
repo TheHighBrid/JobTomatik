@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional
 
+from app.services.application_entry import application_form_evidence, open_application_entry
 from app.services.ats_flow import run_ats_application_flow
 from app.services.ats_registry import detect_ats_adapter
 from app.services.browser_navigation import (
+    detect_blocking_challenge,
     is_allowed_url,
     is_fake_url,
-    navigate_job_board_listing,
     now_iso,
 )
 from app.services.browser_runtime import launch_application_browser
@@ -26,14 +27,7 @@ _RESUMABLE_REASONS = {
 
 
 def _promote_deferred_captcha_boundary(flow: Any, log: List[Dict[str, Any]]) -> None:
-    """Preserve a passive CAPTCHA boundary when field review ends the ATS flow first.
-
-    The ATS flow deliberately fills safe fields before returning to the user. When a
-    field also needs review, the flow can return before its second CAPTCHA check. The
-    original deferred-CAPTCHA log entry is durable evidence that the same live page
-    still requires a human challenge, so promote it into a resumable review item before
-    the retained browser is evaluated.
-    """
+    """Preserve a passive CAPTCHA boundary when field review ends the ATS flow first."""
     if not getattr(flow, "requires_manual_review", False):
         return
     if any(
@@ -99,6 +93,12 @@ def _resumable_boundary(result: Dict[str, Any]) -> bool:
     return any(term in text for term in ("captcha", "mfa", "verification code", "sign in", "login"))
 
 
+def _apply_challenge_result(result: Dict[str, Any], challenge: Dict[str, Any]) -> None:
+    result["requires_manual_review"] = True
+    result["error"] = challenge.get("summary")
+    result["review_items"] = [challenge]
+
+
 async def fill_and_submit_application_with_handoff(
     job_url: str,
     user_profile: Dict[str, Any],
@@ -131,11 +131,9 @@ async def fill_and_submit_application_with_handoff(
     }
     if not is_allowed_url(job_url):
         result["error"] = "Invalid or unsupported job URL"
-        result["requires_manual_review"] = True
         return result
     if is_fake_url(job_url):
-        result["error"] = "Placeholder URL; manual application required"
-        result["requires_manual_review"] = True
+        result["error"] = "Placeholder URL; automatic application unavailable"
         return result
 
     runtime = None
@@ -157,19 +155,11 @@ async def fill_and_submit_application_with_handoff(
             except PlaywrightTimeoutError:
                 log.append({"action": "navigation_timeout", "ts": now_iso()})
 
-            # Compatibility for direct calls. Normal application tasks resolve listings
-            # before entering this ATS runner and persist the target separately.
-            target = await navigate_job_board_listing(page, log)
-            result.update({
-                key: target[key]
-                for key in ("application_url", "contact_email")
-                if target.get(key)
-            })
-            if target.get("manual_review_only"):
-                result["requires_manual_review"] = True
-                result["success"] = bool(dry_run)
-                result["error"] = target.get("reason")
-                return result
+            entry = await open_application_entry(page, log)
+            if entry.get("application_url"):
+                result["application_url"] = entry["application_url"]
+                result["application_entry_method"] = entry.get("resolution_method")
+                result["application_form_detected"] = bool(entry.get("application_form_detected"))
 
             adapter = await detect_ats_adapter(page, page.url)
             result["ats_adapter"] = adapter.name
@@ -180,6 +170,27 @@ async def fill_and_submit_application_with_handoff(
                 "version": adapter.version,
                 "ts": now_iso(),
             })
+
+            form_evidence = await application_form_evidence(page)
+            result["form_evidence"] = form_evidence.as_dict()
+            if adapter.name == "generic" and not form_evidence.present:
+                challenge = await detect_blocking_challenge(page)
+                if challenge:
+                    _apply_challenge_result(result, challenge)
+                else:
+                    result["error"] = (
+                        "The Apply doorway did not expose an application form. No CAPTCHA, "
+                        "login, MFA, or anti-bot boundary was observed, so the browser was "
+                        "not handed off."
+                    )
+                    log.append({
+                        "action": "application_form_not_reached",
+                        "url": page.url,
+                        "adapter": adapter.name,
+                        "manual_handoff_created": False,
+                        "ts": now_iso(),
+                    })
+                    return result
 
             async def fill_step(surface: Any, step_number: int) -> Dict[str, Any]:
                 return await _fill_step_fields(
@@ -201,32 +212,34 @@ async def fill_and_submit_application_with_handoff(
                     refresh_official_metadata=True,
                 )
 
-            flow = await run_ats_application_flow(
-                page,
-                adapter,
-                fill_step=fill_step,
-                dry_run=dry_run,
-                log=log,
-                pre_submit_check=(
-                    pre_submit_check
-                    if supervised_target and not dry_run
-                    else None
-                ),
-            )
-            _promote_deferred_captcha_boundary(flow, log)
-            result.update(flow.as_dict())
-            result["ats_adapter"] = flow.adapter_name
-            result["ats_adapter_version"] = flow.adapter_version
-            if flow.success and not dry_run:
-                result["submitted_at"] = now_iso()
+            if not result.get("requires_manual_review"):
+                flow = await run_ats_application_flow(
+                    page,
+                    adapter,
+                    fill_step=fill_step,
+                    dry_run=dry_run,
+                    log=log,
+                    pre_submit_check=(
+                        pre_submit_check
+                        if supervised_target and not dry_run
+                        else None
+                    ),
+                )
+                _promote_deferred_captcha_boundary(flow, log)
+                result.update(flow.as_dict())
+                result["ats_adapter"] = flow.adapter_name
+                result["ats_adapter_version"] = flow.adapter_version
+                if flow.success and not dry_run:
+                    result["submitted_at"] = now_iso()
 
             if _resumable_boundary(result):
                 snapshot = await runtime.capture_snapshot(metadata={
                     "dry_run": dry_run,
-                    "adapter": flow.adapter_name,
-                    "adapter_version": flow.adapter_version,
-                    "fields_filled": flow.fields_filled,
-                    "steps_completed": flow.steps_completed,
+                    "adapter": result.get("ats_adapter"),
+                    "adapter_version": result.get("ats_adapter_version"),
+                    "fields_filled": int(result.get("fields_filled") or 0),
+                    "steps_completed": int(result.get("steps_completed") or 0),
+                    "handoff_stage": "post_fill_security_boundary",
                     "supervised_target": dict(supervised_target or {}),
                 })
                 result["handoff_snapshot"] = snapshot
@@ -236,15 +249,14 @@ async def fill_and_submit_application_with_handoff(
                     "provider": snapshot["browser_provider"],
                     "browser_session_id": snapshot["browser_session_id"],
                     "current_fingerprint": snapshot["current_fingerprint"],
+                    "fields_filled": int(result.get("fields_filled") or 0),
                     "supervised_target_locked": bool(supervised_target),
                     "ts": now_iso(),
                 })
     except ImportError:
         result["error"] = "Playwright not installed"
-        result["requires_manual_review"] = True
     except Exception as exc:
         result["error"] = str(exc)
-        result["requires_manual_review"] = True
         log.append({"action": "error", "detail": str(exc)[:300], "ts": now_iso()})
     finally:
         if runtime is not None and not retained:
