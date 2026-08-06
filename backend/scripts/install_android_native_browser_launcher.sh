@@ -18,7 +18,7 @@ done
 
 if [[ ! -d "$DEST_DIR" ]]; then
   echo "Native Termux bin directory is not visible at $DEST_DIR" >&2
-  echo "Enter Ubuntu with: proot-distro login ubuntu --shared-tmp" >&2
+  echo "Run this installer through: proot-distro login ubuntu --shared-tmp" >&2
   exit 1
 fi
 
@@ -35,5 +35,6 @@ install_atomically "$BROWSER_SOURCE" "$BROWSER_DEST"
 install_atomically "$STACK_SOURCE" "$STACK_DEST"
 
 echo "ANDROID_BROWSER_LAUNCHER_INSTALLED"
+echo "Native prefix: $TERMUX_PREFIX"
 echo "Browser command: $BROWSER_DEST"
 echo "Stack command: $STACK_DEST"
