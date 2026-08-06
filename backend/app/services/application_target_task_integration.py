@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextvars import ContextVar
+from datetime import datetime
 from typing import Any, Coroutine, Dict, Optional
 
 from app.models.application import (
@@ -12,7 +13,12 @@ from app.models.application import (
     ManualReviewStatus,
     ManualReviewTask,
 )
-from app.models.handoff import ACTIVE_HANDOFF_STATUSES, HandoffChallengeType, ManualHandoffSession
+from app.models.handoff import (
+    ACTIVE_HANDOFF_STATUSES,
+    HandoffChallengeType,
+    HandoffSessionStatus,
+    ManualHandoffSession,
+)
 from app.models.job import Job
 from app.models.notification import Notification, NotificationType
 from app.services.application_state import normalize_state, transition_application_state
@@ -60,6 +66,59 @@ def _restore_retryable_state(db, app: Application) -> None:
         "application_target_retry_started",
         {"previous_target_status": app.application_target_status},
     )
+
+
+def _retire_legacy_navigation_handoffs(db, app: Application) -> int:
+    """Cancel obsolete handoffs whose only purpose was asking the user to click Apply.
+
+    The doorway is now automatic. Keeping one of these sessions active would prevent
+    an upgraded installation from reaching the form and would repeat the exact
+    premature handoff that this integration replaces.
+    """
+    sessions = (
+        db.query(ManualHandoffSession)
+        .filter(
+            ManualHandoffSession.application_id == app.id,
+            ManualHandoffSession.challenge_type == HandoffChallengeType.navigation.value,
+            ManualHandoffSession.status.in_(ACTIVE_HANDOFF_STATUSES),
+        )
+        .all()
+    )
+    if not sessions:
+        return 0
+
+    now = datetime.utcnow()
+    retired = 0
+    for session in sessions:
+        metadata = dict(session.handoff_metadata or {})
+        stage = str(metadata.get("stage") or "")
+        target_only = bool(metadata.get("target_resolution_only"))
+        if stage not in {"application_target_resolution", ""} and not target_only:
+            continue
+        session.status = HandoffSessionStatus.cancelled.value
+        session.cancelled_at = now
+        session.failure_reason = "Superseded by automatic application doorway navigation."
+        session.handoff_metadata = {
+            **metadata,
+            "superseded_by": "automatic_application_entry",
+            "superseded_at": now.isoformat(),
+        }
+        if session.manual_review:
+            session.manual_review.status = ManualReviewStatus.dismissed.value
+            session.manual_review.resolved_at = now
+            session.manual_review.resolution_notes = (
+                "Obsolete Apply-click handoff retired after automatic doorway upgrade."
+            )
+        retired += 1
+
+    if retired:
+        app.application_target_status = ApplicationTargetStatus.unresolved.value
+        app.application_target_metadata = {
+            **dict(app.application_target_metadata or {}),
+            "legacy_navigation_handoffs_retired": retired,
+            "legacy_navigation_handoffs_retired_at": now.isoformat(),
+        }
+    return retired
 
 
 def _apply_target_review_copy(db, app: Application, result: Dict[str, Any], reason_value: str) -> None:
@@ -110,21 +169,20 @@ def _active_target_handoff_result(db, app: Application, source_url: str) -> Opti
         .filter(
             ManualHandoffSession.application_id == app.id,
             ManualHandoffSession.status.in_(ACTIVE_HANDOFF_STATUSES),
+            ManualHandoffSession.challenge_type.in_([
+                HandoffChallengeType.captcha.value,
+                HandoffChallengeType.mfa.value,
+                HandoffChallengeType.login.value,
+                HandoffChallengeType.anti_bot.value,
+            ]),
         )
         .order_by(ManualHandoffSession.created_at.desc(), ManualHandoffSession.id.desc())
         .first()
     )
     if not session:
         return None
-    reason_code = _CHALLENGE_TO_REASON.get(
-        str(session.challenge_type or ""),
-        "application_target_required",
-    )
-    summary = (
-        "Complete the existing security or identity boundary in the retained browser."
-        if reason_code != "application_target_required"
-        else "The retained browser is waiting for an unresolved application destination."
-    )
+    reason_code = _CHALLENGE_TO_REASON[str(session.challenge_type)]
+    summary = "Complete the existing security or identity boundary in the retained browser."
     return {
         "success": False,
         "dry_run": True,
@@ -186,6 +244,10 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
             return {"terminal_result": {"error": "Job not found"}}
 
         source_url = (app.source_listing_url or job.url or "").strip()
+        retired = _retire_legacy_navigation_handoffs(db, app)
+        if retired:
+            db.commit()
+
         target_url = initialize_application_target(db, app, job)
         if target_url:
             _restore_retryable_state(db, app)
