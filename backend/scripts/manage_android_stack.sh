@@ -110,7 +110,7 @@ wait_http() {
 managed_worker_ready() {
   pid_file_alive "$CELERY_PID_FILE" || return 1
   [[ -f "$CELERY_LOG" ]] || return 1
-  grep -q 'celery@jobtomatik-android.* ready\.' "$CELERY_LOG" \
+  grep -Eq '(celery@)?jobtomatik-android@.* ready\.' "$CELERY_LOG" \
     && grep -q 'applications' "$CELERY_LOG" \
     && grep -q 'scraping' "$CELERY_LOG"
 }
