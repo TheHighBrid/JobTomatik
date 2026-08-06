@@ -59,9 +59,22 @@ celery_app.conf.update(
 )
 
 
+def ensure_worker_runtime_schema() -> None:
+    """Create newly introduced tables before this worker accepts tasks.
+
+    FastAPI performs the same bootstrap during its lifespan. Android operators may
+    restart Celery independently, however, so the worker must not assume the API
+    process has already upgraded the shared SQLite database.
+    """
+    from app import models as _models  # noqa: F401
+    from app.database import Base, engine
+
+    Base.metadata.create_all(bind=engine)
+
+
 @worker_init.connect
 def install_worker_task_integrations(**_kwargs):
-    """Install safety, target-resolution, and retained-browser extensions."""
+    """Install schema, safety, target-resolution, and retained-browser extensions."""
     from app.services.application_integrity import install_closed_application_task_gate
     from app.services.application_target_handoff import (
         install_application_target_handoff_task_persistence,
@@ -74,6 +87,7 @@ def install_worker_task_integrations(**_kwargs):
         install_supervised_submission_task_gate,
     )
 
+    ensure_worker_runtime_schema()
     install_handoff_task_integration()
     install_application_target_handoff_task_persistence()
     install_application_target_task_integration()
