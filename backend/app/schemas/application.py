@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.application import ApplicationStatus
 from app.schemas.job import JobOut
@@ -28,6 +28,13 @@ class FollowUpCreate(BaseModel):
     message: Optional[str] = Field(default=None, max_length=10000)
     recipient_email: Optional[str] = Field(default=None, max_length=255)
     recruiter_contact_id: Optional[int] = Field(default=None, ge=1)
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def normalize_legacy_empty_message(cls, value):
+        if value is None or not str(value).strip():
+            return "Follow-up draft. Review and personalize this message before approval."
+        return value
 
 
 class FollowUpUpdate(BaseModel):
