@@ -14,6 +14,7 @@ from app.schemas.operations import (
     KnowledgeEdgeListItem,
     OperationsWorkspaceOut,
 )
+from app.services.evidence_ledger import rebuild_user_evidence
 from app.services.operations_workspace import build_operations_workspace
 
 
@@ -77,6 +78,10 @@ def correct_career_memory(
         "confidence" in values
         and float(values["confidence"]) != float(memory.confidence)
     )
+    active_changed = (
+        "is_active" in values
+        and bool(values["is_active"]) != bool(memory.is_active)
+    )
     factual_change = content_changed or confidence_changed
     if factual_change:
         metadata = dict(memory.memory_metadata or {})
@@ -102,6 +107,10 @@ def correct_career_memory(
         memory.confidence = values["confidence"]
     if "is_active" in values:
         memory.is_active = values["is_active"]
+
+    if factual_change or active_changed:
+        db.flush()
+        rebuild_user_evidence(db, current_user)
 
     db.commit()
     db.refresh(memory)
