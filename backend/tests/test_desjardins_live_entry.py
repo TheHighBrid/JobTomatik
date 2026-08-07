@@ -32,6 +32,26 @@ async def test_live_desjardins_apply_reaches_certified_workday_entry_without_han
         except Exception:
             pass
 
+        apply_dom = await page.locator('a,button,[role="button"],input[type="button"]').evaluate_all(
+            """els => els
+              .filter(el => /apply/i.test([
+                el.innerText || '', el.value || '', el.getAttribute('aria-label') || ''
+              ].join(' ')))
+              .slice(0, 12)
+              .map(el => ({
+                tag: el.tagName,
+                text: (el.innerText || el.value || '').trim(),
+                ariaLabel: el.getAttribute('aria-label'),
+                href: el.getAttribute('href'),
+                type: el.getAttribute('type'),
+                role: el.getAttribute('role'),
+                target: el.getAttribute('target'),
+                dataHref: el.getAttribute('data-href'),
+                dataUrl: el.getAttribute('data-url'),
+                outerHTML: el.outerHTML.slice(0, 1200),
+              }))"""
+        )
+
         log = []
         result = await continue_from_employer_landing(
             page,
@@ -41,10 +61,15 @@ async def test_live_desjardins_apply_reaches_certified_workday_entry_without_han
             settle_timeout_seconds=15.0,
         )
 
-        assert result, f"No safe application target found. log={log!r}"
+        context_urls = [candidate.url for candidate in page.context.pages]
+        assert result, (
+            f"No safe application target found. log={log!r} "
+            f"apply_dom={apply_dom!r} context_urls={context_urls!r}"
+        )
         assert result.get("trusted_ats_adapter") == "workday", (
             f"Expected Desjardins Apply to reach hosted Workday. "
-            f"result={result!r} log={log!r}"
+            f"result={result!r} log={log!r} apply_dom={apply_dom!r} "
+            f"context_urls={context_urls!r}"
         )
         assert "myworkdayjobs.com" in str(result.get("application_url") or "")
         assert result.get("application_form_detected") is False
