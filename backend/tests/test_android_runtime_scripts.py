@@ -86,13 +86,12 @@ def test_android_managed_runtime_isolated_from_legacy_manual_workers():
         encoding="utf-8"
     )
 
-    assert "redis://localhost:6379/1" in manager
+    assert 'ANDROID_REDIS_URL="${JOBTOMATIK_ANDROID_REDIS_URL:-redis://localhost:6379/1}"' in manager
+    assert 'LEGACY_ANDROID_REDIS_URL="${JOBTOMATIK_LEGACY_ANDROID_REDIS_URL:-redis://localhost:6379/0}"' in manager
     assert 'set_env_value REDIS_URL "$ANDROID_REDIS_URL"' in manager
     assert 'export REDIS_URL="$ANDROID_REDIS_URL"' in manager
+    assert '--broker "$LEGACY_ANDROID_REDIS_URL"' in manager
     assert "ANDROID_RUNTIME_BROKER: ISOLATED" in manager
-    # A stale pre-upgrade worker connected to Redis DB 0 can remain in its terminal,
-    # but it cannot consume tasks from the authoritative Android runtime on DB 1.
-    assert "redis://localhost:6379/0" not in manager
 
 
 def test_android_runtime_forces_nonblocking_automatic_application_entry():
