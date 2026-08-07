@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
-  LayoutDashboard, BrainCircuit, PanelsTopLeft, Workflow, Fingerprint, MailCheck, Search, ListTodo, ClipboardList, BookOpenCheck,
+  LayoutDashboard, BrainCircuit, PanelsTopLeft, CalendarClock, Workflow, Fingerprint, MailCheck, Search, ListTodo, ClipboardList, BookOpenCheck,
   HeartPulse, User, Settings, LogOut, Menu, X
 } from 'lucide-react'
 import { useAuthStore, useNotificationStore } from '../store'
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/command-center', icon: BrainCircuit, label: 'Command Center' },
   { to: '/operations', icon: PanelsTopLeft, label: 'Operations Center' },
+  { to: '/scheduler', icon: CalendarClock, label: 'Scheduler Center' },
   { to: '/execution', icon: Workflow, label: 'Execution Center' },
   { to: '/handoff-review', icon: Fingerprint, label: 'Handoff Review' },
   { to: '/followup-review', icon: MailCheck, label: 'Follow-up Review' },
