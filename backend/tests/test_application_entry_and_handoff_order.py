@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 
 import pytest
 
+from app.models.application import ManualReviewReason
 from app.services.application_entry import apply_candidate_score, open_application_entry
 from app.services.application_target import is_valid_application_target
 from app.services.application_target_resolver import resolve_application_target_with_browser
 from app.services.browser_navigation import classify_challenge_context
+from app.services.handoff_session import HandoffSessionError, challenge_type_for_review
 
 
 class _FakeContext:
@@ -150,3 +153,12 @@ def test_target_resolver_never_requests_a_manual_apply_click():
     assert "wait_for_external_application_target" not in source
     assert "application_target_required" not in source
     assert "application_target_security_handoff_retained" in source
+
+
+def test_navigation_only_review_cannot_issue_a_retained_browser_handoff():
+    review = SimpleNamespace(
+        reason_code=ManualReviewReason.application_target_required.value,
+    )
+
+    with pytest.raises(HandoffSessionError, match="not resumable"):
+        challenge_type_for_review(review)
