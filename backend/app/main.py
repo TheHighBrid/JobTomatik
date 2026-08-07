@@ -260,11 +260,45 @@ async def health():
     return {"status": "ok", "service": "JobTomatik API", "version": "1.0.0"}
 
 
-@app.get("/api/system/certification")
-async def system_certification():
-    return {
-        "form_control": certification_manifest(),
-        "ats_adapters": ats_certification_manifest(),
-        "autonomy": build_autonomy_certification_manifest(),
-        "operations": operations_readiness_manifest(),
+@app.get("/api/system/ready")
+def readiness_probe():
+    """Confirm the API process can execute a database query."""
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+    return {"status": "ready", "service": "JobTomatik API", "version": "1.0.0"}
+
+
+@app.get("/api/system/control-certification")
+async def control_certification():
+    return certification_manifest()
+
+
+@app.get("/api/system/ats-certification")
+async def ats_certification():
+    return ats_certification_manifest()
+
+
+@app.get("/api/system/autonomy-certification")
+async def autonomy_certification():
+    return build_autonomy_certification_manifest()
+
+
+@app.get("/api/system/operations-readiness")
+async def operations_readiness():
+    readiness = operations_readiness_manifest()
+    ats = ats_certification_manifest()
+    maturities = {
+        item["name"]: item.get("maturity")
+        for item in ats.get("adapters", [])
     }
+    readiness["product_goal"] = "fully_autonomous_evidence_backed_real_submission"
+    readiness["adapter_maturities"] = maturities
+    readiness["autonomous_adapters"] = list(ats.get("autonomous_adapters", []))
+    readiness["autonomous_adapter_count"] = len(readiness["autonomous_adapters"])
+    readiness["invariants"]["canonical_adapter_maturity_required"] = True
+    readiness["invariants"]["no_autonomous_adapter_currently_enabled"] = not bool(
+        readiness["autonomous_adapters"]
+    )
+    readiness["invariants"]["recruiter_followup_requires_independent_approval"] = True
+    readiness["recruiter_followup_send_enabled"] = bool(settings.allow_real_followup_send)
+    return readiness
