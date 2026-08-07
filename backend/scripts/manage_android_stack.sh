@@ -16,6 +16,7 @@ CELERY_LOG="$LOG_DIR/celery.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 ACTION="${1:-start}"
 ANDROID_REDIS_URL="${JOBTOMATIK_ANDROID_REDIS_URL:-redis://localhost:6379/1}"
+LEGACY_ANDROID_REDIS_URL="${JOBTOMATIK_LEGACY_ANDROID_REDIS_URL:-redis://localhost:6379/0}"
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
 
@@ -275,6 +276,13 @@ prepare_stack() {
     redis-server --daemonize yes
     sleep 1
   fi
+
+  # Ask only the exact local Celery workers from the pre-supervisor DB 0 setup to
+  # shut down through Celery remote control. This does not signal or close terminals.
+  "$VENV/bin/python" scripts/retire_legacy_android_celery.py \
+    --broker "$LEGACY_ANDROID_REDIS_URL" \
+    --timeout 1.0 \
+    || true
 
   "$VENV/bin/python" scripts/prepare_android_runtime.py | tee "$LOG_DIR/preflight.log"
 }
