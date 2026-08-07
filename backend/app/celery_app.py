@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.tasks.unattended",
         "app.tasks.followup",
         "app.tasks.operations",
+        "app.tasks.runtime",
     ],
 )
 
@@ -35,6 +36,7 @@ celery_app.conf.update(
         "app.tasks.unattended.*": {"queue": "applications"},
         "app.tasks.followup.*": {"queue": "followup"},
         "app.tasks.operations.*": {"queue": "followup"},
+        "app.tasks.runtime.*": {"queue": "applications"},
     },
     beat_schedule={
         "check-followups-every-hour": {
