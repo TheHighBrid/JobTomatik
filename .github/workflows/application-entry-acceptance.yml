@@ -1,0 +1,88 @@
+name: Application entry acceptance
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/application_entry.py"
+      - "backend/app/services/application_target.py"
+      - "backend/app/services/application_target_resolver.py"
+      - "backend/app/services/application_target_task_integration.py"
+      - "backend/app/services/browser_navigation.py"
+      - "backend/app/services/form_filler_handoff.py"
+      - "backend/app/services/handoff_integration.py"
+      - "backend/tests/test_application_entry_and_handoff_order.py"
+      - "backend/tests/test_linkedin_classic_apply_entry.py"
+      - "backend/tests/test_linkedin_apply_click_acceptance.py"
+      - "backend/tests/test_premature_handoff_acceptance.py"
+      - "backend/tests/test_stale_target_handoff_revalidation.py"
+      - ".github/workflows/application-entry-acceptance.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/services/application_entry.py"
+      - "backend/app/services/application_target.py"
+      - "backend/app/services/application_target_resolver.py"
+      - "backend/app/services/application_target_task_integration.py"
+      - "backend/app/services/browser_navigation.py"
+      - "backend/app/services/form_filler_handoff.py"
+      - "backend/app/services/handoff_integration.py"
+      - "backend/tests/test_application_entry_and_handoff_order.py"
+      - "backend/tests/test_linkedin_classic_apply_entry.py"
+      - "backend/tests/test_linkedin_apply_click_acceptance.py"
+      - "backend/tests/test_premature_handoff_acceptance.py"
+      - "backend/tests/test_stale_target_handoff_revalidation.py"
+      - ".github/workflows/application-entry-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: application-entry-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: sqlite:///./application-entry-acceptance.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: application-entry-acceptance-secret-key-2026
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  AUTOPILOT_ENABLED: "false"
+  ENABLE_RESUMABLE_HANDOFFS: "false"
+  REQUIRE_BROWSER_TESTS: "1"
+
+jobs:
+  linkedin-to-ats-dry-run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run application-entry acceptance matrix
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_application_entry_and_handoff_order.py \
+            tests/test_linkedin_classic_apply_entry.py \
+            tests/test_linkedin_apply_click_acceptance.py \
+            tests/test_premature_handoff_acceptance.py \
+            tests/test_stale_target_handoff_revalidation.py

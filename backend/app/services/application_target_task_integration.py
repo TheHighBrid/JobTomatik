@@ -68,57 +68,75 @@ def _restore_retryable_state(db, app: Application) -> None:
     )
 
 
-def _retire_legacy_navigation_handoffs(db, app: Application) -> int:
-    """Cancel obsolete handoffs whose only purpose was asking the user to click Apply.
+def _is_target_resolution_handoff(session: ManualHandoffSession) -> bool:
+    """Return True only for a handoff created before the ATS form was reached."""
+    metadata = dict(session.handoff_metadata or {})
+    stage = str(metadata.get("stage") or "")
+    if bool(metadata.get("target_resolution_only")):
+        return True
+    if stage.startswith("application_target_"):
+        return True
+    # Older navigation sessions predate explicit target-resolution metadata.
+    return (
+        session.challenge_type == HandoffChallengeType.navigation.value
+        and stage in {"", "application_target_resolution"}
+    )
 
-    The doorway is now automatic. Keeping one of these sessions active would prevent
-    an upgraded installation from reaching the form and would repeat the exact
-    premature handoff that this integration replaces.
+
+def _retire_stale_target_resolution_handoffs(db, app: Application) -> int:
+    """Force a fresh browser observation for every new application attempt.
+
+    A retained CAPTCHA/login/navigation boundary is evidence about one browser
+    moment, not a durable property of the job. Reusing it on a later Dry Preview can
+    permanently strand an application on an obsolete LinkedIn page, especially when
+    the boundary was created by an older detector. Fresh application attempts retire
+    only pre-form target-resolution sessions and immediately re-run the resolver.
+
+    Post-fill ATS handoffs are intentionally left untouched because those sessions
+    preserve already-entered form state and are resumed through the dedicated handoff
+    workflow rather than through a new application attempt.
     """
     sessions = (
         db.query(ManualHandoffSession)
         .filter(
             ManualHandoffSession.application_id == app.id,
-            ManualHandoffSession.challenge_type == HandoffChallengeType.navigation.value,
             ManualHandoffSession.status.in_(ACTIVE_HANDOFF_STATUSES),
         )
         .all()
     )
-    if not sessions:
+    stale = [session for session in sessions if _is_target_resolution_handoff(session)]
+    if not stale:
         return 0
 
     now = datetime.utcnow()
-    retired = 0
-    for session in sessions:
+    for session in stale:
         metadata = dict(session.handoff_metadata or {})
-        stage = str(metadata.get("stage") or "")
-        target_only = bool(metadata.get("target_resolution_only"))
-        if stage not in {"application_target_resolution", ""} and not target_only:
-            continue
         session.status = HandoffSessionStatus.cancelled.value
         session.cancelled_at = now
-        session.failure_reason = "Superseded by automatic application doorway navigation."
+        session.failure_reason = (
+            "Superseded by fresh automatic application-target revalidation."
+        )
         session.handoff_metadata = {
             **metadata,
-            "superseded_by": "automatic_application_entry",
+            "superseded_by": "fresh_application_target_revalidation",
             "superseded_at": now.isoformat(),
         }
         if session.manual_review:
             session.manual_review.status = ManualReviewStatus.dismissed.value
             session.manual_review.resolved_at = now
             session.manual_review.resolution_notes = (
-                "Obsolete Apply-click handoff retired after automatic doorway upgrade."
+                "Target-resolution handoff retired so the current page can be "
+                "revalidated automatically."
             )
-        retired += 1
 
-    if retired:
+    if not app.application_target_url:
         app.application_target_status = ApplicationTargetStatus.unresolved.value
-        app.application_target_metadata = {
-            **dict(app.application_target_metadata or {}),
-            "legacy_navigation_handoffs_retired": retired,
-            "legacy_navigation_handoffs_retired_at": now.isoformat(),
-        }
-    return retired
+    app.application_target_metadata = {
+        **dict(app.application_target_metadata or {}),
+        "stale_target_resolution_handoffs_retired": len(stale),
+        "stale_target_resolution_handoffs_retired_at": now.isoformat(),
+    }
+    return len(stale)
 
 
 def _apply_target_review_copy(db, app: Application, result: Dict[str, Any], reason_value: str) -> None:
@@ -161,7 +179,7 @@ def _apply_target_review_copy(db, app: Application, result: Dict[str, Any], reas
 
 
 def _active_target_handoff_result(db, app: Application, source_url: str) -> Optional[Dict[str, Any]]:
-    """Return an existing security handoff instead of opening the profile twice."""
+    """Return a current non-stale security handoff instead of opening the profile twice."""
     if app.application_target_status != ApplicationTargetStatus.requires_human.value:
         return None
     session = (
@@ -179,7 +197,7 @@ def _active_target_handoff_result(db, app: Application, source_url: str) -> Opti
         .order_by(ManualHandoffSession.created_at.desc(), ManualHandoffSession.id.desc())
         .first()
     )
-    if not session:
+    if not session or _is_target_resolution_handoff(session):
         return None
     reason_code = _CHALLENGE_TO_REASON[str(session.challenge_type)]
     summary = "Complete the existing security or identity boundary in the retained browser."
@@ -244,7 +262,7 @@ def _prepare_target(application_tasks, application_id: int) -> Dict[str, Any]:
             return {"terminal_result": {"error": "Job not found"}}
 
         source_url = (app.source_listing_url or job.url or "").strip()
-        retired = _retire_legacy_navigation_handoffs(db, app)
+        retired = _retire_stale_target_resolution_handoffs(db, app)
         if retired:
             db.commit()
 
