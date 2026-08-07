@@ -26,7 +26,7 @@ export function reconcileAndroidApiBaseUrl(value, fallback = ANDROID_TERMUX_API_
   return normalized
 }
 
-const CONFIGURED_API_URL = import.meta.env.VITE_API_URL || ANDROID_TERMUX_API_URL
+const CONFIGURED_API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8010'
 const DEFAULT_API_URL = reconcileAndroidApiBaseUrl(CONFIGURED_API_URL, ANDROID_TERMUX_API_URL)
 
 export { normalizeApiBaseUrl }
