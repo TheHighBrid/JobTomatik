@@ -1,0 +1,67 @@
+name: Desjardins live application entry
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/employer_application_entry.py"
+      - "backend/app/services/application_target_resolver.py"
+      - "backend/app/services/form_filler_handoff.py"
+      - "backend/tests/test_desjardins_live_entry.py"
+      - ".github/workflows/desjardins-live-entry.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/services/employer_application_entry.py"
+      - "backend/app/services/application_target_resolver.py"
+      - "backend/app/services/form_filler_handoff.py"
+      - "backend/tests/test_desjardins_live_entry.py"
+      - ".github/workflows/desjardins-live-entry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desjardins-live-entry-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: sqlite:///./desjardins-live-entry.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: desjardins-live-entry-secret-key-2026
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  AUTOPILOT_ENABLED: "false"
+  ENABLE_RESUMABLE_HANDOFFS: "false"
+  REQUIRE_BROWSER_TESTS: "1"
+  RUN_DESJARDINS_LIVE_SMOKE: "1"
+
+jobs:
+  employer-apply-to-workday:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Verify current Desjardins Apply doorway reaches Workday
+        run: python -m pytest -q --tb=short -ra tests/test_desjardins_live_entry.py
