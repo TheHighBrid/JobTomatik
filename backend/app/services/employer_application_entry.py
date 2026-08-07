@@ -233,6 +233,83 @@ async def _rank_safe_candidates(page: Any) -> List[tuple[Any, Dict[str, str]]]:
     )
 
 
+async def _click_safe_candidate(
+    page: Any,
+    element: Any,
+    descriptor: Dict[str, str],
+    *,
+    step: int,
+    log: List[Dict[str, Any]],
+) -> bool:
+    """Click a verified doorway, retrying actionability-only failures safely.
+
+    Some employer React pages render a visibly enabled Apply button beneath a layout
+    layer that makes Playwright's normal pointer-actionability check time out. A force
+    retry is permitted only after the control has passed all doorway safety checks,
+    and the live DOM is rescanned before that retry so a rerender cannot turn the
+    operation into a click on a different control.
+    """
+    fresh = await _safe_candidate(element)
+    if not fresh:
+        return False
+    try:
+        try:
+            await element.scroll_into_view_if_needed(timeout=2000)
+        except Exception:
+            pass
+        await element.click(timeout=5000)
+        return True
+    except Exception as exc:
+        log.append({
+            "action": "intermediate_employer_apply_click_retry",
+            "step": step,
+            "detail": str(exc)[:500],
+            "forced": False,
+            "ts": now_iso(),
+        })
+
+    # Re-resolve from the current DOM. Matching is still strict and submit/form
+    # controls remain excluded. Prefer the same exact semantic label and href.
+    try:
+        refreshed = await _rank_safe_candidates(page)
+    except Exception:
+        refreshed = []
+    retry = next(
+        (
+            candidate
+            for candidate, candidate_descriptor in refreshed
+            if candidate_descriptor.get("label") == descriptor.get("label")
+            and candidate_descriptor.get("href", "") == descriptor.get("href", "")
+        ),
+        None,
+    )
+    if retry is None:
+        return False
+    retry_descriptor = await _safe_candidate(retry)
+    if not retry_descriptor:
+        return False
+    try:
+        await retry.click(timeout=4000, force=True)
+        log.append({
+            "action": "intermediate_employer_apply_force_clicked",
+            "step": step,
+            "label": retry_descriptor.get("label"),
+            "submit_control": False,
+            "inside_form": False,
+            "ts": now_iso(),
+        })
+        return True
+    except Exception as exc:
+        log.append({
+            "action": "intermediate_employer_apply_failed",
+            "step": step,
+            "detail": str(exc)[:500],
+            "forced": True,
+            "ts": now_iso(),
+        })
+        return False
+
+
 async def _wait_for_form_or_navigation(
     page: Any,
     *,
@@ -385,23 +462,19 @@ async def continue_from_employer_landing(
                 log.append({
                     "action": "intermediate_employer_apply_failed",
                     "step": step,
-                    "detail": str(exc)[:240],
+                    "detail": str(exc)[:500],
                     "ts": now_iso(),
                 })
                 continue
         else:
-            try:
-                fresh_descriptor = await _safe_candidate(element)
-                if not fresh_descriptor:
-                    continue
-                await element.click(timeout=8000)
-            except Exception as exc:
-                log.append({
-                    "action": "intermediate_employer_apply_failed",
-                    "step": step,
-                    "detail": str(exc)[:240],
-                    "ts": now_iso(),
-                })
+            clicked = await _click_safe_candidate(
+                page,
+                element,
+                descriptor,
+                step=step,
+                log=log,
+            )
+            if not clicked:
                 continue
 
         observed = await _wait_for_form_or_navigation(
