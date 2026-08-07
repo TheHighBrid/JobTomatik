@@ -200,6 +200,9 @@ def build_current_handoff_candidate(
     task_materials = dict(task_output.get("materials") or {})
     for material_type, material in materials.items():
         task_ref = task_materials.get(material_type)
+        if material and not isinstance(task_ref, dict):
+            blockers.append(f"{material_type}_readiness_reference_missing")
+            continue
         if material and isinstance(task_ref, dict):
             if int(task_ref.get("id") or 0) != material.id:
                 blockers.append(f"{material_type}_changed_after_bounded_readiness")
