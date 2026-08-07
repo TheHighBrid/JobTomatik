@@ -8,9 +8,11 @@ from app.services.browser_navigation import (
     detect_blocking_challenge,
     is_allowed_url,
     is_fake_url,
+    is_job_board_url,
     now_iso,
 )
 from app.services.browser_runtime import launch_application_browser
+from app.services.employer_application_entry import continue_from_employer_landing
 from app.services.listing_availability import detect_closed_listing
 
 
@@ -27,7 +29,8 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
 
     The doorway is automated. A retained handoff is created only for an observed
     security or identity boundary, never merely because an Apply control has not yet
-    been clicked.
+    been clicked. An external employer job-detail page is not considered resolved
+    until application-form evidence is present.
     """
     log: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {
@@ -104,17 +107,35 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
             target = await open_application_entry(page, log)
             target_url = str(target.get("application_url") or "")
             form_detected = bool(target.get("application_form_detected"))
-            if target_url and is_valid_application_target(
+
+            # Some job boards lead first to an employer-hosted job-detail page, which
+            # can contain a second plain Apply doorway. That page is not the
+            # application target. Traverse that doorway safely before resolving.
+            if target_url and not form_detected and not is_job_board_url(target_url):
+                continued = await continue_from_employer_landing(
+                    page,
+                    source_url=source_url,
+                    log=log,
+                )
+                if continued:
+                    target = continued
+                    target_url = str(target.get("application_url") or "")
+                    form_detected = bool(target.get("application_form_detected"))
+
+            # For discovery-listing resolution, a different domain by itself is not
+            # sufficient evidence. The target becomes resolved only after the actual
+            # application form is present.
+            if target_url and form_detected and is_valid_application_target(
                 source_url,
                 target_url,
-                application_form_detected=form_detected,
+                application_form_detected=True,
             ):
                 result.update({
                     "success": True,
                     "application_target_url": target_url,
                     "application_target_status": "resolved",
                     "resolution_method": target.get("resolution_method") or "automatic_apply_navigation",
-                    "application_form_detected": form_detected,
+                    "application_form_detected": True,
                     "form_evidence": target.get("form_evidence") or {},
                     "url": target_url,
                     "retryable": False,
@@ -159,7 +180,7 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                     "stage": "application_target_security_boundary",
                     "source_listing_url": source_url,
                     "adapter": "listing_resolver",
-                    "adapter_version": "2.0.0",
+                    "adapter_version": "2.1.0",
                     "reason_code": reason_code,
                 })
                 result["handoff_snapshot"] = snapshot
