@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class OperationsPipelineItem(BaseModel):
@@ -95,6 +95,16 @@ class CareerMemoryCorrection(BaseModel):
     content: str | None = Field(default=None, min_length=1)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     is_active: bool | None = None
+
+    @field_validator("content")
+    @classmethod
+    def normalize_content(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Memory correction content cannot be blank")
+        return normalized
 
     @model_validator(mode="after")
     def require_change(self):
