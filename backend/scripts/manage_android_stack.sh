@@ -73,6 +73,11 @@ pid_file_alive() {
   [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
 }
 
+pid_file_value() {
+  local pid_file="$1"
+  cat "$pid_file" 2>/dev/null || true
+}
+
 stop_pid_file() {
   local pid_file="$1"
   if ! pid_file_alive "$pid_file"; then
@@ -118,12 +123,53 @@ wait_http() {
   return 1
 }
 
-managed_worker_ready() {
+configured_redis_url() {
+  grep '^REDIS_URL=' "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- || true
+}
+
+worker_log_ready() {
   pid_file_alive "$CELERY_PID_FILE" || return 1
   [[ -f "$CELERY_LOG" ]] || return 1
   grep -Eq '(celery@)?jobtomatik-android@.* ready\.' "$CELERY_LOG" \
     && grep -q 'applications' "$CELERY_LOG" \
     && grep -q 'scraping' "$CELERY_LOG"
+}
+
+worker_control_ready() {
+  pid_file_alive "$CELERY_PID_FILE" || return 1
+  local broker
+  broker="$(configured_redis_url)"
+  [[ "$broker" == "$ANDROID_REDIS_URL" ]] || return 1
+
+  (
+    cd "$BACKEND_ROOT"
+    REDIS_URL="$broker" "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
+from app.celery_app import celery_app
+
+required = {"applications", "celery", "followup", "scraping"}
+inspect = celery_app.control.inspect(timeout=2.0)
+pings = inspect.ping() or {}
+queues = inspect.active_queues() or {}
+
+for node, payload in pings.items():
+    if not str(node).startswith("jobtomatik-android@"):
+        continue
+    if not isinstance(payload, dict) or payload.get("ok") != "pong":
+        continue
+    names = {
+        str(item.get("name") or "")
+        for item in (queues.get(node) or [])
+        if isinstance(item, dict)
+    }
+    if required.issubset(names):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+  )
+}
+
+managed_worker_ready() {
+  worker_log_ready && worker_control_ready
 }
 
 wait_worker() {
@@ -179,7 +225,7 @@ start_worker() {
   echo $! > "$CELERY_PID_FILE"
 
   if ! wait_worker; then
-    echo "Celery failed to become ready with the required queues." >&2
+    echo "Celery failed to become live on the Android broker with the required queues." >&2
     tail -n 140 "$CELERY_LOG" >&2 || true
     return 1
   fi
@@ -212,23 +258,23 @@ start_frontend() {
 status_stack() {
   local failed=0
   if http_ready 'http://127.0.0.1:8010/api/system/ready'; then
-    echo "API: READY"
+    echo "API: READY pid=$(pid_file_value "$API_PID_FILE")"
   else
     echo "API: DOWN"
     failed=1
   fi
 
   if http_ready 'http://127.0.0.1:3000'; then
-    echo "FRONTEND: READY"
+    echo "FRONTEND: READY pid=$(pid_file_value "$FRONTEND_PID_FILE")"
   else
     echo "FRONTEND: DOWN"
     failed=1
   fi
 
   if managed_worker_ready; then
-    echo "CELERY: READY applications,celery,followup,scraping"
+    echo "CELERY: READY applications,celery,followup,scraping pid=$(pid_file_value "$CELERY_PID_FILE") broker=$ANDROID_REDIS_URL"
   else
-    echo "CELERY: DOWN_OR_WRONG_QUEUES"
+    echo "CELERY: DOWN_OR_UNRESPONSIVE_ON_ANDROID_BROKER"
     failed=1
   fi
 
@@ -240,13 +286,15 @@ status_stack() {
   fi
 
   local configured_redis
-  configured_redis="$(grep '^REDIS_URL=' "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+  configured_redis="$(configured_redis_url)"
   if [[ "$configured_redis" == "$ANDROID_REDIS_URL" ]]; then
     echo "ANDROID_RUNTIME_BROKER: ISOLATED"
   else
     echo "ANDROID_RUNTIME_BROKER: NOT_ISOLATED"
     failed=1
   fi
+  echo "MANAGED_LOGS: $LOG_DIR"
+  echo "CELERY_LOG: $CELERY_LOG"
   return "$failed"
 }
 
