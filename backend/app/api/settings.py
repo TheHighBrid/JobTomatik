@@ -128,7 +128,7 @@ class SettingsUpdate(BaseModel):
         return value.strip()
 
     @model_validator(mode="after")
-    def validate_caps(self):
+    def validate_caps_and_lists(self):
         if (
             self.auto_apply_daily_limit is not None
             and self.auto_apply_weekly_limit is not None
@@ -162,8 +162,12 @@ async def update_settings(
     db: Session = Depends(get_db),
 ):
     current = dict(current_user.automation_settings or {})
-    for key, value in data.model_dump(exclude_none=True).items():
-        current[key] = value
+    updates = data.model_dump(exclude_none=True)
+    merged = {**DEFAULT_SETTINGS, **current, **updates}
+    validated = SettingsUpdate(**merged)
+    normalized = validated.model_dump(exclude_none=True)
+    for key in updates:
+        current[key] = normalized[key]
     current_user.automation_settings = current
     db.commit()
     db.refresh(current_user)
