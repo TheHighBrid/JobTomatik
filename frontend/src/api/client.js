@@ -3,20 +3,45 @@ import axios from 'axios'
 import { safeLocalStorage } from '../storage'
 import { normalizeApiBaseUrl } from './url'
 
-const DEFAULT_API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8010'
+export const ANDROID_TERMUX_API_URL = 'http://127.0.0.1:8010'
 const API_URL_STORAGE_KEY = 'jobtomatik_api_url'
+
+function isLoopbackHost(hostname) {
+  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1'
+}
+
+export function reconcileAndroidApiBaseUrl(value, fallback = ANDROID_TERMUX_API_URL) {
+  const normalized = normalizeApiBaseUrl(value || fallback, fallback)
+  try {
+    const parsed = new URL(normalized)
+    // Historical Android setup instructions used alternate local backend ports while
+    // the native CDP/browser work was being developed. A persisted loopback URL on
+    // one of those ports must never outrank the managed Android API on 8010.
+    if (isLoopbackHost(parsed.hostname) && parsed.port !== '8010') {
+      return ANDROID_TERMUX_API_URL
+    }
+  } catch {
+    return normalizeApiBaseUrl(fallback, ANDROID_TERMUX_API_URL)
+  }
+  return normalized
+}
+
+const CONFIGURED_API_URL = import.meta.env.VITE_API_URL || ANDROID_TERMUX_API_URL
+const DEFAULT_API_URL = reconcileAndroidApiBaseUrl(CONFIGURED_API_URL, ANDROID_TERMUX_API_URL)
 
 export { normalizeApiBaseUrl }
 
 export function getApiBaseUrl() {
-  return normalizeApiBaseUrl(
-    safeLocalStorage.getItem(API_URL_STORAGE_KEY) || DEFAULT_API_URL,
-    DEFAULT_API_URL,
-  )
+  const saved = safeLocalStorage.getItem(API_URL_STORAGE_KEY)
+  const normalized = reconcileAndroidApiBaseUrl(saved || DEFAULT_API_URL, DEFAULT_API_URL)
+  if (saved && normalizeApiBaseUrl(saved, DEFAULT_API_URL) !== normalized) {
+    safeLocalStorage.setItem(API_URL_STORAGE_KEY, normalized)
+  }
+  return normalized
 }
 
 export function setApiBaseUrl(value) {
-  const normalized = normalizeApiBaseUrl(value, DEFAULT_API_URL)
+  const normalized = reconcileAndroidApiBaseUrl(value, DEFAULT_API_URL)
   safeLocalStorage.setItem(API_URL_STORAGE_KEY, normalized)
   api.defaults.baseURL = `${normalized}/api`
   return normalized
@@ -24,7 +49,7 @@ export function setApiBaseUrl(value) {
 
 export function resetApiBaseUrl() {
   safeLocalStorage.removeItem(API_URL_STORAGE_KEY)
-  const normalized = normalizeApiBaseUrl(DEFAULT_API_URL)
+  const normalized = reconcileAndroidApiBaseUrl(DEFAULT_API_URL, ANDROID_TERMUX_API_URL)
   api.defaults.baseURL = `${normalized}/api`
   return normalized
 }
@@ -48,7 +73,7 @@ export function getApiErrorMessage(err, fallback = 'Request failed') {
 }
 
 export async function testApiConnection(baseUrl = getApiBaseUrl()) {
-  const normalized = normalizeApiBaseUrl(baseUrl, DEFAULT_API_URL)
+  const normalized = reconcileAndroidApiBaseUrl(baseUrl, DEFAULT_API_URL)
   const response = await axios.get(`${normalized}/health`, { timeout: 8000 })
   return response.data
 }
