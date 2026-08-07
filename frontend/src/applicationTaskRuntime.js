@@ -1,4 +1,3 @@
-export const APPLICATION_TASK_RUNTIME_PROTOCOL = 'android-task-runtime-v2'
 export const TERMINAL_TASK_STATUSES = new Set(['SUCCESS', 'FAILURE', 'REVOKED'])
 export const TASK_START_ACK_TIMEOUT_MS = 45000
 
