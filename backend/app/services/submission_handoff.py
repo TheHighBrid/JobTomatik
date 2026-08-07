@@ -20,7 +20,12 @@ from app.models.intelligence import AgentRun, AgentTask
 from app.models.job import Job
 from app.models.material import ApplicationMaterial
 from app.models.user import User
-from app.services.agent_execution import EXECUTION_SCOPE, execution_control, plan_task_id
+from app.services.agent_execution import (
+    APPROVAL_APPROVED,
+    APPROVAL_NOT_REQUIRED,
+    EXECUTION_SCOPE,
+    plan_task_id,
+)
 from app.services.application_integrity import submission_is_closed
 from app.services.supervised_submission import (
     build_submission_snapshot,
@@ -148,13 +153,19 @@ def build_current_handoff_candidate(
     run: AgentRun,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     blockers: list[str] = []
-    control = execution_control(run)
+    context = dict(run.run_context or {})
+    control_value = context.get("execution_control")
+    control = dict(control_value) if isinstance(control_value, dict) else {}
     user, application, job, task = _resolve_records(db, run)
 
     if run.status != "completed":
         blockers.append("bounded_run_not_completed")
+    if not control:
+        blockers.append("bounded_execution_control_missing")
     if control.get("scope") != EXECUTION_SCOPE:
         blockers.append("bounded_execution_scope_mismatch")
+    if control.get("approval_state") not in {APPROVAL_APPROVED, APPROVAL_NOT_REQUIRED}:
+        blockers.append("bounded_execution_approval_not_satisfied")
     if control.get("submission_authorized") is not False:
         blockers.append("bounded_run_submission_flag_invalid")
     if control.get("outreach_authorized") is not False:
