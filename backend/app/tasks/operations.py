@@ -66,3 +66,9 @@ def recover_stale_application_attempts_task():
         raise
     finally:
         db.close()
+
+
+# Celery imports this module through the existing operations include. Importing the
+# bounded execution module here registers its tasks without changing celery_app.py,
+# which keeps this feature isolated from Android runtime work.
+from app.tasks import agent_execution as _agent_execution_tasks  # noqa: E402,F401
