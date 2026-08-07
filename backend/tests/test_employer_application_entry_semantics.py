@@ -5,6 +5,7 @@ import pytest
 from app.services.ats_base import action_text
 from app.services.employer_application_entry import (
     _click_safe_candidate,
+    _embedded_hosted_ats_target,
     _rank_safe_candidates,
     _safe_candidate,
 )
@@ -88,6 +89,15 @@ class _FallbackOnlyPage:
         return _Locator([])
 
 
+class _SerializedTargetPage:
+    def __init__(self, *, body: str, urls: list[str]):
+        self.body = body
+        self.urls = urls
+
+    async def evaluate(self, _expression):
+        return {"body": self.body, "urls": list(self.urls)}
+
+
 @pytest.mark.asyncio
 async def test_duplicate_aria_and_inner_text_still_yield_exact_apply_label():
     element = _Element(aria_label="Apply", inner_text="Apply")
@@ -144,6 +154,36 @@ async def test_verified_apply_retries_with_force_after_pointer_actionability_tim
         item.get("action") == "intermediate_employer_apply_force_clicked"
         for item in log
     )
+
+
+@pytest.mark.asyncio
+async def test_embedded_hosted_ats_target_requires_visible_requisition_identity():
+    target = (
+        "https://desjardins.wd10.myworkdayjobs.com/Desjardins/job/Montral/"
+        "Fraud-Prevention-Advisor--Remote_R2511328-1"
+    )
+    page = _SerializedTargetPage(
+        body="Fraud Prevention Advisor, Remote R2511328",
+        urls=[
+            "https://desjardins.wd10.myworkdayjobs.com/en-CA/Desjardins/introduceYourself",
+            target + "\\",
+        ],
+    )
+
+    assert await _embedded_hosted_ats_target(page) == target
+
+
+@pytest.mark.asyncio
+async def test_embedded_hosted_ats_target_rejects_unmatched_requisition():
+    page = _SerializedTargetPage(
+        body="Fraud Prevention Advisor, Remote R2511328",
+        urls=[
+            "https://desjardins.wd10.myworkdayjobs.com/Desjardins/job/Montral/"
+            "Different-Role_R9999999-1"
+        ],
+    )
+
+    assert await _embedded_hosted_ats_target(page) == ""
 
 
 @pytest.mark.asyncio
