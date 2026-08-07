@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -430,14 +431,43 @@ def reserve_followup_delivery(
     followup: FollowUp,
     user: User,
 ) -> dict[str, Any]:
+    """Atomically claim one approved payload for provider delivery.
+
+    PostgreSQL row locks already serialize the surrounding worker path, but SQLite
+    ignores ``FOR UPDATE``. The conditional UPDATE is therefore authoritative: only
+    one process can move this exact approved payload from ``approved`` to ``sending``.
+    """
     preflight = validate_followup_for_delivery(db, followup, user)
-    followup.status = STATUS_SENDING
-    followup.send_attempt_count = int(followup.send_attempt_count or 0) + 1
-    followup.last_send_attempt_at = utcnow()
+    now = utcnow()
+    reserved = (
+        db.query(FollowUp)
+        .filter(
+            FollowUp.id == followup.id,
+            FollowUp.status == STATUS_APPROVED,
+            FollowUp.approval_status == APPROVAL_ACTIVE,
+            FollowUp.approval_payload_hash == preflight["payload_hash"],
+        )
+        .update(
+            {
+                FollowUp.status: STATUS_SENDING,
+                FollowUp.send_attempt_count: func.coalesce(FollowUp.send_attempt_count, 0) + 1,
+                FollowUp.last_send_attempt_at: now,
+            },
+            synchronize_session=False,
+        )
+    )
+    if reserved != 1:
+        db.expire_all()
+        raise SupervisedFollowUpError(
+            "Follow-up delivery reservation was already claimed or the approved payload changed"
+        )
+
+    db.flush()
+    db.refresh(followup)
     followup.delivery_metadata = {
         **dict(followup.delivery_metadata or {}),
         "reservation": {
-            "reserved_at": followup.last_send_attempt_at.isoformat(),
+            "reserved_at": _as_utc(followup.last_send_attempt_at).isoformat(),
             "payload_hash": preflight["payload_hash"],
             "approval_reference": followup.approval_reference,
             "send_idempotency_key": followup.send_idempotency_key,
