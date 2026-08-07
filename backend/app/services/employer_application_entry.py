@@ -9,9 +9,10 @@ returns to that ATS adapter so platform-specific Apply/login behavior stays inta
 from __future__ import annotations
 
 import asyncio
+import html as html_lib
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 from app.services.application_entry import application_form_evidence
 from app.services.ats_base import action_text
@@ -64,6 +65,11 @@ _INTERMEDIATE_APPLY_FALLBACK_SELECTORS = (
     'input[type="button"]',
 )
 
+_REQUISITION_TOKEN_RE = re.compile(
+    r"\b(?:R|JR|REQ|JOB|J)[-_]?\d[A-Z0-9._-]*\b",
+    re.IGNORECASE,
+)
+
 
 def _normalized(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
@@ -107,6 +113,56 @@ async def _trusted_hosted_ats(page: Any, current_url: str) -> Optional[Dict[str,
         "name": name,
         "version": str(getattr(adapter, "version", "1.0.0") or "1.0.0"),
     }
+
+
+async def _embedded_hosted_ats_target(page: Any) -> str:
+    """Extract a job-matched hosted ATS URL already embedded in employer page data.
+
+    React employer pages sometimes render Apply as a JavaScript-only button while
+    keeping the exact ATS job URL in serialized page state. That URL is stronger
+    evidence than attempting to click through a consent overlay. To prevent unrelated
+    footer or recommended-job links from being selected, the candidate must:
+
+    * be on a known hosted ATS domain;
+    * contain a ``/job/`` path;
+    * contain a requisition token that is visibly present on the current job page.
+    """
+    try:
+        payload = await page.evaluate(
+            """() => {
+              const body = document.body ? (document.body.innerText || '') : '';
+              const html = document.documentElement
+                ? (document.documentElement.innerHTML || '')
+                : '';
+              const urls = html.match(/https?:\/\/[^\\s\"'<>]+/gi) || [];
+              return {body, urls: Array.from(new Set(urls)).slice(0, 250)};
+            }"""
+        )
+    except Exception:
+        return ""
+
+    body = str((payload or {}).get("body") or "")
+    tokens = {
+        match.group(0).casefold()
+        for match in _REQUISITION_TOKEN_RE.finditer(body)
+    }
+    if not tokens:
+        return ""
+
+    for raw in (payload or {}).get("urls") or []:
+        candidate = html_lib.unescape(str(raw or ""))
+        candidate = candidate.replace("\\/", "/").strip()
+        candidate = candidate.rstrip("\\,;)]}\"")
+        if not is_allowed_url(candidate) or not _hosted_ats_candidate(candidate):
+            continue
+        parsed = urlparse(candidate)
+        if "/job/" not in (parsed.path or "").casefold():
+            continue
+        decoded = unquote(candidate).casefold()
+        if not any(token in decoded for token in tokens):
+            continue
+        return candidate
+    return ""
 
 
 async def _bring_controlled_page_to_front(page: Any) -> None:
@@ -382,7 +438,8 @@ async def continue_from_employer_landing(
     - no application form may already be present;
     - hosted certified ATS pages are returned to their adapter untouched;
     - only exact Apply/start labels are considered on generic employer pages;
-    - submit controls and controls inside forms are never clicked.
+    - submit controls and controls inside forms are never clicked;
+    - serialized ATS URLs are followed only when they match the visible requisition.
     """
     attempted: set[tuple[str, str, str]] = set()
 
@@ -422,6 +479,57 @@ async def continue_from_employer_landing(
             }
 
         candidates = await _rank_safe_candidates(page)
+        if not candidates:
+            log.append({
+                "action": "intermediate_employer_apply_not_found",
+                "step": step,
+                "url": current_url,
+                "ts": now_iso(),
+            })
+            return {}
+
+        # Prefer exact job-specific ATS state embedded in the page over a JavaScript
+        # click. This is especially important when a consent dialog intercepts pointer
+        # events. The extractor fails closed unless the hosted ATS URL contains the
+        # same requisition visible on this job detail page.
+        embedded_target = await _embedded_hosted_ats_target(page)
+        if embedded_target:
+            log.append({
+                "action": "intermediate_employer_embedded_ats_target_found",
+                "step": step,
+                "source_url": current_url,
+                "target_url": embedded_target,
+                "visible_apply_control": True,
+                "job_identity_matched": True,
+                "ts": now_iso(),
+            })
+            try:
+                await page.goto(
+                    embedded_target,
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    pass
+                await _bring_controlled_page_to_front(page)
+                log.append({
+                    "action": "intermediate_employer_embedded_ats_navigated",
+                    "step": step,
+                    "url": str(getattr(page, "url", "") or embedded_target),
+                    "ts": now_iso(),
+                })
+                continue
+            except Exception as exc:
+                log.append({
+                    "action": "intermediate_employer_embedded_ats_navigation_failed",
+                    "step": step,
+                    "target_url": embedded_target,
+                    "detail": str(exc)[:500],
+                    "ts": now_iso(),
+                })
+
         selected = None
         for element, descriptor in candidates:
             signature = (current_url, descriptor["label"], descriptor["href"])
@@ -433,6 +541,7 @@ async def continue_from_employer_landing(
                 "action": "intermediate_employer_apply_not_found",
                 "step": step,
                 "url": current_url,
+                "all_matching_controls_already_attempted": True,
                 "ts": now_iso(),
             })
             return {}
