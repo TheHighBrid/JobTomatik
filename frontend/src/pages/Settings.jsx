@@ -152,14 +152,14 @@ export default function Settings() {
           onChange={toggle('auto_generate_cover_letters')}
         />
         <Toggle
-          label="Auto-Schedule Follow-ups"
-          description="Send a follow-up email N days after a confirmed application"
+          label="Auto-Prepare Follow-up Drafts"
+          description="Prepare an unapproved draft N days after a confirmed application. No recipient is selected and nothing is sent automatically."
           checked={local.auto_followup}
           onChange={toggle('auto_followup')}
         />
         {local.auto_followup && (
           <div className="mt-3 pl-1">
-            <label className="label">Follow-up delay</label>
+            <label className="label">Draft target date</label>
             <div className="flex items-center gap-2 mt-1">
               <input
                 type="number"
@@ -215,7 +215,8 @@ export default function Settings() {
             ['AI_PROVIDER', 'template (free) | anthropic | gemini'],
             ['ANTHROPIC_API_KEY', 'Optional · AI-generated cover letters'],
             ['GEMINI_API_KEY', 'Optional · alternative AI provider'],
-            ['SENDGRID_API_KEY', 'Optional · email delivery'],
+            ['SENDGRID_API_KEY', 'Required for approved recruiter follow-up delivery'],
+            ['ALLOW_REAL_FOLLOWUP_SEND', 'Independent outbound recruiter-email kill switch'],
             ['ANSWER_VAULT_KEY', 'Optional · dedicated answer encryption key'],
           ].map(([key, desc]) => (
             <div key={key} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-xl">
