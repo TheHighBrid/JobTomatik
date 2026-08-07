@@ -23,7 +23,20 @@ from app.services.discovery_pipeline import persist_discovery_results
 
 
 def _current_user(db_session):
-    return db_session.query(User).filter(User.email == "test@example.com").one()
+    user = db_session.query(User).filter(User.email == "test@example.com").first()
+    if user is None:
+        user = User(
+            email="test@example.com",
+            hashed_password="phase4-test-only-password-hash",
+            full_name="Phase 4 Test User",
+            profile_data={},
+            job_preferences={},
+            automation_settings={},
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.flush()
+    return user
 
 
 def _run_with_tasks(db_session, user, *, requires_approval=True):
