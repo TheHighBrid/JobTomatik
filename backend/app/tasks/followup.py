@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Coroutine
 
 from app.celery_app import celery_app
@@ -26,6 +26,7 @@ from app.services.supervised_followup import (
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+STALE_DELIVERY_RESERVATION = timedelta(minutes=15)
 
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
@@ -188,9 +189,79 @@ def _deliver_followup(followup_id: int) -> dict[str, Any]:
         db.close()
 
 
+def _recover_stale_followup_deliveries() -> dict[str, Any]:
+    """Convert abandoned sending reservations into visible uncertain outcomes.
+
+    A hard process death cannot safely tell whether SendGrid accepted the request.
+    Once a reservation has been abandoned for 15 minutes, consume its approval and
+    require operator review instead of retrying the provider call.
+    """
+    db = SessionLocal()
+    recovered: list[int] = []
+    try:
+        cutoff = datetime.now(timezone.utc) - STALE_DELIVERY_RESERVATION
+        candidate_ids = [
+            row[0]
+            for row in db.query(FollowUp.id)
+            .filter(
+                FollowUp.status == STATUS_SENDING,
+                FollowUp.last_send_attempt_at.isnot(None),
+                FollowUp.last_send_attempt_at <= cutoff,
+            )
+            .all()
+        ]
+        for followup_id in candidate_ids:
+            followup = (
+                db.query(FollowUp)
+                .filter(
+                    FollowUp.id == followup_id,
+                    FollowUp.status == STATUS_SENDING,
+                    FollowUp.last_send_attempt_at.isnot(None),
+                    FollowUp.last_send_attempt_at <= cutoff,
+                )
+                .with_for_update()
+                .first()
+            )
+            if not followup:
+                continue
+            mark_followup_delivery_uncertain(
+                db,
+                followup,
+                reason=(
+                    "Delivery reservation exceeded 15 minutes without a recorded provider outcome; "
+                    "automatic retry remains disabled."
+                ),
+            )
+            recovered.append(followup.id)
+        db.commit()
+        return {
+            "checked": len(candidate_ids),
+            "recovered": len(recovered),
+            "followup_ids": recovered,
+            "automatic_retry_allowed": False,
+        }
+    except Exception as exc:
+        logger.exception("Stale follow-up reservation recovery failed")
+        db.rollback()
+        return {
+            "checked": 0,
+            "recovered": 0,
+            "followup_ids": [],
+            "automatic_retry_allowed": False,
+            "error": f"{type(exc).__name__}: {str(exc)[:250]}",
+        }
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.tasks.followup.send_followup", queue="followup")
 def send_followup(followup_id: int):
     return _deliver_followup(followup_id)
+
+
+@celery_app.task(name="app.tasks.followup.recover_stale_followup_deliveries", queue="followup")
+def recover_stale_followup_deliveries():
+    return _recover_stale_followup_deliveries()
 
 
 @celery_app.task(name="app.tasks.followup.send_pending_followups", queue="followup")
@@ -198,7 +269,7 @@ def send_pending_followups():
     """Deliver only due follow-ups with active exact-payload approval."""
     db = SessionLocal()
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         due_ids = [
             row[0]
             for row in db.query(FollowUp.id)
@@ -276,7 +347,7 @@ def schedule_auto_followup(application_id: int, days_after: int = 7):
             approval_status=APPROVAL_UNAPPROVED,
             delivery_metadata={
                 "source": "auto_followup_draft",
-                "prepared_at": datetime.utcnow().isoformat(),
+                "prepared_at": datetime.now(timezone.utc).isoformat(),
                 "outreach_authorized": False,
                 "recipient_selected": False,
             },
