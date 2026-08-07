@@ -14,6 +14,8 @@ from app.services.unattended_policy import (
 )
 
 
+SCHEDULER_POLICY_VERSION = "bounded-autonomy-v1"
+
 SUPPORTED_SEARCH_SOURCES = {
     "jobbank",
     "linkedin",
@@ -54,6 +56,7 @@ SCHEDULER_DEFAULTS: dict[str, Any] = {
     "scheduler_search_sources": ["jobbank", "linkedin", "indeed"],
     "scheduler_search_limit": 50,
 }
+SCHEDULER_SETTING_FIELDS = frozenset(SCHEDULER_DEFAULTS)
 
 
 def _list_values(value: Any) -> list[str]:
@@ -76,9 +79,15 @@ def _list_values(value: Any) -> list[str]:
     return result
 
 
+def scheduler_policy_is_current(user) -> bool:
+    raw = dict(user.automation_settings or {})
+    return str(raw.get("scheduler_policy_version") or "") == SCHEDULER_POLICY_VERSION
+
+
 def scheduler_settings(user) -> dict[str, Any]:
     operations = get_operations_settings()
     raw = dict(user.automation_settings or {})
+    policy_current = scheduler_policy_is_current(user)
     merged = {
         **SCHEDULER_DEFAULTS,
         "auto_apply_daily_limit": operations.default_daily_cap,
@@ -98,6 +107,15 @@ def scheduler_settings(user) -> dict[str, Any]:
         "scheduler_search_sources",
     ):
         merged[key] = _list_values(merged.get(key))
+
+    # Historical builds exposed auto-search/auto-apply as true defaults. Values
+    # persisted by those builds are not evidence of explicit Phase 8 consent.
+    if not policy_current:
+        merged["auto_search_enabled"] = False
+        merged["auto_apply_enabled"] = False
+        merged["dry_run_mode"] = True
+    merged["scheduler_policy_version"] = raw.get("scheduler_policy_version")
+    merged["scheduler_policy_current"] = policy_current
     return merged
 
 
@@ -301,7 +319,9 @@ def build_scheduler_preview(db, user, *, candidate_limit: int = 20) -> dict[str,
     ranked = rank_scheduler_candidates(db, user, limit=candidate_limit)
     allowed = [item for item in ranked if item["decision"].get("allowed")]
 
-    if not user_settings.get("auto_search_enabled") and not user_settings.get("auto_apply_enabled"):
+    if not user_settings["scheduler_policy_current"]:
+        scheduler_state = "policy_upgrade_required"
+    elif not user_settings.get("auto_search_enabled") and not user_settings.get("auto_apply_enabled"):
         scheduler_state = "disabled"
     elif not operations.autopilot_enabled:
         scheduler_state = "globally_disabled"
@@ -337,6 +357,9 @@ def build_scheduler_preview(db, user, *, candidate_limit: int = 20) -> dict[str,
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scheduler_state": scheduler_state,
+        "scheduler_policy_version": user_settings.get("scheduler_policy_version"),
+        "scheduler_policy_current": user_settings["scheduler_policy_current"],
+        "required_scheduler_policy_version": SCHEDULER_POLICY_VERSION,
         "global_autopilot_enabled": operations.autopilot_enabled,
         "global_kill_switch": operations.global_kill_switch,
         "real_submission_enabled": core.allow_real_application_submit,
@@ -356,6 +379,7 @@ def build_scheduler_preview(db, user, *, candidate_limit: int = 20) -> dict[str,
             "scheduler_defaults_off": SCHEDULER_DEFAULTS["auto_search_enabled"] is False,
             "auto_apply_defaults_off": SCHEDULER_DEFAULTS["auto_apply_enabled"] is False,
             "dry_run_defaults_on": SCHEDULER_DEFAULTS["dry_run_mode"] is True,
+            "legacy_scheduler_flags_require_policy_upgrade": True,
             "no_hardcoded_search_identity": True,
             "application_caps_do_not_stop_discovery": True,
             "certified_autonomous_required": True,
