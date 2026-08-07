@@ -20,7 +20,8 @@ WORKDAY_JOB_URL = (
     "https://desjardins.wd10.myworkdayjobs.com/en-US/Desjardins/job/Montral/"
     "Fraud-Prevention-Advisor--Remote_R2511328-1"
 )
-ATS_URL = "https://job-boards.greenhouse.io/desjardins-test/jobs/1234567890"
+WORKDAY_APPLY_URL = f"{WORKDAY_JOB_URL}/apply"
+WORKDAY_MANUAL_URL = f"{WORKDAY_APPLY_URL}/applyManually"
 UNSAFE_URL = "https://careers.example.com/jobs/unsafe-submit"
 
 LINKEDIN_HTML = f"""
@@ -62,7 +63,7 @@ DESJARDINS_HTML = f"""
 </html>
 """
 
-WORKDAY_JOB_HTML = f"""
+WORKDAY_JOB_HTML = """
 <!doctype html>
 <html>
   <head><title>Fraud Prevention Advisor, Remote | Desjardins Careers</title></head>
@@ -73,16 +74,35 @@ WORKDAY_JOB_HTML = f"""
       <button id="workday-apply" type="button"
               data-automation-id="jobPostingApplyButton">Apply</button>
       <script>
-        document.querySelector('#workday-apply').addEventListener('click', () => {{
-          window.location.assign('{ATS_URL}');
-        }});
+        document.querySelector('#workday-apply').addEventListener('click', (event) => {
+          event.preventDefault();
+        });
       </script>
     </main>
   </body>
 </html>
 """
 
-ATS_HTML = """
+WORKDAY_ADVENTURE_HTML = f"""
+<!doctype html>
+<html>
+  <head><title>Choose how to apply | Desjardins Careers</title></head>
+  <body>
+    <main data-automation-id="applyAdventurePage">
+      <div data-automation-id="legalNotice">Cookie settings</div>
+      <button data-automation-id="legalNoticeDeclineButton">Decline</button>
+      <a role="button" data-automation-id="autofillWithResume"
+         href="{WORKDAY_APPLY_URL}/autofillWithResume">Autofill with Resume</a>
+      <a role="button" data-automation-id="applyManually"
+         href="{WORKDAY_MANUAL_URL}">Apply Manually</a>
+      <a role="button" data-automation-id="useMyLastApplication"
+         href="{WORKDAY_APPLY_URL}/useMyLastApplication">Use My Last Application</a>
+    </main>
+  </body>
+</html>
+"""
+
+WORKDAY_FORM_HTML = """
 <!doctype html>
 <html>
   <head><title>Fraud Prevention Advisor | Application</title></head>
@@ -102,7 +122,7 @@ ATS_HTML = """
         <input id="resume" name="resume" type="file" accept=".pdf" required>
         <label for="cover_letter">Cover Letter</label>
         <textarea id="cover_letter" name="cover_letter"></textarea>
-        <button id="submit_app" type="submit">Submit Application</button>
+        <button id="submit_app" type="submit" data-automation-id="submit">Submit Application</button>
       </form>
     </main>
   </body>
@@ -163,11 +183,14 @@ async def employer_landing_page():
         if url.startswith(DESJARDINS_URL):
             await route.fulfill(status=200, content_type="text/html", body=DESJARDINS_HTML)
             return
+        if url.startswith(WORKDAY_MANUAL_URL):
+            await route.fulfill(status=200, content_type="text/html", body=WORKDAY_FORM_HTML)
+            return
+        if url.startswith(WORKDAY_APPLY_URL):
+            await route.fulfill(status=200, content_type="text/html", body=WORKDAY_ADVENTURE_HTML)
+            return
         if url.startswith(WORKDAY_JOB_URL):
             await route.fulfill(status=200, content_type="text/html", body=WORKDAY_JOB_HTML)
-            return
-        if url.startswith(ATS_URL):
-            await route.fulfill(status=200, content_type="text/html", body=ATS_HTML)
             return
         if url.startswith(UNSAFE_URL):
             await route.fulfill(status=200, content_type="text/html", body=UNSAFE_HTML)
@@ -200,6 +223,7 @@ def _profile() -> dict:
 
 
 async def _assert_filled(page) -> None:
+    assert page.url == WORKDAY_MANUAL_URL
     assert await page.locator("#first_name").input_value() == "Test"
     assert await page.locator("#last_name").input_value() == "Candidate"
     assert await page.locator("#email").input_value() == "candidate@example.com"
@@ -294,6 +318,8 @@ async def test_real_browser_dry_run_lets_workday_own_second_apply_and_fills_form
     actions = [entry.get("action") for entry in result["log"]]
     assert "intermediate_employer_trusted_ats_reached" in actions
     assert "workday_application_revealed" in actions
+    assert "workday_public_apply_route_fallback" in actions
+    assert "workday_apply_manually_selected" in actions
     await _assert_filled(employer_landing_page)
 
 
@@ -336,6 +362,8 @@ async def test_real_browser_direct_desjardins_dry_run_reaches_workday_owned_form
     actions = [entry.get("action") for entry in result["log"]]
     assert "intermediate_employer_trusted_ats_reached" in actions
     assert "workday_application_revealed" in actions
+    assert "workday_public_apply_route_fallback" in actions
+    assert "workday_apply_manually_selected" in actions
     await _assert_filled(employer_landing_page)
 
 
