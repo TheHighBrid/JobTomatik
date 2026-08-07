@@ -21,9 +21,14 @@ from app.services.operations_workspace import build_operations_workspace
 router = APIRouter(prefix="/operations", tags=["operations"])
 
 
+def _agenda_priority_rank(priority: str) -> int:
+    return {"high": 0, "medium": 1, "low": 2}.get(str(priority), 3)
+
+
 def _normalize_followup_agenda_states(workspace: dict) -> None:
     """Keep Phase 6 delivery states semantically intact in the Phase 7 agenda."""
-    for item in workspace.get("agenda", []):
+    agenda = workspace.get("agenda", [])
+    for item in agenda:
         if item.get("item_type") != "followup_draft":
             continue
         state = str(item.get("status") or "")
@@ -35,6 +40,17 @@ def _normalize_followup_agenda_states(workspace: dict) -> None:
             item["item_type"] = "followup_delivery"
             item["priority"] = "high" if item.get("overdue") else "medium"
             item["title"] = "Follow-up delivery in progress"
+
+    # State normalization can promote an item after the service has already sorted
+    # the base agenda, so re-apply deterministic priority/time ordering here.
+    agenda.sort(
+        key=lambda item: (
+            _agenda_priority_rank(item.get("priority", "low")),
+            0 if item.get("overdue") else 1,
+            item.get("scheduled_at") or datetime.max.replace(tzinfo=timezone.utc),
+            str(item.get("title") or ""),
+        )
+    )
 
 
 @router.get("/workspace", response_model=OperationsWorkspaceOut)
