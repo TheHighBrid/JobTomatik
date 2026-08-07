@@ -207,6 +207,35 @@ def test_handoff_detects_exact_payload_drift(db_session, tmp_path):
     assert drifted["submission_authorized"] is False
 
 
+def test_handoff_requires_material_references_from_bounded_readiness(
+    db_session,
+    tmp_path,
+):
+    user = User(
+        email="phase5-missing-ref@example.com",
+        hashed_password="not-used",
+        full_name="Missing Reference Owner",
+    )
+    db_session.add(user)
+    db_session.flush()
+    run, _ = _build_ready_run(db_session, user, tmp_path, suffix="missing-ref")
+    task = run.tasks[0]
+    output = dict(task.task_output or {})
+    material_refs = dict(output.get("materials") or {})
+    material_refs.pop("resume_summary")
+    task.task_output = {**output, "materials": material_refs}
+    db_session.commit()
+
+    evaluation = evaluate_submission_handoff(db_session, run)
+
+    assert evaluation["eligible"] is False
+    assert evaluation["current_snapshot"] is None
+    assert "resume_summary_readiness_reference_missing" in evaluation["blockers"]
+    assert evaluation["submission_authorized"] is False
+    assert db_session.query(SubmissionApproval).count() == 0
+    assert db_session.query(SubmissionAttempt).count() == 0
+
+
 def test_handoff_api_is_exact_phrase_and_account_scoped(
     auth_client,
     db_session,
