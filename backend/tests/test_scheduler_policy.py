@@ -7,9 +7,11 @@ from app.models.user import User
 from app.services.operations_settings import get_operations_settings
 from app.services.scheduler_policy import (
     SCHEDULER_DEFAULTS,
+    SCHEDULER_POLICY_VERSION,
     build_search_plan,
     candidate_priority,
     build_scheduler_preview,
+    scheduler_settings,
 )
 from app.tasks.scraping import _run_scheduler_cycle_for_user
 
@@ -31,6 +33,10 @@ def _user(db_session, *, email="scheduler@example.test", automation=None, prefer
     return user
 
 
+def _current_policy(**values):
+    return {"scheduler_policy_version": SCHEDULER_POLICY_VERSION, **values}
+
+
 def test_scheduler_defaults_are_fail_safe(auth_client):
     response = auth_client.get("/api/settings")
     assert response.status_code == 200
@@ -38,7 +44,40 @@ def test_scheduler_defaults_are_fail_safe(auth_client):
     assert payload["dry_run_mode"] is True
     assert payload["auto_search_enabled"] is False
     assert payload["auto_apply_enabled"] is False
+    assert payload["scheduler_policy_current"] is False
     assert SCHEDULER_DEFAULTS["autopilot_enabled_platforms"] == []
+
+
+def test_legacy_true_flags_are_inert_until_phase8_policy_save(auth_client, db_session):
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    user.automation_settings = {
+        "auto_search_enabled": True,
+        "auto_apply_enabled": True,
+        "dry_run_mode": False,
+        "auto_apply_daily_limit": 15,
+    }
+    db_session.commit()
+
+    before = auth_client.get("/api/settings")
+    assert before.status_code == 200
+    assert before.json()["auto_search_enabled"] is False
+    assert before.json()["auto_apply_enabled"] is False
+    assert before.json()["dry_run_mode"] is True
+    assert before.json()["scheduler_policy_current"] is False
+
+    # Editing a non-switch scheduler field activates Phase 8, but historical true
+    # switches are not resurrected unless explicitly present in the update.
+    saved = auth_client.patch(
+        "/api/settings",
+        json={"auto_apply_weekly_limit": 30},
+    )
+    assert saved.status_code == 200
+    payload = saved.json()
+    assert payload["scheduler_policy_version"] == SCHEDULER_POLICY_VERSION
+    assert payload["scheduler_policy_current"] is True
+    assert payload["auto_search_enabled"] is False
+    assert payload["auto_apply_enabled"] is False
+    assert payload["dry_run_mode"] is True
 
 
 def test_scheduler_settings_reject_unknown_source(auth_client):
@@ -143,7 +182,7 @@ def test_preview_stays_globally_disabled_when_autopilot_env_is_off(db_session, m
     _reset_operations_settings()
     user = _user(
         db_session,
-        automation={"auto_search_enabled": True},
+        automation=_current_policy(auto_search_enabled=True),
         preferences={
             "preferred_titles": ["Risk analyst"],
             "preferred_locations": ["Ottawa, Ontario"],
@@ -183,13 +222,13 @@ def test_user_scheduler_cycle_never_invents_missing_search_identity(db_session, 
     user = _user(
         db_session,
         email="no-search-identity@example.test",
-        automation={
-            "auto_search_enabled": True,
-            "auto_apply_enabled": False,
-            "quiet_hours_start_utc": 0,
-            "quiet_hours_end_utc": 0,
-            "scheduler_search_sources": ["jobbank"],
-        },
+        automation=_current_policy(
+            auto_search_enabled=True,
+            auto_apply_enabled=False,
+            quiet_hours_start_utc=0,
+            quiet_hours_end_utc=0,
+            scheduler_search_sources=["jobbank"],
+        ),
     )
     fake_delay = MagicMock()
     monkeypatch.setattr("app.tasks.scraping.run_job_search.delay", fake_delay)
@@ -211,17 +250,17 @@ def test_application_cap_blocks_apply_but_not_discovery(db_session, monkeypatch)
     user = _user(
         db_session,
         email="cap-discovery@example.test",
-        automation={
-            "auto_search_enabled": True,
-            "auto_apply_enabled": True,
-            "auto_apply_daily_limit": 1,
-            "auto_apply_weekly_limit": 10,
-            "quiet_hours_start_utc": 0,
-            "quiet_hours_end_utc": 0,
-            "scheduler_search_keywords": ["Risk analyst"],
-            "scheduler_search_location": "Ottawa, Ontario",
-            "scheduler_search_sources": ["jobbank"],
-        },
+        automation=_current_policy(
+            auto_search_enabled=True,
+            auto_apply_enabled=True,
+            auto_apply_daily_limit=1,
+            auto_apply_weekly_limit=10,
+            quiet_hours_start_utc=0,
+            quiet_hours_end_utc=0,
+            scheduler_search_keywords=["Risk analyst"],
+            scheduler_search_location="Ottawa, Ontario",
+            scheduler_search_sources=["jobbank"],
+        ),
     )
     previous_job = Job(
         external_id="cap-existing",
@@ -252,7 +291,7 @@ def test_scheduler_preview_ranks_policy_candidates_without_mutating_jobs(db_sess
     user = _user(
         db_session,
         email="preview@example.test",
-        automation={"auto_apply_enabled": True, "auto_apply_min_score": 0.5},
+        automation=_current_policy(auto_apply_enabled=True, auto_apply_min_score=0.5),
     )
     job = Job(
         external_id="sched-preview-1",
