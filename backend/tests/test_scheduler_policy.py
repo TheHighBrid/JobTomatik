@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+from app.models.application import Application
 from app.models.job import Job, JobStatus, JobSource
 from app.models.user import User
 from app.services.operations_settings import get_operations_settings
@@ -199,6 +200,52 @@ def test_user_scheduler_cycle_never_invents_missing_search_identity(db_session, 
     fake_delay.assert_not_called()
 
 
+def test_application_cap_blocks_apply_but_not_discovery(db_session, monkeypatch):
+    monkeypatch.setenv("AUTOPILOT_ENABLED", "true")
+    monkeypatch.setenv("AUTOPILOT_DEFAULT_DAILY_CAP", "1")
+    monkeypatch.setenv("AUTOPILOT_DEFAULT_WEEKLY_CAP", "10")
+    monkeypatch.setenv("AUTOPILOT_QUIET_HOURS_START_UTC", "0")
+    monkeypatch.setenv("AUTOPILOT_QUIET_HOURS_END_UTC", "0")
+    _reset_operations_settings()
+
+    user = _user(
+        db_session,
+        email="cap-discovery@example.test",
+        automation={
+            "auto_search_enabled": True,
+            "auto_apply_enabled": True,
+            "auto_apply_daily_limit": 1,
+            "auto_apply_weekly_limit": 10,
+            "quiet_hours_start_utc": 0,
+            "quiet_hours_end_utc": 0,
+            "scheduler_search_keywords": ["Risk analyst"],
+            "scheduler_search_location": "Ottawa, Ontario",
+            "scheduler_search_sources": ["jobbank"],
+        },
+    )
+    previous_job = Job(
+        external_id="cap-existing",
+        title="Existing application",
+        company="Previous Co",
+        status=JobStatus.applied,
+        source=JobSource.manual,
+        url="https://example.com/jobs/1",
+    )
+    db_session.add(previous_job)
+    db_session.flush()
+    db_session.add(Application(user_id=user.id, job_id=previous_job.id))
+    db_session.commit()
+
+    fake_delay = MagicMock()
+    monkeypatch.setattr("app.tasks.scraping.run_job_search.delay", fake_delay)
+
+    result = _run_scheduler_cycle_for_user(db_session, user)
+    assert result["searched"] is True
+    assert result["applications_queued"] == 0
+    assert result["reason"] == "application_cap_reached"
+    fake_delay.assert_called_once()
+
+
 def test_scheduler_preview_ranks_policy_candidates_without_mutating_jobs(db_session, monkeypatch):
     monkeypatch.setenv("AUTOPILOT_ENABLED", "false")
     _reset_operations_settings()
@@ -230,5 +277,6 @@ def test_scheduler_preview_ranks_policy_candidates_without_mutating_jobs(db_sess
     assert preview["summary"]["candidate_count"] == 1
     assert preview["candidates"][0]["job_id"] == job.id
     assert preview["candidates"][0]["policy_decision"]["allowed"] is False
+    assert preview["invariants"]["application_caps_do_not_stop_discovery"] is True
     db_session.refresh(job)
     assert job.status == JobStatus.queued
