@@ -15,6 +15,8 @@ API_LOG="$LOG_DIR/api.log"
 CELERY_LOG="$LOG_DIR/celery.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 ACTION="${1:-start}"
+ANDROID_REDIS_URL="${JOBTOMATIK_ANDROID_REDIS_URL:-redis://localhost:6379/1}"
+LEGACY_ANDROID_REDIS_URL="${JOBTOMATIK_LEGACY_ANDROID_REDIS_URL:-redis://localhost:6379/0}"
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
 
@@ -22,6 +24,17 @@ if [[ ! -x "$VENV/bin/python" ]]; then
   echo "Backend virtual environment is missing at $VENV" >&2
   exit 1
 fi
+
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  touch "$ENV_FILE"
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+  else
+    printf '\n%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
 
 ensure_env_default() {
   local key="$1"
@@ -225,15 +238,35 @@ status_stack() {
     echo "ANDROID_BROWSER_CDP: DOWN"
     failed=1
   fi
+
+  local configured_redis
+  configured_redis="$(grep '^REDIS_URL=' "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+  if [[ "$configured_redis" == "$ANDROID_REDIS_URL" ]]; then
+    echo "ANDROID_RUNTIME_BROKER: ISOLATED"
+  else
+    echo "ANDROID_RUNTIME_BROKER: NOT_ISOLATED"
+    failed=1
+  fi
   return "$failed"
 }
 
 prepare_stack() {
   cd "$BACKEND_ROOT"
-  ensure_env_default APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
-  ensure_env_default APPLICATION_BROWSER_HEADLESS 'false'
-  ensure_env_default APPLICATION_TARGET_HUMAN_WAIT_SECONDS '0'
+
+  # Android owns one authoritative API/worker runtime. Use Redis DB 1 so legacy
+  # manually launched workers that were already connected to DB 0 cannot consume a
+  # newly queued application task with stale imported code. This changes no process
+  # outside the managed runtime and therefore never terminates an operator terminal.
+  set_env_value REDIS_URL "$ANDROID_REDIS_URL"
+  set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
+  set_env_value APPLICATION_BROWSER_HEADLESS 'false'
+  set_env_value APPLICATION_TARGET_HUMAN_WAIT_SECONDS '0'
   repair_database_configuration
+
+  export REDIS_URL="$ANDROID_REDIS_URL"
+  export APPLICATION_BROWSER_CDP_ENDPOINT='http://127.0.0.1:9222'
+  export APPLICATION_BROWSER_HEADLESS='false'
+  export APPLICATION_TARGET_HUMAN_WAIT_SECONDS='0'
 
   if ! "$VENV/bin/python" -c 'import jwt; assert jwt.__version__' >/dev/null 2>&1; then
     "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.13.0'
@@ -243,6 +276,13 @@ prepare_stack() {
     redis-server --daemonize yes
     sleep 1
   fi
+
+  # Ask only the exact local Celery workers from the pre-supervisor DB 0 setup to
+  # shut down through Celery remote control. This does not signal or close terminals.
+  "$VENV/bin/python" scripts/retire_legacy_android_celery.py \
+    --broker "$LEGACY_ANDROID_REDIS_URL" \
+    --timeout 1.0 \
+    || true
 
   "$VENV/bin/python" scripts/prepare_android_runtime.py | tee "$LOG_DIR/preflight.log"
 }

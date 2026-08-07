@@ -81,6 +81,28 @@ def test_android_worker_is_dedicated_and_consumes_all_runtime_queues():
     assert "-Q applications,celery,followup,scraping" in manager
 
 
+def test_android_managed_runtime_isolated_from_legacy_manual_workers():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'ANDROID_REDIS_URL="${JOBTOMATIK_ANDROID_REDIS_URL:-redis://localhost:6379/1}"' in manager
+    assert 'LEGACY_ANDROID_REDIS_URL="${JOBTOMATIK_LEGACY_ANDROID_REDIS_URL:-redis://localhost:6379/0}"' in manager
+    assert 'set_env_value REDIS_URL "$ANDROID_REDIS_URL"' in manager
+    assert 'export REDIS_URL="$ANDROID_REDIS_URL"' in manager
+    assert '--broker "$LEGACY_ANDROID_REDIS_URL"' in manager
+    assert "ANDROID_RUNTIME_BROKER: ISOLATED" in manager
+
+
+def test_android_runtime_forces_nonblocking_automatic_application_entry():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "set_env_value APPLICATION_TARGET_HUMAN_WAIT_SECONDS '0'" in manager
+    assert "set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'" in manager
+
+
 def test_restart_preserves_a_healthy_authenticated_browser():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
@@ -89,3 +111,13 @@ def test_restart_preserves_a_healthy_authenticated_browser():
 
     assert '"$BROWSER_COMMAND" start' in restart_case
     assert '"$BROWSER_COMMAND" restart' not in restart_case
+
+
+def test_android_update_always_fast_forwards_authoritative_main():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "git fetch origin main" in wrapper
+    assert "git switch main" in wrapper
+    assert "git pull --ff-only origin main" in wrapper
