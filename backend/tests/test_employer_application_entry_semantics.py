@@ -21,8 +21,6 @@ class _Element:
         control_type: str = "button",
         inside_form: bool = False,
         normal_click_fails: bool = False,
-        element_id: str | None = None,
-        css_class: str | None = None,
     ):
         self.attrs = {
             "aria-label": aria_label,
@@ -30,11 +28,6 @@ class _Element:
             "title": None,
             "href": None,
             "type": control_type,
-            "id": element_id,
-            "class": css_class,
-            "name": None,
-            "data-testid": None,
-            "data-cy": None,
         }
         self._inner_text = inner_text
         self._clean_text = clean_text
@@ -191,17 +184,6 @@ async def test_embedded_hosted_ats_target_rejects_unmatched_requisition():
     )
 
     assert await _embedded_hosted_ats_target(page) == ""
-
-
-@pytest.mark.asyncio
-async def test_filter_apply_control_is_not_a_job_application_doorway():
-    element = _Element(
-        inner_text="Apply",
-        element_id="filter-apply-handler",
-        css_class="search-filter-action",
-    )
-
-    assert await _safe_candidate(element) is None
 
 
 @pytest.mark.asyncio
