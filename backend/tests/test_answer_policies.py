@@ -150,3 +150,69 @@ def test_bulk_setup_creates_and_updates_multiple_policies(auth_client):
     assert updated.status_code == 200
     assert updated.json()["created"] == 0
     assert updated.json()["updated"] == 2
+
+
+def test_changing_answer_revokes_confirmation_and_autofill(auth_client):
+    created = auth_client.post(
+        "/api/profile/answer-policies",
+        json={
+            "canonical_key": "salary_expectation",
+            "mode": "answer",
+            "answer_value": "85000 CAD",
+            "allow_autofill": True,
+            "confirmed": True,
+        },
+    ).json()
+
+    updated = auth_client.patch(
+        f"/api/profile/answer-policies/{created['id']}",
+        json={"answer_value": "90000 CAD"},
+    )
+    assert updated.status_code == 200
+    data = updated.json()
+    assert data["answer_value"] == "90000 CAD"
+    assert data["confirmed_at"] is None
+    assert data["allow_autofill"] is False
+
+
+def test_runtime_policy_respects_platform_scope(auth_client):
+    profile = auth_client.get("/api/profile").json()
+    response = auth_client.post(
+        "/api/profile/answer-policies",
+        json={
+            "canonical_key": "sponsorship_required",
+            "mode": "answer",
+            "answer_value": "No",
+            "scope": "platform",
+            "scope_value": "greenhouse.io",
+            "allow_autofill": True,
+            "confirmed": True,
+        },
+    )
+    assert response.status_code == 201
+
+    db = TestingSessionLocal()
+    matching = load_runtime_policies(
+        db,
+        profile["id"],
+        target_url="https://boards.greenhouse.io/acme/jobs/123",
+        company="Acme",
+    )
+    non_matching = load_runtime_policies(
+        db,
+        profile["id"],
+        target_url="https://jobs.lever.co/acme/123",
+        company="Acme",
+    )
+    db.close()
+
+    assert len(matching) == 1
+    assert matching[0]["answer_value"] == "No"
+    assert non_matching == []
+
+
+def test_unapproved_question_is_never_resolved_from_defaults():
+    result = resolve_runtime_policy("Are you legally authorized to work in Canada?", [])
+    assert result["canonical_key"] == "work_authorization"
+    assert result["can_autofill"] is False
+    assert result["matched"] is False
