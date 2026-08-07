@@ -30,6 +30,7 @@ KNOWN_PLATFORMS = {
     "generic",
 }
 REQUIRED_AUTONOMOUS_MATURITY = AdapterMaturity.CERTIFIED_AUTONOMOUS.value
+REQUIRED_SCHEDULER_POLICY_VERSION = "bounded-autonomy-v1"
 
 
 def _values(value: str | Iterable[str] | None) -> set[str]:
@@ -161,12 +162,30 @@ def evaluate_unattended_job_policy(
 ) -> AutomationDecision:
     """Gate a scheduled job before record creation and again before the worker."""
     now = now or datetime.utcnow()
+    user_settings = dict(user.automation_settings or {})
+
+    # Historical auto-search/auto-apply values predate the bounded-autonomy
+    # contract and cannot authorize any unattended entry point. This check lives
+    # at the shared worker policy chokepoint so scheduler and non-scheduler callers
+    # fail closed in the same way.
+    current_policy_version = str(user_settings.get("scheduler_policy_version") or "")
+    if current_policy_version != REQUIRED_SCHEDULER_POLICY_VERSION:
+        return AutomationDecision(
+            False,
+            "scheduler_policy_upgrade_required",
+            "Explicit Phase 8 bounded scheduler policy activation is required.",
+            {
+                "current_scheduler_policy_version": current_policy_version or None,
+                "required_scheduler_policy_version": REQUIRED_SCHEDULER_POLICY_VERSION,
+                "job_id": str(job.id or job.external_id or ""),
+            },
+        )
+
     user_decision = evaluate_autopilot_policy(db, user, now)
     if not user_decision.allowed:
         return user_decision
 
     operations = get_operations_settings()
-    user_settings = dict(user.automation_settings or {})
     ctx = _job_context(job)
     maturities = live_platform_maturities()
 
@@ -265,6 +284,7 @@ def evaluate_unattended_job_policy(
             "platform": ctx.adapter_platform,
             "platform_maturity": maturities.get(ctx.adapter_platform),
             "required_platform_maturity": REQUIRED_AUTONOMOUS_MATURITY,
+            "scheduler_policy_version": current_policy_version,
             "policy_detail": result.detail,
         },
     )
