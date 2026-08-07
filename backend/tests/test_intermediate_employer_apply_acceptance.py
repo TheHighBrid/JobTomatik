@@ -16,6 +16,10 @@ DESJARDINS_URL = (
     "https://desjardins-workplace.relevance.studio/en/job-detail/"
     "1-8be45c6a3a60100201e72dd7efbe0001-fraud-prevention-advisor-remote-montreal"
 )
+WORKDAY_JOB_URL = (
+    "https://desjardins.wd10.myworkdayjobs.com/en-US/Desjardins/job/Montral/"
+    "Fraud-Prevention-Advisor--Remote_R2511328-1"
+)
 ATS_URL = "https://job-boards.greenhouse.io/desjardins-test/jobs/1234567890"
 UNSAFE_URL = "https://careers.example.com/jobs/unsafe-submit"
 
@@ -46,10 +50,29 @@ DESJARDINS_HTML = f"""
     <header>Desjardins</header>
     <main>
       <h1>Fraud Prevention Advisor, Remote</h1>
-      <div>Full time · Regular position · Montréal</div>
+      <div>Full time · Regular position · Montréal · R2511328</div>
       <button id="employer-apply" type="button">Apply</button>
       <script>
         document.querySelector('#employer-apply').addEventListener('click', () => {{
+          window.location.assign('{WORKDAY_JOB_URL}');
+        }});
+      </script>
+    </main>
+  </body>
+</html>
+"""
+
+WORKDAY_JOB_HTML = f"""
+<!doctype html>
+<html>
+  <head><title>Fraud Prevention Advisor, Remote | Desjardins Careers</title></head>
+  <body>
+    <main>
+      <h1>Fraud Prevention Advisor, Remote</h1>
+      <div>Job requisition id R2511328</div>
+      <button id="workday-apply" type="button" aria-label="Apply">Apply</button>
+      <script>
+        document.querySelector('#workday-apply').addEventListener('click', () => {{
           window.location.assign('{ATS_URL}');
         }});
       </script>
@@ -139,6 +162,9 @@ async def employer_landing_page():
         if url.startswith(DESJARDINS_URL):
             await route.fulfill(status=200, content_type="text/html", body=DESJARDINS_HTML)
             return
+        if url.startswith(WORKDAY_JOB_URL):
+            await route.fulfill(status=200, content_type="text/html", body=WORKDAY_JOB_HTML)
+            return
         if url.startswith(ATS_URL):
             await route.fulfill(status=200, content_type="text/html", body=ATS_HTML)
             return
@@ -183,8 +209,16 @@ async def _assert_filled(page) -> None:
     assert uploaded == ["resume.pdf"]
 
 
+def _intermediate_actions(result: dict) -> list[dict]:
+    return [
+        entry
+        for entry in result["log"]
+        if entry.get("action") == "intermediate_employer_apply_started"
+    ]
+
+
 @pytest.mark.asyncio
-async def test_real_browser_crosses_intermediate_employer_apply_without_handoff(
+async def test_real_browser_crosses_desjardins_and_workday_apply_without_handoff(
     monkeypatch,
     employer_landing_page,
 ):
@@ -209,15 +243,17 @@ async def test_real_browser_crosses_intermediate_employer_apply_without_handoff(
     assert result["handoff_snapshot"] is None
     assert runtime.capture_calls == 0
     assert employer_landing_page.url == ATS_URL
+    intermediate = _intermediate_actions(result)
+    assert len(intermediate) == 2
+    assert intermediate[0]["url"].startswith(DESJARDINS_URL)
+    assert intermediate[1]["url"].startswith(WORKDAY_JOB_URL)
     actions = [entry.get("action") for entry in result["log"]]
     assert "application_entry_external_href_navigated" in actions
-    assert "intermediate_employer_apply_started" in actions
-    assert "intermediate_employer_apply_observed" in actions
     assert "application_target_security_handoff_retained" not in actions
 
 
 @pytest.mark.asyncio
-async def test_real_browser_dry_run_fills_after_intermediate_employer_apply(
+async def test_real_browser_dry_run_fills_after_multi_hop_employer_apply(
     monkeypatch,
     employer_landing_page,
     tmp_path,
@@ -252,11 +288,12 @@ async def test_real_browser_dry_run_fills_after_intermediate_employer_apply(
     assert result["fields_filled"] >= 5
     assert result["handoff_snapshot"] is None
     assert runtime.capture_calls == 0
+    assert len(_intermediate_actions(result)) == 2
     await _assert_filled(employer_landing_page)
 
 
 @pytest.mark.asyncio
-async def test_real_browser_dry_run_fills_from_direct_employer_landing(
+async def test_real_browser_dry_run_fills_from_direct_desjardins_landing(
     monkeypatch,
     employer_landing_page,
     tmp_path,
@@ -291,9 +328,7 @@ async def test_real_browser_dry_run_fills_from_direct_employer_landing(
     assert result["fields_filled"] >= 5
     assert result["handoff_snapshot"] is None
     assert runtime.capture_calls == 0
-    actions = [entry.get("action") for entry in result["log"]]
-    assert "intermediate_employer_apply_started" in actions
-    assert "intermediate_employer_apply_observed" in actions
+    assert len(_intermediate_actions(result)) == 2
     await _assert_filled(employer_landing_page)
 
 
