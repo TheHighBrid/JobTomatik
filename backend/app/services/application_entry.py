@@ -11,7 +11,7 @@ import asyncio
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 from app.services.ats_base import action_text
 from app.services.browser_navigation import (
@@ -113,6 +113,17 @@ class ApplicationFormEvidence:
         }
 
 
+@dataclass
+class ApplyCandidate:
+    score: int
+    surface: Any
+    selector: str
+    index: int
+    text: str
+    href: str
+    locator_mode: bool
+
+
 def _normalized(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
@@ -140,6 +151,33 @@ def apply_candidate_score(text: str, href: str = "") -> int:
     if target.startswith("mailto:"):
         score = max(score, 70)
     return score
+
+
+def _unwrap_linkedin_redirect(url: str) -> str:
+    """Extract LinkedIn's external destination from a tracking redirect when present."""
+    candidate = str(url or "")
+    parsed = urlparse(candidate)
+    host = (parsed.hostname or "").lower()
+    if not (host == "linkedin.com" or host.endswith(".linkedin.com")):
+        return candidate
+    if "redir" not in (parsed.path or "").lower() and "redirect" not in (parsed.path or "").lower():
+        return candidate
+    query = parse_qs(parsed.query)
+    for key in ("url", "dest", "destination", "redirect"):
+        value = (query.get(key) or [None])[0]
+        if not value:
+            continue
+        decoded = unquote(str(value))
+        if is_allowed_url(decoded):
+            return decoded
+    return candidate
+
+
+def _absolute_candidate_href(href: str, page_url: str) -> str:
+    if not href:
+        return ""
+    absolute = urljoin(page_url, href)
+    return _unwrap_linkedin_redirect(absolute)
 
 
 async def _surface_form_evidence(surface: Any) -> ApplicationFormEvidence:
@@ -254,85 +292,182 @@ async def _actionable(element: Any) -> bool:
     return True
 
 
-async def _append_ranked_controls(
-    ranked: List[tuple[int, Any, Any, str, str]],
-    seen: set[int],
+async def _candidate_from_element(
     surface: Any,
-    selectors: Iterable[str],
-) -> None:
-    for selector in selectors:
+    selector: str,
+    index: int,
+    element: Any,
+    *,
+    locator_mode: bool,
+) -> Optional[ApplyCandidate]:
+    if not await _actionable(element):
+        return None
+    try:
+        text = await action_text(element)
+    except Exception:
+        return None
+    try:
+        href = str(await element.get_attribute("href") or "")
+    except Exception:
+        href = ""
+    score = apply_candidate_score(text, href)
+    if score < 0:
+        return None
+    return ApplyCandidate(
+        score=score,
+        surface=surface,
+        selector=selector,
+        index=index,
+        text=text,
+        href=href,
+        locator_mode=locator_mode,
+    )
+
+
+async def _scan_selector(surface: Any, selector: str) -> List[ApplyCandidate]:
+    """Read live Locators when available; use ElementHandles only for test doubles."""
+    candidates: List[ApplyCandidate] = []
+    locator_factory = getattr(surface, "locator", None)
+    if callable(locator_factory):
         try:
-            controls = await surface.query_selector_all(selector)
-        except Exception:
-            continue
-        for control in controls:
-            identity = id(control)
-            if identity in seen or not await _actionable(control):
-                continue
-            seen.add(identity)
-            text = await action_text(control)
-            try:
-                href = str(await control.get_attribute("href") or "")
-            except Exception:
-                href = ""
-            score = apply_candidate_score(text, href)
-            if score >= 0:
-                ranked.append((score, surface, control, text, href))
-
-
-async def _rank_apply_controls(page: Any) -> List[tuple[int, Any, Any, str, str]]:
-    ranked: List[tuple[int, Any, Any, str, str]] = []
-    seen: set[int] = set()
-    surfaces = list(_candidate_surfaces(page))
-
-    for surface in surfaces:
-        await _append_ranked_controls(ranked, seen, surface, _APPLY_SELECTORS)
-
-    current_url = str(getattr(page, "url", "") or "")
-    if is_job_board_url(current_url):
-        for surface in surfaces:
-            await _append_ranked_controls(
-                ranked,
-                seen,
-                surface,
-                _JOB_BOARD_PLAIN_APPLY_SELECTORS,
-            )
-
-        # LinkedIn's classic desktop markup sometimes exposes a plain text anchor
-        # whose classes and tracking attributes vary by rollout. Scan broad
-        # interactive controls only on a known job-board listing, then rely on the
-        # strict scorer to reject filters and application-management actions.
-        if not ranked:
-            for surface in surfaces:
-                await _append_ranked_controls(
-                    ranked,
-                    seen,
+            locator = locator_factory(selector)
+            count = min(int(await locator.count()), 100)
+            for index in range(count):
+                candidate = await _candidate_from_element(
                     surface,
-                    _BROAD_APPLY_SELECTORS,
+                    selector,
+                    index,
+                    locator.nth(index),
+                    locator_mode=True,
                 )
+                if candidate:
+                    candidates.append(candidate)
+            return candidates
+        except Exception:
+            # LinkedIn can replace its job card while a locator is being inspected.
+            # Falling through allows one compatibility scan before the outer retry.
+            pass
 
-    ranked.sort(key=lambda item: item[0], reverse=True)
+    try:
+        elements = await surface.query_selector_all(selector)
+    except Exception:
+        return candidates
+    for index, element in enumerate(elements[:100]):
+        candidate = await _candidate_from_element(
+            surface,
+            selector,
+            index,
+            element,
+            locator_mode=False,
+        )
+        if candidate:
+            candidates.append(candidate)
+    return candidates
+
+
+async def _rank_apply_controls(page: Any) -> List[ApplyCandidate]:
+    ranked: List[ApplyCandidate] = []
+    seen: set[tuple[str, str]] = set()
+    surfaces = list(_candidate_surfaces(page))
+    current_url = str(getattr(page, "url", "") or "")
+
+    selector_groups: List[Iterable[str]] = [_APPLY_SELECTORS]
+    if is_job_board_url(current_url):
+        selector_groups.append(_JOB_BOARD_PLAIN_APPLY_SELECTORS)
+
+    for selectors in selector_groups:
+        for surface in surfaces:
+            for selector in selectors:
+                for candidate in await _scan_selector(surface, selector):
+                    signature = (_normalized(candidate.text), candidate.href)
+                    if signature in seen:
+                        continue
+                    seen.add(signature)
+                    ranked.append(candidate)
+
+    # The classic LinkedIn desktop page is unusually volatile and sometimes drops
+    # every rollout-specific class between navigation and inspection. A broad scan is
+    # therefore allowed only on known job-board pages and still goes through the
+    # strict Apply scorer above.
+    if not ranked and is_job_board_url(current_url):
+        for surface in surfaces:
+            for selector in _BROAD_APPLY_SELECTORS:
+                for candidate in await _scan_selector(surface, selector):
+                    signature = (_normalized(candidate.text), candidate.href)
+                    if signature in seen:
+                        continue
+                    seen.add(signature)
+                    ranked.append(candidate)
+
+    ranked.sort(key=lambda item: item.score, reverse=True)
     return ranked
 
 
-async def _copy_to_primary_page(page: Any, target_url: str, log: List[Dict[str, Any]]) -> str:
-    if str(getattr(page, "url", "") or "") == target_url:
-        return target_url
+async def _live_candidate_element(candidate: ApplyCandidate) -> Any:
+    """Re-resolve the candidate immediately before click to survive SPA rerenders."""
+    if candidate.locator_mode:
+        locator = candidate.surface.locator(candidate.selector)
+        count = int(await locator.count())
+        if 0 <= candidate.index < count:
+            element = locator.nth(candidate.index)
+            try:
+                current_text = await action_text(element)
+                current_href = str(await element.get_attribute("href") or "")
+            except Exception:
+                current_text = ""
+                current_href = ""
+            if apply_candidate_score(current_text, current_href) >= 0:
+                return element
+
+        # Indexes can shift when LinkedIn injects banners. Match the original text or
+        # href across the fresh locator collection before giving up.
+        for index in range(min(count, 100)):
+            element = locator.nth(index)
+            try:
+                text = await action_text(element)
+                href = str(await element.get_attribute("href") or "")
+            except Exception:
+                continue
+            if candidate.href and href == candidate.href:
+                return element
+            if candidate.text and _normalized(text) == _normalized(candidate.text):
+                return element
+        return None
+
+    try:
+        elements = await candidate.surface.query_selector_all(candidate.selector)
+        if 0 <= candidate.index < len(elements):
+            return elements[candidate.index]
+    except Exception:
+        return None
+    return None
+
+
+async def _navigate(page: Any, target_url: str, log: List[Dict[str, Any]], action: str) -> bool:
     try:
         await page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
         try:
             await page.wait_for_load_state("networkidle", timeout=8000)
         except Exception:
             pass
-        return str(getattr(page, "url", "") or target_url)
+        log.append({"action": action, "url": str(getattr(page, "url", "") or target_url), "ts": now_iso()})
+        return True
     except Exception as exc:
         log.append({
-            "action": "application_entry_copy_failed",
+            "action": f"{action}_failed",
             "url": target_url,
-            "detail": str(exc)[:200],
+            "detail": str(exc)[:240],
             "ts": now_iso(),
         })
+        return False
+
+
+async def _copy_to_primary_page(page: Any, target_url: str, log: List[Dict[str, Any]]) -> str:
+    if str(getattr(page, "url", "") or "") == target_url:
         return target_url
+    if await _navigate(page, target_url, log, "application_entry_external_target_copied"):
+        return str(getattr(page, "url", "") or target_url)
+    return target_url
 
 
 async def _observe_entry_result(
@@ -345,6 +480,7 @@ async def _observe_entry_result(
 ) -> Optional[Dict[str, Any]]:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + max(0.5, timeout_seconds)
+    last_url = before_url
     while loop.time() < deadline:
         external = await external_target_from_browser(page, source_url, log)
         if external:
@@ -368,13 +504,26 @@ async def _observe_entry_result(
                 "application_form_detected": True,
                 "form_evidence": evidence.as_dict(),
             }
-        if current_url and current_url != before_url:
-            return {
-                "application_url": current_url,
-                "resolution_method": "apply_control_navigation",
-                "application_form_detected": False,
-                "form_evidence": evidence.as_dict(),
-            }
+
+        if current_url and current_url != last_url:
+            log.append({
+                "action": "application_entry_url_changed",
+                "from_url": last_url,
+                "to_url": current_url,
+                "still_job_board": is_job_board_url(current_url),
+                "ts": now_iso(),
+            })
+            last_url = current_url
+            # A LinkedIn SPA route change is not application-target resolution. Keep
+            # observing rather than prematurely treating another listing route as a
+            # successful doorway.
+            if not is_job_board_url(current_url):
+                return {
+                    "application_url": current_url,
+                    "resolution_method": "apply_control_navigation",
+                    "application_form_detected": False,
+                    "form_evidence": evidence.as_dict(),
+                }
         await page.wait_for_timeout(350)
     return None
 
@@ -383,10 +532,16 @@ async def open_application_entry(
     page: Any,
     log: List[Dict[str, Any]],
     *,
-    max_clicks: int = 3,
+    max_clicks: int = 4,
     settle_timeout_seconds: float = 12.0,
 ) -> Dict[str, Any]:
-    """Reach the application form without requiring a human Apply click."""
+    """Reach an application form without ever asking a human to click Apply.
+
+    The routine rescans controls before each click, prefers a proven external href
+    when the job board exposes one, and tolerates SPA rerenders. It may traverse an
+    intermediate employer page, but plain ``Apply`` is only eligible on known job
+    boards so a generic ATS final-submit control cannot be mistaken for a doorway.
+    """
     source_url = str(getattr(page, "url", "") or "")
     initial = await application_form_evidence(page)
     if initial.present:
@@ -403,6 +558,7 @@ async def open_application_entry(
             "form_evidence": initial.as_dict(),
         }
 
+    last_external_target: Optional[Dict[str, Any]] = None
     for attempt in range(1, max(1, int(max_clicks)) + 1):
         ranked = await _rank_apply_controls(page)
         if not ranked:
@@ -414,39 +570,56 @@ async def open_application_entry(
             })
             break
 
-        score, _surface, control, text, href = ranked[0]
+        candidate = ranked[0]
         before_url = str(getattr(page, "url", "") or source_url)
+        absolute_href = _absolute_candidate_href(candidate.href, before_url)
         log.append({
             "action": "application_entry_apply_click_started",
             "attempt": attempt,
-            "score": score,
-            "text": text[:160],
-            "href": href[:500],
+            "score": candidate.score,
+            "text": candidate.text[:160],
+            "href": candidate.href[:500],
+            "resolved_href": absolute_href[:500],
             "url": before_url,
+            "live_locator": candidate.locator_mode,
             "ts": now_iso(),
         })
-        try:
-            await control.click(timeout=8000)
-        except Exception as exc:
-            absolute_href = urljoin(before_url, href) if href else ""
-            if is_allowed_url(absolute_href):
-                try:
-                    await page.goto(absolute_href, wait_until="domcontentloaded", timeout=30000)
-                except Exception:
+
+        # External anchors are deterministic and safer to follow directly than to
+        # rely on a popup that a mobile/desktop LinkedIn rollout may block or rerender.
+        if absolute_href and is_allowed_url(absolute_href) and not is_job_board_url(absolute_href):
+            navigated = await _navigate(
+                page,
+                absolute_href,
+                log,
+                "application_entry_external_href_navigated",
+            )
+            if not navigated:
+                continue
+        else:
+            try:
+                element = await _live_candidate_element(candidate)
+                if element is None or not await _actionable(element):
                     log.append({
-                        "action": "application_entry_apply_click_failed",
+                        "action": "application_entry_candidate_rerendered",
                         "attempt": attempt,
-                        "detail": str(exc)[:240],
+                        "text": candidate.text[:160],
                         "ts": now_iso(),
                     })
+                    await page.wait_for_timeout(250)
                     continue
-            else:
+                await element.click(timeout=8000)
+            except Exception as exc:
+                # The outer loop rescans from the live DOM. Never turn a transient
+                # LinkedIn rerender into a human handoff.
                 log.append({
                     "action": "application_entry_apply_click_failed",
                     "attempt": attempt,
                     "detail": str(exc)[:240],
+                    "rerender_retry": True,
                     "ts": now_iso(),
                 })
+                await page.wait_for_timeout(300)
                 continue
 
         observed = await _observe_entry_result(
@@ -456,19 +629,40 @@ async def open_application_entry(
             timeout_seconds=settle_timeout_seconds,
             log=log,
         )
-        if observed:
-            log.append({
-                "action": "application_entry_resolved",
-                "attempt": attempt,
-                "url": observed.get("application_url"),
-                "resolution_method": observed.get("resolution_method"),
-                "application_form_detected": observed.get("application_form_detected"),
-                "ts": now_iso(),
-            })
+        if not observed:
+            continue
+
+        log.append({
+            "action": "application_entry_resolved",
+            "attempt": attempt,
+            "url": observed.get("application_url"),
+            "resolution_method": observed.get("resolution_method"),
+            "application_form_detected": observed.get("application_form_detected"),
+            "ts": now_iso(),
+        })
+        if observed.get("application_form_detected"):
             return observed
 
-    current_url = str(getattr(page, "url", "") or source_url)
+        # We reached an external employer/ATS page but not the form yet. Continue
+        # through another high-confidence doorway in the same retained browser.
+        target_url = str(observed.get("application_url") or "")
+        if target_url and not is_job_board_url(target_url):
+            last_external_target = observed
+            continue
+        return observed
+
     final_evidence = await application_form_evidence(page)
+    if final_evidence.present:
+        return {
+            "application_url": str(getattr(page, "url", "") or source_url),
+            "resolution_method": "form_detected_after_apply_retry",
+            "application_form_detected": True,
+            "form_evidence": final_evidence.as_dict(),
+        }
+    if last_external_target:
+        return last_external_target
+
+    current_url = str(getattr(page, "url", "") or source_url)
     log.append({
         "action": "application_entry_not_resolved",
         "source_url": source_url,
