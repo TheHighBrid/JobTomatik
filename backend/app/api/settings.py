@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, field_validator, model_validator
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -176,7 +176,10 @@ async def update_settings(
     # editable rather than being retroactively rejected by a new Phase 8 rule.
     if SCHEDULER_CONFLICT_FIELDS.intersection(updates):
         merged = {**DEFAULT_SETTINGS, **current, **updates}
-        validated = SettingsUpdate(**merged).model_dump(exclude_none=True)
+        try:
+            validated = SettingsUpdate(**merged).model_dump(exclude_none=True)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
         for key in updates:
             current[key] = validated[key]
     else:
