@@ -112,3 +112,13 @@ def test_restart_preserves_a_healthy_authenticated_browser():
 
     assert '"$BROWSER_COMMAND" start' in restart_case
     assert '"$BROWSER_COMMAND" restart' not in restart_case
+
+
+def test_android_update_always_fast_forwards_authoritative_main():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "git fetch origin main" in wrapper
+    assert "git switch main" in wrapper
+    assert "git pull --ff-only origin main" in wrapper
