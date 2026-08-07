@@ -162,10 +162,15 @@ async def fill_and_submit_application_with_handoff(
             entry_form_detected = bool(entry.get("application_form_detected"))
 
             # A job board can lead to an employer-hosted detail page that has one
-            # additional plain Apply doorway. Continue through that page before ATS
-            # detection or form filling. Reaching a different domain alone is not a
-            # valid reason to stop or create a handoff.
-            if entry_url and not entry_form_detected and not is_job_board_url(entry_url):
+            # additional plain Apply doorway. A stored job can also point directly to
+            # that employer page. In both cases, continue before ATS detection or form
+            # filling. Reaching a different domain alone is not a valid stop point.
+            current_entry_url = str(getattr(page, "url", "") or entry_url or job_url)
+            if (
+                not entry_form_detected
+                and current_entry_url
+                and not is_job_board_url(current_entry_url)
+            ):
                 continued = await continue_from_employer_landing(
                     page,
                     source_url=job_url,
