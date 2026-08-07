@@ -14,6 +14,8 @@ from app.models.notification import Notification
 from app.models.user import User
 from app.services.application_recovery import (
     RECOVERY_KIND,
+    RUNTIME_INTERRUPTION_KIND,
+    recover_interrupted_application_attempts,
     recover_stale_application_attempt,
     recover_stale_application_attempts,
 )
@@ -180,7 +182,7 @@ def test_unknown_attempt_mode_fails_closed_to_submission_uncertain(db_session):
     assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
 
 
-def test_fresh_attempt_is_not_recovered(db_session):
+def test_fresh_attempt_is_not_recovered_by_periodic_stale_sweep(db_session):
     now = datetime.utcnow().replace(microsecond=0)
     application = _make_application(
         db_session,
@@ -205,6 +207,52 @@ def test_fresh_attempt_is_not_recovered(db_session):
     assert db_session.query(ManualReviewTask).filter(
         ManualReviewTask.application_id == application.id,
     ).count() == 0
+
+
+def test_managed_runtime_restart_recovers_fresh_dry_run_immediately(db_session):
+    now = datetime.utcnow().replace(microsecond=0)
+    application = _make_application(
+        db_session,
+        suffix="runtime-interrupted-fresh",
+        now=now,
+        age_minutes=0,
+        dry_run=True,
+    )
+
+    result = recover_interrupted_application_attempts(db_session, now=now)
+    db_session.commit()
+    db_session.refresh(application)
+
+    assert result["checked"] == 1
+    assert result["recovered"] == 1
+    assert result["dry_run_recovered"] == 1
+    assert application.status == ApplicationStatus.pending
+    assert application.automation_state == ApplicationAutomationState.needs_review.value
+
+    review = db_session.query(ManualReviewTask).filter(
+        ManualReviewTask.application_id == application.id,
+    ).one()
+    assert (review.details or {})["kind"] == RUNTIME_INTERRUPTION_KIND
+    assert (review.details or {})["runtime_interrupted"] is True
+
+
+def test_managed_runtime_restart_keeps_live_attempt_fail_closed(db_session):
+    now = datetime.utcnow().replace(microsecond=0)
+    application = _make_application(
+        db_session,
+        suffix="runtime-interrupted-live",
+        now=now,
+        age_minutes=0,
+        dry_run=False,
+    )
+
+    result = recover_interrupted_application_attempts(db_session, now=now)
+    db_session.commit()
+    db_session.refresh(application)
+
+    assert result["recovered"] == 1
+    assert result["uncertain_recovered"] == 1
+    assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
 
 
 def test_batch_recovery_only_selects_stale_rows(db_session):
