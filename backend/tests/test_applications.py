@@ -116,5 +116,9 @@ def test_create_followup(auth_client):
         "recipient_email": "hr@company.com",
     })
     assert resp.status_code == 201
-    assert resp.json()["recipient_email"] == "hr@company.com"
-    assert resp.json()["status"] == "pending"
+    data = resp.json()
+    assert data["recipient_email"] == "hr@company.com"
+    assert data["status"] == "needs_recipient"
+    assert data["recruiter_contact_id"] is None
+    assert data["approval_status"] == "unapproved"
+    assert data["sent_at"] is None
