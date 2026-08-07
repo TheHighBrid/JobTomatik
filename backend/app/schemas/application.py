@@ -25,7 +25,7 @@ class ApplicationUpdate(BaseModel):
 class FollowUpCreate(BaseModel):
     scheduled_at: datetime
     subject: str = Field(min_length=1, max_length=500)
-    message: str = Field(min_length=1, max_length=10000)
+    message: Optional[str] = Field(default=None, max_length=10000)
     recipient_email: Optional[str] = Field(default=None, max_length=255)
     recruiter_contact_id: Optional[int] = Field(default=None, ge=1)
 
