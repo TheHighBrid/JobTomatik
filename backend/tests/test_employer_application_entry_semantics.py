@@ -4,6 +4,7 @@ import pytest
 
 from app.services.ats_base import action_text
 from app.services.employer_application_entry import (
+    _click_safe_candidate,
     _rank_safe_candidates,
     _safe_candidate,
 )
@@ -18,6 +19,7 @@ class _Element:
         clean_text: str = "Apply",
         control_type: str = "button",
         inside_form: bool = False,
+        normal_click_fails: bool = False,
     ):
         self.attrs = {
             "aria-label": aria_label,
@@ -29,6 +31,9 @@ class _Element:
         self._inner_text = inner_text
         self._clean_text = clean_text
         self._inside_form = inside_form
+        self.normal_click_fails = normal_click_fails
+        self.normal_clicks = 0
+        self.forced_clicks = 0
 
     async def is_visible(self):
         return True
@@ -46,6 +51,18 @@ class _Element:
         if "closest('form')" in expression:
             return self._inside_form
         return self._clean_text
+
+    async def scroll_into_view_if_needed(self, *, timeout=None):
+        return None
+
+    async def click(self, *, timeout=None, force=False):
+        if force:
+            self.forced_clicks += 1
+            return None
+        self.normal_clicks += 1
+        if self.normal_click_fails:
+            raise RuntimeError("pointer actionability timeout")
+        return None
 
 
 class _Locator:
@@ -105,11 +122,37 @@ async def test_bounded_fallback_finds_componentized_apply_button():
 
 
 @pytest.mark.asyncio
+async def test_verified_apply_retries_with_force_after_pointer_actionability_timeout():
+    element = _Element(normal_click_fails=True)
+    page = _FallbackOnlyPage(element)
+    descriptor = await _safe_candidate(element)
+    assert descriptor is not None
+    log = []
+
+    clicked = await _click_safe_candidate(
+        page,
+        element,
+        descriptor,
+        step=1,
+        log=log,
+    )
+
+    assert clicked is True
+    assert element.normal_clicks == 1
+    assert element.forced_clicks == 1
+    assert any(
+        item.get("action") == "intermediate_employer_apply_force_clicked"
+        for item in log
+    )
+
+
+@pytest.mark.asyncio
 async def test_submit_apply_inside_form_remains_blocked():
     element = _Element(
         aria_label="Apply",
         control_type="submit",
         inside_form=True,
+        normal_click_fails=True,
     )
 
     assert await _safe_candidate(element) is None
