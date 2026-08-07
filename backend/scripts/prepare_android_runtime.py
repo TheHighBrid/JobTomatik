@@ -16,7 +16,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from app import models as _models  # noqa: E402,F401
 from app.config import get_settings  # noqa: E402
 from app.database import Base, engine  # noqa: E402
-from app.services.application_recovery import recover_stale_application_attempts  # noqa: E402
+from app.services.application_recovery import recover_interrupted_application_attempts  # noqa: E402
 
 CRITICAL_TABLES = {
     "users",
@@ -85,16 +85,17 @@ def _browser_status() -> tuple[bool, str]:
 
 
 def _recover_abandoned_application_attempts() -> dict:
-    """Clear stale `applying` checkpoints before a newly managed worker starts.
+    """Recover every attempt whose owning Android worker was replaced.
 
-    The Android stack does not run a separate Celery beat process, so restart/update
-    preflight is the guaranteed recovery point for attempts abandoned by an older
-    worker or broker generation.
+    The manager stops/retires old workers before this preflight runs. Any row still in
+    ``applying`` therefore has no worker that can legitimately finish it, regardless
+    of age. Dry runs remain fail-closed in review; live/unknown attempts remain
+    submission-uncertain.
     """
     session_factory = sessionmaker(bind=engine)
     db = session_factory()
     try:
-        result = recover_stale_application_attempts(db)
+        result = recover_interrupted_application_attempts(db)
         db.commit()
         return result
     except Exception:
@@ -127,7 +128,7 @@ def main() -> int:
         print("Created tables: " + ", ".join(sorted(missing_before)))
     else:
         print("Schema changes: none")
-    print(f"ANDROID_STALE_APPLICATIONS_RECOVERED={int(recovery.get('recovered') or 0)}")
+    print(f"ANDROID_INTERRUPTED_APPLICATIONS_RECOVERED={int(recovery.get('recovered') or 0)}")
 
     browser_ready, browser_detail = _browser_status()
     if browser_ready:
