@@ -21,6 +21,22 @@ from app.services.operations_workspace import build_operations_workspace
 router = APIRouter(prefix="/operations", tags=["operations"])
 
 
+def _normalize_followup_agenda_states(workspace: dict) -> None:
+    """Keep Phase 6 delivery states semantically intact in the Phase 7 agenda."""
+    for item in workspace.get("agenda", []):
+        if item.get("item_type") != "followup_draft":
+            continue
+        state = str(item.get("status") or "")
+        if state == "delivery_uncertain":
+            item["item_type"] = "followup_delivery"
+            item["priority"] = "high"
+            item["title"] = "Follow-up delivery uncertain"
+        elif state == "sending":
+            item["item_type"] = "followup_delivery"
+            item["priority"] = "high" if item.get("overdue") else "medium"
+            item["title"] = "Follow-up delivery in progress"
+
+
 @router.get("/workspace", response_model=OperationsWorkspaceOut)
 def get_operations_workspace(
     agenda_days: int = Query(default=14, ge=1, le=90),
@@ -51,6 +67,7 @@ def get_operations_workspace(
         )
         .count()
     )
+    _normalize_followup_agenda_states(workspace)
     return workspace
 
 
