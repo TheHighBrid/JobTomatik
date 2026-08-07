@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
+from app.models.application import Application, ManualReviewStatus, ManualReviewTask
 from app.models.intelligence import CareerMemory, KnowledgeEdge
 from app.models.user import User
 from app.schemas.intelligence import CareerMemoryOut
@@ -28,7 +29,7 @@ def get_operations_workspace(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return build_operations_workspace(
+    workspace = build_operations_workspace(
         db,
         user_id=current_user.id,
         agenda_days=agenda_days,
@@ -36,6 +37,20 @@ def get_operations_workspace(
         evaluation_limit=evaluation_limit,
         pipeline_limit_per_status=pipeline_limit_per_status,
     )
+    # Summary metrics must describe the complete account dataset, not only the
+    # cards retained by the per-column UI display cap.
+    workspace["summary"]["open_reviews"] = (
+        db.query(ManualReviewTask.id)
+        .join(Application, Application.id == ManualReviewTask.application_id)
+        .filter(
+            Application.user_id == current_user.id,
+            ManualReviewTask.status.in_(
+                [ManualReviewStatus.open.value, ManualReviewStatus.in_progress.value]
+            ),
+        )
+        .count()
+    )
+    return workspace
 
 
 @router.patch("/memories/{memory_id}", response_model=CareerMemoryOut)
@@ -76,7 +91,7 @@ def correct_career_memory(
         memory.source = "user_correction"
 
     if "content" in values:
-        memory.content = values["content"].strip()
+        memory.content = values["content"]
     if "confidence" in values:
         memory.confidence = values["confidence"]
     if "is_active" in values:
