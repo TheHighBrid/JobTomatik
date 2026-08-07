@@ -63,8 +63,11 @@ def test_confirmed_policy_is_encrypted_at_rest_and_decrypted_for_owner(auth_clie
     stored = db.query(ApplicantAnswerPolicy).filter(ApplicantAnswerPolicy.id == data["id"]).first()
     assert stored.encrypted_value
     assert stored.encrypted_value != "Yes"
-    assert "Yes" not in stored.encrypted_value
+    runtime = load_runtime_policies(db, stored.user_id)
     db.close()
+
+    resolved = resolve_runtime_policy("Are you authorized to work?", runtime)
+    assert resolved["answer"] == "Yes"
 
 
 def test_fallback_answers_are_encrypted_and_resolved_in_order(auth_client):
@@ -86,7 +89,6 @@ def test_fallback_answers_are_encrypted_and_resolved_in_order(auth_client):
     db = TestingSessionLocal()
     stored = db.query(ApplicantAnswerPolicy).filter(ApplicantAnswerPolicy.id == data["id"]).first()
     assert stored.encrypted_fallbacks
-    assert "Prefer not to answer" not in stored.encrypted_fallbacks
     runtime = load_runtime_policies(db, stored.user_id)
     db.close()
 

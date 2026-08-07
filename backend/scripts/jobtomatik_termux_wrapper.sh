@@ -80,16 +80,23 @@ update_main() {
     "set -e; cd '$PROOT_REPO'; git fetch origin main; git switch main; git pull --ff-only origin main"
 }
 
+activate_stack() {
+  local action="$1"
+  "$BROWSER_COMMAND" start
+  # The PRoot manager owns API, worker, frontend, stale-attempt recovery, queue-canary
+  # certification, and the single deliberate localhost:3000 JobTomatik-tab reload.
+  start_stack_detached "$action"
+}
+
 case "$ACTION" in
   start)
-    "$BROWSER_COMMAND" start
-    start_stack_detached start
+    activate_stack start
     ;;
   restart)
     stop_stack_supervisor
-    # Keep a healthy authenticated browser and its active handoff page intact.
-    "$BROWSER_COMMAND" start
-    start_stack_detached restart
+    # Preserve the authenticated native browser. The authoritative PRoot manager
+    # refreshes only localhost:3000 JobTomatik tabs after the new runtime is ready.
+    activate_stack restart
     ;;
   status)
     "$BROWSER_COMMAND" status || true
@@ -103,8 +110,7 @@ case "$ACTION" in
     update_main
     install_native_commands
     stop_stack_supervisor
-    "$BROWSER_COMMAND" start
-    start_stack_detached restart
+    activate_stack restart
     ;;
   *)
     echo "Usage: jobtomatik [start|restart|status|stop|update]" >&2

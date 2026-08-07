@@ -67,21 +67,35 @@ def test_android_stack_manager_never_uses_broad_process_matching():
     assert "pkill" not in manager
     assert "killall" not in manager
     assert "stop_pid_file" in manager
-    assert "ADOPTED_EXISTING_READY_PROCESS" in manager
+    assert "UNMANAGED_PROCESS_OCCUPIES_8010" in manager
 
 
-def test_android_worker_is_dedicated_and_consumes_all_runtime_queues():
+def test_android_worker_is_revisioned_and_consumes_all_runtime_queues():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
     )
 
-    assert "jobtomatik-android@%h" in manager
+    assert 'RUNTIME_REVISION="${JOBTOMATIK_RUNTIME_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD' in manager
+    assert 'jobtomatik-android-${RUNTIME_REVISION_SHORT}@%h' in manager
     assert "--pool=solo" in manager
     assert "--concurrency=1" in manager
     assert "-Q applications,celery,followup,scraping" in manager
+    assert "WORKER_NODE_PREFIX" in manager
 
 
-def test_android_managed_runtime_isolated_from_legacy_manual_workers():
+def test_android_worker_readiness_requires_real_application_queue_round_trip():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "worker_application_canary_ready" in manager
+    assert "application_queue_canary.apply_async" in manager
+    assert 'queue="applications"' in manager
+    assert "result.get(timeout=12" in manager
+    assert "CELERY_APPLICATION_CANARY: READY" in manager
+
+
+def test_android_managed_runtime_isolated_from_legacy_and_stale_managed_workers():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
     )
@@ -91,6 +105,8 @@ def test_android_managed_runtime_isolated_from_legacy_manual_workers():
     assert 'set_env_value REDIS_URL "$ANDROID_REDIS_URL"' in manager
     assert 'export REDIS_URL="$ANDROID_REDIS_URL"' in manager
     assert '--broker "$LEGACY_ANDROID_REDIS_URL"' in manager
+    assert '--broker "$ANDROID_REDIS_URL"' in manager
+    assert '--mode managed' in manager
     assert "ANDROID_RUNTIME_BROKER: ISOLATED" in manager
 
 
@@ -103,14 +119,22 @@ def test_android_runtime_forces_nonblocking_automatic_application_entry():
     assert "set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'" in manager
 
 
-def test_restart_preserves_a_healthy_authenticated_browser():
+def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_refresh():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
-    restart_case = wrapper.split("restart)", 1)[1].split(";;", 1)[0]
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
 
-    assert '"$BROWSER_COMMAND" start' in restart_case
-    assert '"$BROWSER_COMMAND" restart' not in restart_case
+    assert 'activate_stack()' in wrapper
+    assert '"$BROWSER_COMMAND" start' in wrapper
+    assert '"$BROWSER_COMMAND" restart' not in wrapper
+    assert "refresh_frontend_tabs" not in wrapper
+    assert "refresh_frontend_runtime" in manager
+    assert "refresh_android_jobtomatik_tabs.py" in manager
+    restart_case = wrapper.split("restart)", 1)[1].split(";;", 1)[0]
+    assert "activate_stack restart" in restart_case
 
 
 def test_android_update_always_fast_forwards_authoritative_main():
@@ -121,3 +145,5 @@ def test_android_update_always_fast_forwards_authoritative_main():
     assert "git fetch origin main" in wrapper
     assert "git switch main" in wrapper
     assert "git pull --ff-only origin main" in wrapper
+    update_case = wrapper.split("update)", 1)[1].split(";;", 1)[0]
+    assert "activate_stack restart" in update_case

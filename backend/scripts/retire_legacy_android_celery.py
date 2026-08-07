@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Gracefully retire pre-supervisor Android Celery workers on the legacy broker.
+"""Gracefully retire stale Android Celery workers through Celery remote control.
 
-Older manual setup instructions started a foreground worker with Celery's default
-hostname (typically ``celery@localhost``) on Redis DB 0. It can remain alive after a
-Git pull and continue executing the Python modules that were imported at its original
-startup. The managed Android runtime now uses Redis DB 1, but we also ask those exact
-legacy local workers to shut down so old queued retries cannot keep mutating runtime
-state.
+The Android supervisor uses this helper for two narrowly scoped cleanups:
 
-This script uses Celery's remote-control channel. It never sends an OS signal, never
-matches terminal processes, and never terminates a shell or PRoot session.
+* legacy foreground workers such as ``celery@localhost`` on Redis DB 0
+* orphaned managed workers such as ``jobtomatik-android*@localhost`` on Redis DB 1
+
+The helper never sends an OS signal and never terminates a shell or PRoot session.
 """
 
 from __future__ import annotations
@@ -22,7 +19,8 @@ from celery import Celery
 
 
 DEFAULT_LEGACY_BROKER = "redis://localhost:6379/0"
-MANAGED_WORKER_PREFIX = "jobtomatik-android@"
+DEFAULT_MANAGED_BROKER = "redis://localhost:6379/1"
+MANAGED_WORKER_PREFIXES = ("jobtomatik-android@", "jobtomatik-android-")
 
 
 def local_worker_hosts() -> set[str]:
@@ -33,6 +31,14 @@ def local_worker_hosts() -> set[str]:
             values.add(normalized)
             values.add(normalized.split(".", 1)[0])
     return values
+
+
+def _is_local_worker_name(name: str, hosts: set[str]) -> bool:
+    if "@" not in name:
+        return False
+    _prefix, host = name.split("@", 1)
+    normalized = host.strip().lower()
+    return normalized in hosts or normalized.split(".", 1)[0] in hosts
 
 
 def legacy_local_worker_names(
@@ -46,20 +52,40 @@ def legacy_local_worker_names(
     for raw_name in names:
         name = str(raw_name or "").strip()
         lowered = name.lower()
-        if not name or lowered.startswith(MANAGED_WORKER_PREFIX):
+        if not name or lowered.startswith(MANAGED_WORKER_PREFIXES):
             continue
-        if "@" not in name:
+        if not _is_local_worker_name(name, hosts):
             continue
-        prefix, host = name.split("@", 1)
-        host = host.strip().lower()
-        if prefix.strip().lower() != "celery":
-            continue
-        if host in hosts or host.split(".", 1)[0] in hosts:
+        prefix, _host = name.split("@", 1)
+        if prefix.strip().lower() == "celery":
             selected.append(name)
     return sorted(set(selected))
 
 
-def retire_legacy_workers(broker_url: str, *, timeout: float = 1.0) -> list[str]:
+def managed_android_worker_names(
+    names: Iterable[str],
+    *,
+    local_hosts: set[str] | None = None,
+) -> list[str]:
+    """Select only JobTomatik-managed local Android workers."""
+    hosts = {value.lower() for value in (local_hosts or local_worker_hosts())}
+    selected: list[str] = []
+    for raw_name in names:
+        name = str(raw_name or "").strip()
+        lowered = name.lower()
+        if not lowered.startswith(MANAGED_WORKER_PREFIXES):
+            continue
+        if _is_local_worker_name(name, hosts):
+            selected.append(name)
+    return sorted(set(selected))
+
+
+def retire_workers(
+    broker_url: str,
+    *,
+    mode: str = "legacy",
+    timeout: float = 1.0,
+) -> list[str]:
     client = Celery("jobtomatik-android-runtime-reconciler", broker=broker_url)
     inspector = client.control.inspect(timeout=max(0.2, float(timeout)))
     try:
@@ -67,8 +93,9 @@ def retire_legacy_workers(broker_url: str, *, timeout: float = 1.0) -> list[str]
     except Exception:
         return []
 
-    legacy = legacy_local_worker_names(pings.keys())
-    for worker_name in legacy:
+    selector = managed_android_worker_names if mode == "managed" else legacy_local_worker_names
+    selected = selector(pings.keys())
+    for worker_name in selected:
         try:
             client.control.broadcast(
                 "shutdown",
@@ -76,25 +103,32 @@ def retire_legacy_workers(broker_url: str, *, timeout: float = 1.0) -> list[str]
                 reply=False,
             )
         except Exception:
-            # Broker isolation already prevents this worker from receiving new DB 1
-            # tasks. Shutdown is best-effort cleanup for old DB 0 retries.
             continue
-    return legacy
+    return selected
+
+
+def retire_legacy_workers(broker_url: str, *, timeout: float = 1.0) -> list[str]:
+    return retire_workers(broker_url, mode="legacy", timeout=timeout)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--broker", default=DEFAULT_LEGACY_BROKER)
     parser.add_argument("--timeout", type=float, default=1.0)
+    parser.add_argument("--mode", choices=("legacy", "managed"), default="legacy")
     args = parser.parse_args()
 
-    retired = retire_legacy_workers(args.broker, timeout=args.timeout)
-    if retired:
-        print("ANDROID_LEGACY_CELERY_RETIRE_REQUESTED")
-        for worker_name in retired:
-            print(f"Legacy worker: {worker_name}")
+    retired = retire_workers(args.broker, mode=args.mode, timeout=args.timeout)
+    if args.mode == "managed":
+        marker = "ANDROID_STALE_MANAGED_CELERY_RETIRE_REQUESTED" if retired else "ANDROID_STALE_MANAGED_CELERY_NONE"
+        label = "Managed worker"
     else:
-        print("ANDROID_LEGACY_CELERY_NONE")
+        marker = "ANDROID_LEGACY_CELERY_RETIRE_REQUESTED" if retired else "ANDROID_LEGACY_CELERY_NONE"
+        label = "Legacy worker"
+
+    print(marker)
+    for worker_name in retired:
+        print(f"{label}: {worker_name}")
     return 0
 
 

@@ -17,6 +17,10 @@ FRONTEND_LOG="$LOG_DIR/frontend.log"
 ACTION="${1:-start}"
 ANDROID_REDIS_URL="${JOBTOMATIK_ANDROID_REDIS_URL:-redis://localhost:6379/1}"
 LEGACY_ANDROID_REDIS_URL="${JOBTOMATIK_LEGACY_ANDROID_REDIS_URL:-redis://localhost:6379/0}"
+RUNTIME_REVISION="${JOBTOMATIK_RUNTIME_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)}"
+RUNTIME_REVISION="${RUNTIME_REVISION:-unknown}"
+RUNTIME_REVISION_SHORT="${RUNTIME_REVISION:0:12}"
+WORKER_NODE_PREFIX="jobtomatik-android-${RUNTIME_REVISION_SHORT}@"
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
 
@@ -130,7 +134,7 @@ configured_redis_url() {
 worker_log_ready() {
   pid_file_alive "$CELERY_PID_FILE" || return 1
   [[ -f "$CELERY_LOG" ]] || return 1
-  grep -Eq '(celery@)?jobtomatik-android@.* ready\.' "$CELERY_LOG" \
+  grep -Eq 'jobtomatik-android-[[:alnum:]]+@.* ready\.' "$CELERY_LOG" \
     && grep -q 'applications' "$CELERY_LOG" \
     && grep -q 'scraping' "$CELERY_LOG"
 }
@@ -143,16 +147,21 @@ worker_control_ready() {
 
   (
     cd "$BACKEND_ROOT"
-    REDIS_URL="$broker" "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
+    REDIS_URL="$broker" \
+    JOBTOMATIK_EXPECTED_WORKER_PREFIX="$WORKER_NODE_PREFIX" \
+    "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
+import os
+
 from app.celery_app import celery_app
 
 required = {"applications", "celery", "followup", "scraping"}
+expected_prefix = os.environ["JOBTOMATIK_EXPECTED_WORKER_PREFIX"]
 inspect = celery_app.control.inspect(timeout=2.0)
 pings = inspect.ping() or {}
 queues = inspect.active_queues() or {}
 
 for node, payload in pings.items():
-    if not str(node).startswith("jobtomatik-android@"):
+    if not str(node).startswith(expected_prefix):
         continue
     if not isinstance(payload, dict) or payload.get("ok") != "pong":
         continue
@@ -168,14 +177,57 @@ PY
   )
 }
 
+worker_application_canary_ready() {
+  pid_file_alive "$CELERY_PID_FILE" || return 1
+  local broker
+  broker="$(configured_redis_url)"
+  [[ "$broker" == "$ANDROID_REDIS_URL" ]] || return 1
+
+  (
+    cd "$BACKEND_ROOT"
+    REDIS_URL="$broker" \
+    JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    JOBTOMATIK_EXPECTED_REDIS_DB="1" \
+    "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
+import os
+
+from app.tasks.runtime import application_queue_canary
+
+expected_revision = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
+expected_db = int(os.environ.get("JOBTOMATIK_EXPECTED_REDIS_DB", "1"))
+result = application_queue_canary.apply_async(
+    kwargs={"expected_revision": expected_revision},
+    queue="applications",
+)
+try:
+    payload = result.get(timeout=12, propagate=True)
+finally:
+    try:
+        result.forget()
+    except Exception:
+        pass
+
+if not isinstance(payload, dict) or payload.get("ok") is not True:
+    raise SystemExit(1)
+if payload.get("revision") != expected_revision:
+    raise SystemExit(1)
+if payload.get("redis_db") != expected_db:
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+  )
+}
+
 managed_worker_ready() {
-  worker_log_ready && worker_control_ready
+  worker_log_ready && worker_control_ready && worker_application_canary_ready
 }
 
 wait_worker() {
   for _ in {1..120}; do
-    if managed_worker_ready; then
-      return 0
+    if worker_log_ready && worker_control_ready; then
+      if worker_application_canary_ready; then
+        return 0
+      fi
     fi
     if [[ -f "$CELERY_PID_FILE" ]] && ! pid_file_alive "$CELERY_PID_FILE"; then
       return 1
@@ -186,10 +238,17 @@ wait_worker() {
 }
 
 start_api() {
-  if http_ready 'http://127.0.0.1:8010/api/system/ready'; then
-    echo "API: ADOPTED_EXISTING_READY_PROCESS"
+  if pid_file_alive "$API_PID_FILE" && http_ready 'http://127.0.0.1:8010/api/system/ready'; then
+    echo "API: EXISTING_MANAGED_READY_PROCESS"
     return 0
   fi
+
+  if http_ready 'http://127.0.0.1:8010/api/system/ready'; then
+    echo "API: UNMANAGED_PROCESS_OCCUPIES_8010" >&2
+    echo "Refusing to claim a backend process that is not represented by the managed API PID file." >&2
+    return 1
+  fi
+
   stop_pid_file "$API_PID_FILE"
   : > "$API_LOG"
   nohup "$VENV/bin/uvicorn" app.main:app \
@@ -214,7 +273,7 @@ start_worker() {
   stop_pid_file "$CELERY_PID_FILE"
   : > "$CELERY_LOG"
   nohup "$VENV/bin/celery" -A app.celery_app worker \
-    --hostname='jobtomatik-android@%h' \
+    --hostname="jobtomatik-android-${RUNTIME_REVISION_SHORT}@%h" \
     --loglevel=info \
     --pool=solo \
     --concurrency=1 \
@@ -225,11 +284,12 @@ start_worker() {
   echo $! > "$CELERY_PID_FILE"
 
   if ! wait_worker; then
-    echo "Celery failed to become live on the Android broker with the required queues." >&2
-    tail -n 140 "$CELERY_LOG" >&2 || true
+    echo "Celery failed the Android application-queue end-to-end canary." >&2
+    tail -n 160 "$CELERY_LOG" >&2 || true
     return 1
   fi
   echo "CELERY: STARTED_WITH_REQUIRED_QUEUES"
+  echo "CELERY_APPLICATION_CANARY: READY revision=$RUNTIME_REVISION_SHORT broker=$ANDROID_REDIS_URL"
 }
 
 start_frontend() {
@@ -255,6 +315,11 @@ start_frontend() {
   echo "FRONTEND: STARTED"
 }
 
+refresh_frontend_runtime() {
+  cd "$BACKEND_ROOT"
+  "$VENV/bin/python" scripts/refresh_android_jobtomatik_tabs.py
+}
+
 status_stack() {
   local failed=0
   if http_ready 'http://127.0.0.1:8010/api/system/ready'; then
@@ -272,9 +337,11 @@ status_stack() {
   fi
 
   if managed_worker_ready; then
-    echo "CELERY: READY applications,celery,followup,scraping pid=$(pid_file_value "$CELERY_PID_FILE") broker=$ANDROID_REDIS_URL"
+    echo "CELERY: READY applications,celery,followup,scraping pid=$(pid_file_value "$CELERY_PID_FILE") broker=$ANDROID_REDIS_URL revision=$RUNTIME_REVISION_SHORT"
+    echo "CELERY_APPLICATION_CANARY: READY"
   else
     echo "CELERY: DOWN_OR_UNRESPONSIVE_ON_ANDROID_BROKER"
+    echo "CELERY_APPLICATION_CANARY: FAILED"
     failed=1
   fi
 
@@ -293,6 +360,7 @@ status_stack() {
     echo "ANDROID_RUNTIME_BROKER: NOT_ISOLATED"
     failed=1
   fi
+  echo "ANDROID_RUNTIME_REVISION: $RUNTIME_REVISION"
   echo "MANAGED_LOGS: $LOG_DIR"
   echo "CELERY_LOG: $CELERY_LOG"
   return "$failed"
@@ -301,10 +369,6 @@ status_stack() {
 prepare_stack() {
   cd "$BACKEND_ROOT"
 
-  # Android owns one authoritative API/worker runtime. Use Redis DB 1 so legacy
-  # manually launched workers that were already connected to DB 0 cannot consume a
-  # newly queued application task with stale imported code. This changes no process
-  # outside the managed runtime and therefore never terminates an operator terminal.
   set_env_value REDIS_URL "$ANDROID_REDIS_URL"
   set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
   set_env_value APPLICATION_BROWSER_HEADLESS 'false'
@@ -315,6 +379,8 @@ prepare_stack() {
   export APPLICATION_BROWSER_CDP_ENDPOINT='http://127.0.0.1:9222'
   export APPLICATION_BROWSER_HEADLESS='false'
   export APPLICATION_TARGET_HUMAN_WAIT_SECONDS='0'
+  export JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION"
+  export JOBTOMATIK_RUNTIME_MODE='android_managed'
 
   if ! "$VENV/bin/python" -c 'import jwt; assert jwt.__version__' >/dev/null 2>&1; then
     "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.13.0'
@@ -325,10 +391,14 @@ prepare_stack() {
     sleep 1
   fi
 
-  # Ask only the exact local Celery workers from the pre-supervisor DB 0 setup to
-  # shut down through Celery remote control. This does not signal or close terminals.
   "$VENV/bin/python" scripts/retire_legacy_android_celery.py \
     --broker "$LEGACY_ANDROID_REDIS_URL" \
+    --mode legacy \
+    --timeout 1.0 \
+    || true
+  "$VENV/bin/python" scripts/retire_legacy_android_celery.py \
+    --broker "$ANDROID_REDIS_URL" \
+    --mode managed \
     --timeout 1.0 \
     || true
 
@@ -341,6 +411,7 @@ start_stack() {
   start_api
   start_worker
   start_frontend
+  refresh_frontend_runtime
 
   cd "$BACKEND_ROOT"
   echo "JOBTOMATIK_ANDROID_STACK_READY"

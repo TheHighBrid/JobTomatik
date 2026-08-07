@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm import sessionmaker
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -15,6 +16,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from app import models as _models  # noqa: E402,F401
 from app.config import get_settings  # noqa: E402
 from app.database import Base, engine  # noqa: E402
+from app.services.application_recovery import recover_interrupted_application_attempts  # noqa: E402
 
 CRITICAL_TABLES = {
     "users",
@@ -82,6 +84,27 @@ def _browser_status() -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _recover_abandoned_application_attempts() -> dict:
+    """Recover every attempt whose owning Android worker was replaced.
+
+    The manager stops/retires old workers before this preflight runs. Any row still in
+    ``applying`` therefore has no worker that can legitimately finish it, regardless
+    of age. Dry runs remain fail-closed in review; live/unknown attempts remain
+    submission-uncertain.
+    """
+    session_factory = sessionmaker(bind=engine)
+    db = session_factory()
+    try:
+        result = recover_interrupted_application_attempts(db)
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def main() -> int:
     before = _table_names()
     missing_before = CRITICAL_TABLES - before
@@ -95,6 +118,8 @@ def main() -> int:
         missing = ", ".join(sorted(missing_after))
         raise RuntimeError(f"Runtime schema repair did not create required tables: {missing}")
 
+    recovery = _recover_abandoned_application_attempts()
+
     print("JOBTOMATIK_RUNTIME_SCHEMA_READY")
     print(f"Database: {engine.url.render_as_string(hide_password=True)}")
     if backup_path is not None:
@@ -103,6 +128,7 @@ def main() -> int:
         print("Created tables: " + ", ".join(sorted(missing_before)))
     else:
         print("Schema changes: none")
+    print(f"ANDROID_INTERRUPTED_APPLICATIONS_RECOVERED={int(recovery.get('recovered') or 0)}")
 
     browser_ready, browser_detail = _browser_status()
     if browser_ready:

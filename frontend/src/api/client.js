@@ -85,6 +85,10 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
+  // Reconcile the API base for every request instead of freezing it when the Vite
+  // module first loaded. This prevents an Android tab that survived an update from
+  // continuing to dispatch tasks to an obsolete local backend port.
+  config.baseURL = `${getApiBaseUrl()}/api`
   const token = safeLocalStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config

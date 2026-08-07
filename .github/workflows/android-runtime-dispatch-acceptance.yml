@@ -1,0 +1,173 @@
+name: Android runtime dispatch acceptance
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/celery_app.py"
+      - "backend/app/tasks/runtime.py"
+      - "backend/app/services/application_recovery.py"
+      - "backend/scripts/manage_android_stack.sh"
+      - "backend/scripts/prepare_android_runtime.py"
+      - "backend/scripts/retire_legacy_android_celery.py"
+      - "backend/scripts/refresh_android_jobtomatik_tabs.py"
+      - "frontend/src/api/client.js"
+      - "frontend/src/applicationTaskRuntime.js"
+      - "frontend/src/pages/ApplicationDetail.jsx"
+      - "backend/tests/test_application_recovery.py"
+      - "backend/tests/test_android_runtime_canary.py"
+      - "backend/tests/test_android_runtime_scripts.py"
+      - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_prepare_android_runtime.py"
+      - ".github/workflows/android-runtime-dispatch-acceptance.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/celery_app.py"
+      - "backend/app/tasks/runtime.py"
+      - "backend/app/services/application_recovery.py"
+      - "backend/scripts/manage_android_stack.sh"
+      - "backend/scripts/prepare_android_runtime.py"
+      - "backend/scripts/retire_legacy_android_celery.py"
+      - "backend/scripts/refresh_android_jobtomatik_tabs.py"
+      - "frontend/src/api/client.js"
+      - "frontend/src/applicationTaskRuntime.js"
+      - "frontend/src/pages/ApplicationDetail.jsx"
+      - "backend/tests/test_application_recovery.py"
+      - "backend/tests/test_android_runtime_canary.py"
+      - "backend/tests/test_android_runtime_scripts.py"
+      - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_prepare_android_runtime.py"
+      - ".github/workflows/android-runtime-dispatch-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-runtime-dispatch-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: sqlite:///./android-runtime-dispatch.db
+  REDIS_URL: redis://localhost:6379/1
+  SECRET_KEY: android-runtime-dispatch-acceptance-secret-2026
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  AUTOPILOT_ENABLED: "false"
+  ENABLE_RESUMABLE_HANDOFFS: "false"
+
+jobs:
+  applications-queue-round-trip:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 20
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Record checked-out runtime revision
+        run: |
+          revision="$(git -C .. rev-parse HEAD)"
+          echo "JOBTOMATIK_RUNTIME_REVISION=$revision" >> "$GITHUB_ENV"
+          echo "JOBTOMATIK_RUNTIME_REVISION_SHORT=${revision:0:12}" >> "$GITHUB_ENV"
+
+      - name: Start revisioned Android worker on Redis DB1
+        run: |
+          celery -A app.celery_app worker \
+            --hostname="jobtomatik-android-${JOBTOMATIK_RUNTIME_REVISION_SHORT}@%h" \
+            --loglevel=info \
+            --pool=solo \
+            --concurrency=1 \
+            --without-gossip \
+            --without-mingle \
+            -Q applications,celery,followup,scraping \
+            > android-runtime-celery.log 2>&1 &
+          echo $! > android-runtime-celery.pid
+
+          python - <<'PY'
+          import os
+          import time
+          from app.celery_app import celery_app
+
+          prefix = f"jobtomatik-android-{os.environ['JOBTOMATIK_RUNTIME_REVISION_SHORT']}@"
+          required = {"applications", "celery", "followup", "scraping"}
+          deadline = time.monotonic() + 30
+          while time.monotonic() < deadline:
+              inspector = celery_app.control.inspect(timeout=1.5)
+              pings = inspector.ping() or {}
+              queues = inspector.active_queues() or {}
+              for node, pong in pings.items():
+                  names = {str(item.get("name") or "") for item in queues.get(node, [])}
+                  if node.startswith(prefix) and pong.get("ok") == "pong" and required.issubset(names):
+                      print(f"ANDROID_WORKER_CONTROL_READY node={node}")
+                      raise SystemExit(0)
+              time.sleep(0.5)
+          raise SystemExit("Revisioned Android worker did not become control-ready")
+          PY
+
+      - name: Prove producer to applications queue to worker to DB1 result round trip
+        run: |
+          python - <<'PY'
+          import os
+          from app.tasks.runtime import application_queue_canary
+
+          expected = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
+          result = application_queue_canary.apply_async(
+              kwargs={"expected_revision": expected},
+              queue="applications",
+          )
+          payload = result.get(timeout=15, propagate=True)
+          print(payload)
+          assert payload["ok"] is True
+          assert payload["revision"] == expected
+          assert payload["expected_revision"] == expected
+          assert payload["redis_db"] == 1
+          assert isinstance(payload["worker_pid"], int)
+          print("ANDROID_APPLICATION_QUEUE_ROUND_TRIP_READY")
+          PY
+
+      - name: Run Android runtime regression contracts
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_application_recovery.py \
+            tests/test_android_runtime_canary.py \
+            tests/test_android_runtime_scripts.py \
+            tests/test_android_task_runtime_liveness.py \
+            tests/test_refresh_android_jobtomatik_tabs.py \
+            tests/test_retire_legacy_android_celery.py \
+            tests/test_prepare_android_runtime.py
+
+      - name: Upload worker log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-runtime-dispatch-worker-log
+          path: backend/android-runtime-celery.log
+          if-no-files-found: error
+          retention-days: 14

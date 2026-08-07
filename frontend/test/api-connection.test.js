@@ -72,6 +72,13 @@ test('Android client migrates stale loopback backend ports to managed 8010', () 
   assert.equal(clientSource.includes('safeLocalStorage.setItem(API_URL_STORAGE_KEY, normalized)'), true)
 })
 
+test('every API request re-evaluates the managed Android backend route', () => {
+  assert.equal(
+    clientSource.includes('config.baseURL = `${getApiBaseUrl()}/api`'),
+    true,
+  )
+})
+
 test('auth screens expose and explain API routing failures', () => {
   assert.equal(fieldSource.includes('Use Android backend'), true)
   assert.equal(fieldSource.includes('Port 3000 is the JobTomatik frontend'), true)

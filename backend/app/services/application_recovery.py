@@ -24,6 +24,7 @@ from app.services.operations_settings import get_operations_settings
 
 
 RECOVERY_KIND = "stale_application_attempt"
+RUNTIME_INTERRUPTION_KIND = "runtime_interrupted_application_attempt"
 
 
 def _naive_utc(value: datetime | None) -> datetime | None:
@@ -60,8 +61,9 @@ def recover_stale_application_attempt(
     *,
     now: datetime | None = None,
     timeout_minutes: int | None = None,
+    force_interrupted: bool = False,
 ) -> Dict[str, Any]:
-    """Recover one stale attempt while preserving duplicate-prevention safety."""
+    """Recover one stale or explicitly interrupted attempt fail-closed."""
 
     normalized_now = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
     timeout = max(
@@ -91,7 +93,7 @@ def recover_stale_application_attempt(
         }
 
     age_seconds = max(0, int((normalized_now - started_at).total_seconds()))
-    if age_seconds < timeout * 60:
+    if not force_interrupted and age_seconds < timeout * 60:
         return {
             "application_id": application.id,
             "recovered": False,
@@ -121,11 +123,13 @@ def recover_stale_application_attempt(
             "attempt. Verify the employer portal before any retry."
         )
 
+    recovery_kind = RUNTIME_INTERRUPTION_KIND if force_interrupted else RECOVERY_KIND
     details = {
-        "kind": RECOVERY_KIND,
+        "kind": recovery_kind,
         "dry_run": dry_run,
         "attempt_age_seconds": age_seconds,
         "timeout_minutes": timeout,
+        "runtime_interrupted": bool(force_interrupted),
         "submission_attempt_count": int(application.submission_attempt_count or 0),
         "idempotency_key": application.submission_idempotency_key,
         "recovered_at": normalized_now.replace(microsecond=0).isoformat() + "Z",
@@ -144,7 +148,11 @@ def recover_stale_application_attempt(
     recovered_state = normalize_state(application.automation_state)
     db.add(ApplicationEvent(
         application_id=application.id,
-        event_type="stale_application_attempt_recovered",
+        event_type=(
+            "runtime_interrupted_application_attempt_recovered"
+            if force_interrupted
+            else "stale_application_attempt_recovered"
+        ),
         from_state=state,
         to_state=recovered_state,
         payload={
@@ -159,7 +167,7 @@ def recover_stale_application_attempt(
         title=f"Application attempt recovered: {job_title}",
         message=summary,
         data={
-            "kind": RECOVERY_KIND,
+            "kind": recovery_kind,
             "application_id": application.id,
             "job_id": application.job_id,
             "review_id": review.id,
@@ -176,6 +184,7 @@ def recover_stale_application_attempt(
         "review_id": review.id,
         "age_seconds": age_seconds,
         "timeout_minutes": timeout,
+        "runtime_interrupted": bool(force_interrupted),
     }
 
 
@@ -224,8 +233,48 @@ def recover_stale_application_attempts(
     }
 
 
+def recover_interrupted_application_attempts(
+    db,
+    *,
+    now: datetime | None = None,
+) -> Dict[str, Any]:
+    """Recover every applying row after its owning managed worker was stopped.
+
+    This is intentionally stronger than the periodic stale-attempt sweep. The Android
+    runtime manager calls it only after retiring/stopping the workers that could own
+    those attempts, so no age grace period is appropriate. Live or unknown attempts
+    remain fail-closed as submission-uncertain rather than being made retryable.
+    """
+    normalized_now = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
+    applications = (
+        db.query(Application)
+        .filter(Application.automation_state == ApplicationAutomationState.applying.value)
+        .with_for_update()
+        .all()
+    )
+    results = [
+        recover_stale_application_attempt(
+            db,
+            application,
+            now=normalized_now,
+            force_interrupted=True,
+        )
+        for application in applications
+    ]
+    recovered = [item for item in results if item.get("recovered")]
+    return {
+        "checked": len(applications),
+        "recovered": len(recovered),
+        "dry_run_recovered": sum(item.get("dry_run") is True for item in recovered),
+        "uncertain_recovered": sum(item.get("dry_run") is not True for item in recovered),
+        "applications": results,
+    }
+
+
 __all__ = [
     "RECOVERY_KIND",
+    "RUNTIME_INTERRUPTION_KIND",
+    "recover_interrupted_application_attempts",
     "recover_stale_application_attempt",
     "recover_stale_application_attempts",
 ]
