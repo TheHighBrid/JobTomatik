@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Bell, Cpu, Key, Wifi, Loader2, Rocket, Shield } from 'lucide-react'
+import { Bell, Cpu, Key, Wifi, Loader2, Rocket, Shield, ArrowRight } from 'lucide-react'
 import ApiBaseUrlField from '../components/ApiBaseUrlField'
 import AnswerPolicyReadinessPanel from '../components/AnswerPolicyReadinessPanel'
 import AnswerPolicyVault from '../components/AnswerPolicyVault'
@@ -83,65 +84,34 @@ export default function Settings() {
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500 mt-1 text-sm">Configure your autonomous job application pipeline.</p>
+        <p className="text-gray-500 mt-1 text-sm">Configure account, automation, answer-policy, and integration preferences.</p>
       </div>
 
       <Section title="API Connection" icon={Wifi}>
         <ApiBaseUrlField />
       </Section>
 
-      <Section title="Auto-Pilot" icon={Rocket} accent="text-tomato-700">
-        <Toggle
-          label="Auto Search (every 6 hours)"
-          description="Automatically search Job Bank, Indeed, LinkedIn using your profile keywords"
-          checked={local.auto_search_enabled}
-          onChange={toggle('auto_search_enabled')}
-        />
-        <Toggle
-          label="Auto Apply to Matches"
-          description="Automatically approve high-scoring jobs and prepare safe application attempts"
-          checked={local.auto_apply_enabled}
-          onChange={toggle('auto_apply_enabled')}
-        />
-        {local.auto_apply_enabled && (
-          <div className="mt-4 space-y-4 bg-gray-50 rounded-xl p-4">
-            <div>
-              <label className="label">Minimum match score to auto-apply</label>
-              <input
-                type="range"
-                min="0.3"
-                max="1.0"
-                step="0.05"
-                className="w-full accent-tomato-600 mt-1"
-                value={local.auto_apply_min_score}
-                onChange={setNum('auto_apply_min_score')}
-              />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>30% (aggressive)</span>
-                <span className="font-semibold text-tomato-600">{Math.round(local.auto_apply_min_score * 100)}% selected</span>
-                <span>100% (strict)</span>
-              </div>
-            </div>
-            <div>
-              <label className="label">Daily application limit</label>
-              <input
-                type="number"
-                className="input w-24"
-                min="1"
-                max="50"
-                value={local.auto_apply_daily_limit}
-                onChange={setNum('auto_apply_daily_limit')}
-              />
-              <span className="text-xs text-gray-500 ml-2">applications/day</span>
-            </div>
+      <Section title="Bounded Scheduler" icon={Rocket} accent="text-tomato-700">
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <p className="text-sm font-semibold text-gray-900">Scheduler Center is the authoritative policy surface.</p>
+          <p className="mt-1 text-xs leading-5 text-gray-500">
+            Configure saved discovery, minimum match, daily and weekly caps, quiet hours, employer rules, platform opt-in, and the live policy preview in one place. Scheduler policy never replaces adapter maturity or submission safety gates.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-gray-600">
+            <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">Discovery: {local.auto_search_enabled ? 'on' : 'off'}</span>
+            <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">Candidate processing: {local.auto_apply_enabled ? 'on' : 'off'}</span>
+            <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">Dry run: {local.dry_run_mode !== false ? 'on' : 'off'}</span>
           </div>
-        )}
+          <Link to="/scheduler" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-tomato-700 hover:text-tomato-800">
+            Open Scheduler Center <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </Section>
 
       <Section title="Automation" icon={Cpu}>
         <Toggle
           label="Dry Run Mode"
-          description="Fill forms but do not click submit. This remains the safe default."
+          description="Fill forms but do not click submit. This remains the safe default and is also visible in Scheduler Center."
           checked={local.dry_run_mode ?? true}
           onChange={toggle('dry_run_mode')}
         />
