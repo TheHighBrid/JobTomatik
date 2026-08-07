@@ -4,6 +4,7 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import CommandCenter from './pages/CommandCenter'
 import ExecutionCenter from './pages/ExecutionCenter'
+import HandoffReview from './pages/HandoffReview'
 import JobSearch from './pages/JobSearch'
 import Queue from './pages/Queue'
 import Applications from './pages/Applications'
@@ -37,6 +38,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="command-center" element={<CommandCenter />} />
           <Route path="execution" element={<ExecutionCenter />} />
+          <Route path="handoff-review" element={<HandoffReview />} />
           <Route path="search" element={<JobSearch />} />
           <Route path="queue" element={<Queue />} />
           <Route path="applications" element={<Applications />} />
