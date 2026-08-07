@@ -5,7 +5,7 @@ from typing import Any, Iterable
 
 from app.config import get_settings
 from app.models.job import Job, JobStatus
-from app.services.operations_policy import evaluate_autopilot_policy
+from app.services.operations_policy import AutomationDecision, evaluate_autopilot_policy
 from app.services.operations_settings import get_operations_settings
 from app.services.unattended_policy import (
     REQUIRED_AUTONOMOUS_MATURITY,
@@ -99,6 +99,11 @@ def scheduler_settings(user) -> dict[str, Any]:
     ):
         merged[key] = _list_values(merged.get(key))
     return merged
+
+
+def discovery_allowed_by_user_policy(decision: AutomationDecision) -> bool:
+    """Application caps stop application creation, not safe scheduled discovery."""
+    return decision.allowed or decision.code == "application_cap_reached"
 
 
 def build_search_plan(user) -> dict[str, Any]:
@@ -291,6 +296,7 @@ def build_scheduler_preview(db, user, *, candidate_limit: int = 20) -> dict[str,
     operations = get_operations_settings()
     user_settings = scheduler_settings(user)
     user_decision = evaluate_autopilot_policy(db, user)
+    discovery_policy_allowed = discovery_allowed_by_user_policy(user_decision)
     search_plan = build_search_plan(user)
     ranked = rank_scheduler_candidates(db, user, limit=candidate_limit)
     allowed = [item for item in ranked if item["decision"].get("allowed")]
@@ -299,12 +305,16 @@ def build_scheduler_preview(db, user, *, candidate_limit: int = 20) -> dict[str,
         scheduler_state = "disabled"
     elif not operations.autopilot_enabled:
         scheduler_state = "globally_disabled"
+    elif user_settings.get("auto_apply_enabled") and user_decision.allowed and allowed:
+        scheduler_state = "autonomous_candidates_ready"
+    elif (
+        user_settings.get("auto_search_enabled")
+        and discovery_policy_allowed
+        and search_plan["ready"]
+    ):
+        scheduler_state = "discovery_ready"
     elif not user_decision.allowed:
         scheduler_state = "blocked"
-    elif user_settings.get("auto_apply_enabled") and allowed:
-        scheduler_state = "autonomous_candidates_ready"
-    elif user_settings.get("auto_search_enabled") and search_plan["ready"]:
-        scheduler_state = "discovery_ready"
     else:
         scheduler_state = "configuration_blocked"
 
@@ -333,6 +343,7 @@ def build_scheduler_preview(db, user, *, candidate_limit: int = 20) -> dict[str,
         "required_adapter_maturity": REQUIRED_AUTONOMOUS_MATURITY,
         "platform_maturities": live_platform_maturities(),
         "user_policy": user_decision.to_dict(),
+        "discovery_policy_allowed": discovery_policy_allowed,
         "search_plan": search_plan,
         "settings": user_settings,
         "summary": {
@@ -346,6 +357,7 @@ def build_scheduler_preview(db, user, *, candidate_limit: int = 20) -> dict[str,
             "auto_apply_defaults_off": SCHEDULER_DEFAULTS["auto_apply_enabled"] is False,
             "dry_run_defaults_on": SCHEDULER_DEFAULTS["dry_run_mode"] is True,
             "no_hardcoded_search_identity": True,
+            "application_caps_do_not_stop_discovery": True,
             "certified_autonomous_required": True,
             "worker_rechecks_policy_before_submission": True,
         },
