@@ -75,6 +75,11 @@ install_native_commands() {
     "cd '$PROOT_REPO' && bash backend/scripts/install_android_native_browser_launcher.sh"
 }
 
+update_main() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO'; git fetch origin main; git switch main; git pull --ff-only origin main"
+}
+
 case "$ACTION" in
   start)
     "$BROWSER_COMMAND" start
@@ -95,8 +100,7 @@ case "$ACTION" in
     "$BROWSER_COMMAND" stop
     ;;
   update)
-    proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-      "cd '$PROOT_REPO' && git pull --ff-only"
+    update_main
     install_native_commands
     stop_stack_supervisor
     "$BROWSER_COMMAND" start
