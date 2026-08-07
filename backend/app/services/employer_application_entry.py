@@ -1,8 +1,9 @@
-"""Continue from employer job-detail pages into the actual application form.
+"""Continue from employer job-detail pages into the actual application surface.
 
 A discovery job board can send JobTomatik to an employer-hosted job-detail page
-that still contains one more plain ``Apply`` doorway. This module handles that
-specific intermediate state without broadening final-submit permissions.
+that still contains one or more plain ``Apply`` doorways. This module handles only
+those generic employer pages. Once a hosted, certified ATS page is reached, control
+returns to that ATS adapter so platform-specific Apply/login behavior stays intact.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from app.services.application_entry import application_form_evidence
 from app.services.ats_base import action_text
@@ -55,6 +56,46 @@ _INTERMEDIATE_APPLY_SELECTORS = (
 
 def _normalized(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _hosted_ats_candidate(url: str) -> bool:
+    """Return True only for known hosted ATS domains, not employer pages with ATS links."""
+    host = (urlparse(url or "").hostname or "").lower()
+    if not host:
+        return False
+    if host.endswith(".myworkdayjobs.com"):
+        return True
+    if host in {"jobs.lever.co", "jobs.eu.lever.co"}:
+        return True
+    if host == "jobs.ashbyhq.com":
+        return True
+    if host in {"jobs.smartrecruiters.com", "careers.smartrecruiters.com"}:
+        return True
+    if host in {"greenhouse.io", "greenhouse.com"}:
+        return True
+    if host.endswith(".greenhouse.io") or host.endswith(".greenhouse.com"):
+        return True
+    return False
+
+
+async def _trusted_hosted_ats(page: Any, current_url: str) -> Optional[Dict[str, str]]:
+    """Recognize a hosted ATS only when the current URL itself is on that ATS."""
+    if not _hosted_ats_candidate(current_url):
+        return None
+    try:
+        # Local import avoids coupling module initialization to the ATS registry.
+        from app.services.ats_registry import detect_ats_adapter
+
+        adapter = await detect_ats_adapter(page, current_url)
+    except Exception:
+        return None
+    name = str(getattr(adapter, "name", "generic") or "generic")
+    if name == "generic":
+        return None
+    return {
+        "name": name,
+        "version": str(getattr(adapter, "version", "1.0.0") or "1.0.0"),
+    }
 
 
 async def _bring_controlled_page_to_front(page: Any) -> None:
@@ -178,14 +219,14 @@ async def continue_from_employer_landing(
     max_steps: int = 3,
     settle_timeout_seconds: float = 12.0,
 ) -> Dict[str, Any]:
-    """Traverse plain Apply doorways only after leaving the discovery job board.
+    """Traverse ordinary employer Apply doorways without crossing ATS safety ownership.
 
     Safety rules are deliberately narrow:
     - the current page must be external to the discovery job board;
     - no application form may already be present;
-    - only exact Apply/start labels are considered;
-    - submit controls and controls inside forms are never clicked;
-    - success requires actual application-form evidence.
+    - hosted certified ATS pages are returned to their adapter untouched;
+    - only exact Apply/start labels are considered on generic employer pages;
+    - submit controls and controls inside forms are never clicked.
     """
     attempted: set[tuple[str, str, str]] = set()
 
@@ -202,6 +243,26 @@ async def continue_from_employer_landing(
                 "resolution_method": "intermediate_form_already_present",
                 "application_form_detected": True,
                 "form_evidence": evidence.as_dict(),
+            }
+
+        hosted_ats = await _trusted_hosted_ats(page, current_url)
+        if hosted_ats:
+            log.append({
+                "action": "intermediate_employer_trusted_ats_reached",
+                "step": step,
+                "url": current_url,
+                "adapter": hosted_ats["name"],
+                "adapter_version": hosted_ats["version"],
+                "generic_apply_clicked": False,
+                "ts": now_iso(),
+            })
+            return {
+                "application_url": current_url,
+                "resolution_method": "trusted_ats_entry",
+                "application_form_detected": False,
+                "form_evidence": evidence.as_dict(),
+                "trusted_ats_adapter": hosted_ats["name"],
+                "trusted_ats_adapter_version": hosted_ats["version"],
             }
 
         candidates = await _rank_safe_candidates(page)
