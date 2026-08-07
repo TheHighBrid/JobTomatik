@@ -43,7 +43,10 @@ LINKEDIN_HTML = f"""
 </html>
 """
 
-DESJARDINS_HTML = f"""
+# Keep the synthetic click path distinct from the live page's serialized-target
+# path. The full Workday URL is deliberately assembled at click time so the generic
+# employer doorway must actually click Apply in this acceptance fixture.
+DESJARDINS_HTML = """
 <!doctype html>
 <html>
   <head><title>Fraud Prevention Advisor, Remote | Desjardins</title></head>
@@ -54,9 +57,13 @@ DESJARDINS_HTML = f"""
       <div>Full time · Regular position · Montréal · R2511328</div>
       <button id="employer-apply" type="button">Apply</button>
       <script>
-        document.querySelector('#employer-apply').addEventListener('click', () => {{
-          window.location.assign('{WORKDAY_JOB_URL}');
-        }});
+        document.querySelector('#employer-apply').addEventListener('click', () => {
+          const scheme = 'https:';
+          const host = 'desjardins.wd10.' + 'myworkdayjobs.com';
+          const path = '/en-US/Desjardins/job/Montral/'
+            + 'Fraud-Prevention-Advisor--Remote_' + 'R2511328-1';
+          window.location.assign(scheme + '//' + host + path);
+        });
       </script>
     </main>
   </body>
