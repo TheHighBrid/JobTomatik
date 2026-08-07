@@ -10,6 +10,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import httpx
@@ -21,6 +22,7 @@ from app.services.browser_handoff import current_browser_node_id
 
 CDP_STARTUP_TIMEOUT_SECONDS = 120
 PLAYWRIGHT_ATTACH_TIMEOUT_SECONDS = 120
+EXTERNAL_CDP_CONNECT_TIMEOUT_SECONDS = 20
 
 
 class BrowserRuntimeError(RuntimeError):
@@ -31,8 +33,8 @@ def chromium_stability_args() -> list[str]:
     """Return conservative flags for Chromium in containers and Android/proot.
 
     ``--disable-gpu`` alone does not prevent Chromium from starting a GPU
-    process.  In particular, WebGL may fall back to Mesa's software renderer
-    and repeatedly abort the GPU process.  Disabling all 3D APIs and the
+    process. In particular, WebGL may fall back to Mesa's software renderer
+    and repeatedly abort the GPU process. Disabling all 3D APIs and the
     software rasterizer prevents that crash loop; LinkedIn's authentication
     flow does not require either feature.
     """
@@ -78,6 +80,43 @@ def _chromium_environment() -> Dict[str, str]:
     return environment
 
 
+def _normalize_external_cdp_endpoint(endpoint: str) -> str:
+    value = (endpoint or "").strip().rstrip("/")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise BrowserRuntimeError(
+            "APPLICATION_BROWSER_CDP_ENDPOINT must be an HTTP(S) Chrome DevTools "
+            "endpoint such as http://127.0.0.1:9222."
+        )
+    return value
+
+
+@dataclass
+class ExternalBrowserProcess:
+    """Process-compatible health probe for a browser owned outside JobTomatik."""
+
+    endpoint: str
+    pid: Optional[int] = None
+
+    def poll(self) -> Optional[int]:
+        try:
+            response = httpx.get(f"{self.endpoint}/json/version", timeout=0.75)
+            if response.status_code == 200 and response.json().get("webSocketDebuggerUrl"):
+                return None
+        except Exception:
+            pass
+        return 1
+
+    def terminate(self) -> None:
+        return None
+
+    def wait(self, timeout: Optional[float] = None) -> int:
+        return 0
+
+    def kill(self) -> None:
+        return None
+
+
 async def _wait_for_cdp_endpoint(
     process: subprocess.Popen,
     endpoint: str,
@@ -109,6 +148,29 @@ async def _wait_for_cdp_endpoint(
     raise BrowserRuntimeError(
         "Chromium CDP endpoint did not become ready within "
         f"{CDP_STARTUP_TIMEOUT_SECONDS} seconds: {last_error[:200]}. See {log_path}."
+    )
+
+
+async def _wait_for_external_cdp_endpoint(endpoint: str) -> None:
+    """Wait briefly for an Android/native Chromium endpoint JobTomatik does not own."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + EXTERNAL_CDP_CONNECT_TIMEOUT_SECONDS
+    last_error = ""
+
+    while loop.time() < deadline:
+        try:
+            response = httpx.get(f"{endpoint}/json/version", timeout=0.75)
+            if response.status_code == 200 and response.json().get("webSocketDebuggerUrl"):
+                return
+            last_error = f"HTTP {response.status_code}"
+        except Exception as exc:
+            last_error = str(exc)
+        await asyncio.sleep(0.5)
+
+    raise BrowserRuntimeError(
+        "The configured Android/native Chromium CDP endpoint is not reachable at "
+        f"{endpoint}. Start chromium-browser with --remote-debugging-port=9222 "
+        f"and keep it open. Last error: {last_error[:200]}"
     )
 
 
@@ -150,13 +212,54 @@ async def _connect_playwright_over_cdp(
     )
 
 
+async def _connect_external_playwright_over_cdp(playwright: Any, endpoint: str) -> Any:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + EXTERNAL_CDP_CONNECT_TIMEOUT_SECONDS
+    attach_error = ""
+
+    while loop.time() < deadline:
+        try:
+            remaining_ms = max(1_000, int((deadline - loop.time()) * 1000))
+            return await playwright.chromium.connect_over_cdp(
+                endpoint,
+                timeout=min(10_000, remaining_ms),
+            )
+        except Exception as exc:
+            attach_error = str(exc)
+            await asyncio.sleep(1)
+
+    raise BrowserRuntimeError(
+        "Playwright could not attach to the configured Android/native Chromium "
+        f"endpoint {endpoint}: {attach_error[:300]}"
+    )
+
+
+async def _select_context_page(
+    browser: Any,
+    *,
+    viewport: Optional[Dict[str, int]],
+    resize_viewport: bool,
+) -> tuple[Any, Any]:
+    contexts = list(browser.contexts)
+    if not contexts:
+        raise BrowserRuntimeError("Retained Chromium exposed no default browser context.")
+    context = contexts[0]
+    pages = list(context.pages)
+    page = pages[-1] if pages else await context.new_page()
+    if resize_viewport:
+        await page.set_viewport_size(viewport or {"width": 1280, "height": 900})
+    return context, page
+
+
 @dataclass
 class RetainableBrowserRuntime:
-    process: subprocess.Popen
+    process: Any
     cdp_endpoint: str
     browser_session_id: str
     browser_profile_path: str
     browser_node_id: str
+    browser_provider: str
+    owns_process: bool
     browser: Any
     context: Any
     page: Any
@@ -178,11 +281,11 @@ class RetainableBrowserRuntime:
         ).hexdigest()
 
         return {
-            "browser_provider": "local_cdp",
+            "browser_provider": self.browser_provider,
             "browser_session_id": self.browser_session_id,
             "browser_endpoint": self.cdp_endpoint,
             "browser_node_id": self.browser_node_id,
-            "browser_process_id": self.process.pid,
+            "browser_process_id": getattr(self.process, "pid", None),
             "browser_profile_path": self.browser_profile_path,
             "active_page_hint": self.page.url,
             "current_url": self.page.url,
@@ -195,14 +298,14 @@ class RetainableBrowserRuntime:
         }
 
     def terminate(self, *, remove_profile: bool = False) -> None:
-        if self.process.poll() is None:
+        if self.owns_process and self.process.poll() is None:
             self.process.terminate()
             try:
                 self.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait(timeout=5)
-        if remove_profile:
+        if remove_profile and self.owns_process and self.browser_profile_path:
             profile = Path(self.browser_profile_path)
             try:
                 profile.relative_to(self.session_dir)
@@ -211,7 +314,8 @@ class RetainableBrowserRuntime:
                 pass
             else:
                 shutil.rmtree(profile, ignore_errors=True)
-        shutil.rmtree(self.session_dir, ignore_errors=True) if remove_profile else None
+        if remove_profile:
+            shutil.rmtree(self.session_dir, ignore_errors=True)
 
 
 async def launch_retainable_browser(
@@ -243,7 +347,6 @@ async def launch_retainable_browser(
         "--remote-debugging-address=127.0.0.1",
         f"--remote-debugging-port={port}",
         f"--user-data-dir={resolved_profile_dir}",
-        *chromium_stability_args(),
         "about:blank",
     ]
     if headless:
@@ -272,13 +375,11 @@ async def launch_retainable_browser(
     )
 
     try:
-        contexts = list(browser.contexts)
-        if not contexts:
-            raise BrowserRuntimeError("Retained Chromium exposed no default browser context.")
-        context = contexts[0]
-        pages = list(context.pages)
-        page = pages[-1] if pages else await context.new_page()
-        await page.set_viewport_size(viewport or {"width": 1280, "height": 900})
+        context, page = await _select_context_page(
+            browser,
+            viewport=viewport,
+            resize_viewport=True,
+        )
     except Exception:
         process.terminate()
         log_handle.close()
@@ -291,6 +392,42 @@ async def launch_retainable_browser(
         browser_session_id=session_id,
         browser_profile_path=str(resolved_profile_dir),
         browser_node_id=current_browser_node_id(),
+        browser_provider="local_cdp",
+        owns_process=True,
+        browser=browser,
+        context=context,
+        page=page,
+        session_dir=session_dir,
+    )
+
+
+async def attach_retainable_browser(
+    playwright: Any,
+    *,
+    cdp_endpoint: str,
+    viewport: Optional[Dict[str, int]] = None,
+) -> RetainableBrowserRuntime:
+    """Attach to Android/native Chromium without launching or terminating it."""
+    endpoint = _normalize_external_cdp_endpoint(cdp_endpoint)
+    await _wait_for_external_cdp_endpoint(endpoint)
+    browser = await _connect_external_playwright_over_cdp(playwright, endpoint)
+    context, page = await _select_context_page(
+        browser,
+        viewport=viewport,
+        resize_viewport=False,
+    )
+
+    session_id = str(uuid4())
+    session_dir = handoff_storage_root() / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    return RetainableBrowserRuntime(
+        process=ExternalBrowserProcess(endpoint),
+        cdp_endpoint=endpoint,
+        browser_session_id=session_id,
+        browser_profile_path="",
+        browser_node_id=current_browser_node_id(),
+        browser_provider="local_cdp",
+        owns_process=False,
         browser=browser,
         context=context,
         page=page,
@@ -303,8 +440,15 @@ async def launch_application_browser(
     *,
     viewport: Optional[Dict[str, int]] = None,
 ) -> RetainableBrowserRuntime:
-    """Launch JobTomatik's dedicated, persistent application-browser identity."""
+    """Use external Android Chromium when configured, otherwise launch locally."""
     settings = get_settings()
+    cdp_endpoint = (settings.application_browser_cdp_endpoint or "").strip()
+    if cdp_endpoint:
+        return await attach_retainable_browser(
+            playwright,
+            cdp_endpoint=cdp_endpoint,
+            viewport=viewport,
+        )
     return await launch_retainable_browser(
         playwright,
         viewport=viewport,

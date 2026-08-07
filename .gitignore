@@ -36,9 +36,10 @@ backend/*.db
 backend/*.sqlite
 backend/*.sqlite3
 backend/uploads/
+backend/.runtime/
+backend/runtime_backups/
 *.log
 logs/
-.codespaces/
 
 # Persistent browser identity and retained handoff evidence
 # These directories can contain cookies, storage state, screenshots, and page HTML.

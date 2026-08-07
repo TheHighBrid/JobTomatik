@@ -2,23 +2,31 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from app.config import get_settings
+from app.services.application_entry import open_application_entry
 from app.services.application_target import is_valid_application_target
 from app.services.browser_navigation import (
+    detect_blocking_challenge,
     is_allowed_url,
     is_fake_url,
-    navigate_job_board_listing,
     now_iso,
-    wait_for_external_application_target,
 )
 from app.services.browser_runtime import launch_application_browser
+
+
+_RESUMABLE_TARGET_REASONS = {
+    "captcha_detected",
+    "mfa_required",
+    "login_required",
+    "anti_bot_challenge",
+}
 
 
 async def resolve_application_target_with_browser(source_url: str) -> Dict[str, Any]:
     """Resolve a discovery listing into an employer or ATS application URL.
 
-    The resolver owns only the doorway phase. It never fills an ATS form and never
-    treats a completed Celery task as evidence that an application was submitted.
+    The doorway is automated. A retained handoff is created only for an observed
+    security or identity boundary, never merely because an Apply control has not yet
+    been clicked.
     """
     log: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {
@@ -44,7 +52,6 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
 
     runtime = None
     retained = False
-    settings = get_settings()
     try:
         from playwright.async_api import TimeoutError as PlaywrightTimeoutError
         from playwright.async_api import async_playwright
@@ -52,7 +59,11 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
         async with async_playwright() as playwright:
             runtime = await launch_application_browser(playwright)
             page = runtime.page
-            log.append({"action": "application_target_navigation_started", "url": source_url, "ts": now_iso()})
+            log.append({
+                "action": "application_target_navigation_started",
+                "url": source_url,
+                "ts": now_iso(),
+            })
             try:
                 await page.goto(source_url, wait_until="domcontentloaded", timeout=30000)
                 try:
@@ -62,79 +73,69 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
             except PlaywrightTimeoutError:
                 log.append({"action": "application_target_navigation_timeout", "ts": now_iso()})
 
-            target = await navigate_job_board_listing(page, log)
+            target = await open_application_entry(page, log)
             target_url = str(target.get("application_url") or "")
-            if target_url and is_valid_application_target(source_url, target_url):
+            form_detected = bool(target.get("application_form_detected"))
+            if target_url and is_valid_application_target(
+                source_url,
+                target_url,
+                application_form_detected=form_detected,
+            ):
                 result.update({
                     "success": True,
                     "application_target_url": target_url,
                     "application_target_status": "resolved",
-                    "resolution_method": target.get("resolution_method") or "browser_navigation",
+                    "resolution_method": target.get("resolution_method") or "automatic_apply_navigation",
+                    "application_form_detected": form_detected,
+                    "form_evidence": target.get("form_evidence") or {},
                     "url": target_url,
                 })
                 return result
 
-            if target.get("contact_email"):
+            challenge = await detect_blocking_challenge(page)
+            reason_code = str((challenge or {}).get("reason_code") or "")
+            if challenge and reason_code in _RESUMABLE_TARGET_REASONS:
                 result.update({
                     "application_target_status": "requires_human",
                     "requires_manual_review": True,
-                    "contact_email": target["contact_email"],
-                    "error": target.get("reason") or "Employer accepts applications by email.",
-                    "review_items": [{
-                        "reason_code": "employer_contact_missing",
-                        "summary": target.get("reason") or "Employer accepts applications by email.",
-                        "details": {"contact_email": target["contact_email"], "stage": "target_resolution"},
-                    }],
+                    "error": challenge.get("summary"),
+                    "review_items": [challenge],
+                })
+                snapshot = await runtime.capture_snapshot(metadata={
+                    "dry_run": True,
+                    "stage": "application_target_security_boundary",
+                    "source_listing_url": source_url,
+                    "adapter": "listing_resolver",
+                    "adapter_version": "2.0.0",
+                    "reason_code": reason_code,
+                })
+                result["handoff_snapshot"] = snapshot
+                retained = True
+                log.append({
+                    "action": "application_target_security_handoff_retained",
+                    "reason_code": reason_code,
+                    "browser_session_id": snapshot["browser_session_id"],
+                    "current_url": snapshot["current_url"],
+                    "ts": now_iso(),
                 })
                 return result
 
-            target_url = await wait_for_external_application_target(
-                page,
-                source_url,
-                timeout_seconds=settings.application_target_human_wait_seconds,
-                log=log,
-            )
-            if target_url and is_valid_application_target(source_url, target_url):
-                result.update({
-                    "success": True,
-                    "application_target_url": target_url,
-                    "application_target_status": "resolved",
-                    "resolution_method": "human_apply_click",
-                    "url": target_url,
-                })
-                return result
-
-            error = (
-                "Open the retained JobTomatik browser and click LinkedIn's Apply button once. "
-                "JobTomatik will continue from the employer destination in the same browser session."
-            )
+            current_url = str(getattr(page, "url", "") or source_url)
             result.update({
-                "application_target_status": "requires_human",
-                "requires_manual_review": True,
-                "error": error,
-                "review_items": [{
-                    "reason_code": "application_target_required",
-                    "summary": "One human Apply click is required to reveal the employer application destination.",
-                    "details": {
-                        "stage": "application_target_resolution",
-                        "source_listing_url": source_url,
-                        "submit_clicked": False,
-                    },
-                }],
+                "application_target_status": "failed",
+                "requires_manual_review": False,
+                "error": (
+                    "JobTomatik could not reach an application form from the job page. "
+                    "No CAPTCHA, login, MFA, or anti-bot boundary was observed, so no "
+                    "manual handoff was created."
+                ),
+                "url": current_url,
             })
-            snapshot = await runtime.capture_snapshot(metadata={
-                "dry_run": True,
-                "stage": "application_target_resolution",
-                "source_listing_url": source_url,
-                "adapter": "listing_resolver",
-                "adapter_version": "1.0.0",
-            })
-            result["handoff_snapshot"] = snapshot
-            retained = True
             log.append({
-                "action": "application_target_browser_retained",
-                "browser_session_id": snapshot["browser_session_id"],
-                "current_url": snapshot["current_url"],
+                "action": "application_target_automatic_resolution_failed",
+                "source_url": source_url,
+                "current_url": current_url,
+                "manual_handoff_created": False,
                 "ts": now_iso(),
             })
     except ImportError:
@@ -143,7 +144,11 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
     except Exception as exc:
         result["application_target_status"] = "failed"
         result["error"] = str(exc)
-        log.append({"action": "application_target_resolution_error", "detail": str(exc)[:300], "ts": now_iso()})
+        log.append({
+            "action": "application_target_resolution_error",
+            "detail": str(exc)[:300],
+            "ts": now_iso(),
+        })
     finally:
         if runtime is not None and not retained:
             runtime.terminate(remove_profile=False)
