@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Any, Dict
 
 from app.models.application import ManualReviewReason, ManualReviewStatus, ManualReviewTask
-from app.models.handoff import HandoffChallengeType
 from app.services import handoff_session as handoff_session_service
 from app.services.application_target_handoff import (
     install_application_target_handoff_support,
@@ -26,7 +25,6 @@ _RESUMABLE_REASON_VALUES = {
     ManualReviewReason.mfa_required.value,
     ManualReviewReason.login_required.value,
     ManualReviewReason.anti_bot_challenge.value,
-    ManualReviewReason.application_target_required.value,
 }
 _TERMINAL_REISSUE_MESSAGE = "A terminal handoff session already exists for this review."
 _HANDOFF_DETAIL_KEYS = {
@@ -37,11 +35,12 @@ _HANDOFF_DETAIL_KEYS = {
     "handoff_notification_id",
 }
 
-# Extend the central handoff contract with the navigation boundary. This module is
-# already the compatibility installation point for application-task handoffs.
-handoff_session_service._ALLOWED_REASON_TO_CHALLENGE.setdefault(
+# Navigation is automatic application work, not a human boundary. Keep the enum and
+# historical database rows readable, but never allow a new retained-browser session
+# to be issued merely because an Apply doorway or application target is unresolved.
+handoff_session_service._ALLOWED_REASON_TO_CHALLENGE.pop(
     ManualReviewReason.application_target_required.value,
-    HandoffChallengeType.navigation.value,
+    None,
 )
 
 
@@ -115,6 +114,14 @@ def _attach_handoff_session(
         return
 
     review_reason = _handoff_review_reason(result, reason_code)
+    if review_reason not in _RESUMABLE_REASON_VALUES:
+        result.setdefault("log", []).append({
+            "action": "handoff_session_not_created",
+            "reason": "review_reason_not_resumable_browser_boundary",
+            "reason_code": review_reason,
+        })
+        return
+
     review = (
         db.query(ManualReviewTask)
         .filter(
@@ -188,8 +195,11 @@ def install_handoff_task_integration() -> None:
     """Install idempotent handoff, target, and Day 6 safety extensions."""
     global _INSTALLED, _ORIGINAL
 
-    # These compatibility layers must be available even when the review wrapper
-    # was installed earlier by another import path.
+    # Reassert the invariant even when another compatibility import ran first.
+    handoff_session_service._ALLOWED_REASON_TO_CHALLENGE.pop(
+        ManualReviewReason.application_target_required.value,
+        None,
+    )
     install_handoff_confirmation_target_support()
     install_application_target_handoff_support()
     if _INSTALLED:
