@@ -14,6 +14,9 @@ from app.schemas.agent_execution import (
     AgentRunDispatchOut,
     SelectorDiagnosticOut,
     SelectorStrategyControlUpdate,
+    SubmissionHandoffCreateRequest,
+    SubmissionHandoffOut,
+    SubmissionHandoffReviewRequest,
 )
 from app.services.agent_execution import (
     APPROVAL_APPROVED,
@@ -27,6 +30,14 @@ from app.services.agent_execution import (
     resume_run,
 )
 from app.services.intelligence_foundation import selector_health_score
+from app.services.submission_handoff import (
+    SubmissionHandoffError,
+    create_acknowledgment,
+    create_submission_handoff,
+    evaluate_submission_handoff,
+    review_acknowledgment,
+    review_submission_handoff,
+)
 from app.tasks.agent_execution import dispatch_agent_run_task
 
 
@@ -210,6 +221,93 @@ def cancel_agent_execution(
     cancel_run(run, user_id=current_user.id, reason=payload.reason)
     db.commit()
     return execution_snapshot(run)
+
+
+@router.get(
+    "/agent-runs/{run_id}/submission-handoff",
+    response_model=SubmissionHandoffOut,
+)
+def get_submission_handoff(
+    run_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    run = _owned_run(db, current_user.id, run_id)
+    refresh_run_status(run)
+    result = evaluate_submission_handoff(db, run)
+    db.commit()
+    return result
+
+
+@router.post(
+    "/agent-runs/{run_id}/submission-handoff",
+    response_model=SubmissionHandoffOut,
+)
+def create_agent_submission_handoff(
+    run_id: int,
+    payload: SubmissionHandoffCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    run = _owned_run(db, current_user.id, run_id)
+    refresh_run_status(run)
+    expected = create_acknowledgment(run_id)
+    if payload.acknowledgment.strip() != expected:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Exact handoff creation acknowledgment required",
+                "expected": expected,
+                "submission_authorized": False,
+                "approval_issued": False,
+                "queue_attempted": False,
+            },
+        )
+    try:
+        result = create_submission_handoff(db, run, user_id=current_user.id)
+        db.commit()
+        return result
+    except SubmissionHandoffError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/agent-runs/{run_id}/submission-handoff/review",
+    response_model=SubmissionHandoffOut,
+)
+def review_agent_submission_handoff(
+    run_id: int,
+    payload: SubmissionHandoffReviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    run = _owned_run(db, current_user.id, run_id)
+    refresh_run_status(run)
+    expected = review_acknowledgment(run_id)
+    if payload.acknowledgment.strip() != expected:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Exact handoff review acknowledgment required",
+                "expected": expected,
+                "submission_authorized": False,
+                "approval_issued": False,
+                "queue_attempted": False,
+            },
+        )
+    try:
+        result = review_submission_handoff(
+            db,
+            run,
+            user_id=current_user.id,
+            note=payload.note,
+        )
+        db.commit()
+        return result
+    except SubmissionHandoffError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def _selector_diagnostic(strategy: SelectorStrategy) -> dict:

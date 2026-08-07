@@ -39,6 +39,33 @@ class AgentExecutionSnapshotOut(BaseModel):
     control: dict[str, Any] = Field(default_factory=dict)
 
 
+class SubmissionHandoffCreateRequest(BaseModel):
+    acknowledgment: str = Field(min_length=12, max_length=160)
+
+
+class SubmissionHandoffReviewRequest(BaseModel):
+    acknowledgment: str = Field(min_length=12, max_length=160)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class SubmissionHandoffOut(BaseModel):
+    run_id: int
+    application_id: int | None = None
+    status: str
+    exists: bool
+    eligible: bool
+    blockers: list[str] = Field(default_factory=list)
+    drifted: bool
+    drift_reasons: list[str] = Field(default_factory=list)
+    expected_create_acknowledgment: str
+    expected_review_acknowledgment: str
+    current_snapshot: dict[str, Any] | None = None
+    stored_snapshot: dict[str, Any] | None = None
+    submission_authorized: bool
+    approval_issued: bool
+    queue_attempted: bool
+
+
 class SelectorStrategyControlUpdate(BaseModel):
     is_disabled: bool
     reason: str = Field(min_length=3, max_length=500)
