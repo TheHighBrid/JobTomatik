@@ -73,7 +73,10 @@ A dossier can be created only when:
 
 - the run belongs to the authenticated user;
 - the run status is `completed`;
+- `AgentRun.run_context.execution_control` already exists;
+- inspection does not synthesize or initialize missing bounded-control metadata;
 - execution scope is exactly `bounded_local_execution`;
+- bounded approval state is `approved` or `not_required`;
 - bounded execution retained `submission_authorized=false`;
 - bounded execution retained `outreach_authorized=false`;
 - the run was not cancelled;
@@ -84,7 +87,10 @@ A dossier can be created only when:
 - the readiness task has no blockers;
 - the referenced application still belongs to the run owner and is not closed;
 - the latest cover letter and résumé summary still exist and are `verified`;
+- both verified materials have exact ID/version references in the bounded readiness output;
 - their IDs and versions still match the bounded readiness output.
+
+Missing control metadata, an unsatisfied bounded approval, or a missing readiness material reference blocks the handoff rather than being repaired or inferred.
 
 ## Exact hashes
 
@@ -168,6 +174,9 @@ Regression coverage verifies:
 - handoff creation and review leave `SubmissionAttempt` count at zero;
 - exact acknowledgments are required;
 - routes are account-scoped;
+- missing readiness material references block eligibility;
+- missing bounded-control metadata blocks eligibility without being synthesized;
+- pending bounded approval blocks eligibility;
 - cover-letter and combined-payload mutations trigger drift;
 - events are retained without changing application state;
 - UI copy explicitly separates review from final-submit approval;
