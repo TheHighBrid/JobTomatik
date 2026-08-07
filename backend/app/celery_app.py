@@ -41,6 +41,10 @@ celery_app.conf.update(
             "task": "app.tasks.followup.send_pending_followups",
             "schedule": crontab(minute=0),
         },
+        "recover-stale-followup-deliveries": {
+            "task": "app.tasks.followup.recover_stale_followup_deliveries",
+            "schedule": crontab(minute="7,22,37,52"),
+        },
         "recover-stale-application-attempts": {
             "task": "app.tasks.operations.recover_stale_application_attempts",
             "schedule": crontab(minute="5,20,35,50"),
