@@ -72,7 +72,12 @@ def correct_career_memory(
         raise HTTPException(status_code=404, detail="Memory not found")
 
     values = payload.model_dump(exclude_unset=True)
-    factual_change = "content" in values or "confidence" in values
+    content_changed = "content" in values and values["content"] != memory.content
+    confidence_changed = (
+        "confidence" in values
+        and float(values["confidence"]) != float(memory.confidence)
+    )
+    factual_change = content_changed or confidence_changed
     if factual_change:
         metadata = dict(memory.memory_metadata or {})
         history = list(metadata.get("correction_history") or [])[-19:]
@@ -89,6 +94,7 @@ def correct_career_memory(
         metadata["corrected_by_user"] = True
         memory.memory_metadata = metadata
         memory.source = "user_correction"
+        memory.source_ref = f"operations:career_memory:{memory.id}:user_correction"
 
     if "content" in values:
         memory.content = values["content"]
