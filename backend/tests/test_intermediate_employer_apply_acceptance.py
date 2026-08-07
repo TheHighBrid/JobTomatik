@@ -70,7 +70,8 @@ WORKDAY_JOB_HTML = f"""
     <main>
       <h1>Fraud Prevention Advisor, Remote</h1>
       <div>Job requisition id R2511328</div>
-      <button id="workday-apply" type="button" aria-label="Apply">Apply</button>
+      <button id="workday-apply" type="button"
+              data-automation-id="jobPostingApplyButton">Apply</button>
       <script>
         document.querySelector('#workday-apply').addEventListener('click', () => {{
           window.location.assign('{ATS_URL}');
@@ -218,7 +219,7 @@ def _intermediate_actions(result: dict) -> list[dict]:
 
 
 @pytest.mark.asyncio
-async def test_real_browser_crosses_desjardins_and_workday_apply_without_handoff(
+async def test_target_resolver_clicks_desjardins_then_yields_to_workday_adapter(
     monkeypatch,
     employer_landing_page,
 ):
@@ -237,23 +238,25 @@ async def test_real_browser_crosses_desjardins_and_workday_apply_without_handoff
 
     assert result["success"] is True
     assert result["application_target_status"] == "resolved"
-    assert result["application_target_url"] == ATS_URL
-    assert result["application_form_detected"] is True
+    assert result["application_target_url"] == WORKDAY_JOB_URL
+    assert result["application_form_detected"] is False
+    assert result["trusted_ats_adapter"] == "workday"
     assert result["requires_manual_review"] is False
     assert result["handoff_snapshot"] is None
     assert runtime.capture_calls == 0
-    assert employer_landing_page.url == ATS_URL
+    assert employer_landing_page.url == WORKDAY_JOB_URL
     intermediate = _intermediate_actions(result)
-    assert len(intermediate) == 2
+    assert len(intermediate) == 1
     assert intermediate[0]["url"].startswith(DESJARDINS_URL)
-    assert intermediate[1]["url"].startswith(WORKDAY_JOB_URL)
     actions = [entry.get("action") for entry in result["log"]]
     assert "application_entry_external_href_navigated" in actions
+    assert "intermediate_employer_trusted_ats_reached" in actions
+    assert "workday_application_revealed" not in actions
     assert "application_target_security_handoff_retained" not in actions
 
 
 @pytest.mark.asyncio
-async def test_real_browser_dry_run_fills_after_multi_hop_employer_apply(
+async def test_real_browser_dry_run_lets_workday_own_second_apply_and_fills_form(
     monkeypatch,
     employer_landing_page,
     tmp_path,
@@ -283,17 +286,19 @@ async def test_real_browser_dry_run_fills_after_multi_hop_employer_apply(
     assert result["success"] is True
     assert result["ready_to_submit"] is True
     assert result["requires_manual_review"] is False
-    assert result["application_url"] == ATS_URL
-    assert result["application_form_detected"] is True
+    assert result["ats_adapter"] == "workday"
     assert result["fields_filled"] >= 5
     assert result["handoff_snapshot"] is None
     assert runtime.capture_calls == 0
-    assert len(_intermediate_actions(result)) == 2
+    assert len(_intermediate_actions(result)) == 1
+    actions = [entry.get("action") for entry in result["log"]]
+    assert "intermediate_employer_trusted_ats_reached" in actions
+    assert "workday_application_revealed" in actions
     await _assert_filled(employer_landing_page)
 
 
 @pytest.mark.asyncio
-async def test_real_browser_dry_run_fills_from_direct_desjardins_landing(
+async def test_real_browser_direct_desjardins_dry_run_reaches_workday_owned_form(
     monkeypatch,
     employer_landing_page,
     tmp_path,
@@ -323,12 +328,14 @@ async def test_real_browser_dry_run_fills_from_direct_desjardins_landing(
     assert result["success"] is True
     assert result["ready_to_submit"] is True
     assert result["requires_manual_review"] is False
-    assert result["application_url"] == ATS_URL
-    assert result["application_form_detected"] is True
+    assert result["ats_adapter"] == "workday"
     assert result["fields_filled"] >= 5
     assert result["handoff_snapshot"] is None
     assert runtime.capture_calls == 0
-    assert len(_intermediate_actions(result)) == 2
+    assert len(_intermediate_actions(result)) == 1
+    actions = [entry.get("action") for entry in result["log"]]
+    assert "intermediate_employer_trusted_ats_reached" in actions
+    assert "workday_application_revealed" in actions
     await _assert_filled(employer_landing_page)
 
 
