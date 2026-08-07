@@ -11,7 +11,7 @@ import asyncio
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from app.services.ats_base import action_text
 from app.services.browser_navigation import (
@@ -32,6 +32,7 @@ _APPLY_ACCEPT = (
     "continue to application",
     "continue application",
     "complete application",
+    "easy apply",
     "apply",
 )
 _APPLY_REJECT = (
@@ -52,8 +53,8 @@ _APPLY_SELECTORS = (
     'a.jobs-apply-button',
     'button.jobs-apply-button',
     '[data-tracking-control-name*="apply-link-offsite" i]',
-    'a[aria-label*="apply" i]',
-    'button[aria-label*="apply" i]',
+    'a[aria-label*="apply now" i]',
+    'button[aria-label*="apply now" i]',
     'a:has-text("Apply now")',
     'button:has-text("Apply now")',
     'a:has-text("Apply for this job")',
@@ -66,13 +67,27 @@ _APPLY_SELECTORS = (
     'button:has-text("Begin application")',
     'a:has-text("Continue to application")',
     'button:has-text("Continue to application")',
+    '[data-testid*="start-application" i]',
+    '[data-cy*="start-application" i]',
+)
+_JOB_BOARD_PLAIN_APPLY_SELECTORS = (
+    '[data-tracking-control-name*="apply" i]',
+    'a[aria-label*="apply" i]',
+    'button[aria-label*="apply" i]',
+    '[role="button"][aria-label*="apply" i]',
+    'a:text-is("Apply")',
+    'button:text-is("Apply")',
+    '[role="button"]:text-is("Apply")',
+    'a:text-is("Easy Apply")',
+    'button:text-is("Easy Apply")',
+    '[role="button"]:text-is("Easy Apply")',
     '[data-testid*="apply" i]',
     '[data-cy*="apply" i]',
 )
-_APPLICANT_FIELD_HINTS = re.compile(
-    r"(?:^|[_\-\s])(?:first|last|full)[_\-\s]?name(?:$|[_\-\s])|"
-    r"email|phone|mobile|resume|résumé|cv|cover[_\-\s]?letter|linkedin|portfolio",
-    flags=re.IGNORECASE,
+_BROAD_APPLY_SELECTORS = (
+    "a",
+    "button",
+    '[role="button"]',
 )
 
 
@@ -115,10 +130,10 @@ def apply_candidate_score(text: str, href: str = "") -> int:
     for index, phrase in enumerate(_APPLY_ACCEPT):
         if label == phrase:
             score = max(score, 120 - index)
-        elif phrase != "apply" and phrase in label:
+        elif phrase not in {"apply", "easy apply"} and phrase in label:
             score = max(score, 90 - index)
 
-    if score < 0 and re.search(r"\bapply\b", label):
+    if score < 0 and re.search(r"\b(?:easy\s+)?apply\b", label):
         score = 55
     if any(token in target for token in ("/apply", "application", "candidate", "jobs/apply")):
         score = max(score, 65)
@@ -239,28 +254,63 @@ async def _actionable(element: Any) -> bool:
     return True
 
 
+async def _append_ranked_controls(
+    ranked: List[tuple[int, Any, Any, str, str]],
+    seen: set[int],
+    surface: Any,
+    selectors: Iterable[str],
+) -> None:
+    for selector in selectors:
+        try:
+            controls = await surface.query_selector_all(selector)
+        except Exception:
+            continue
+        for control in controls:
+            identity = id(control)
+            if identity in seen or not await _actionable(control):
+                continue
+            seen.add(identity)
+            text = await action_text(control)
+            try:
+                href = str(await control.get_attribute("href") or "")
+            except Exception:
+                href = ""
+            score = apply_candidate_score(text, href)
+            if score >= 0:
+                ranked.append((score, surface, control, text, href))
+
+
 async def _rank_apply_controls(page: Any) -> List[tuple[int, Any, Any, str, str]]:
     ranked: List[tuple[int, Any, Any, str, str]] = []
     seen: set[int] = set()
-    for surface in _candidate_surfaces(page):
-        for selector in _APPLY_SELECTORS:
-            try:
-                controls = await surface.query_selector_all(selector)
-            except Exception:
-                continue
-            for control in controls:
-                identity = id(control)
-                if identity in seen or not await _actionable(control):
-                    continue
-                seen.add(identity)
-                text = await action_text(control)
-                try:
-                    href = str(await control.get_attribute("href") or "")
-                except Exception:
-                    href = ""
-                score = apply_candidate_score(text, href)
-                if score >= 0:
-                    ranked.append((score, surface, control, text, href))
+    surfaces = list(_candidate_surfaces(page))
+
+    for surface in surfaces:
+        await _append_ranked_controls(ranked, seen, surface, _APPLY_SELECTORS)
+
+    current_url = str(getattr(page, "url", "") or "")
+    if is_job_board_url(current_url):
+        for surface in surfaces:
+            await _append_ranked_controls(
+                ranked,
+                seen,
+                surface,
+                _JOB_BOARD_PLAIN_APPLY_SELECTORS,
+            )
+
+        # LinkedIn's classic desktop markup sometimes exposes a plain text anchor
+        # whose classes and tracking attributes vary by rollout. Scan broad
+        # interactive controls only on a known job-board listing, then rely on the
+        # strict scorer to reject filters and application-management actions.
+        if not ranked:
+            for surface in surfaces:
+                await _append_ranked_controls(
+                    ranked,
+                    seen,
+                    surface,
+                    _BROAD_APPLY_SELECTORS,
+                )
+
     ranked.sort(key=lambda item: item[0], reverse=True)
     return ranked
 
@@ -356,6 +406,12 @@ async def open_application_entry(
     for attempt in range(1, max(1, int(max_clicks)) + 1):
         ranked = await _rank_apply_controls(page)
         if not ranked:
+            log.append({
+                "action": "application_entry_apply_control_not_found",
+                "attempt": attempt,
+                "url": str(getattr(page, "url", "") or source_url),
+                "ts": now_iso(),
+            })
             break
 
         score, _surface, control, text, href = ranked[0]
