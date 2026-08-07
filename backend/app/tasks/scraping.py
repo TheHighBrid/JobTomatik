@@ -13,6 +13,7 @@ from app.services.discovery_pipeline import persist_discovery_results
 from app.services.discovery_search import search_jobs
 from app.services.scheduler_policy import (
     build_search_plan,
+    discovery_allowed_by_user_policy,
     rank_scheduler_candidates,
     scheduler_settings,
 )
@@ -111,10 +112,10 @@ def refresh_all_scores():
 def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
     """Run one policy-bounded scheduler cycle for exactly one account.
 
-    This helper may dispatch discovery or create an application only after the
-    scheduler/user policy and the live unattended job policy both allow it. The
-    submission worker independently re-evaluates the same job policy immediately
-    before browser execution.
+    Discovery may continue after an application cap is reached, but quiet hours,
+    kill switches, and circuit breakers still pause the cycle. Application creation
+    requires the complete user policy plus the live unattended job policy. The
+    submission worker independently re-evaluates that job policy before browser work.
     """
     from app.models.application import (
         Application,
@@ -139,7 +140,8 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
         }
 
     decision = evaluate_autopilot_policy(db, user)
-    if not decision.allowed:
+    discovery_allowed = discovery_allowed_by_user_policy(decision)
+    if not decision.allowed and not discovery_allowed:
         return {
             "user_id": user.id,
             "skipped": True,
@@ -155,6 +157,7 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
         "skipped": False,
         "reason": "scheduler_cycle_completed",
         "policy_decision": decision.to_dict(),
+        "discovery_policy_allowed": discovery_allowed,
         "searched": False,
         "search_blocker": None,
         "applications_queued": 0,
@@ -163,7 +166,7 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
         "user_dry_run_mode": bool(auto_settings.get("dry_run_mode", True)),
     }
 
-    if search_enabled:
+    if search_enabled and discovery_allowed:
         search_plan = build_search_plan(user)
         if search_plan["ready"]:
             run_job_search.delay(
@@ -179,6 +182,9 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
             }
 
     if not apply_enabled:
+        return result
+    if not decision.allowed:
+        result["reason"] = decision.code
         return result
 
     remaining_daily = int(decision.metadata.get("remaining_daily", 0))
