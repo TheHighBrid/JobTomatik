@@ -8,6 +8,7 @@ from sqlalchemy import inspect as sa_inspect, text
 
 from app.api import (
     adapter_health,
+    agent_execution,
     answer_policies,
     applications,
     auth,
@@ -238,6 +239,7 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(settings_api.router, prefix="/api")
 app.include_router(intelligence.router, prefix="/api")
+app.include_router(agent_execution.router, prefix="/api")
 app.include_router(evaluations.router, prefix="/api")
 
 

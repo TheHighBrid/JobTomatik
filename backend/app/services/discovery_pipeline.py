@@ -375,12 +375,17 @@ def persist_discovery_results(
     *,
     keywords: str,
     search_params: dict[str, Any] | None = None,
+    track_agent_run: bool = True,
 ) -> dict[str, Any]:
     """Score, deduplicate, persist, evaluate, and graph-enrich discovered jobs."""
 
     params = dict(search_params or {})
     params.setdefault("keywords", keywords)
-    run = _create_discovery_run(db, user, keywords=keywords, search_params=params)
+    run = (
+        _create_discovery_run(db, user, keywords=keywords, search_params=params)
+        if track_agent_run
+        else None
+    )
     preferences = dict(user.job_preferences or {})
     memories = (
         db.query(CareerMemory)
@@ -390,7 +395,7 @@ def persist_discovery_results(
     memory_by_id = {memory.id: memory for memory in memories}
 
     stats: dict[str, Any] = {
-        "agent_run_id": run.id,
+        "agent_run_id": run.id if run is not None else None,
         "total_found": len(raw_jobs),
         "saved": 0,
         "duplicates": 0,
@@ -488,6 +493,7 @@ def persist_discovery_results(
         memory_by_id[memory_id].last_used_at = now
     stats["memories_used"] = len(used_memory_ids)
 
-    _complete_discovery_run(db, run, stats)
+    if run is not None:
+        _complete_discovery_run(db, run, stats)
     db.flush()
     return stats
