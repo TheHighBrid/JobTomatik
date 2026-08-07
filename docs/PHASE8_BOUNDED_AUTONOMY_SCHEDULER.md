@@ -41,6 +41,25 @@ The environment-backed `AUTOPILOT_ENABLED` gate also remains `false` by default.
 
 `ALLOW_REAL_APPLICATION_SUBMIT` is not modified by Phase 8.
 
+## Versioned policy activation
+
+Historical JobTomatik builds exposed `auto_search_enabled=true`, `auto_apply_enabled=true`, and `dry_run_mode=false` as UI/API defaults. A value persisted by those builds is not reliable evidence that the account explicitly accepted the Phase 8 bounded-autonomy contract.
+
+Phase 8 therefore requires the JSON marker:
+
+`scheduler_policy_version = bounded-autonomy-v1`
+
+Until that marker exists:
+
+- effective scheduled discovery is forced off;
+- effective autonomous candidate processing is forced off;
+- effective dry-run mode is forced on;
+- Scheduler Center reports `policy_upgrade_required`.
+
+The marker is written only when a Phase 8 scheduler field is explicitly saved. On first activation, historical true switches are not resurrected unless those switches are present in the activating update. Editing a cap or constraint alone therefore activates the new contract with discovery/apply still off and dry run still on.
+
+No schema migration is required because the marker lives in the existing `User.automation_settings` JSON object.
+
 ## Saved discovery policy
 
 Scheduled discovery uses, in order:
@@ -73,6 +92,8 @@ The Scheduler Center exposes the policy vocabulary already enforced by the unatt
 Employer allow/exclude overlap is rejected. Weekly caps cannot be lower than daily caps. Supported sources and platforms are validated before saving.
 
 Partial settings updates are validated against the saved scheduler state whenever a cross-field invariant changes. Unrelated legacy settings remain editable instead of being retroactively rejected.
+
+Legacy comma-separated scheduler lists are normalized on read, and the Settings API exposes the same environment-backed cap and quiet-hour defaults used by the runtime policy engine.
 
 ## Adapter maturity boundary
 
@@ -221,6 +242,8 @@ The general Settings page now links to Scheduler Center instead of maintaining a
 Phase 8 adds regression coverage for:
 
 - fail-safe scheduler defaults;
+- legacy true flags remaining inert before versioned policy activation;
+- first activation not resurrecting historical scheduler switches;
 - unsupported source rejection;
 - partial-update cap validation against saved settings;
 - allow/exclude conflict validation against saved settings;
