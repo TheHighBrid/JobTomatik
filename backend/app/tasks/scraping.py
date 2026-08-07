@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.models.job import Job, JobStatus
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
+from app.services.discovery_dedup import partition_new_discovery_jobs
 from app.services.discovery_pipeline import persist_discovery_results
 from app.services.discovery_search import search_jobs
 from app.services.operations_policy import evaluate_autopilot_policy
@@ -28,7 +29,7 @@ def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
 
 @celery_app.task(bind=True, name="app.tasks.scraping.run_job_search", queue="scraping")
 def run_job_search(self, user_id: int, search_params: dict):
-    """Discover, score, evaluate, and store new results."""
+    """Discover, score, evaluate, and store genuinely new results."""
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
@@ -36,13 +37,17 @@ def run_job_search(self, user_id: int, search_params: dict):
             return {"error": "User not found"}
 
         raw_jobs = _run_async(search_jobs(**search_params))
+        new_jobs, preexisting_duplicates = partition_new_discovery_jobs(db, raw_jobs)
         stats = persist_discovery_results(
             db,
             user,
-            raw_jobs,
+            new_jobs,
             keywords=str(search_params.get("keywords") or ""),
             search_params=search_params,
         )
+        stats["total_found"] = len(raw_jobs)
+        stats["duplicates"] = int(stats.get("duplicates") or 0) + preexisting_duplicates
+        stats["new_candidates"] = len(new_jobs)
 
         if stats["saved"] > 0:
             db.add(Notification(
@@ -59,6 +64,7 @@ def run_job_search(self, user_id: int, search_params: dict):
                     "agent_run_id": stats["agent_run_id"],
                     "evaluations_created": stats["evaluations_created"],
                     "blocked": stats["blocked"],
+                    "duplicates": stats["duplicates"],
                 },
             ))
 
