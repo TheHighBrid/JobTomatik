@@ -119,21 +119,25 @@ def test_android_runtime_forces_nonblocking_automatic_application_entry():
     assert "set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'" in manager
 
 
-def test_restart_preserves_browser_process_and_refreshes_jobtomatik_tabs():
+def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_refresh():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
     )
 
     assert 'activate_stack()' in wrapper
     assert '"$BROWSER_COMMAND" start' in wrapper
     assert '"$BROWSER_COMMAND" restart' not in wrapper
-    assert "refresh_frontend_tabs" in wrapper
-    assert "refresh_android_jobtomatik_tabs.py" in wrapper
+    assert "refresh_frontend_tabs" not in wrapper
+    assert "refresh_frontend_runtime" in manager
+    assert "refresh_android_jobtomatik_tabs.py" in manager
     restart_case = wrapper.split("restart)", 1)[1].split(";;", 1)[0]
     assert "activate_stack restart" in restart_case
 
 
-def test_android_update_always_fast_forwards_authoritative_main_and_refreshes_ui():
+def test_android_update_always_fast_forwards_authoritative_main():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
