@@ -29,6 +29,13 @@ DEFAULT_SETTINGS = {
     "email_on_offer": True,
 }
 
+SCHEDULER_CONFLICT_FIELDS = {
+    "auto_apply_daily_limit",
+    "auto_apply_weekly_limit",
+    "autopilot_employer_allow_list",
+    "autopilot_employer_exclude_list",
+}
+
 
 def _normalize_list(value: Any) -> list[str]:
     if value is None:
@@ -163,11 +170,19 @@ async def update_settings(
 ):
     current = dict(current_user.automation_settings or {})
     updates = data.model_dump(exclude_none=True)
-    merged = {**DEFAULT_SETTINGS, **current, **updates}
-    validated = SettingsUpdate(**merged)
-    normalized = validated.model_dump(exclude_none=True)
-    for key in updates:
-        current[key] = normalized[key]
+
+    # Validate cross-field scheduler invariants against the saved policy whenever
+    # one side of that invariant is edited. Unrelated legacy settings remain
+    # editable rather than being retroactively rejected by a new Phase 8 rule.
+    if SCHEDULER_CONFLICT_FIELDS.intersection(updates):
+        merged = {**DEFAULT_SETTINGS, **current, **updates}
+        validated = SettingsUpdate(**merged).model_dump(exclude_none=True)
+        for key in updates:
+            current[key] = validated[key]
+    else:
+        for key, value in updates.items():
+            current[key] = value
+
     current_user.automation_settings = current
     db.commit()
     db.refresh(current_user)
