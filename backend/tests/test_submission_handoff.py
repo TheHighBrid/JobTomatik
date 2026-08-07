@@ -236,6 +236,50 @@ def test_handoff_requires_material_references_from_bounded_readiness(
     assert db_session.query(SubmissionAttempt).count() == 0
 
 
+def test_handoff_requires_preexisting_satisfied_bounded_control(
+    db_session,
+    tmp_path,
+):
+    user = User(
+        email="phase5-control@example.com",
+        hashed_password="not-used",
+        full_name="Control Owner",
+    )
+    db_session.add(user)
+    db_session.flush()
+    run, application = _build_ready_run(db_session, user, tmp_path, suffix="control")
+
+    run.run_context = {"application_id": application.id}
+    db_session.commit()
+    missing = evaluate_submission_handoff(db_session, run)
+
+    assert missing["eligible"] is False
+    assert missing["current_snapshot"] is None
+    assert "bounded_execution_control_missing" in missing["blockers"]
+    assert "execution_control" not in dict(run.run_context or {})
+
+    run.run_context = {
+        "application_id": application.id,
+        "execution_control": {
+            "approval_state": "pending",
+            "scope": "bounded_local_execution",
+            "paused": False,
+            "cancellation_requested": False,
+            "submission_authorized": False,
+            "outreach_authorized": False,
+        },
+    }
+    db_session.commit()
+    pending = evaluate_submission_handoff(db_session, run)
+
+    assert pending["eligible"] is False
+    assert pending["current_snapshot"] is None
+    assert "bounded_execution_approval_not_satisfied" in pending["blockers"]
+    assert pending["submission_authorized"] is False
+    assert db_session.query(SubmissionApproval).count() == 0
+    assert db_session.query(SubmissionAttempt).count() == 0
+
+
 def test_handoff_api_is_exact_phrase_and_account_scoped(
     auth_client,
     db_session,
