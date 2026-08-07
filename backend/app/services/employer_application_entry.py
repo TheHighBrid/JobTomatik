@@ -53,6 +53,17 @@ _INTERMEDIATE_APPLY_SELECTORS = (
     '[role="button"][aria-label="Apply" i]',
 )
 
+# Component libraries can put Apply text inside nested spans/icons, causing the
+# exact Playwright selectors above to miss the outer actionable element. The broad
+# fallback is still fail-closed because _safe_candidate requires an exact semantic
+# label and rejects submit controls and anything inside a form.
+_INTERMEDIATE_APPLY_FALLBACK_SELECTORS = (
+    "a",
+    "button",
+    '[role="button"]',
+    'input[type="button"]',
+)
+
 
 def _normalized(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
@@ -106,15 +117,63 @@ async def _bring_controlled_page_to_front(page: Any) -> None:
         pass
 
 
+async def _semantic_apply_label(element: Any) -> str:
+    """Return one exact doorway label without concatenating duplicate text sources.
+
+    ``action_text`` intentionally joins aria-label, title, value and inner text. A
+    perfectly ordinary ``aria-label=Apply`` button whose inner text is also ``Apply``
+    therefore becomes ``apply apply``. That is useful for fuzzy matching elsewhere,
+    but this strict doorway must test each semantic source independently.
+    """
+    values: List[str] = []
+    for attr in ("aria-label", "value", "title"):
+        try:
+            value = await element.get_attribute(attr)
+        except Exception:
+            value = None
+        normalized = _normalized(value)
+        if normalized:
+            values.append(normalized)
+
+    try:
+        text = _normalized(await element.inner_text())
+    except Exception:
+        text = ""
+    if text:
+        values.append(text)
+
+    # Material/icon components sometimes leak icon names into innerText. Remove only
+    # explicitly decorative descendants from a cloned node and test that text too.
+    try:
+        clean_text = _normalized(await element.evaluate(
+            """el => {
+              const clone = el.cloneNode(true);
+              clone.querySelectorAll(
+                '[aria-hidden="true"],svg,.material-icons,.material-symbols-outlined,.material-symbols-rounded,.material-symbols-sharp'
+              ).forEach(node => node.remove());
+              return clone.textContent || '';
+            }"""
+        ))
+    except Exception:
+        clean_text = ""
+    if clean_text:
+        values.append(clean_text)
+
+    return next((value for value in values if value in _INTERMEDIATE_APPLY_LABELS), "")
+
+
 async def _safe_candidate(element: Any) -> Optional[Dict[str, str]]:
     """Return descriptor only for a non-submit, non-form Apply doorway."""
     try:
         if not await element.is_visible() or not await element.is_enabled():
             return None
-        text = await action_text(element)
-        label = _normalized(text)
-        if label not in _INTERMEDIATE_APPLY_LABELS:
+        label = await _semantic_apply_label(element)
+        if not label:
             return None
+        try:
+            text = await action_text(element)
+        except Exception:
+            text = label
         href = str(await element.get_attribute("href") or "")
         control_type = _normalized(await element.get_attribute("type") or "")
         if control_type == "submit":
@@ -127,18 +186,22 @@ async def _safe_candidate(element: Any) -> Optional[Dict[str, str]]:
             return None
         if href.lower().startswith(("mailto:", "tel:", "javascript:")):
             return None
-        return {"text": text, "label": label, "href": href}
+        return {"text": text or label, "label": label, "href": href}
     except Exception:
         return None
 
 
-async def _rank_safe_candidates(page: Any) -> List[tuple[Any, Dict[str, str]]]:
+async def _scan_safe_candidates(
+    page: Any,
+    selectors: tuple[str, ...],
+    *,
+    seen: set[tuple[str, str]],
+) -> List[tuple[Any, Dict[str, str]]]:
     candidates: List[tuple[Any, Dict[str, str]]] = []
-    seen: set[tuple[str, str]] = set()
-    for selector in _INTERMEDIATE_APPLY_SELECTORS:
+    for selector in selectors:
         try:
             locator = page.locator(selector)
-            count = min(int(await locator.count()), 40)
+            count = min(int(await locator.count()), 100)
         except Exception:
             continue
         for index in range(count):
@@ -152,6 +215,22 @@ async def _rank_safe_candidates(page: Any) -> List[tuple[Any, Dict[str, str]]]:
             seen.add(signature)
             candidates.append((element, descriptor))
     return candidates
+
+
+async def _rank_safe_candidates(page: Any) -> List[tuple[Any, Dict[str, str]]]:
+    seen: set[tuple[str, str]] = set()
+    candidates = await _scan_safe_candidates(
+        page,
+        _INTERMEDIATE_APPLY_SELECTORS,
+        seen=seen,
+    )
+    if candidates:
+        return candidates
+    return await _scan_safe_candidates(
+        page,
+        _INTERMEDIATE_APPLY_FALLBACK_SELECTORS,
+        seen=seen,
+    )
 
 
 async def _wait_for_form_or_navigation(
@@ -289,6 +368,7 @@ async def continue_from_employer_landing(
             "step": step,
             "url": current_url,
             "text": descriptor["text"][:160],
+            "label": descriptor["label"],
             "href": href[:500],
             "ts": now_iso(),
         })
