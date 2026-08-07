@@ -111,7 +111,7 @@ async def test_classic_linkedin_plain_apply_anchor_is_followed_automatically():
     )
     page.control = _ApplyControl(
         page,
-        href="https://job-boards.greenhouse.io/affirm/jobs/7696276003",
+        href="https://job-boards.greenhouse.io/affirm/jobs/7806920003",
     )
     log = []
 
@@ -125,8 +125,8 @@ async def test_classic_linkedin_plain_apply_anchor_is_followed_automatically():
     # A proven external href is followed directly so LinkedIn popup/rerender behavior
     # cannot swallow the Apply action.
     assert page.control.clicks == 0
-    assert page.goto_calls == ["https://job-boards.greenhouse.io/affirm/jobs/7696276003"]
-    assert result["application_url"] == "https://job-boards.greenhouse.io/affirm/jobs/7696276003"
+    assert page.goto_calls == ["https://job-boards.greenhouse.io/affirm/jobs/7806920003"]
+    assert result["application_url"] == "https://job-boards.greenhouse.io/affirm/jobs/7806920003"
     assert any(item["action"] == "application_entry_external_href_navigated" for item in log)
 
 
@@ -140,15 +140,15 @@ async def test_linkedin_redirect_href_is_unwrapped_before_navigation():
         page,
         href=(
             "https://www.linkedin.com/redir/redirect?url="
-            "https%3A%2F%2Fjob-boards.greenhouse.io%2Faffirm%2Fjobs%2F7696276003"
+            "https%3A%2F%2Fjob-boards.greenhouse.io%2Faffirm%2Fjobs%2F7806920003"
         ),
     )
     log = []
 
     result = await open_application_entry(page, log, max_clicks=1, settle_timeout_seconds=0.5)
 
-    assert page.goto_calls == ["https://job-boards.greenhouse.io/affirm/jobs/7696276003"]
-    assert result["application_url"] == "https://job-boards.greenhouse.io/affirm/jobs/7696276003"
+    assert page.goto_calls == ["https://job-boards.greenhouse.io/affirm/jobs/7806920003"]
+    assert result["application_url"] == "https://job-boards.greenhouse.io/affirm/jobs/7806920003"
 
 
 @pytest.mark.asyncio
