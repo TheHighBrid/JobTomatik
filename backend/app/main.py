@@ -22,6 +22,7 @@ from app.api import (
     lever_pilot_ledger,
     materials,
     notifications,
+    operations,
     pilot_ledger,
     profile,
     settings as settings_api,
@@ -248,6 +249,7 @@ app.include_router(settings_api.router, prefix="/api")
 app.include_router(intelligence.router, prefix="/api")
 app.include_router(agent_execution.router, prefix="/api")
 app.include_router(evaluations.router, prefix="/api")
+app.include_router(operations.router, prefix="/api")
 
 
 @app.get("/health")
