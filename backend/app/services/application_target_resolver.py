@@ -11,6 +11,7 @@ from app.services.browser_navigation import (
     now_iso,
 )
 from app.services.browser_runtime import launch_application_browser
+from app.services.listing_availability import detect_closed_listing
 
 
 _RESUMABLE_TARGET_REASONS = {
@@ -44,10 +45,14 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
         "review_items": [],
         "handoff_snapshot": None,
         "target_resolution_only": True,
+        "terminal_reason": None,
+        "retryable": True,
     }
     if not is_allowed_url(source_url) or is_fake_url(source_url):
         result["application_target_status"] = "failed"
         result["error"] = "Invalid or placeholder job listing URL"
+        result["terminal_reason"] = "invalid_listing_url"
+        result["retryable"] = False
         return result
 
     runtime = None
@@ -73,6 +78,29 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
             except PlaywrightTimeoutError:
                 log.append({"action": "application_target_navigation_timeout", "ts": now_iso()})
 
+            closed = await detect_closed_listing(page)
+            if closed:
+                result.update({
+                    "application_target_status": "failed",
+                    "requires_manual_review": False,
+                    "error": closed["summary"],
+                    "url": closed.get("url") or page.url or source_url,
+                    "terminal_reason": "listing_closed",
+                    "retryable": False,
+                    "listing_availability": "closed",
+                    "listing_closed_evidence": closed,
+                })
+                log.append({
+                    "action": "application_listing_closed",
+                    "source_url": source_url,
+                    "current_url": result["url"],
+                    "matched_text": closed.get("matched_text"),
+                    "manual_handoff_created": False,
+                    "retryable": False,
+                    "ts": now_iso(),
+                })
+                return result
+
             target = await open_application_entry(page, log)
             target_url = str(target.get("application_url") or "")
             form_detected = bool(target.get("application_form_detected"))
@@ -89,6 +117,30 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                     "application_form_detected": form_detected,
                     "form_evidence": target.get("form_evidence") or {},
                     "url": target_url,
+                    "retryable": False,
+                })
+                return result
+
+            closed = await detect_closed_listing(page)
+            if closed:
+                result.update({
+                    "application_target_status": "failed",
+                    "requires_manual_review": False,
+                    "error": closed["summary"],
+                    "url": closed.get("url") or page.url or source_url,
+                    "terminal_reason": "listing_closed",
+                    "retryable": False,
+                    "listing_availability": "closed",
+                    "listing_closed_evidence": closed,
+                })
+                log.append({
+                    "action": "application_listing_closed",
+                    "source_url": source_url,
+                    "current_url": result["url"],
+                    "matched_text": closed.get("matched_text"),
+                    "manual_handoff_created": False,
+                    "retryable": False,
+                    "ts": now_iso(),
                 })
                 return result
 
@@ -100,6 +152,7 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                     "requires_manual_review": True,
                     "error": challenge.get("summary"),
                     "review_items": [challenge],
+                    "retryable": False,
                 })
                 snapshot = await runtime.capture_snapshot(metadata={
                     "dry_run": True,
@@ -130,6 +183,7 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                     "manual handoff was created."
                 ),
                 "url": current_url,
+                "terminal_reason": "application_form_unavailable",
             })
             log.append({
                 "action": "application_target_automatic_resolution_failed",
@@ -141,9 +195,11 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
     except ImportError:
         result["application_target_status"] = "failed"
         result["error"] = "Playwright not installed"
+        result["terminal_reason"] = "browser_runtime_unavailable"
     except Exception as exc:
         result["application_target_status"] = "failed"
         result["error"] = str(exc)
+        result["terminal_reason"] = "application_target_resolution_error"
         log.append({
             "action": "application_target_resolution_error",
             "detail": str(exc)[:300],
