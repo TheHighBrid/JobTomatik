@@ -57,6 +57,14 @@ def _normalized(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
 
+async def _bring_controlled_page_to_front(page: Any) -> None:
+    """Best-effort focus so the visible tab is the same page automation controls."""
+    try:
+        await page.bring_to_front()
+    except Exception:
+        pass
+
+
 async def _safe_candidate(element: Any) -> Optional[Dict[str, str]]:
     """Return descriptor only for a non-submit, non-form Apply doorway."""
     try:
@@ -119,6 +127,7 @@ async def _wait_for_form_or_navigation(
         evidence = await application_form_evidence(page)
         current_url = str(getattr(page, "url", "") or before_url)
         if evidence.present:
+            await _bring_controlled_page_to_front(page)
             return {
                 "application_url": current_url,
                 "resolution_method": "intermediate_employer_apply",
@@ -134,6 +143,7 @@ async def _wait_for_form_or_navigation(
                     await page.wait_for_load_state("networkidle", timeout=8000)
                 except Exception:
                     pass
+                await _bring_controlled_page_to_front(page)
                 log.append({
                     "action": "intermediate_employer_popup_followed",
                     "url": str(getattr(page, "url", "") or external),
@@ -149,6 +159,7 @@ async def _wait_for_form_or_navigation(
                 pass
 
         if current_url != before_url:
+            await _bring_controlled_page_to_front(page)
             return {
                 "application_url": current_url,
                 "resolution_method": "intermediate_employer_navigation",
@@ -179,6 +190,7 @@ async def continue_from_employer_landing(
     attempted: set[tuple[str, str, str]] = set()
 
     for step in range(1, max(1, int(max_steps)) + 1):
+        await _bring_controlled_page_to_front(page)
         current_url = str(getattr(page, "url", "") or "")
         if not current_url or is_job_board_url(current_url):
             return {}
@@ -227,6 +239,7 @@ async def continue_from_employer_landing(
                     await page.wait_for_load_state("networkidle", timeout=8000)
                 except Exception:
                     pass
+                await _bring_controlled_page_to_front(page)
             except Exception as exc:
                 log.append({
                     "action": "intermediate_employer_apply_failed",
@@ -271,6 +284,7 @@ async def continue_from_employer_landing(
 
     final = await application_form_evidence(page)
     if final.present:
+        await _bring_controlled_page_to_front(page)
         return {
             "application_url": str(getattr(page, "url", "") or ""),
             "resolution_method": "intermediate_form_detected_after_retry",
