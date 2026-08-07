@@ -18,6 +18,7 @@ from app.models.application import (
     ManualReviewTask,
     SubmissionEvidence,
 )
+from app.models.intelligence import RecruiterContact
 from app.models.job import Job, JobStatus
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
@@ -26,8 +27,13 @@ from app.schemas.application import (
     ApplicationEventOut,
     ApplicationOut,
     ApplicationUpdate,
+    FollowUpApprovalRequest,
     FollowUpCreate,
     FollowUpOut,
+    FollowUpPreflightOut,
+    FollowUpQueueOut,
+    FollowUpRevokeRequest,
+    FollowUpUpdate,
     ManualReviewResolve,
     ManualReviewTaskOut,
     SubmissionEvidenceOut,
@@ -49,7 +55,22 @@ from app.services.submission_integrity import (
     claim_submission_identity_aliases,
     find_existing_application_for_aliases,
 )
+from app.services.supervised_followup import (
+    APPROVAL_REVOKED,
+    APPROVAL_UNAPPROVED,
+    CLOSED_STATUSES,
+    STATUS_DRAFT,
+    STATUS_NEEDS_RECIPIENT,
+    STATUS_SENDING,
+    STATUS_SENT,
+    SupervisedFollowUpError,
+    approve_followup,
+    build_followup_preflight,
+    reset_followup_after_mutation,
+    revoke_followup_approval,
+)
 from app.tasks.applications import generate_cover_letter_task, submit_application_task
+from app.tasks.followup import send_followup
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 settings = get_settings()
@@ -76,6 +97,88 @@ def _application_idempotency_key(user_id: int, job_id: int, aliases=None) -> str
 
 def _exact_job_duplicate(data: ApplicationCreate, existing: Application) -> bool:
     return existing.job_id == data.job_id and not data.idempotency_key
+
+
+def _owned_application(db: Session, user_id: int, app_id: int) -> Application:
+    app = (
+        db.query(Application)
+        .filter(Application.id == app_id, Application.user_id == user_id)
+        .first()
+    )
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return app
+
+
+def _owned_followup(db: Session, user_id: int, app_id: int, followup_id: int) -> FollowUp:
+    app = _owned_application(db, user_id, app_id)
+    followup = (
+        db.query(FollowUp)
+        .filter(FollowUp.id == followup_id, FollowUp.application_id == app.id)
+        .first()
+    )
+    if not followup:
+        raise HTTPException(status_code=404, detail="Follow-up not found")
+    _ = followup.application
+    return followup
+
+
+def _owned_recruiter_contact(
+    db: Session,
+    user_id: int,
+    contact_id: int | None,
+) -> RecruiterContact | None:
+    if contact_id is None:
+        return None
+    contact = (
+        db.query(RecruiterContact)
+        .filter(RecruiterContact.id == contact_id, RecruiterContact.user_id == user_id)
+        .first()
+    )
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Recruiter contact not found")
+    return contact
+
+
+def _normalize_email(value: str | None) -> str:
+    return (value or "").strip().casefold()
+
+
+def _normalize_company(value: str | None) -> str:
+    return " ".join((value or "").casefold().split())
+
+
+def _validate_followup_contact(
+    app: Application,
+    current_user: User,
+    contact: RecruiterContact | None,
+    recipient_email: str | None,
+) -> str | None:
+    recipient = (recipient_email or "").strip() or None
+    if contact:
+        if app.job and _normalize_company(contact.company) != _normalize_company(app.job.company):
+            raise HTTPException(
+                status_code=409,
+                detail="Recruiter contact company does not match this application.",
+            )
+        contact_email = (contact.email or "").strip()
+        if not contact_email:
+            raise HTTPException(
+                status_code=409,
+                detail="The selected recruiter contact does not have an email address.",
+            )
+        if recipient and _normalize_email(recipient) != _normalize_email(contact_email):
+            raise HTTPException(
+                status_code=409,
+                detail="Recipient email must match the selected recruiter contact.",
+            )
+        recipient = contact_email
+    if recipient and _normalize_email(recipient) == _normalize_email(current_user.email):
+        raise HTTPException(
+            status_code=409,
+            detail="A recruiter follow-up cannot be addressed to the applicant's own email.",
+        )
+    return recipient
 
 
 @router.post("", response_model=ApplicationOut, status_code=201)
@@ -559,22 +662,46 @@ async def create_followup(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    app = db.query(Application).filter(
-        Application.id == app_id,
-        Application.user_id == current_user.id,
-    ).first()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
-
+    app = _owned_application(db, current_user.id, app_id)
+    contact = _owned_recruiter_contact(db, current_user.id, data.recruiter_contact_id)
+    recipient = _validate_followup_contact(
+        app,
+        current_user,
+        contact,
+        data.recipient_email,
+    )
     followup = FollowUp(
         application_id=app_id,
+        recruiter_contact_id=contact.id if contact else None,
         scheduled_at=data.scheduled_at,
-        subject=data.subject,
-        message=data.message,
-        recipient_email=data.recipient_email,
-        status="pending",
+        subject=data.subject.strip(),
+        message=data.message.strip(),
+        recipient_email=recipient,
+        status=STATUS_DRAFT if recipient and contact else STATUS_NEEDS_RECIPIENT,
+        approval_status=APPROVAL_UNAPPROVED,
+        delivery_metadata={
+            "source": "authenticated_followup_api",
+            "outreach_authorized": False,
+        },
     )
     db.add(followup)
+    db.flush()
+    preflight = build_followup_preflight(db, followup, current_user)
+    db.add(
+        ApplicationEvent(
+            application_id=app.id,
+            event_type="followup_draft_created",
+            from_state=app.automation_state,
+            to_state=app.automation_state,
+            payload={
+                "followup_id": followup.id,
+                "recruiter_contact_id": followup.recruiter_contact_id,
+                "recipient_hash": preflight.get("recipient_hash"),
+                "scheduled_at": followup.scheduled_at.isoformat(),
+                "outreach_authorized": False,
+            },
+        )
+    )
     db.commit()
     db.refresh(followup)
     return followup
@@ -586,13 +713,197 @@ async def list_followups(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    app = db.query(Application).filter(
-        Application.id == app_id,
-        Application.user_id == current_user.id,
-    ).first()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
-    return app.followups
+    _owned_application(db, current_user.id, app_id)
+    return (
+        db.query(FollowUp)
+        .filter(FollowUp.application_id == app_id)
+        .order_by(FollowUp.created_at.desc(), FollowUp.id.desc())
+        .all()
+    )
+
+
+@router.patch("/{app_id}/followups/{followup_id}", response_model=FollowUpOut)
+async def update_followup(
+    app_id: int,
+    followup_id: int,
+    data: FollowUpUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    followup = _owned_followup(db, current_user.id, app_id, followup_id)
+    if followup.status in CLOSED_STATUSES or followup.status == STATUS_SENDING:
+        raise HTTPException(status_code=409, detail="This follow-up can no longer be edited.")
+
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        return followup
+    reset_followup_after_mutation(
+        db,
+        followup,
+        reason="followup_payload_edited",
+        user_id=current_user.id,
+    )
+
+    contact_id = updates.pop("recruiter_contact_id", followup.recruiter_contact_id)
+    contact = _owned_recruiter_contact(db, current_user.id, contact_id)
+    recipient_supplied = "recipient_email" in updates
+    recipient = updates.pop("recipient_email", followup.recipient_email)
+    if contact_id != followup.recruiter_contact_id and not recipient_supplied:
+        recipient = contact.email if contact else None
+    recipient = _validate_followup_contact(
+        followup.application,
+        current_user,
+        contact,
+        recipient,
+    )
+
+    followup.recruiter_contact_id = contact.id if contact else None
+    followup.recipient_email = recipient
+    if "scheduled_at" in updates:
+        followup.scheduled_at = updates["scheduled_at"]
+    if "subject" in updates:
+        followup.subject = updates["subject"].strip()
+    if "message" in updates:
+        followup.message = updates["message"].strip()
+    followup.status = STATUS_DRAFT if recipient and contact else STATUS_NEEDS_RECIPIENT
+
+    db.add(
+        ApplicationEvent(
+            application_id=followup.application_id,
+            event_type="followup_draft_updated",
+            from_state=followup.application.automation_state,
+            to_state=followup.application.automation_state,
+            payload={
+                "followup_id": followup.id,
+                "approval_revoked": True,
+                "outreach_authorized": False,
+            },
+        )
+    )
+    db.commit()
+    db.refresh(followup)
+    return followup
+
+
+@router.get(
+    "/{app_id}/followups/{followup_id}/preflight",
+    response_model=FollowUpPreflightOut,
+)
+async def followup_preflight(
+    app_id: int,
+    followup_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    followup = _owned_followup(db, current_user.id, app_id, followup_id)
+    return build_followup_preflight(db, followup, current_user)
+
+
+@router.post(
+    "/{app_id}/followups/{followup_id}/approve",
+    response_model=FollowUpPreflightOut,
+)
+async def approve_application_followup(
+    app_id: int,
+    followup_id: int,
+    data: FollowUpApprovalRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    followup = _owned_followup(db, current_user.id, app_id, followup_id)
+    try:
+        result = approve_followup(
+            db,
+            followup,
+            current_user,
+            acknowledgment=data.acknowledgment,
+        )
+        db.commit()
+        return result
+    except SupervisedFollowUpError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{app_id}/followups/{followup_id}/revoke",
+    response_model=FollowUpPreflightOut,
+)
+async def revoke_application_followup(
+    app_id: int,
+    followup_id: int,
+    data: FollowUpRevokeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    followup = _owned_followup(db, current_user.id, app_id, followup_id)
+    if followup.status in CLOSED_STATUSES or followup.status == STATUS_SENDING:
+        raise HTTPException(status_code=409, detail="This follow-up can no longer be revoked.")
+    revoke_followup_approval(
+        db,
+        followup,
+        reason=data.reason,
+        user_id=current_user.id,
+    )
+    followup.approval_status = APPROVAL_REVOKED
+    followup.status = STATUS_DRAFT if followup.recipient_email else STATUS_NEEDS_RECIPIENT
+    db.commit()
+    return build_followup_preflight(db, followup, current_user)
+
+
+@router.post(
+    "/{app_id}/followups/{followup_id}/send",
+    response_model=FollowUpQueueOut,
+)
+async def queue_application_followup(
+    app_id: int,
+    followup_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    followup = _owned_followup(db, current_user.id, app_id, followup_id)
+    if followup.status == STATUS_SENT:
+        return {
+            "followup_id": followup.id,
+            "status": STATUS_SENT,
+            "task_id": None,
+            "queued": False,
+            "idempotent": True,
+            "duplicate_delivery_prevented": True,
+        }
+    if followup.status == STATUS_SENDING:
+        return {
+            "followup_id": followup.id,
+            "status": STATUS_SENDING,
+            "task_id": None,
+            "queued": False,
+            "idempotent": True,
+            "duplicate_delivery_prevented": True,
+        }
+
+    preflight = build_followup_preflight(db, followup, current_user)
+    if not preflight["ready_for_delivery"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Follow-up is not ready for supervised delivery.",
+                "blockers": preflight["blockers"],
+                "approval_active": preflight["approval_active"],
+                "due": preflight["due"],
+                "provider_configured": preflight["provider_configured"],
+                "global_send_enabled": preflight["global_send_enabled"],
+            },
+        )
+
+    task = send_followup.delay(followup.id)
+    return {
+        "followup_id": followup.id,
+        "status": followup.status,
+        "task_id": str(task.id),
+        "queued": True,
+        "idempotent": False,
+        "duplicate_delivery_prevented": False,
+    }
 
 
 def _load_application(db: Session, app_id: int) -> Optional[Application]:
