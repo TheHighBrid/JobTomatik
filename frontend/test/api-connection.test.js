@@ -14,6 +14,10 @@ const connectionSource = readFileSync(
   new URL('../src/api/connection.js', import.meta.url),
   'utf8',
 )
+const clientSource = readFileSync(
+  new URL('../src/api/client.js', import.meta.url),
+  'utf8',
+)
 const fieldSource = readFileSync(
   new URL('../src/components/ApiBaseUrlField.jsx', import.meta.url),
   'utf8',
@@ -59,6 +63,13 @@ test('connection test uses the backend-specific health endpoint', () => {
   assert.equal(connectionSource.includes('/api/system/health'), true)
   assert.equal(connectionSource.includes("error.code = 'JOBTOMATIK_FRONTEND_URL'"), true)
   assert.equal(connectionSource.includes('validateJobTomatikHealth(response.data)'), true)
+})
+
+test('Android client migrates stale loopback backend ports to managed 8010', () => {
+  assert.equal(clientSource.includes("ANDROID_TERMUX_API_URL = 'http://127.0.0.1:8010'"), true)
+  assert.equal(clientSource.includes('reconcileAndroidApiBaseUrl'), true)
+  assert.equal(clientSource.includes("parsed.port !== '8010'"), true)
+  assert.equal(clientSource.includes('safeLocalStorage.setItem(API_URL_STORAGE_KEY, normalized)'), true)
 })
 
 test('auth screens expose and explain API routing failures', () => {
