@@ -52,6 +52,23 @@ async def test_live_desjardins_apply_reaches_certified_workday_entry_without_han
               }))"""
         )
 
+        observed_requests: list[str] = []
+
+        def record_request(request) -> None:
+            url = str(request.url or "")
+            lowered = url.lower()
+            if any(token in lowered for token in (
+                "workday",
+                "myworkdayjobs",
+                "apply",
+                "job-detail",
+                "relevance.studio",
+            )):
+                if url not in observed_requests and len(observed_requests) < 40:
+                    observed_requests.append(url)
+
+        page.on("request", record_request)
+
         log = []
         result = await continue_from_employer_landing(
             page,
@@ -62,14 +79,46 @@ async def test_live_desjardins_apply_reaches_certified_workday_entry_without_han
         )
 
         context_urls = [candidate.url for candidate in page.context.pages]
-        assert result, (
-            f"No safe application target found. log={log!r} "
-            f"apply_dom={apply_dom!r} context_urls={context_urls!r}"
+        post_controls = await page.locator('a,button,[role="button"],input[type="button"]').evaluate_all(
+            """els => els.slice(0, 80).map(el => ({
+              tag: el.tagName,
+              text: (el.innerText || el.value || '').trim().slice(0, 240),
+              href: el.getAttribute('href'),
+              type: el.getAttribute('type'),
+              role: el.getAttribute('role'),
+              ariaLabel: el.getAttribute('aria-label'),
+              visible: Boolean(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+            })).filter(item => item.visible)"""
         )
+        dialogs = await page.locator('[role="dialog"],dialog,[aria-modal="true"]').evaluate_all(
+            """els => els.slice(0, 10).map(el => ({
+              text: (el.innerText || el.textContent || '').trim().slice(0, 1200),
+              outerHTML: el.outerHTML.slice(0, 1800),
+            }))"""
+        )
+        workday_links = await page.locator('a[href*="myworkdayjobs.com" i]').evaluate_all(
+            """els => els.slice(0, 20).map(el => ({
+              text: (el.innerText || el.textContent || '').trim().slice(0, 300),
+              href: el.href || el.getAttribute('href') || '',
+            }))"""
+        )
+        embedded_workday_urls = await page.evaluate(
+            """() => Array.from(new Set(
+              (document.documentElement.innerHTML.match(/https?:[^\"'<>\\s]+myworkdayjobs\.com[^\"'<>\\s]*/gi) || [])
+            )).slice(0, 20)"""
+        )
+        body_text = (await page.locator("body").inner_text())[:5000]
+
+        diagnostics = (
+            f"apply_dom={apply_dom!r} context_urls={context_urls!r} "
+            f"requests={observed_requests!r} post_controls={post_controls!r} "
+            f"dialogs={dialogs!r} workday_links={workday_links!r} "
+            f"embedded_workday_urls={embedded_workday_urls!r} body={body_text!r}"
+        )
+        assert result, f"No safe application target found. log={log!r} {diagnostics}"
         assert result.get("trusted_ats_adapter") == "workday", (
             f"Expected Desjardins Apply to reach hosted Workday. "
-            f"result={result!r} log={log!r} apply_dom={apply_dom!r} "
-            f"context_urls={context_urls!r}"
+            f"result={result!r} log={log!r} {diagnostics}"
         )
         assert "myworkdayjobs.com" in str(result.get("application_url") or "")
         assert result.get("application_form_detected") is False
