@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlparse
 
 import pytest
 
@@ -56,7 +57,13 @@ async def test_live_desjardins_apply_reaches_certified_workday_entry_without_han
         assert result.get("trusted_ats_adapter") == "workday", (
             f"Expected Desjardins to reach hosted Workday. result={result!r} log={log!r}"
         )
-        assert "myworkdayjobs.com" in str(result.get("application_url") or "")
+        application_url = str(result.get("application_url") or "")
+        parsed_application_url = urlparse(application_url)
+        application_host = (parsed_application_url.hostname or "").lower()
+        assert parsed_application_url.scheme == "https"
+        assert application_host == "myworkdayjobs.com" or application_host.endswith(
+            ".myworkdayjobs.com"
+        )
         assert result.get("application_form_detected") is False
 
         actions = [entry.get("action") for entry in log]
