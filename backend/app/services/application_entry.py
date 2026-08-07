@@ -17,6 +17,7 @@ from app.services.ats_base import action_text
 from app.services.browser_navigation import (
     external_target_from_browser,
     is_allowed_url,
+    is_job_board_url,
     now_iso,
 )
 
@@ -52,16 +53,8 @@ _APPLY_SELECTORS = (
     'a.jobs-apply-button',
     'button.jobs-apply-button',
     '[data-tracking-control-name*="apply-link-offsite" i]',
-    '[data-tracking-control-name*="apply" i]',
-    'a[aria-label*="apply" i]',
-    'button[aria-label*="apply" i]',
-    '[role="button"][aria-label*="apply" i]',
-    'a:text-is("Apply")',
-    'button:text-is("Apply")',
-    '[role="button"]:text-is("Apply")',
-    'a:text-is("Easy Apply")',
-    'button:text-is("Easy Apply")',
-    '[role="button"]:text-is("Easy Apply")',
+    'a[aria-label*="apply now" i]',
+    'button[aria-label*="apply now" i]',
     'a:has-text("Apply now")',
     'button:has-text("Apply now")',
     'a:has-text("Apply for this job")',
@@ -74,6 +67,20 @@ _APPLY_SELECTORS = (
     'button:has-text("Begin application")',
     'a:has-text("Continue to application")',
     'button:has-text("Continue to application")',
+    '[data-testid*="start-application" i]',
+    '[data-cy*="start-application" i]',
+)
+_JOB_BOARD_PLAIN_APPLY_SELECTORS = (
+    '[data-tracking-control-name*="apply" i]',
+    'a[aria-label*="apply" i]',
+    'button[aria-label*="apply" i]',
+    '[role="button"][aria-label*="apply" i]',
+    'a:text-is("Apply")',
+    'button:text-is("Apply")',
+    '[role="button"]:text-is("Apply")',
+    'a:text-is("Easy Apply")',
+    'button:text-is("Easy Apply")',
+    '[role="button"]:text-is("Easy Apply")',
     '[data-testid*="apply" i]',
     '[data-cy*="apply" i]',
 )
@@ -281,13 +288,28 @@ async def _rank_apply_controls(page: Any) -> List[tuple[int, Any, Any, str, str]
     for surface in surfaces:
         await _append_ranked_controls(ranked, seen, surface, _APPLY_SELECTORS)
 
-    # LinkedIn's classic desktop markup sometimes exposes a plain text anchor whose
-    # classes and tracking attributes vary by rollout. Scan broad interactive controls
-    # only when the high-confidence selectors found nothing, then rely on the strict
-    # scorer above to reject filters, account-management actions, and final submit.
-    if not ranked:
+    current_url = str(getattr(page, "url", "") or "")
+    if is_job_board_url(current_url):
         for surface in surfaces:
-            await _append_ranked_controls(ranked, seen, surface, _BROAD_APPLY_SELECTORS)
+            await _append_ranked_controls(
+                ranked,
+                seen,
+                surface,
+                _JOB_BOARD_PLAIN_APPLY_SELECTORS,
+            )
+
+        # LinkedIn's classic desktop markup sometimes exposes a plain text anchor
+        # whose classes and tracking attributes vary by rollout. Scan broad
+        # interactive controls only on a known job-board listing, then rely on the
+        # strict scorer to reject filters and application-management actions.
+        if not ranked:
+            for surface in surfaces:
+                await _append_ranked_controls(
+                    ranked,
+                    seen,
+                    surface,
+                    _BROAD_APPLY_SELECTORS,
+                )
 
     ranked.sort(key=lambda item: item[0], reverse=True)
     return ranked
