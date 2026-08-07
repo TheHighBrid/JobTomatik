@@ -41,6 +41,7 @@ from app.services.application_target_task_integration import (
 from app.services.ats_manifest import ats_certification_manifest
 from app.services.autonomy_certification import build_autonomy_certification_manifest
 from app.services.control_engine import certification_manifest
+from app.services.followup_schema import ensure_followup_schema
 from app.services.handoff_integration import install_handoff_task_integration
 from app.services.material_task_integration import install_verified_material_task_integration
 from app.services.operations_policy import operations_readiness_manifest
@@ -180,6 +181,12 @@ def _safe_migrate(eng):
             logger.exception("Failed additive migration for applications")
             failures.append(("applications", exc))
 
+    try:
+        ensure_followup_schema(eng)
+    except Exception as exc:
+        logger.exception("Failed additive migration for supervised follow-ups")
+        failures.append(("followups.supervised_delivery", exc))
+
     if failures:
         failed_targets = ", ".join(target for target, _ in failures)
         raise RuntimeError(f"Database compatibility migration failed: {failed_targets}")
@@ -288,4 +295,6 @@ async def operations_readiness():
     readiness["invariants"]["no_autonomous_adapter_currently_enabled"] = not bool(
         readiness["autonomous_adapters"]
     )
+    readiness["invariants"]["recruiter_followup_requires_independent_approval"] = True
+    readiness["recruiter_followup_send_enabled"] = bool(settings.allow_real_followup_send)
     return readiness

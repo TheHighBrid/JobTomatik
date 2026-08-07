@@ -1,10 +1,14 @@
 """
-Email service using SendGrid. Falls back to a privacy-conscious console logger when no key is set.
+Email service using SendGrid.
+
+Ordinary product notifications retain the privacy-conscious mock fallback used by
+local development. Safety-sensitive outbound recruiter follow-ups can require a
+real provider receipt so a missing key is never treated as a successful send.
 """
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from app.config import get_settings
 
@@ -19,7 +23,7 @@ def _send_with_sendgrid(
     subject: str,
     body: str,
     html_body: Optional[str],
-) -> bool:
+) -> dict[str, Any]:
     """Run the synchronous SendGrid SDK outside the FastAPI event loop."""
     import sendgrid
     from sendgrid.helpers.mail import Content, Email, Mail, To
@@ -36,27 +40,53 @@ def _send_with_sendgrid(
         mail.content = [Content("text/plain", body)]
 
     response = sg.client.mail.send.post(request_body=mail.get())
-    return response.status_code in (200, 202)
+    status_code = int(getattr(response, "status_code", 0) or 0)
+    headers = dict(getattr(response, "headers", {}) or {})
+    return {
+        "accepted": status_code in (200, 202),
+        "status_code": status_code,
+        "message_id": headers.get("X-Message-Id") or headers.get("x-message-id"),
+        "provider": "sendgrid",
+        "mode": "provider",
+    }
 
 
-async def send_email(
+async def send_email_with_receipt(
     to: str,
     subject: str,
     body: str,
     from_email: Optional[str] = None,
     html_body: Optional[str] = None,
-) -> bool:
+    *,
+    require_provider: bool = False,
+) -> dict[str, Any]:
     sender = from_email or settings.from_email
 
     if not settings.sendgrid_api_key:
         recipient_domain = to.rsplit("@", 1)[-1] if "@" in to else "unknown"
         logger.info(
-            "[EMAIL MOCK] recipient_domain=%s subject=%s body_length=%d",
+            "[EMAIL MOCK] recipient_domain=%s subject=%s body_length=%d require_provider=%s",
             recipient_domain,
             subject,
             len(body),
+            require_provider,
         )
-        return True
+        if require_provider:
+            return {
+                "accepted": False,
+                "status_code": None,
+                "message_id": None,
+                "provider": "sendgrid",
+                "mode": "provider_missing",
+                "error": "SENDGRID_API_KEY is not configured",
+            }
+        return {
+            "accepted": True,
+            "status_code": None,
+            "message_id": None,
+            "provider": "mock",
+            "mode": "mock",
+        }
 
     try:
         return await asyncio.to_thread(
@@ -67,9 +97,34 @@ async def send_email(
             body=body,
             html_body=html_body,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("SendGrid delivery failed")
-        return False
+        return {
+            "accepted": False,
+            "status_code": None,
+            "message_id": None,
+            "provider": "sendgrid",
+            "mode": "provider_error",
+            "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+        }
+
+
+async def send_email(
+    to: str,
+    subject: str,
+    body: str,
+    from_email: Optional[str] = None,
+    html_body: Optional[str] = None,
+) -> bool:
+    receipt = await send_email_with_receipt(
+        to=to,
+        subject=subject,
+        body=body,
+        from_email=from_email,
+        html_body=html_body,
+        require_provider=False,
+    )
+    return bool(receipt.get("accepted"))
 
 
 async def send_followup_email(

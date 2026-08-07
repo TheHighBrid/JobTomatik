@@ -67,6 +67,10 @@ export function getApiErrorMessage(err, fallback = 'Request failed') {
   if (Array.isArray(detail)) {
     return detail.map((item) => item?.msg || String(item)).join(', ')
   }
+  if (detail && typeof detail === 'object') {
+    if (detail.message) return String(detail.message)
+    return JSON.stringify(detail)
+  }
   if (detail) return String(detail)
   if (err?.message) return err.message
   return fallback
@@ -175,6 +179,16 @@ export const submitApplication = (id, dryRun = true) =>
 export const bulkSubmitApplications = (params) => api.post('/applications/bulk-submit', null, { params })
 export const createFollowup = (appId, data) => api.post(`/applications/${appId}/followups`, data)
 export const listFollowups = (appId) => api.get(`/applications/${appId}/followups`)
+export const updateFollowup = (appId, followupId, data) =>
+  api.patch(`/applications/${appId}/followups/${followupId}`, data)
+export const getFollowupPreflight = (appId, followupId) =>
+  api.get(`/applications/${appId}/followups/${followupId}/preflight`)
+export const approveFollowup = (appId, followupId, acknowledgment) =>
+  api.post(`/applications/${appId}/followups/${followupId}/approve`, { acknowledgment })
+export const revokeFollowup = (appId, followupId, reason) =>
+  api.post(`/applications/${appId}/followups/${followupId}/revoke`, { reason })
+export const sendFollowup = (appId, followupId) =>
+  api.post(`/applications/${appId}/followups/${followupId}/send`)
 export const listSubmissionEvidence = (appId) => api.get(`/applications/${appId}/evidence`)
 
 // Platform-aware supervised-submission approvals

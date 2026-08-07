@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     # Keep disabled until the active adapter has passed supervised certification.
     allow_real_application_submit: bool = False
 
+    # Independent defense-in-depth gate for recruiter/hiring-team email follow-ups.
+    # Approval of an application submission never implies permission to contact a person.
+    allow_real_followup_send: bool = False
+    supervised_followup_max_schedule_days: int = Field(default=30, ge=1, le=90)
+
     # Platform-scoped supervised real-submission pilots. The global flag, the
     # matching platform flag, and a one-time exact-payload approval are required.
     greenhouse_supervised_pilot_enabled: bool = False
@@ -125,6 +130,7 @@ class Settings(BaseSettings):
             (
                 self.is_production,
                 self.allow_real_application_submit,
+                self.allow_real_followup_send,
                 self.greenhouse_supervised_pilot_enabled,
                 self.lever_supervised_pilot_enabled,
             )
@@ -132,7 +138,7 @@ class Settings(BaseSettings):
         if sensitive_runtime and self.uses_placeholder_secret:
             raise ValueError(
                 "SECRET_KEY must be a non-placeholder value of at least 32 UTF-8 bytes "
-                "for production or real-submission operation"
+                "for production, real-submission, or outbound-communication operation"
             )
 
         return self

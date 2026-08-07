@@ -43,6 +43,10 @@ celery_app.conf.update(
             "task": "app.tasks.followup.send_pending_followups",
             "schedule": crontab(minute=0),
         },
+        "recover-stale-followup-deliveries": {
+            "task": "app.tasks.followup.recover_stale_followup_deliveries",
+            "schedule": crontab(minute="7,22,37,52"),
+        },
         "recover-stale-application-attempts": {
             "task": "app.tasks.operations.recover_stale_application_attempts",
             "schedule": crontab(minute="5,20,35,50"),
@@ -64,7 +68,7 @@ celery_app.conf.update(
 
 
 def ensure_worker_runtime_schema() -> None:
-    """Create newly introduced tables before this worker accepts tasks.
+    """Create and compat-upgrade tables before this worker accepts tasks.
 
     FastAPI performs the same bootstrap during its lifespan. Android operators may
     restart Celery independently, however, so the worker must not assume the API
@@ -72,8 +76,10 @@ def ensure_worker_runtime_schema() -> None:
     """
     from app import models as _models  # noqa: F401
     from app.database import Base, engine
+    from app.services.followup_schema import ensure_followup_schema
 
     Base.metadata.create_all(bind=engine)
+    ensure_followup_schema(engine)
 
 
 @worker_init.connect
