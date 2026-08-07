@@ -62,7 +62,7 @@ celery_app.conf.update(
 
 
 def ensure_worker_runtime_schema() -> None:
-    """Create newly introduced tables before this worker accepts tasks.
+    """Create and compat-upgrade tables before this worker accepts tasks.
 
     FastAPI performs the same bootstrap during its lifespan. Android operators may
     restart Celery independently, however, so the worker must not assume the API
@@ -70,8 +70,10 @@ def ensure_worker_runtime_schema() -> None:
     """
     from app import models as _models  # noqa: F401
     from app.database import Base, engine
+    from app.services.followup_schema import ensure_followup_schema
 
     Base.metadata.create_all(bind=engine)
+    ensure_followup_schema(engine)
 
 
 @worker_init.connect
