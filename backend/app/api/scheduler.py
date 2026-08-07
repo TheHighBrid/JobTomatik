@@ -39,22 +39,24 @@ def dispatch_scheduler_cycle(
         raise HTTPException(status_code=409, detail="AUTOPILOT_ENABLED is false")
     if not search_enabled and not apply_enabled:
         raise HTTPException(status_code=409, detail="Scheduler is disabled for this account")
-    if not preview["user_policy"].get("allowed"):
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": "Scheduler policy blocks this cycle",
-                "decision": preview["user_policy"],
-            },
-        )
 
-    discovery_ready = search_enabled and bool(preview["search_plan"].get("ready"))
-    autonomous_ready = apply_enabled and int(preview["summary"]["allowed_candidate_count"]) > 0
+    discovery_ready = (
+        search_enabled
+        and bool(preview.get("discovery_policy_allowed"))
+        and bool(preview["search_plan"].get("ready"))
+    )
+    autonomous_ready = (
+        apply_enabled
+        and bool(preview["user_policy"].get("allowed"))
+        and int(preview["summary"]["allowed_candidate_count"]) > 0
+    )
     if not discovery_ready and not autonomous_ready:
         raise HTTPException(
             status_code=409,
             detail={
                 "message": "No scheduler action is currently policy-ready",
+                "user_policy": preview["user_policy"],
+                "discovery_policy_allowed": preview.get("discovery_policy_allowed"),
                 "search_plan": preview["search_plan"],
                 "allowed_candidate_count": preview["summary"]["allowed_candidate_count"],
                 "required_adapter_maturity": preview["required_adapter_maturity"],
