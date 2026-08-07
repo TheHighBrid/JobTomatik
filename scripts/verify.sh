@@ -39,6 +39,7 @@ export SECRET_KEY="${SECRET_KEY:-jobtomatik-development-secret}"
 export AI_PROVIDER=template
 export DEV_MOCK_JOBS=false
 export ALLOW_REAL_APPLICATION_SUBMIT=false
+export ALLOW_REAL_FOLLOWUP_SEND=false
 export AUTOPILOT_ENABLED=false
 export ENABLE_RESUMABLE_HANDOFFS=false
 export REQUIRE_BROWSER_TESTS="${REQUIRE_BROWSER_TESTS:-1}"
@@ -152,7 +153,8 @@ backend_fast() {
     tests/test_control_policy_vault_safety.py \
     tests/test_ats_maturity.py \
     tests/test_operations_policy.py \
-    tests/test_supervised_submission_approval.py)
+    tests/test_supervised_submission_approval.py \
+    tests/test_supervised_followup.py)
 }
 
 backend_full() {
@@ -216,6 +218,7 @@ safety_manifest() {
   (
     cd "$ROOT_DIR/backend"
     ALLOW_REAL_APPLICATION_SUBMIT=false \
+    ALLOW_REAL_FOLLOWUP_SEND=false \
     GREENHOUSE_SUPERVISED_PILOT_ENABLED=false \
     LEVER_SUPERVISED_PILOT_ENABLED=false \
     AUTOPILOT_ENABLED=false \
@@ -231,6 +234,7 @@ ats = ats_certification_manifest()
 adapters = {item["name"]: item for item in ats["adapters"]}
 
 assert settings.allow_real_application_submit is False
+assert settings.allow_real_followup_send is False
 assert settings.greenhouse_supervised_pilot_enabled is False
 assert settings.lever_supervised_pilot_enabled is False
 assert settings.enable_resumable_handoffs is False
@@ -245,7 +249,7 @@ assert {name: item["maturity"] for name, item in adapters.items()} == {
     "smartrecruiters": "detect_only",
     "workday": "detect_only",
 }
-print("Fail-safe settings and canonical maturity verified")
+print("Fail-safe settings, outbound communication, and canonical maturity verified")
 PY
   )
 }
@@ -257,6 +261,7 @@ deployment_check() {
   local -a clean_env=(
     env
     -u ALLOW_REAL_APPLICATION_SUBMIT
+    -u ALLOW_REAL_FOLLOWUP_SEND
     -u GREENHOUSE_SUPERVISED_PILOT_ENABLED
     -u LEVER_SUPERVISED_PILOT_ENABLED
     -u ENABLE_RESUMABLE_HANDOFFS
@@ -267,6 +272,8 @@ deployment_check() {
   rendered="$(cd "$ROOT_DIR" && "${clean_env[@]}" docker compose config)"
   grep -Fq 'ALLOW_REAL_APPLICATION_SUBMIT: "false"' <<<"$rendered" || \
     fail "Compose default does not preserve ALLOW_REAL_APPLICATION_SUBMIT=false."
+  grep -Fq 'ALLOW_REAL_FOLLOWUP_SEND: "false"' <<<"$rendered" || \
+    fail "Compose default does not preserve ALLOW_REAL_FOLLOWUP_SEND=false."
   grep -Fq 'GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"' <<<"$rendered" || \
     fail "Compose default does not preserve GREENHOUSE_SUPERVISED_PILOT_ENABLED=false."
   grep -Fq 'LEVER_SUPERVISED_PILOT_ENABLED: "false"' <<<"$rendered" || \
