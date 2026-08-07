@@ -5,15 +5,19 @@ on:
     paths:
       - "backend/app/celery_app.py"
       - "backend/app/tasks/runtime.py"
+      - "backend/app/services/application_recovery.py"
       - "backend/scripts/manage_android_stack.sh"
+      - "backend/scripts/prepare_android_runtime.py"
       - "backend/scripts/retire_legacy_android_celery.py"
       - "backend/scripts/refresh_android_jobtomatik_tabs.py"
       - "frontend/src/api/client.js"
       - "frontend/src/applicationTaskRuntime.js"
       - "frontend/src/pages/ApplicationDetail.jsx"
+      - "backend/tests/test_application_recovery.py"
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_prepare_android_runtime.py"
       - ".github/workflows/android-runtime-dispatch-acceptance.yml"
   push:
     branches:
@@ -21,15 +25,19 @@ on:
     paths:
       - "backend/app/celery_app.py"
       - "backend/app/tasks/runtime.py"
+      - "backend/app/services/application_recovery.py"
       - "backend/scripts/manage_android_stack.sh"
+      - "backend/scripts/prepare_android_runtime.py"
       - "backend/scripts/retire_legacy_android_celery.py"
       - "backend/scripts/refresh_android_jobtomatik_tabs.py"
       - "frontend/src/api/client.js"
       - "frontend/src/applicationTaskRuntime.js"
       - "frontend/src/pages/ApplicationDetail.jsx"
+      - "backend/tests/test_application_recovery.py"
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_prepare_android_runtime.py"
       - ".github/workflows/android-runtime-dispatch-acceptance.yml"
   workflow_dispatch:
 
@@ -147,6 +155,7 @@ jobs:
       - name: Run Android runtime regression contracts
         run: |
           python -m pytest -q --tb=short \
+            tests/test_application_recovery.py \
             tests/test_android_runtime_canary.py \
             tests/test_android_runtime_scripts.py \
             tests/test_android_task_runtime_liveness.py \
