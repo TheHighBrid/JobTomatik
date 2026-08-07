@@ -12,6 +12,12 @@ import SupervisedPilotDossierPanel from '../components/SupervisedPilotDossierPan
 import SubmissionEvidenceReviewPanel from '../components/SubmissionEvidenceReviewPanel'
 import StatusBadge from '../components/StatusBadge'
 import {
+  TASK_START_ACK_TIMEOUT_MS,
+  applicationRuntimeBusy,
+  isApplicationTaskTerminal,
+  shouldReleaseUnacknowledgedTask,
+} from '../applicationTaskRuntime'
+import {
   ArrowLeft, Loader2, RefreshCw, Send, Calendar,
   FileText, ExternalLink, AlertCircle, CheckCircle2, LockKeyhole, Route
 } from 'lucide-react'
@@ -22,13 +28,11 @@ import {
 } from '../supervisedPlatforms'
 
 const STATUSES = ['pending', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn']
-const TERMINAL_TASK_STATUSES = new Set(['SUCCESS', 'FAILURE', 'REVOKED'])
 const HANDOFF_REVIEW_REASONS = new Set([
   'captcha_detected',
   'mfa_required',
   'login_required',
   'anti_bot_challenge',
-  'application_target_required',
 ])
 
 function isLinkedInUrl(value) {
@@ -42,23 +46,6 @@ function isLinkedInUrl(value) {
 function isFinishedApplication(application) {
   return application?.status === 'applied'
     || ['submitted', 'confirmed'].includes(application?.automation_state)
-}
-
-function readStoredTaskId(key) {
-  try {
-    return window.sessionStorage.getItem(key) || ''
-  } catch {
-    return ''
-  }
-}
-
-function writeStoredTaskId(key, value) {
-  try {
-    if (value) window.sessionStorage.setItem(key, value)
-    else window.sessionStorage.removeItem(key)
-  } catch {
-    // Polling still works in memory when sessionStorage is unavailable.
-  }
 }
 
 function targetStatusLabel(status) {
@@ -81,13 +68,18 @@ export default function ApplicationDetail() {
   const [followupEmail, setFollowupEmail] = useState('')
   const [followupDate, setFollowupDate] = useState(format(addDays(new Date(), 7), "yyyy-MM-dd'T'HH:mm"))
   const [submitting, setSubmitting] = useState(false)
-  const submitTaskStorageKey = `jobtomatik_submit_task_${id}`
-  const [submitTaskId, setSubmitTaskId] = useState(() => readStoredTaskId(submitTaskStorageKey))
+  const [submitTaskId, setSubmitTaskId] = useState('')
+  const [submitQueuedAt, setSubmitQueuedAt] = useState(0)
 
   const { data: app, isLoading } = useQuery({
     queryKey: ['application', id],
     queryFn: () => getApplication(id),
     select: (r) => r.data,
+    refetchInterval: (query) => {
+      const value = query.state.data?.data || query.state.data
+      return submitTaskId || value?.automation_state === 'applying' ? 1500 : false
+    },
+    refetchIntervalInBackground: true,
   })
 
   const {
@@ -101,15 +93,11 @@ export default function ApplicationDetail() {
     enabled: Boolean(submitTaskId),
     refetchInterval: (query) => {
       const value = query.state.data?.data || query.state.data
-      return TERMINAL_TASK_STATUSES.has(value?.status) ? false : 1500
+      return isApplicationTaskTerminal(value?.status) ? false : 1500
     },
     refetchIntervalInBackground: true,
     retry: 2,
   })
-
-  useEffect(() => {
-    setSubmitTaskId(readStoredTaskId(submitTaskStorageKey))
-  }, [submitTaskStorageKey])
 
   useEffect(() => {
     if (app) {
@@ -119,10 +107,10 @@ export default function ApplicationDetail() {
   }, [app?.id])
 
   useEffect(() => {
-    if (!submitTaskId || !submitTask || !TERMINAL_TASK_STATUSES.has(submitTask.status)) return
+    if (!submitTaskId || !submitTask || !isApplicationTaskTerminal(submitTask.status)) return
 
-    writeStoredTaskId(submitTaskStorageKey, '')
     setSubmitTaskId('')
+    setSubmitQueuedAt(0)
     setSubmitting(false)
 
     qc.invalidateQueries({ queryKey: ['application', id] })
@@ -152,13 +140,13 @@ export default function ApplicationDetail() {
     }
 
     toast.error(result.error || 'The application attempt finished without success.')
-  }, [submitTask, submitTaskId, submitTaskStorageKey, id, qc])
+  }, [submitTask, submitTaskId, id, qc])
 
   useEffect(() => {
     if (!submitTaskId || !submitTaskQueryFailed) return
 
-    writeStoredTaskId(submitTaskStorageKey, '')
     setSubmitTaskId('')
+    setSubmitQueuedAt(0)
     setSubmitting(false)
     toast.error(getApiErrorMessage(
       submitTaskQueryError,
@@ -168,7 +156,40 @@ export default function ApplicationDetail() {
     submitTaskId,
     submitTaskQueryFailed,
     submitTaskQueryError,
-    submitTaskStorageKey,
+  ])
+
+  useEffect(() => {
+    if (!submitTaskId || !submitQueuedAt || !submitTask) return undefined
+    if (String(submitTask.status || '').toUpperCase() !== 'PENDING') return undefined
+    if (app?.automation_state === 'applying') return undefined
+
+    const elapsed = Date.now() - submitQueuedAt
+    const waitMs = Math.max(0, TASK_START_ACK_TIMEOUT_MS - elapsed)
+    const timer = window.setTimeout(() => {
+      if (!shouldReleaseUnacknowledgedTask({
+        taskStatus: submitTask.status,
+        automationState: app?.automation_state,
+        queuedAt: submitQueuedAt,
+      })) return
+
+      setSubmitTaskId('')
+      setSubmitQueuedAt(0)
+      setSubmitting(false)
+      qc.invalidateQueries({ queryKey: ['application', id] })
+      qc.invalidateQueries({ queryKey: ['applications'] })
+      toast.error(
+        'The application worker did not acknowledge this task. The stale task was released instead of leaving this page stuck.'
+      )
+    }, waitMs + 25)
+
+    return () => window.clearTimeout(timer)
+  }, [
+    submitTaskId,
+    submitQueuedAt,
+    submitTask,
+    app?.automation_state,
+    id,
+    qc,
   ])
 
   const updateMut = useMutation({
@@ -222,8 +243,8 @@ export default function ApplicationDetail() {
         return
       }
 
-      writeStoredTaskId(submitTaskStorageKey, taskId)
       setSubmitTaskId(taskId)
+      setSubmitQueuedAt(Date.now())
 
       qc.invalidateQueries({ queryKey: ['application', id] })
       qc.invalidateQueries({ queryKey: ['handoffs', Number(id)] })
@@ -267,7 +288,11 @@ export default function ApplicationDetail() {
     !activeManualReview
     || HANDOFF_REVIEW_REASONS.has(activeManualReview.reason_code)
   )
-  const submissionBusy = submitting || Boolean(submitTaskId)
+  const submissionBusy = applicationRuntimeBusy({
+    submitting,
+    taskId: submitTaskId,
+    automationState: app.automation_state,
+  })
   const targetStatus = app.application_target_status || 'unresolved'
 
   return (
@@ -335,7 +360,7 @@ export default function ApplicationDetail() {
             ) : (
               <div className="mt-1 text-gray-500">
                 {targetStatus === 'requires_human'
-                  ? 'Waiting for one Apply click in the retained JobTomatik browser.'
+                  ? 'A verified human-only security boundary was detected while resolving the employer destination.'
                   : targetStatus === 'resolving'
                     ? 'Resolving the employer destination now...'
                     : 'Not resolved yet.'}
@@ -357,7 +382,7 @@ export default function ApplicationDetail() {
                 </p>
                 <p className="text-sm text-gray-600 mt-2">
                   {targetNavigationReview
-                    ? 'Use the secure browser handoff below. Click Apply once in the retained LinkedIn page, wait for the employer page to open, then mark the browser step complete. JobTomatik will continue on the employer form in that same session.'
+                    ? 'This is an obsolete navigation-only review from an older attempt. Start a new dry run so JobTomatik can resolve the Apply doorway automatically.'
                     : linkedInDiscoveryReview
                       ? 'This older attempt treated LinkedIn as an unsupported form. Start a new dry run to use the persistent target resolver.'
                       : 'This attempt reached a step that JobTomatik cannot complete automatically. Review the reason below and open the application page when manual action is required.'}
@@ -427,11 +452,13 @@ export default function ApplicationDetail() {
         <div className="card p-5 space-y-3">
           <h2 className="font-semibold text-gray-900">Actions</h2>
 
-          {submitTaskId && (
+          {(submitTaskId || app.automation_state === 'applying') && (
             <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-800">
               <Loader2 className="w-4 h-4 animate-spin mt-0.5 flex-shrink-0" />
               <span>
-                Application automation is running. This page will update automatically when the worker finishes.
+                {app.automation_state === 'applying'
+                  ? 'Application automation is running. This page is following the persisted application state and will update automatically.'
+                  : 'Application task is queued. JobTomatik is waiting for the managed worker to acknowledge it.'}
               </span>
             </div>
           )}
