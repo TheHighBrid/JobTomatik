@@ -44,6 +44,7 @@ FOLLOWUP_ELIGIBLE_APPLICATION_STATUSES = {
     ApplicationStatus.applied.value,
     ApplicationStatus.interviewing.value,
 }
+APPROVAL_STATE_BLOCKERS = {"followup_approval_expired", "followup_payload_drifted"}
 
 
 class SupervisedFollowUpError(ValueError):
@@ -231,6 +232,7 @@ def build_followup_preflight(
         blockers.append("followup_payload_drifted")
 
     blockers = list(dict.fromkeys(blockers))
+    hard_blockers = [item for item in blockers if item not in APPROVAL_STATE_BLOCKERS]
     approval_active = bool(
         followup.approval_status == APPROVAL_ACTIVE
         and not approval_expired
@@ -250,13 +252,10 @@ def build_followup_preflight(
         "approval_reference": followup.approval_reference,
         "approval_active": approval_active,
         "approval_expires_at": approval_expires_at.isoformat() if approval_expires_at else None,
-        "eligible_for_approval": not [
-            item
-            for item in blockers
-            if item not in {"followup_approval_expired", "followup_payload_drifted"}
-        ],
+        "eligible_for_approval": not hard_blockers,
         "ready_for_delivery": bool(
             approval_active
+            and not hard_blockers
             and due
             and provider_configured
             and global_send_enabled
@@ -341,9 +340,7 @@ def approve_followup(
 ) -> dict[str, Any]:
     preflight = build_followup_preflight(db, followup, user)
     hard_blockers = [
-        item
-        for item in preflight["blockers"]
-        if item not in {"followup_approval_expired", "followup_payload_drifted"}
+        item for item in preflight["blockers"] if item not in APPROVAL_STATE_BLOCKERS
     ]
     if hard_blockers:
         raise SupervisedFollowUpError(
@@ -408,6 +405,13 @@ def validate_followup_for_delivery(
             followup.status = STATUS_DRAFT
             db.flush()
             raise SupervisedFollowUpError("Follow-up approval expired")
+    hard_blockers = [
+        item for item in preflight["blockers"] if item not in APPROVAL_STATE_BLOCKERS
+    ]
+    if hard_blockers:
+        raise SupervisedFollowUpError(
+            "Follow-up delivery is blocked: " + ", ".join(hard_blockers)
+        )
     if not preflight["approval_active"]:
         raise SupervisedFollowUpError("Follow-up does not have an active exact-payload approval")
     if not preflight["due"]:
