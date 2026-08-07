@@ -6,12 +6,21 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from app.config import get_settings
 from app.database import Base
 from app.models import *  # noqa: F401,F403
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Alembic must migrate the same database used by FastAPI and Celery. The
+# repository's alembic.ini keeps a PostgreSQL example for hosted deployments,
+# while Android/Termux uses SQLite through backend/.env. Always prefer the
+# validated runtime setting so local migrations cannot accidentally target an
+# unavailable PostgreSQL server.
+runtime_database_url = get_settings().database_url
+config.set_main_option("sqlalchemy.url", runtime_database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 

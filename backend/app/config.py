@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     application_browser_profile_dir: str = "browser_profiles/jobtomatik-operator"
     application_browser_headless: bool = True
     application_browser_executable: str = ""
+    # Android-only installs may keep Chromium running natively in Termux and let
+    # the Ubuntu PRoot worker attach over Chrome DevTools Protocol. When set,
+    # JobTomatik never launches or terminates the external browser process.
+    application_browser_cdp_endpoint: str = ""
     # Keep target resolution nonblocking for headless and solo-worker deployments.
     # A positive value is an explicit opt-in that occupies the current worker task.
     application_target_human_wait_seconds: int = Field(default=0, ge=0, le=3600)
