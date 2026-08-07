@@ -24,9 +24,63 @@ class ApplicationUpdate(BaseModel):
 
 class FollowUpCreate(BaseModel):
     scheduled_at: datetime
-    subject: str
-    message: Optional[str] = None
-    recipient_email: str
+    subject: str = Field(min_length=1, max_length=500)
+    message: str = Field(min_length=1, max_length=10000)
+    recipient_email: Optional[str] = Field(default=None, max_length=255)
+    recruiter_contact_id: Optional[int] = Field(default=None, ge=1)
+
+
+class FollowUpUpdate(BaseModel):
+    scheduled_at: Optional[datetime] = None
+    subject: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    message: Optional[str] = Field(default=None, min_length=1, max_length=10000)
+    recipient_email: Optional[str] = Field(default=None, max_length=255)
+    recruiter_contact_id: Optional[int] = Field(default=None, ge=1)
+
+
+class FollowUpApprovalRequest(BaseModel):
+    acknowledgment: str = Field(min_length=10, max_length=500)
+
+
+class FollowUpRevokeRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class FollowUpPreflightOut(BaseModel):
+    followup_id: int
+    application_id: Optional[int] = None
+    status: str
+    approval_status: str
+    approval_reference: Optional[str] = None
+    approval_active: bool
+    approval_expires_at: Optional[str] = None
+    eligible_for_approval: bool
+    ready_for_delivery: bool
+    blockers: List[str] = Field(default_factory=list)
+    payload_hash: Optional[str] = None
+    payload_drifted: bool
+    recipient_email: Optional[str] = None
+    recipient_hash: Optional[str] = None
+    recruiter_contact_id: Optional[int] = None
+    scheduled_at: Optional[str] = None
+    due: bool
+    provider_configured: bool
+    global_send_enabled: bool
+    expected_acknowledgment: str
+    send_idempotency_key: Optional[str] = None
+    send_attempt_count: int = 0
+    last_send_attempt_at: Optional[str] = None
+    sent_at: Optional[str] = None
+    delivery_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class FollowUpQueueOut(BaseModel):
+    followup_id: int
+    status: str
+    task_id: Optional[str] = None
+    queued: bool
+    idempotent: bool = False
+    duplicate_delivery_prevented: bool = False
 
 
 class FollowUpOut(BaseModel):
@@ -34,13 +88,26 @@ class FollowUpOut(BaseModel):
 
     id: int
     application_id: int
+    recruiter_contact_id: Optional[int] = None
     scheduled_at: datetime
     sent_at: Optional[datetime]
     subject: Optional[str]
     message: Optional[str]
     recipient_email: Optional[str]
     status: str
+    payload_hash: Optional[str] = None
+    approval_reference: Optional[str] = None
+    approval_status: str = "unapproved"
+    approval_payload_hash: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    approval_expires_at: Optional[datetime] = None
+    approved_by_user_id: Optional[int] = None
+    send_idempotency_key: Optional[str] = None
+    send_attempt_count: int = 0
+    last_send_attempt_at: Optional[datetime] = None
+    delivery_metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 class ManualReviewResolve(BaseModel):
