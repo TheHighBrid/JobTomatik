@@ -11,10 +11,12 @@ from app.services.browser_navigation import (
     detect_blocking_challenge,
     is_allowed_url,
     is_fake_url,
+    is_job_board_url,
     now_iso,
 )
 from app.services.browser_runtime import launch_application_browser
 from app.services.control_engine import CONTROL_ENGINE_VERSION
+from app.services.employer_application_entry import continue_from_employer_landing
 from app.services.form_filler_v3 import _fill_step_fields
 from app.services.supervised_target_identity import verify_supervised_browser_target
 
@@ -156,10 +158,33 @@ async def fill_and_submit_application_with_handoff(
                 log.append({"action": "navigation_timeout", "ts": now_iso()})
 
             entry = await open_application_entry(page, log)
-            if entry.get("application_url"):
-                result["application_url"] = entry["application_url"]
+            entry_url = str(entry.get("application_url") or "")
+            entry_form_detected = bool(entry.get("application_form_detected"))
+
+            # A job board can lead to an employer-hosted detail page that has one
+            # additional plain Apply doorway. A stored job can also point directly to
+            # that employer page. In both cases, continue before ATS detection or form
+            # filling. Reaching a different domain alone is not a valid stop point.
+            current_entry_url = str(getattr(page, "url", "") or entry_url or job_url)
+            if (
+                not entry_form_detected
+                and current_entry_url
+                and not is_job_board_url(current_entry_url)
+            ):
+                continued = await continue_from_employer_landing(
+                    page,
+                    source_url=job_url,
+                    log=log,
+                )
+                if continued:
+                    entry = continued
+                    entry_url = str(entry.get("application_url") or "")
+                    entry_form_detected = bool(entry.get("application_form_detected"))
+
+            if entry_url:
+                result["application_url"] = entry_url
                 result["application_entry_method"] = entry.get("resolution_method")
-                result["application_form_detected"] = bool(entry.get("application_form_detected"))
+                result["application_form_detected"] = entry_form_detected
 
             adapter = await detect_ats_adapter(page, page.url)
             result["ats_adapter"] = adapter.name

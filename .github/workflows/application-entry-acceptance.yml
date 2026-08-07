@@ -8,9 +8,12 @@ on:
       - "backend/app/services/application_target_resolver.py"
       - "backend/app/services/application_target_task_integration.py"
       - "backend/app/services/browser_navigation.py"
+      - "backend/app/services/employer_application_entry.py"
       - "backend/app/services/form_filler_handoff.py"
       - "backend/app/services/handoff_integration.py"
       - "backend/tests/test_application_entry_and_handoff_order.py"
+      - "backend/tests/test_employer_application_entry_semantics.py"
+      - "backend/tests/test_intermediate_employer_apply_acceptance.py"
       - "backend/tests/test_linkedin_classic_apply_entry.py"
       - "backend/tests/test_linkedin_apply_click_acceptance.py"
       - "backend/tests/test_premature_handoff_acceptance.py"
@@ -25,9 +28,12 @@ on:
       - "backend/app/services/application_target_resolver.py"
       - "backend/app/services/application_target_task_integration.py"
       - "backend/app/services/browser_navigation.py"
+      - "backend/app/services/employer_application_entry.py"
       - "backend/app/services/form_filler_handoff.py"
       - "backend/app/services/handoff_integration.py"
       - "backend/tests/test_application_entry_and_handoff_order.py"
+      - "backend/tests/test_employer_application_entry_semantics.py"
+      - "backend/tests/test_intermediate_employer_apply_acceptance.py"
       - "backend/tests/test_linkedin_classic_apply_entry.py"
       - "backend/tests/test_linkedin_apply_click_acceptance.py"
       - "backend/tests/test_premature_handoff_acceptance.py"
@@ -82,6 +88,8 @@ jobs:
         run: |
           python -m pytest -q --tb=short -ra \
             tests/test_application_entry_and_handoff_order.py \
+            tests/test_employer_application_entry_semantics.py \
+            tests/test_intermediate_employer_apply_acceptance.py \
             tests/test_linkedin_classic_apply_entry.py \
             tests/test_linkedin_apply_click_acceptance.py \
             tests/test_premature_handoff_acceptance.py \
