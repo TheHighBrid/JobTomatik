@@ -80,16 +80,27 @@ update_main() {
     "set -e; cd '$PROOT_REPO'; git fetch origin main; git switch main; git pull --ff-only origin main"
 }
 
+refresh_frontend_tabs() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "cd '$PROOT_REPO/backend' && .venv/bin/python scripts/refresh_android_jobtomatik_tabs.py"
+}
+
+activate_stack() {
+  local action="$1"
+  "$BROWSER_COMMAND" start
+  start_stack_detached "$action"
+  refresh_frontend_tabs
+}
+
 case "$ACTION" in
   start)
-    "$BROWSER_COMMAND" start
-    start_stack_detached start
+    activate_stack start
     ;;
   restart)
     stop_stack_supervisor
-    # Keep a healthy authenticated browser and its active handoff page intact.
-    "$BROWSER_COMMAND" start
-    start_stack_detached restart
+    # Keep the authenticated browser process alive, then reload only JobTomatik
+    # localhost tabs after the authoritative API/worker runtime is ready.
+    activate_stack restart
     ;;
   status)
     "$BROWSER_COMMAND" status || true
@@ -103,8 +114,7 @@ case "$ACTION" in
     update_main
     install_native_commands
     stop_stack_supervisor
-    "$BROWSER_COMMAND" start
-    start_stack_detached restart
+    activate_stack restart
     ;;
   *)
     echo "Usage: jobtomatik [start|restart|status|stop|update]" >&2
