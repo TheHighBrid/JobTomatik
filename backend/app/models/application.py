@@ -81,6 +81,10 @@ def new_submission_idempotency_key() -> str:
     return str(uuid4())
 
 
+def new_followup_idempotency_key() -> str:
+    return str(uuid4())
+
+
 class Application(Base):
     __tablename__ = "applications"
 
@@ -164,16 +168,36 @@ class FollowUp(Base):
     __tablename__ = "followups"
 
     id = Column(Integer, primary_key=True, index=True)
-    application_id = Column(Integer, ForeignKey("applications.id"), nullable=False)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
+    recruiter_contact_id = Column(Integer, ForeignKey("recruiter_contacts.id"), nullable=True, index=True)
     scheduled_at = Column(DateTime(timezone=True), nullable=False)
     sent_at = Column(DateTime(timezone=True))
     subject = Column(String(500))
     message = Column(Text)
     recipient_email = Column(String(255))
-    status = Column(String(50), default="pending")
+    status = Column(String(50), nullable=False, default="draft", index=True)
+    payload_hash = Column(String(128), index=True)
+    approval_reference = Column(String(255), unique=True, index=True)
+    approval_status = Column(String(40), nullable=False, default="unapproved", index=True)
+    approval_payload_hash = Column(String(128))
+    approved_at = Column(DateTime(timezone=True))
+    approval_expires_at = Column(DateTime(timezone=True))
+    approved_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    send_idempotency_key = Column(
+        String(255),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=new_followup_idempotency_key,
+    )
+    send_attempt_count = Column(Integer, nullable=False, default=0)
+    last_send_attempt_at = Column(DateTime(timezone=True))
+    delivery_metadata = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     application = relationship("Application", back_populates="followups")
+    recruiter_contact = relationship("RecruiterContact")
 
 
 class ManualReviewTask(Base):
