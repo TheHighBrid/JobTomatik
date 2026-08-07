@@ -158,6 +158,31 @@ async def employer_landing_page():
         await playwright.stop()
 
 
+def _profile() -> dict:
+    return {
+        "full_name": "Test Candidate",
+        "email": "candidate@example.com",
+        "phone": "613-555-0100",
+        "address": "Ottawa, Ontario",
+        "linkedin_url": "https://www.linkedin.com/in/test-candidate",
+        "github_url": "",
+        "portfolio_url": "",
+        "profile_data": {},
+        "answer_policies": [],
+    }
+
+
+async def _assert_filled(page) -> None:
+    assert await page.locator("#first_name").input_value() == "Test"
+    assert await page.locator("#last_name").input_value() == "Candidate"
+    assert await page.locator("#email").input_value() == "candidate@example.com"
+    assert await page.locator("#phone").input_value() == "613-555-0100"
+    uploaded = await page.locator("#resume").evaluate(
+        "el => Array.from(el.files || []).map(file => file.name)"
+    )
+    assert uploaded == ["resume.pdf"]
+
+
 @pytest.mark.asyncio
 async def test_real_browser_crosses_intermediate_employer_apply_without_handoff(
     monkeypatch,
@@ -210,21 +235,10 @@ async def test_real_browser_dry_run_fills_after_intermediate_employer_apply(
 
     resume = tmp_path / "resume.pdf"
     resume.write_bytes(b"%PDF-1.4\n% JobTomatik employer-doorway acceptance fixture\n")
-    profile = {
-        "full_name": "Test Candidate",
-        "email": "candidate@example.com",
-        "phone": "613-555-0100",
-        "address": "Ottawa, Ontario",
-        "linkedin_url": "https://www.linkedin.com/in/test-candidate",
-        "github_url": "",
-        "portfolio_url": "",
-        "profile_data": {},
-        "answer_policies": [],
-    }
 
     result = await fill_and_submit_application_with_handoff(
         job_url=LINKEDIN_URL,
-        user_profile=profile,
+        user_profile=_profile(),
         cover_letter="I am interested in the fraud prevention role.",
         resume_path=str(resume),
         dry_run=True,
@@ -238,14 +252,49 @@ async def test_real_browser_dry_run_fills_after_intermediate_employer_apply(
     assert result["fields_filled"] >= 5
     assert result["handoff_snapshot"] is None
     assert runtime.capture_calls == 0
-    assert await employer_landing_page.locator("#first_name").input_value() == "Test"
-    assert await employer_landing_page.locator("#last_name").input_value() == "Candidate"
-    assert await employer_landing_page.locator("#email").input_value() == "candidate@example.com"
-    assert await employer_landing_page.locator("#phone").input_value() == "613-555-0100"
-    uploaded = await employer_landing_page.locator("#resume").evaluate(
-        "el => Array.from(el.files || []).map(file => file.name)"
+    await _assert_filled(employer_landing_page)
+
+
+@pytest.mark.asyncio
+async def test_real_browser_dry_run_fills_from_direct_employer_landing(
+    monkeypatch,
+    employer_landing_page,
+    tmp_path,
+):
+    runtime = _Runtime(employer_landing_page)
+
+    async def use_test_runtime(_playwright, **_kwargs):
+        return runtime
+
+    monkeypatch.setattr(
+        form_filler_handoff,
+        "launch_application_browser",
+        use_test_runtime,
     )
-    assert uploaded == ["resume.pdf"]
+
+    resume = tmp_path / "resume.pdf"
+    resume.write_bytes(b"%PDF-1.4\n% JobTomatik direct employer acceptance fixture\n")
+
+    result = await fill_and_submit_application_with_handoff(
+        job_url=DESJARDINS_URL,
+        user_profile=_profile(),
+        cover_letter="I am interested in the fraud prevention role.",
+        resume_path=str(resume),
+        dry_run=True,
+    )
+
+    assert result["success"] is True
+    assert result["ready_to_submit"] is True
+    assert result["requires_manual_review"] is False
+    assert result["application_url"] == ATS_URL
+    assert result["application_form_detected"] is True
+    assert result["fields_filled"] >= 5
+    assert result["handoff_snapshot"] is None
+    assert runtime.capture_calls == 0
+    actions = [entry.get("action") for entry in result["log"]]
+    assert "intermediate_employer_apply_started" in actions
+    assert "intermediate_employer_apply_observed" in actions
+    await _assert_filled(employer_landing_page)
 
 
 @pytest.mark.asyncio
