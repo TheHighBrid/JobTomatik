@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -51,7 +51,16 @@ class SupervisedFollowUpError(ValueError):
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Normalize SQLite-naive and PostgreSQL-aware timestamps to one UTC form."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _canonical_json(value: Any) -> str:
@@ -90,7 +99,8 @@ def _bound_payload(
     contact: RecruiterContact | None,
 ) -> dict[str, Any]:
     job = application.job
-    scheduled = followup.scheduled_at.isoformat() if followup.scheduled_at else None
+    scheduled_at = _as_utc(followup.scheduled_at)
+    scheduled = scheduled_at.isoformat() if scheduled_at else None
     return {
         "followup_id": followup.id,
         "application_id": application.id,
@@ -195,9 +205,10 @@ def build_followup_preflight(
         blockers.append("followup_closed")
 
     now = utcnow()
-    if not followup.scheduled_at:
+    scheduled_at = _as_utc(followup.scheduled_at)
+    if not scheduled_at:
         blockers.append("scheduled_at_missing")
-    elif followup.scheduled_at > now + timedelta(days=settings.supervised_followup_max_schedule_days):
+    elif scheduled_at > now + timedelta(days=settings.supervised_followup_max_schedule_days):
         blockers.append("scheduled_too_far_in_future")
 
     payload_hash = None
@@ -205,8 +216,9 @@ def build_followup_preflight(
         payload_hash = _hash(_bound_payload(followup, application, contact))
 
     approval_expired = False
-    if followup.approval_status == APPROVAL_ACTIVE and followup.approval_expires_at:
-        if followup.approval_expires_at <= now:
+    approval_expires_at = _as_utc(followup.approval_expires_at)
+    if followup.approval_status == APPROVAL_ACTIVE and approval_expires_at:
+        if approval_expires_at <= now:
             approval_expired = True
             blockers.append("followup_approval_expired")
     payload_drifted = bool(
@@ -226,7 +238,7 @@ def build_followup_preflight(
         and payload_hash
         and followup.approval_payload_hash == payload_hash
     )
-    due = bool(followup.scheduled_at and followup.scheduled_at <= now)
+    due = bool(scheduled_at and scheduled_at <= now)
     provider_configured = bool(settings.sendgrid_api_key)
     global_send_enabled = bool(settings.allow_real_followup_send)
 
@@ -237,9 +249,7 @@ def build_followup_preflight(
         "approval_status": followup.approval_status,
         "approval_reference": followup.approval_reference,
         "approval_active": approval_active,
-        "approval_expires_at": (
-            followup.approval_expires_at.isoformat() if followup.approval_expires_at else None
-        ),
+        "approval_expires_at": approval_expires_at.isoformat() if approval_expires_at else None,
         "eligible_for_approval": not [
             item
             for item in blockers
@@ -258,7 +268,7 @@ def build_followup_preflight(
         "recipient_email": recipient or None,
         "recipient_hash": _hash_text(recipient) if recipient else None,
         "recruiter_contact_id": followup.recruiter_contact_id,
-        "scheduled_at": followup.scheduled_at.isoformat() if followup.scheduled_at else None,
+        "scheduled_at": scheduled_at.isoformat() if scheduled_at else None,
         "due": due,
         "provider_configured": provider_configured,
         "global_send_enabled": global_send_enabled,
@@ -266,9 +276,11 @@ def build_followup_preflight(
         "send_idempotency_key": followup.send_idempotency_key,
         "send_attempt_count": int(followup.send_attempt_count or 0),
         "last_send_attempt_at": (
-            followup.last_send_attempt_at.isoformat() if followup.last_send_attempt_at else None
+            _as_utc(followup.last_send_attempt_at).isoformat()
+            if followup.last_send_attempt_at
+            else None
         ),
-        "sent_at": followup.sent_at.isoformat() if followup.sent_at else None,
+        "sent_at": _as_utc(followup.sent_at).isoformat() if followup.sent_at else None,
         "delivery_metadata": dict(followup.delivery_metadata or {}),
     }
 
@@ -344,7 +356,7 @@ def approve_followup(
         )
 
     now = utcnow()
-    scheduled_anchor = max(followup.scheduled_at or now, now)
+    scheduled_anchor = max(_as_utc(followup.scheduled_at) or now, now)
     expires_at = min(
         scheduled_anchor + timedelta(days=1),
         now + timedelta(days=settings.supervised_followup_max_schedule_days),
@@ -389,8 +401,9 @@ def validate_followup_for_delivery(
     user: User,
 ) -> dict[str, Any]:
     preflight = build_followup_preflight(db, followup, user)
-    if followup.approval_status == APPROVAL_ACTIVE and followup.approval_expires_at:
-        if followup.approval_expires_at <= utcnow():
+    approval_expires_at = _as_utc(followup.approval_expires_at)
+    if followup.approval_status == APPROVAL_ACTIVE and approval_expires_at:
+        if approval_expires_at <= utcnow():
             followup.approval_status = APPROVAL_EXPIRED
             followup.status = STATUS_DRAFT
             db.flush()
@@ -461,7 +474,8 @@ def complete_followup_delivery(
     )
     if contact:
         contact.last_contacted_at = now
-        if contact.next_followup_at and contact.next_followup_at <= now:
+        next_followup_at = _as_utc(contact.next_followup_at)
+        if next_followup_at and next_followup_at <= now:
             contact.next_followup_at = None
         db.add(
             RecruiterInteraction(
