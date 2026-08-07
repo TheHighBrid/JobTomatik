@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
-  LayoutDashboard, BrainCircuit, Search, ListTodo, ClipboardList, BookOpenCheck,
+  LayoutDashboard, BrainCircuit, Workflow, Search, ListTodo, ClipboardList, BookOpenCheck,
   HeartPulse, User, Settings, LogOut, Menu, X
 } from 'lucide-react'
 import { useAuthStore, useNotificationStore } from '../store'
@@ -13,6 +13,7 @@ import { BrandMark, BrandWordmark } from './BrandLogo'
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/command-center', icon: BrainCircuit, label: 'Command Center' },
+  { to: '/execution', icon: Workflow, label: 'Execution Center' },
   { to: '/search', icon: Search, label: 'Job Search' },
   { to: '/queue', icon: ListTodo, label: 'Queue' },
   { to: '/applications', icon: ClipboardList, label: 'Applications' },
