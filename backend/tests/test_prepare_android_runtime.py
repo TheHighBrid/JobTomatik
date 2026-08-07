@@ -21,7 +21,7 @@ def test_runtime_backup_pruning_keeps_only_newest_three(tmp_path):
     assert {path.name for path in remaining} == {path.name for path in backups[-3:]}
 
 
-def test_runtime_preflight_creates_critical_tables_and_recovers_stale_attempts(
+def test_runtime_preflight_creates_critical_tables_and_recovers_interrupted_attempts(
     tmp_path,
     monkeypatch,
     capsys,
@@ -40,5 +40,5 @@ def test_runtime_preflight_creates_critical_tables_and_recovers_stale_attempts(
     assert prepare_android_runtime.CRITICAL_TABLES <= tables
     output = capsys.readouterr().out
     assert "JOBTOMATIK_RUNTIME_SCHEMA_READY" in output
-    assert "ANDROID_STALE_APPLICATIONS_RECOVERED=0" in output
+    assert "ANDROID_INTERRUPTED_APPLICATIONS_RECOVERED=0" in output
     assert "ANDROID_BROWSER_CDP_CONNECTED" in output
