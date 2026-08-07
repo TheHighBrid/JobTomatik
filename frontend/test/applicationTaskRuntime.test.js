@@ -32,13 +32,13 @@ test('an unacknowledged pending task is released after the dispatch timeout', ()
   }), true)
 })
 
-test('a worker-owned applying attempt is never mistaken for a lost pending result', () => {
+test('a stale applying row cannot keep an unacknowledged task alive forever', () => {
   assert.equal(shouldReleaseUnacknowledgedTask({
     taskStatus: 'PENDING',
     automationState: 'applying',
     queuedAt: 1_000,
     now: 1_000 + TASK_START_ACK_TIMEOUT_MS * 10,
-  }), false)
+  }), true)
 })
 
 test('runtime busy state survives a page reload through persisted application state', () => {
