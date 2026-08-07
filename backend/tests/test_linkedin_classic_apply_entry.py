@@ -11,10 +11,11 @@ class _Context:
 
 
 class _ApplyControl:
-    def __init__(self, page, *, href: str = "", text: str = "Apply"):
+    def __init__(self, page, *, href: str = "", text: str = "Apply", click_url: str = ""):
         self.page = page
         self.href = href
         self.text = text
+        self.click_url = click_url
         self.clicks = 0
 
     async def is_visible(self):
@@ -33,7 +34,9 @@ class _ApplyControl:
 
     async def click(self, timeout=None):
         self.clicks += 1
-        if self.href:
+        if self.click_url:
+            self.page.url = self.click_url
+        elif self.href:
             self.page.url = self.href
 
 
@@ -103,6 +106,24 @@ class _BasePage:
         return None
 
 
+class _RerenderPage(_BasePage):
+    def __init__(self, url: str):
+        super().__init__(url, locator_mode=True)
+        self.old_control = _ApplyControl(self)
+        self.new_control = _ApplyControl(
+            self,
+            click_url="https://job-boards.greenhouse.io/affirm/jobs/7806920003",
+        )
+        self.apply_locator_calls = 0
+
+    def locator(self, selector):
+        if selector == 'a:text-is("Apply")':
+            self.apply_locator_calls += 1
+            control = self.old_control if self.apply_locator_calls == 1 else self.new_control
+            return _Locator([control])
+        return _Locator([])
+
+
 @pytest.mark.asyncio
 async def test_classic_linkedin_plain_apply_anchor_is_followed_automatically():
     page = _BasePage(
@@ -128,6 +149,25 @@ async def test_classic_linkedin_plain_apply_anchor_is_followed_automatically():
     assert page.goto_calls == ["https://job-boards.greenhouse.io/affirm/jobs/7806920003"]
     assert result["application_url"] == "https://job-boards.greenhouse.io/affirm/jobs/7806920003"
     assert any(item["action"] == "application_entry_external_href_navigated" for item in log)
+
+
+@pytest.mark.asyncio
+async def test_linkedin_apply_locator_is_re_resolved_after_spa_rerender():
+    page = _RerenderPage("https://www.linkedin.com/jobs/view/4442675569")
+    log = []
+
+    result = await open_application_entry(
+        page,
+        log,
+        max_clicks=1,
+        settle_timeout_seconds=0.5,
+    )
+
+    assert page.old_control.clicks == 0
+    assert page.new_control.clicks == 1
+    assert page.apply_locator_calls >= 2
+    assert result["application_url"] == "https://job-boards.greenhouse.io/affirm/jobs/7806920003"
+    assert any(item.get("live_locator") is True for item in log)
 
 
 @pytest.mark.asyncio
