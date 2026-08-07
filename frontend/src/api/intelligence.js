@@ -42,3 +42,10 @@ export const resumeAgentRun = (runId) =>
   api.post(`/intelligence/agent-runs/${runId}/resume`)
 export const cancelAgentRun = (runId, data) =>
   api.post(`/intelligence/agent-runs/${runId}/cancel`, data)
+
+export const getSubmissionHandoff = (runId) =>
+  api.get(`/intelligence/agent-runs/${runId}/submission-handoff`)
+export const createSubmissionHandoff = (runId, data) =>
+  api.post(`/intelligence/agent-runs/${runId}/submission-handoff`, data)
+export const reviewSubmissionHandoff = (runId, data) =>
+  api.post(`/intelligence/agent-runs/${runId}/submission-handoff/review`, data)
