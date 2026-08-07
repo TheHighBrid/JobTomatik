@@ -108,10 +108,12 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
             target_url = str(target.get("application_url") or "")
             form_detected = bool(target.get("application_form_detected"))
 
-            # Some job boards lead first to an employer-hosted job-detail page, which
-            # can contain a second plain Apply doorway. That page is not the
-            # application target. Traverse that doorway safely before resolving.
-            if target_url and not form_detected and not is_job_board_url(target_url):
+            # Some job boards lead first to an employer-hosted job-detail page, and
+            # some stored jobs already point directly at that employer page. Either
+            # way, that page can contain one additional plain Apply doorway. Traverse
+            # it before declaring target resolution.
+            current_url = str(getattr(page, "url", "") or target_url or source_url)
+            if not form_detected and current_url and not is_job_board_url(current_url):
                 continued = await continue_from_employer_landing(
                     page,
                     source_url=source_url,
