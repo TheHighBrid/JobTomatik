@@ -38,7 +38,6 @@ backend/*.sqlite3
 backend/uploads/
 *.log
 logs/
-.codespaces/
 
 # Persistent browser identity and retained handoff evidence
 # These directories can contain cookies, storage state, screenshots, and page HTML.
