@@ -42,7 +42,8 @@ def test_application_page_does_not_restore_old_celery_task_ids_after_runtime_res
 
 def test_pending_task_timeout_does_not_trust_stale_applying_database_state():
     source = RUNTIME_HELPER.read_text(encoding="utf-8")
+    release_helper = source.split("export function applicationRuntimeBusy", 1)[0]
 
-    assert "PENDING" in source
-    assert "TASK_START_ACK_TIMEOUT_MS" in source
-    assert "automationState || '').toLowerCase() === 'applying'" not in source
+    assert "PENDING" in release_helper
+    assert "TASK_START_ACK_TIMEOUT_MS" in release_helper
+    assert "toLowerCase() === 'applying'" not in release_helper
