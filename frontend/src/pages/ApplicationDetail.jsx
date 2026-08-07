@@ -161,7 +161,6 @@ export default function ApplicationDetail() {
   useEffect(() => {
     if (!submitTaskId || !submitQueuedAt || !submitTask) return undefined
     if (String(submitTask.status || '').toUpperCase() !== 'PENDING') return undefined
-    if (app?.automation_state === 'applying') return undefined
 
     const elapsed = Date.now() - submitQueuedAt
     const waitMs = Math.max(0, TASK_START_ACK_TIMEOUT_MS - elapsed)
