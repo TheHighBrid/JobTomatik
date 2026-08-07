@@ -32,42 +32,16 @@ async def test_live_desjardins_apply_reaches_certified_workday_entry_without_han
         except Exception:
             pass
 
-        apply_dom = await page.locator('a,button,[role="button"],input[type="button"]').evaluate_all(
-            """els => els
-              .filter(el => /apply/i.test([
-                el.innerText || '', el.value || '', el.getAttribute('aria-label') || ''
-              ].join(' ')))
-              .slice(0, 12)
-              .map(el => ({
-                tag: el.tagName,
-                text: (el.innerText || el.value || '').trim(),
-                ariaLabel: el.getAttribute('aria-label'),
-                href: el.getAttribute('href'),
-                type: el.getAttribute('type'),
-                role: el.getAttribute('role'),
-                target: el.getAttribute('target'),
-                dataHref: el.getAttribute('data-href'),
-                dataUrl: el.getAttribute('data-url'),
-                outerHTML: el.outerHTML.slice(0, 1200),
-              }))"""
-        )
-
-        observed_requests: list[str] = []
-
-        def record_request(request) -> None:
-            url = str(request.url or "")
-            lowered = url.lower()
-            if any(token in lowered for token in (
-                "workday",
-                "myworkdayjobs",
-                "apply",
-                "job-detail",
-                "relevance.studio",
-            )):
-                if url not in observed_requests and len(observed_requests) < 40:
-                    observed_requests.append(url)
-
-        page.on("request", record_request)
+        # The live page must still expose an ordinary Apply doorway. The resolver may
+        # follow the job-matched Workday target already serialized in the page instead
+        # of changing the user's cookie preferences merely to make pointer clicking
+        # possible under a consent overlay.
+        visible_apply_count = await page.locator(
+            'button:has-text("Apply"),a:has-text("Apply"),[role="button"]:has-text("Apply")'
+        ).count()
+        assert visible_apply_count >= 1
+        body_text = await page.locator("body").inner_text()
+        assert "R2511328" in body_text
 
         log = []
         result = await continue_from_employer_landing(
@@ -78,52 +52,16 @@ async def test_live_desjardins_apply_reaches_certified_workday_entry_without_han
             settle_timeout_seconds=15.0,
         )
 
-        context_urls = [candidate.url for candidate in page.context.pages]
-        post_controls = await page.locator('a,button,[role="button"],input[type="button"]').evaluate_all(
-            """els => els.slice(0, 80).map(el => ({
-              tag: el.tagName,
-              text: (el.innerText || el.value || '').trim().slice(0, 240),
-              href: el.getAttribute('href'),
-              type: el.getAttribute('type'),
-              role: el.getAttribute('role'),
-              ariaLabel: el.getAttribute('aria-label'),
-              visible: Boolean(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
-            })).filter(item => item.visible)"""
-        )
-        dialogs = await page.locator('[role="dialog"],dialog,[aria-modal="true"]').evaluate_all(
-            """els => els.slice(0, 10).map(el => ({
-              text: (el.innerText || el.textContent || '').trim().slice(0, 1200),
-              outerHTML: el.outerHTML.slice(0, 1800),
-            }))"""
-        )
-        workday_links = await page.locator('a[href*="myworkdayjobs.com" i]').evaluate_all(
-            """els => els.slice(0, 20).map(el => ({
-              text: (el.innerText || el.textContent || '').trim().slice(0, 300),
-              href: el.href || el.getAttribute('href') || '',
-            }))"""
-        )
-        embedded_workday_urls = await page.evaluate(
-            """() => Array.from(new Set(
-              (document.documentElement.innerHTML.match(/https?:[^\"'<>\\s]+myworkdayjobs\.com[^\"'<>\\s]*/gi) || [])
-            )).slice(0, 20)"""
-        )
-        body_text = (await page.locator("body").inner_text())[:5000]
-
-        diagnostics = (
-            f"apply_dom={apply_dom!r} context_urls={context_urls!r} "
-            f"requests={observed_requests!r} post_controls={post_controls!r} "
-            f"dialogs={dialogs!r} workday_links={workday_links!r} "
-            f"embedded_workday_urls={embedded_workday_urls!r} body={body_text!r}"
-        )
-        assert result, f"No safe application target found. log={log!r} {diagnostics}"
+        assert result, f"No safe application target found. log={log!r}"
         assert result.get("trusted_ats_adapter") == "workday", (
-            f"Expected Desjardins Apply to reach hosted Workday. "
-            f"result={result!r} log={log!r} {diagnostics}"
+            f"Expected Desjardins to reach hosted Workday. result={result!r} log={log!r}"
         )
         assert "myworkdayjobs.com" in str(result.get("application_url") or "")
         assert result.get("application_form_detected") is False
+
         actions = [entry.get("action") for entry in log]
-        assert "intermediate_employer_apply_started" in actions
+        assert "intermediate_employer_embedded_ats_target_found" in actions
+        assert "intermediate_employer_embedded_ats_navigated" in actions
         assert "intermediate_employer_trusted_ats_reached" in actions
         assert not any("handoff" in str(action or "") for action in actions)
     finally:
