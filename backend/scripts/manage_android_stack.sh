@@ -315,6 +315,11 @@ start_frontend() {
   echo "FRONTEND: STARTED"
 }
 
+refresh_frontend_runtime() {
+  cd "$BACKEND_ROOT"
+  "$VENV/bin/python" scripts/refresh_android_jobtomatik_tabs.py
+}
+
 status_stack() {
   local failed=0
   if http_ready 'http://127.0.0.1:8010/api/system/ready'; then
@@ -364,10 +369,6 @@ status_stack() {
 prepare_stack() {
   cd "$BACKEND_ROOT"
 
-  # Android owns one authoritative API/worker runtime. Use Redis DB 1 so legacy
-  # manually launched workers that were already connected to DB 0 cannot consume a
-  # newly queued application task with stale imported code. This changes no process
-  # outside the managed runtime and therefore never terminates an operator terminal.
   set_env_value REDIS_URL "$ANDROID_REDIS_URL"
   set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
   set_env_value APPLICATION_BROWSER_HEADLESS 'false'
@@ -390,8 +391,6 @@ prepare_stack() {
     sleep 1
   fi
 
-  # Retire only explicitly identified Celery workers through Celery remote control.
-  # No terminal, shell, PRoot session, or unrelated process receives an OS signal.
   "$VENV/bin/python" scripts/retire_legacy_android_celery.py \
     --broker "$LEGACY_ANDROID_REDIS_URL" \
     --mode legacy \
@@ -412,6 +411,7 @@ start_stack() {
   start_api
   start_worker
   start_frontend
+  refresh_frontend_runtime
 
   cd "$BACKEND_ROOT"
   echo "JOBTOMATIK_ANDROID_STACK_READY"
