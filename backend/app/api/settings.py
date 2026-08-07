@@ -11,8 +11,11 @@ from app.database import get_db
 from app.models.user import User
 from app.services.scheduler_policy import (
     SCHEDULER_DEFAULTS,
+    SCHEDULER_POLICY_VERSION,
+    SCHEDULER_SETTING_FIELDS,
     SUPPORTED_AUTOPILOT_PLATFORMS,
     SUPPORTED_SEARCH_SOURCES,
+    scheduler_policy_is_current,
     scheduler_settings,
 )
 
@@ -158,8 +161,8 @@ class SettingsUpdate(BaseModel):
 
 
 def _public_settings(user: User) -> dict[str, Any]:
-    # scheduler_settings normalizes legacy comma-separated lists and applies the
-    # environment-backed cap/quiet-hour defaults used by the runtime policy.
+    # scheduler_settings normalizes legacy comma-separated lists, applies the
+    # environment-backed runtime defaults, and forces pre-Phase-8 flags inert.
     return {**DEFAULT_SETTINGS, **scheduler_settings(user)}
 
 
@@ -176,6 +179,8 @@ async def update_settings(
 ):
     current = dict(current_user.automation_settings or {})
     updates = data.model_dump(exclude_none=True)
+    scheduler_fields_changed = bool(SCHEDULER_SETTING_FIELDS.intersection(updates))
+    policy_was_current = scheduler_policy_is_current(current_user)
 
     # Validate cross-field scheduler invariants against the effective saved policy
     # whenever one side of an invariant is edited. Unrelated legacy settings remain
@@ -194,6 +199,16 @@ async def update_settings(
     else:
         for key, value in updates.items():
             current[key] = value
+
+    if scheduler_fields_changed:
+        # First activation must not resurrect historical true values that came from
+        # old defaults. Only switches explicitly present in this Phase 8 update may
+        # become active; otherwise they start from the new inert defaults.
+        if not policy_was_current:
+            current["auto_search_enabled"] = bool(updates.get("auto_search_enabled", False))
+            current["auto_apply_enabled"] = bool(updates.get("auto_apply_enabled", False))
+            current["dry_run_mode"] = bool(updates.get("dry_run_mode", True))
+        current["scheduler_policy_version"] = SCHEDULER_POLICY_VERSION
 
     current_user.automation_settings = current
     db.commit()
