@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint, event
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -128,3 +128,12 @@ class ShadowRunCycle(Base):
     reconciliation_snapshot = Column(JSON, default=dict)
     error_detail = Column(String(2000), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+@event.listens_for(ShadowRunSession, "before_insert")
+@event.listens_for(ShadowRunSession, "before_update")
+def _maintain_shadow_active_guard(_mapper, _connection, target: ShadowRunSession) -> None:
+    if target.status in {"scheduled", "running", "settling", "stopping"}:
+        target.active_guard = f"user:{int(target.user_id)}"
+    else:
+        target.active_guard = None
