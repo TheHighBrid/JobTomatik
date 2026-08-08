@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from app import models as _models  # noqa: F401
 from app.services.dead_letter_drill import run_dead_letter_recovery_drill
 
 
