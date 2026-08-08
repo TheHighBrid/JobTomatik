@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 from app.celery_app import celery_app
 from app.config import get_settings
+from app.services.runtime_identity import runtime_identity_manifest
 
 
 def _redis_database(url: str) -> int | None:
@@ -26,12 +27,17 @@ def application_queue_canary(expected_revision: str = "") -> dict:
     revision = str(os.getenv("JOBTOMATIK_RUNTIME_REVISION", "") or "").strip()
     expected = str(expected_revision or "").strip()
     settings = get_settings()
+    identity = runtime_identity_manifest()
     return {
         "ok": bool(revision) and (not expected or revision == expected),
         "revision": revision,
         "expected_revision": expected,
         "worker_pid": os.getpid(),
         "redis_db": _redis_database(settings.redis_url),
+        "runtime_expected_revision": identity.get("expected_revision"),
+        "runtime_role": identity.get("role"),
+        "deployment_attested": identity.get("deployment_attested") is True,
+        "runtime_identity_sha256": identity.get("identity_sha256"),
     }
 
 
