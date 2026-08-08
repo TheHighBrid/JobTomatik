@@ -32,6 +32,7 @@ DEPENDENCY_SKIP_ERRORS = {
     "Skipped because a dependency did not complete safely",
     "Dependency failed or blocked",
 }
+DEPENDENCY_TERMINAL_BLOCKERS = {"failed", "blocked", "skipped", "cancelled"}
 
 
 class DeadLetterError(RuntimeError):
@@ -238,25 +239,52 @@ def _owned_task(db: Session, *, user_id: int, task_id: int) -> tuple[AgentRun, A
     return run, task
 
 
-def _reset_dependency_skips(run: AgentRun) -> list[int]:
+def _reset_dependency_skips(run: AgentRun, recovered_plan_task_id: str) -> list[int]:
+    """Reset only the dependency chain made stale by this recovered task.
+
+    A separate failed/blocked branch must remain skipped. This avoids turning one
+    explicit dead-letter recovery into a broad retry of unrelated failed work.
+    """
+
+    by_plan_id = {plan_task_id(run, item): item for item in run.tasks}
+    affected_plan_ids = {str(recovered_plan_task_id)}
     reset: list[int] = []
-    for task in run.tasks:
-        if task.status != "skipped" or task.error not in DEPENDENCY_SKIP_ERRORS:
-            continue
-        output = dict(task.task_output or {})
-        if not output.get("dependency_failures") and not output.get("dependency_blockers"):
-            continue
-        task.status = "pending"
-        task.error = None
-        task.completed_at = None
-        task.task_output = {
-            **output,
-            "dead_letter_dependency_reset": {
-                "reset_at": _iso(),
-                "reason": "upstream_dead_letter_requeued",
-            },
-        }
-        reset.append(task.id)
+    changed = True
+    while changed:
+        changed = False
+        for candidate in sorted(run.tasks, key=lambda item: (item.sequence, item.id)):
+            candidate_plan_id = plan_task_id(run, candidate)
+            if candidate_plan_id in affected_plan_ids:
+                continue
+            if candidate.status != "skipped" or candidate.error not in DEPENDENCY_SKIP_ERRORS:
+                continue
+            output = dict(candidate.task_output or {})
+            if not output.get("dependency_failures") and not output.get("dependency_blockers"):
+                continue
+            dependency_ids = {str(value) for value in list(candidate.dependencies or [])}
+            if not dependency_ids.intersection(affected_plan_ids):
+                continue
+            unrelated_blockers = []
+            for dependency_id in dependency_ids - affected_plan_ids:
+                dependency = by_plan_id.get(dependency_id)
+                if dependency is None or dependency.status in DEPENDENCY_TERMINAL_BLOCKERS:
+                    unrelated_blockers.append(dependency_id)
+            if unrelated_blockers:
+                continue
+            candidate.status = "pending"
+            candidate.error = None
+            candidate.completed_at = None
+            candidate.task_output = {
+                **output,
+                "dead_letter_dependency_reset": {
+                    "reset_at": _iso(),
+                    "reason": "upstream_dead_letter_requeued",
+                    "recovered_plan_task_id": recovered_plan_task_id,
+                },
+            }
+            affected_plan_ids.add(candidate_plan_id)
+            reset.append(candidate.id)
+            changed = True
     return reset
 
 
@@ -315,7 +343,8 @@ def requeue_dead_letter(
     task.completed_at = None
     # Preserve historical attempt_count and permit exactly one additional bounded claim.
     task.max_attempts = max(int(task.max_attempts or 0), int(task.attempt_count or 0) + 1)
-    reset_task_ids = _reset_dependency_skips(run)
+    recovered_plan_task_id = plan_task_id(run, task)
+    reset_task_ids = _reset_dependency_skips(run, recovered_plan_task_id)
     run.completed_at = None
     run.error = None
     refresh_run_status(run)
@@ -327,6 +356,48 @@ def requeue_dead_letter(
         "requeue_count": updated["requeue_count"],
         "reset_dependency_task_ids": reset_task_ids,
         "dispatch_required": True,
+        "submission_authorized": False,
+        "outreach_authorized": False,
+    }
+
+
+def reopen_dead_letter_after_dispatch_failure(
+    db: Session,
+    *,
+    user_id: int,
+    task_id: int,
+    error: str,
+) -> dict[str, Any]:
+    """Fail closed when a committed manual requeue cannot reach Celery."""
+
+    run, task = _owned_task(db, user_id=user_id, task_id=task_id)
+    envelope = _envelope(task)
+    if not envelope or envelope.get("status") != "requeued":
+        raise DeadLetterError("Requeued dead letter is not available for dispatch recovery")
+    now = _utcnow()
+    message = f"Dead-letter dispatch failed: {str(error)[:500]}"
+    reopened = {
+        **envelope,
+        "status": "open",
+        "dispatch_failed_at": _iso(now),
+        "dispatch_error": str(error)[:500],
+        "automatic_retry_allowed": False,
+    }
+    task.status = "failed"
+    task.error = message
+    task.completed_at = now
+    task.task_output = {
+        **dict(task.task_output or {}),
+        DEAD_LETTER_KEY: reopened,
+    }
+    refresh_run_status(run)
+    return {
+        "run_id": run.id,
+        "task_id": task.id,
+        "status": "open",
+        "checkpoint_hash": reopened.get("checkpoint_hash"),
+        "dispatch_required": False,
+        "dispatch_failed": True,
         "submission_authorized": False,
         "outreach_authorized": False,
     }
@@ -379,12 +450,17 @@ def list_dead_letters(
     status: str | None = "open",
     limit: int = 100,
 ) -> list[dict[str, Any]]:
+    bounded_limit = max(1, min(int(limit), 500))
+    # Scan a generous bounded run window rather than limiting runs to the requested
+    # number of dead letters. This prevents recent non-dead-letter runs from hiding
+    # older recovery records while keeping the read bounded for mobile operators.
+    run_scan_limit = max(500, bounded_limit * 20)
     runs = (
         db.query(AgentRun)
         .options(selectinload(AgentRun.tasks))
         .filter(AgentRun.user_id == user_id)
         .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
-        .limit(max(1, min(int(limit), 500)))
+        .limit(run_scan_limit)
         .all()
     )
     rows: list[dict[str, Any]] = []
@@ -413,7 +489,7 @@ def list_dead_letters(
         key=lambda row: str((row["dead_letter"] or {}).get("opened_at") or ""),
         reverse=True,
     )
-    return rows[: max(1, min(int(limit), 500))]
+    return rows[:bounded_limit]
 
 
 __all__ = [
@@ -426,6 +502,7 @@ __all__ = [
     "expected_requeue_acknowledgment",
     "expected_resolve_acknowledgment",
     "list_dead_letters",
+    "reopen_dead_letter_after_dispatch_failure",
     "requeue_dead_letter",
     "resolve_dead_letter",
     "route_task_to_dead_letter",
