@@ -29,6 +29,7 @@ from app.api import (
     profile,
     recovery,
     scheduler,
+    shadow_runs,
     settings as settings_api,
     submission_evidence_reviews,
     supervised_pilot_roster,
@@ -258,6 +259,7 @@ app.include_router(scheduler.router, prefix="/api")
 app.include_router(post_application.router, prefix="/api")
 app.include_router(certification.router, prefix="/api")
 app.include_router(recovery.router, prefix="/api")
+app.include_router(shadow_runs.router, prefix="/api")
 
 
 @app.get("/health")

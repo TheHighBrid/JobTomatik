@@ -8,7 +8,12 @@ from app.models.application import (
     ManualReviewTask,
     SubmissionEvidence,
 )
-from app.models.certification import CertificationEvidence, ReleaseAuthorization
+from app.models.certification import (
+    CertificationEvidence,
+    ReleaseAuthorization,
+    ShadowRunCycle,
+    ShadowRunSession,
+)
 from app.models.evaluation import OpportunityEvaluation
 from app.models.handoff import HandoffSessionEvent, ManualHandoffSession
 from app.models.intelligence import (
@@ -46,6 +51,8 @@ __all__ = [
     "SubmissionEvidence",
     "CertificationEvidence",
     "ReleaseAuthorization",
+    "ShadowRunSession",
+    "ShadowRunCycle",
     "OpportunityEvaluation",
     "ManualHandoffSession",
     "HandoffSessionEvent",
