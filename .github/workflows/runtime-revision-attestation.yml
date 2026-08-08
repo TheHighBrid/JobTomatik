@@ -9,6 +9,7 @@ on:
       - "backend/app/main.py"
       - "backend/scripts/check_runtime_identity.py"
       - "backend/tests/test_runtime_identity.py"
+      - "backend/tests/test_runtime_identity_shadow_gate.py"
       - "docker-compose.yml"
       - ".env.example"
       - "scripts/jobtomatik-compose.sh"
@@ -26,6 +27,7 @@ on:
       - "backend/app/main.py"
       - "backend/scripts/check_runtime_identity.py"
       - "backend/tests/test_runtime_identity.py"
+      - "backend/tests/test_runtime_identity_shadow_gate.py"
       - "docker-compose.yml"
       - ".env.example"
       - "scripts/jobtomatik-compose.sh"
@@ -80,11 +82,15 @@ jobs:
             app/api/shadow_runs.py \
             app/tasks/shadow_runs.py \
             scripts/check_runtime_identity.py \
-            tests/test_runtime_identity.py
+            tests/test_runtime_identity.py \
+            tests/test_runtime_identity_shadow_gate.py
 
       - name: Run runtime identity safety matrix
         working-directory: backend
-        run: python -m pytest -q --tb=short -ra tests/test_runtime_identity.py
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_runtime_identity.py \
+            tests/test_runtime_identity_shadow_gate.py
 
       - name: Prove sensitive runtime accepts exact identity
         working-directory: backend
