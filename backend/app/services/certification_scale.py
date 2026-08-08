@@ -16,6 +16,7 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -228,12 +229,17 @@ def evidence_is_qualifying(
 def _latest_records(
     db: Session,
     *,
+    user_id: int,
     evidence_types: Iterable[str],
     adapter: str | None,
 ) -> dict[str, CertificationEvidence]:
     wanted = set(evidence_types)
     query = db.query(CertificationEvidence).filter(
-        CertificationEvidence.evidence_type.in_(wanted)
+        CertificationEvidence.evidence_type.in_(wanted),
+        or_(
+            CertificationEvidence.recorded_by_user_id == user_id,
+            CertificationEvidence.recorded_by_user_id.is_(None),
+        ),
     )
     if adapter:
         query = query.filter(
@@ -254,6 +260,7 @@ def _latest_records(
 def active_authorization(
     db: Session,
     *,
+    user_id: int,
     scope: str,
     release_version: str,
     revision: str,
@@ -267,6 +274,7 @@ def active_authorization(
             ReleaseAuthorization.release_version == release_version,
             ReleaseAuthorization.commit_sha == revision,
             ReleaseAuthorization.status == "approved",
+            ReleaseAuthorization.approved_by_user_id == user_id,
         )
         .order_by(ReleaseAuthorization.approved_at.desc(), ReleaseAuthorization.id.desc())
         .all()
@@ -281,6 +289,7 @@ def active_authorization(
 def build_release_track(
     db: Session,
     *,
+    user_id: int,
     scope: str,
     release_version: str,
     revision: str,
@@ -288,7 +297,12 @@ def build_release_track(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     required = SCOPE_REQUIREMENTS[scope]
-    records = _latest_records(db, evidence_types=required, adapter=adapter)
+    records = _latest_records(
+        db,
+        user_id=user_id,
+        evidence_types=required,
+        adapter=adapter,
+    )
     evidence: dict[str, Any] = {}
     blockers: list[str] = []
 
@@ -323,6 +337,7 @@ def build_release_track(
 
     authorization = active_authorization(
         db,
+        user_id=user_id,
         scope=scope,
         release_version=release_version,
         revision=revision,
@@ -360,6 +375,7 @@ def build_release_track(
 def build_certification_scale_manifest(
     db: Session,
     *,
+    user_id: int,
     release_version: str = "v2.00",
     adapter: str | None = None,
     revision: str | None = None,
@@ -372,6 +388,7 @@ def build_certification_scale_manifest(
     tracks = {
         scope: build_release_track(
             db,
+            user_id=user_id,
             scope=scope,
             release_version=release_version,
             revision=candidate_revision,
@@ -407,6 +424,7 @@ def build_certification_scale_manifest(
             "shadow_duration_is_measured_not_inferred": True,
             "owner_authorization_is_commit_bound": True,
             "runtime_kill_switches_remain_independent": True,
+            "certification_evidence_is_account_scoped": True,
         },
     }
 
