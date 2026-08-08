@@ -18,6 +18,7 @@ from app.services.agent_execution import (
     queue_ready_tasks,
     refresh_run_status,
 )
+from app.services.dead_letter import route_task_to_dead_letter
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +140,15 @@ def execute_agent_task(self, agent_task_id: int):
             task,
             celery_task_id=self.request.id,
         )
+        if not claimed and reason == "attempt_limit_reached":
+            route_task_to_dead_letter(
+                db,
+                run,
+                task,
+                failure_class="attempt_limit_reached",
+                error=task.error,
+                source="claim_gate",
+            )
         snapshot = execution_snapshot(run)
         db.commit()
         if not claimed:
@@ -158,7 +168,16 @@ def execute_agent_task(self, agent_task_id: int):
 
         result = execute_handler(db, run, task)
         persist_handler_result(run, task, result)
-        if result.status in {"blocked", "failed"}:
+        if result.status == "failed":
+            route_task_to_dead_letter(
+                db,
+                run,
+                task,
+                failure_class=result.failure_class or "handler_failed",
+                error=result.error or task.error,
+                source="handler_result",
+            )
+        elif result.status == "blocked":
             db.add(
                 Notification(
                     user_id=run.user_id,
@@ -199,6 +218,8 @@ def execute_agent_task(self, agent_task_id: int):
                 raise
             run_id = task.run_id
             run = _load_run(retry_db, run_id)
+            if run is None:
+                raise RuntimeError("Agent run disappeared while persisting failure")
             can_retry = task.attempt_count < task.max_attempts
             execution = dict((task.task_output or {}).get("execution") or {})
             task.task_output = {
@@ -224,6 +245,14 @@ def execute_agent_task(self, agent_task_id: int):
                         retryable=False,
                         failure_class="attempt_limit_reached",
                     ),
+                )
+                route_task_to_dead_letter(
+                    retry_db,
+                    run,
+                    task,
+                    failure_class="attempt_limit_reached",
+                    error=task.error,
+                    source="worker_exception",
                 )
             refresh_run_status(run)
             attempt_count = task.attempt_count
