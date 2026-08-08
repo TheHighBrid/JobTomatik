@@ -12,6 +12,7 @@ from app.api import (
     answer_policies,
     applications,
     auth,
+    certification,
     controller,
     evaluations,
     export,
@@ -254,6 +255,7 @@ app.include_router(evaluations.router, prefix="/api")
 app.include_router(operations.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
 app.include_router(post_application.router, prefix="/api")
+app.include_router(certification.router, prefix="/api")
 
 
 @app.get("/health")
