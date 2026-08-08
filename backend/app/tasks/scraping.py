@@ -5,12 +5,13 @@ from typing import Any, Coroutine
 from app.celery_app import celery_app
 from app.config import get_settings
 from app.database import SessionLocal
+from app.models.intelligence import AgentRun
 from app.models.job import Job, JobStatus
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.discovery_dedup import partition_new_discovery_jobs
 from app.services.discovery_pipeline import persist_discovery_results
-from app.services.discovery_search import search_jobs
+from app.services.discovery_search import search_jobs_with_diagnostics
 from app.services.scheduler_policy import (
     build_search_plan,
     discovery_allowed_by_user_policy,
@@ -34,42 +35,69 @@ def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
 
 @celery_app.task(bind=True, name="app.tasks.scraping.run_job_search", queue="scraping")
 def run_job_search(self, user_id: int, search_params: dict):
-    """Discover, score, evaluate, and store genuinely new results."""
+    """Discover, score, evaluate, and store genuinely new results.
+
+    Phase 9 records bounded per-source diagnostics on the durable discovery AgentRun.
+    Scheduled searches suppress per-cycle success notifications; routine successes are
+    summarized by the operations digest instead.
+    """
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             return {"error": "User not found"}
 
-        raw_jobs = _run_async(search_jobs(**search_params))
+        origin = str(search_params.get("_origin") or "interactive").strip().lower()
+        provider_params = {
+            key: value for key, value in dict(search_params or {}).items()
+            if not str(key).startswith("_")
+        }
+        discovery = _run_async(search_jobs_with_diagnostics(**provider_params))
+        raw_jobs = list(discovery.get("jobs") or [])
+        source_diagnostics = list(discovery.get("source_diagnostics") or [])
         new_jobs, preexisting_duplicates = partition_new_discovery_jobs(db, raw_jobs)
         stats = persist_discovery_results(
             db,
             user,
             new_jobs,
-            keywords=str(search_params.get("keywords") or ""),
-            search_params=search_params,
+            keywords=str(provider_params.get("keywords") or ""),
+            search_params=provider_params,
         )
         stats["total_found"] = len(raw_jobs)
         stats["duplicates"] = int(stats.get("duplicates") or 0) + preexisting_duplicates
         stats["new_candidates"] = len(new_jobs)
+        stats["source_diagnostics"] = source_diagnostics
+        stats["origin"] = origin
 
-        if stats["saved"] > 0:
+        if stats.get("agent_run_id"):
+            run = db.query(AgentRun).filter(AgentRun.id == stats["agent_run_id"]).first()
+            if run is not None:
+                run.result = {
+                    **dict(run.result or {}),
+                    "total_found": stats["total_found"],
+                    "duplicates": stats["duplicates"],
+                    "new_candidates": stats["new_candidates"],
+                    "source_diagnostics": source_diagnostics,
+                    "origin": origin,
+                }
+
+        if stats["saved"] > 0 and origin != "scheduler":
             db.add(Notification(
                 user_id=user_id,
                 type=NotificationType.new_match,
                 title=f"{stats['saved']} new job matches found",
                 message=(
                     f"We found {stats['saved']} new jobs matching your search for "
-                    f"\"{search_params.get('keywords', '')}\". Review them in your queue."
+                    f"\"{provider_params.get('keywords', '')}\". Review them in your queue."
                 ),
                 data={
                     "count": stats["saved"],
-                    "keywords": search_params.get("keywords"),
+                    "keywords": provider_params.get("keywords"),
                     "agent_run_id": stats["agent_run_id"],
                     "evaluations_created": stats["evaluations_created"],
                     "blocked": stats["blocked"],
                     "duplicates": stats["duplicates"],
+                    "origin": origin,
                 },
             ))
 
@@ -171,7 +199,10 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
         if search_plan["ready"]:
             run_job_search.delay(
                 user_id=user.id,
-                search_params=search_plan["search_params"],
+                search_params={
+                    **search_plan["search_params"],
+                    "_origin": "scheduler",
+                },
             )
             result["searched"] = True
             result["search_params"] = search_plan["search_params"]
