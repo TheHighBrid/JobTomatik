@@ -32,14 +32,14 @@ def run_shadow_session_cycle(session_id: int):
     try:
         result = execute_shadow_cycle(db, session_id=int(session_id))
         db.commit()
-    except Exception as exc:
+    except Exception:
         logger.exception("Shadow campaign cycle failed for session %s", session_id)
         db.rollback()
         try:
             mark_shadow_dispatch_failure(
                 db,
                 session_id=int(session_id),
-                detail=f"cycle_supervisor_exception:{exc}",
+                detail="cycle_supervisor_failure",
             )
             db.commit()
         except Exception:
@@ -48,7 +48,7 @@ def run_shadow_session_cycle(session_id: int):
         return {
             "session_id": int(session_id),
             "status": "failed",
-            "error": str(exc)[:1000],
+            "error": "cycle_supervisor_failure",
             "schedule_next": False,
         }
     finally:
@@ -63,11 +63,12 @@ def run_shadow_session_cycle(session_id: int):
             )
             result["next_cycle_task_id"] = task.id
             result["next_cycle_countdown_seconds"] = countdown
-        except Exception as exc:
+        except Exception:
             # The durable session remains active. The periodic stalled-session recovery
-            # task can safely resume it when the broker returns.
+            # task can safely resume it when the broker returns. Raw broker exceptions
+            # remain server-side rather than entering durable/user-visible evidence.
             logger.exception("Failed to schedule next shadow campaign cycle")
-            result["next_cycle_dispatch_error"] = str(exc)[:1000]
+            result["next_cycle_dispatch_error"] = "worker_dispatch_unavailable"
     return result
 
 
@@ -106,12 +107,13 @@ def recover_stalled_shadow_sessions():
         try:
             task = run_shadow_session_cycle.delay(session_id)
             dispatched.append({"session_id": session_id, "task_id": task.id})
-        except Exception as exc:
+        except Exception:
+            logger.exception("Failed to redispatch stalled shadow campaign %s", session_id)
             dispatched.append(
                 {
                     "session_id": session_id,
                     "task_id": None,
-                    "error": str(exc)[:1000],
+                    "error": "worker_dispatch_unavailable",
                 }
             )
     return {
