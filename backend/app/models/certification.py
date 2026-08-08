@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -39,12 +39,19 @@ class ReleaseAuthorization(Base):
     """Commit-bound owner authorization that never toggles runtime submission flags."""
 
     __tablename__ = "release_authorizations"
+    __table_args__ = (
+        UniqueConstraint(
+            "approved_by_user_id",
+            "approval_reference",
+            name="uq_release_authorization_owner_reference",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     scope = Column(String(80), nullable=False, index=True)
     release_version = Column(String(80), nullable=False, index=True)
     commit_sha = Column(String(64), nullable=False, index=True)
-    approval_reference = Column(String(255), nullable=False, unique=True, index=True)
+    approval_reference = Column(String(255), nullable=False, index=True)
     payload_hash = Column(String(128), nullable=False)
     status = Column(String(40), nullable=False, default="approved", index=True)
     approved_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
