@@ -219,7 +219,7 @@ def record_certification_evidence(
         source_reference=payload.source_reference,
         evidence_metadata=dict(payload.evidence_metadata or {}),
     )
-    evidence_key = evidence_key_for(full_payload)
+    evidence_key = evidence_key_for(full_payload, owner_user_id=current_user.id)
     payload_hash = canonical_hash(full_payload)
 
     existing = (
