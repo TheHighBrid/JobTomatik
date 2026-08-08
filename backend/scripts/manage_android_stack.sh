@@ -18,7 +18,9 @@ ACTION="${1:-start}"
 ANDROID_REDIS_URL="${JOBTOMATIK_ANDROID_REDIS_URL:-redis://localhost:6379/1}"
 LEGACY_ANDROID_REDIS_URL="${JOBTOMATIK_LEGACY_ANDROID_REDIS_URL:-redis://localhost:6379/0}"
 RUNTIME_REVISION="${JOBTOMATIK_RUNTIME_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)}"
-RUNTIME_REVISION="${RUNTIME_REVISION:-unknown}"
+RUNTIME_REVISION="${RUNTIME_REVISION,,}"
+EXPECTED_RUNTIME_REVISION="${JOBTOMATIK_EXPECTED_REVISION:-$RUNTIME_REVISION}"
+EXPECTED_RUNTIME_REVISION="${EXPECTED_RUNTIME_REVISION,,}"
 RUNTIME_REVISION_SHORT="${RUNTIME_REVISION:0:12}"
 WORKER_NODE_PREFIX="jobtomatik-android-${RUNTIME_REVISION_SHORT}@"
 
@@ -27,6 +29,19 @@ mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
 if [[ ! -x "$VENV/bin/python" ]]; then
   echo "Backend virtual environment is missing at $VENV" >&2
   exit 1
+fi
+
+if [[ ! "$RUNTIME_REVISION" =~ ^[0-9a-f]{7,64}$ ]]; then
+  echo "Unable to derive a valid JobTomatik Android runtime commit SHA." >&2
+  exit 2
+fi
+if [[ ! "$EXPECTED_RUNTIME_REVISION" =~ ^[0-9a-f]{7,64}$ ]]; then
+  echo "JOBTOMATIK_EXPECTED_REVISION is not a valid commit SHA." >&2
+  exit 2
+fi
+if [[ "$EXPECTED_RUNTIME_REVISION" != "$RUNTIME_REVISION" ]]; then
+  echo "JOBTOMATIK_EXPECTED_REVISION must equal the Android runtime revision." >&2
+  exit 2
 fi
 
 set_env_value() {
@@ -131,6 +146,43 @@ configured_redis_url() {
   grep '^REDIS_URL=' "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- || true
 }
 
+require_runtime_attestation() {
+  local role="$1"
+  (
+    cd "$BACKEND_ROOT"
+    JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
+    JOBTOMATIK_RUNTIME_ROLE="$role" \
+    "$VENV/bin/python" scripts/check_runtime_identity.py --require-attested >/dev/null
+  )
+}
+
+api_runtime_identity_ready() {
+  pid_file_alive "$API_PID_FILE" || return 1
+  curl -fsS --max-time 2 'http://127.0.0.1:8010/api/system/runtime-identity' 2>/dev/null | \
+    JOBTOMATIK_EXPECTED_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    JOBTOMATIK_EXPECTED_DEPLOYMENT_REVISION="$EXPECTED_RUNTIME_REVISION" \
+    "$VENV/bin/python" -c '
+import json
+import os
+import sys
+
+payload = json.load(sys.stdin)
+expected_runtime = os.environ["JOBTOMATIK_EXPECTED_RUNTIME_REVISION"]
+expected_deployment = os.environ["JOBTOMATIK_EXPECTED_DEPLOYMENT_REVISION"]
+valid = (
+    payload.get("revision") == expected_runtime
+    and payload.get("expected_revision") == expected_deployment
+    and payload.get("role") == "api"
+    and payload.get("deployment_attested") is True
+    and bool(payload.get("identity_sha256"))
+    and payload.get("submission_authorized") is False
+    and payload.get("outreach_authorized") is False
+)
+raise SystemExit(0 if valid else 1)
+' >/dev/null 2>&1
+}
+
 worker_log_ready() {
   pid_file_alive "$CELERY_PID_FILE" || return 1
   [[ -f "$CELERY_LOG" ]] || return 1
@@ -187,6 +239,7 @@ worker_application_canary_ready() {
     cd "$BACKEND_ROOT"
     REDIS_URL="$broker" \
     JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    JOBTOMATIK_EXPECTED_RUNTIME_REVISION="$EXPECTED_RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_REDIS_DB="1" \
     "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
 import os
@@ -194,6 +247,7 @@ import os
 from app.tasks.runtime import application_queue_canary
 
 expected_revision = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
+expected_deployment = os.environ["JOBTOMATIK_EXPECTED_RUNTIME_REVISION"]
 expected_db = int(os.environ.get("JOBTOMATIK_EXPECTED_REDIS_DB", "1"))
 result = application_queue_canary.apply_async(
     kwargs={"expected_revision": expected_revision},
@@ -212,6 +266,14 @@ if not isinstance(payload, dict) or payload.get("ok") is not True:
 if payload.get("revision") != expected_revision:
     raise SystemExit(1)
 if payload.get("redis_db") != expected_db:
+    raise SystemExit(1)
+if payload.get("runtime_expected_revision") != expected_deployment:
+    raise SystemExit(1)
+if payload.get("runtime_role") != "worker":
+    raise SystemExit(1)
+if payload.get("deployment_attested") is not True:
+    raise SystemExit(1)
+if not payload.get("runtime_identity_sha256"):
     raise SystemExit(1)
 raise SystemExit(0)
 PY
@@ -239,8 +301,12 @@ wait_worker() {
 
 start_api() {
   if pid_file_alive "$API_PID_FILE" && http_ready 'http://127.0.0.1:8010/api/system/ready'; then
-    echo "API: EXISTING_MANAGED_READY_PROCESS"
-    return 0
+    if api_runtime_identity_ready; then
+      echo "API: EXISTING_MANAGED_READY_PROCESS"
+      return 0
+    fi
+    echo "API: STALE_OR_UNATTESTED_MANAGED_PROCESS_RESTARTING"
+    stop_pid_file "$API_PID_FILE"
   fi
 
   if http_ready 'http://127.0.0.1:8010/api/system/ready'; then
@@ -250,8 +316,13 @@ start_api() {
   fi
 
   stop_pid_file "$API_PID_FILE"
+  require_runtime_attestation api
   : > "$API_LOG"
-  nohup "$VENV/bin/uvicorn" app.main:app \
+  nohup env \
+    JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
+    JOBTOMATIK_RUNTIME_ROLE=api \
+    "$VENV/bin/uvicorn" app.main:app \
     --host 127.0.0.1 \
     --port 8010 \
     >"$API_LOG" 2>&1 </dev/null &
@@ -262,7 +333,13 @@ start_api() {
     tail -n 100 "$API_LOG" >&2 || true
     return 1
   fi
-  echo "API: STARTED"
+  if ! api_runtime_identity_ready; then
+    echo "API became reachable but failed exact runtime-attestation verification." >&2
+    tail -n 100 "$API_LOG" >&2 || true
+    stop_pid_file "$API_PID_FILE"
+    return 1
+  fi
+  echo "API: STARTED_ATTESTED revision=$RUNTIME_REVISION_SHORT"
 }
 
 start_worker() {
@@ -271,8 +348,13 @@ start_worker() {
     return 0
   fi
   stop_pid_file "$CELERY_PID_FILE"
+  require_runtime_attestation worker
   : > "$CELERY_LOG"
-  nohup "$VENV/bin/celery" -A app.celery_app worker \
+  nohup env \
+    JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
+    JOBTOMATIK_RUNTIME_ROLE=worker \
+    "$VENV/bin/celery" -A app.celery_app worker \
     --hostname="jobtomatik-android-${RUNTIME_REVISION_SHORT}@%h" \
     --loglevel=info \
     --pool=solo \
@@ -284,11 +366,11 @@ start_worker() {
   echo $! > "$CELERY_PID_FILE"
 
   if ! wait_worker; then
-    echo "Celery failed the Android application-queue end-to-end canary." >&2
+    echo "Celery failed the Android application-queue end-to-end canary or runtime-attestation check." >&2
     tail -n 160 "$CELERY_LOG" >&2 || true
     return 1
   fi
-  echo "CELERY: STARTED_WITH_REQUIRED_QUEUES"
+  echo "CELERY: STARTED_WITH_REQUIRED_QUEUES_ATTESTED"
   echo "CELERY_APPLICATION_CANARY: READY revision=$RUNTIME_REVISION_SHORT broker=$ANDROID_REDIS_URL"
 }
 
@@ -322,8 +404,17 @@ refresh_frontend_runtime() {
 
 status_stack() {
   local failed=0
+  local api_attested=0
+  local worker_attested=0
+
   if http_ready 'http://127.0.0.1:8010/api/system/ready'; then
-    echo "API: READY pid=$(pid_file_value "$API_PID_FILE")"
+    if api_runtime_identity_ready; then
+      echo "API: READY_ATTESTED pid=$(pid_file_value "$API_PID_FILE") revision=$RUNTIME_REVISION_SHORT"
+      api_attested=1
+    else
+      echo "API: READY_BUT_RUNTIME_IDENTITY_UNATTESTED_OR_STALE"
+      failed=1
+    fi
   else
     echo "API: DOWN"
     failed=1
@@ -338,7 +429,8 @@ status_stack() {
 
   if managed_worker_ready; then
     echo "CELERY: READY applications,celery,followup,scraping pid=$(pid_file_value "$CELERY_PID_FILE") broker=$ANDROID_REDIS_URL revision=$RUNTIME_REVISION_SHORT"
-    echo "CELERY_APPLICATION_CANARY: READY"
+    echo "CELERY_APPLICATION_CANARY: READY_ATTESTED"
+    worker_attested=1
   else
     echo "CELERY: DOWN_OR_UNRESPONSIVE_ON_ANDROID_BROKER"
     echo "CELERY_APPLICATION_CANARY: FAILED"
@@ -360,7 +452,16 @@ status_stack() {
     echo "ANDROID_RUNTIME_BROKER: NOT_ISOLATED"
     failed=1
   fi
+
+  if [[ "$api_attested" -eq 1 && "$worker_attested" -eq 1 ]]; then
+    echo "ANDROID_RUNTIME_ATTESTATION: READY runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION"
+  else
+    echo "ANDROID_RUNTIME_ATTESTATION: FAILED runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION"
+    failed=1
+  fi
+
   echo "ANDROID_RUNTIME_REVISION: $RUNTIME_REVISION"
+  echo "ANDROID_EXPECTED_REVISION: $EXPECTED_RUNTIME_REVISION"
   echo "MANAGED_LOGS: $LOG_DIR"
   echo "CELERY_LOG: $CELERY_LOG"
   return "$failed"
@@ -380,7 +481,10 @@ prepare_stack() {
   export APPLICATION_BROWSER_HEADLESS='false'
   export APPLICATION_TARGET_HUMAN_WAIT_SECONDS='0'
   export JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION"
+  export JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION"
   export JOBTOMATIK_RUNTIME_MODE='android_managed'
+
+  require_runtime_attestation cli
 
   if ! "$VENV/bin/python" -c 'import jwt; assert jwt.__version__' >/dev/null 2>&1; then
     "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.13.0'
