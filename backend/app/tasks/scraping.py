@@ -39,7 +39,8 @@ def run_job_search(self, user_id: int, search_params: dict):
 
     Phase 9 records bounded per-source diagnostics on the durable discovery AgentRun.
     Scheduled searches suppress per-cycle success notifications; routine successes are
-    summarized by the operations digest instead.
+    summarized by the operations digest instead. Phase 11 optionally retains a shadow
+    campaign identifier without forwarding it to external discovery providers.
     """
     db = SessionLocal()
     try:
@@ -48,8 +49,16 @@ def run_job_search(self, user_id: int, search_params: dict):
             return {"error": "User not found"}
 
         origin = str(search_params.get("_origin") or "interactive").strip().lower()
+        raw_shadow_session_id = search_params.get("_shadow_session_id")
+        try:
+            shadow_session_id = (
+                int(raw_shadow_session_id) if raw_shadow_session_id is not None else None
+            )
+        except (TypeError, ValueError):
+            shadow_session_id = None
         provider_params = {
-            key: value for key, value in dict(search_params or {}).items()
+            key: value
+            for key, value in dict(search_params or {}).items()
             if not str(key).startswith("_")
         }
         discovery = _run_async(search_jobs_with_diagnostics(**provider_params))
@@ -68,6 +77,7 @@ def run_job_search(self, user_id: int, search_params: dict):
         stats["new_candidates"] = len(new_jobs)
         stats["source_diagnostics"] = source_diagnostics
         stats["origin"] = origin
+        stats["shadow_session_id"] = shadow_session_id
 
         if stats.get("agent_run_id"):
             run = db.query(AgentRun).filter(AgentRun.id == stats["agent_run_id"]).first()
@@ -79,27 +89,30 @@ def run_job_search(self, user_id: int, search_params: dict):
                     "new_candidates": stats["new_candidates"],
                     "source_diagnostics": source_diagnostics,
                     "origin": origin,
+                    "shadow_session_id": shadow_session_id,
                 }
 
         if stats["saved"] > 0 and origin != "scheduler":
-            db.add(Notification(
-                user_id=user_id,
-                type=NotificationType.new_match,
-                title=f"{stats['saved']} new job matches found",
-                message=(
-                    f"We found {stats['saved']} new jobs matching your search for "
-                    f"\"{provider_params.get('keywords', '')}\". Review them in your queue."
-                ),
-                data={
-                    "count": stats["saved"],
-                    "keywords": provider_params.get("keywords"),
-                    "agent_run_id": stats["agent_run_id"],
-                    "evaluations_created": stats["evaluations_created"],
-                    "blocked": stats["blocked"],
-                    "duplicates": stats["duplicates"],
-                    "origin": origin,
-                },
-            ))
+            db.add(
+                Notification(
+                    user_id=user_id,
+                    type=NotificationType.new_match,
+                    title=f"{stats['saved']} new job matches found",
+                    message=(
+                        f"We found {stats['saved']} new jobs matching your search for "
+                        f"\"{provider_params.get('keywords', '')}\". Review them in your queue."
+                    ),
+                    data={
+                        "count": stats["saved"],
+                        "keywords": provider_params.get("keywords"),
+                        "agent_run_id": stats["agent_run_id"],
+                        "evaluations_created": stats["evaluations_created"],
+                        "blocked": stats["blocked"],
+                        "duplicates": stats["duplicates"],
+                        "origin": origin,
+                    },
+                )
+            )
 
         db.commit()
         return stats
@@ -129,6 +142,7 @@ def refresh_all_scores():
                     "salary_min": job.salary_min,
                 }
                 from app.services.keyword_tagger import compute_relevance
+
                 job.relevance_score = compute_relevance(job_dict, prefs)
                 updated += 1
         db.commit()
@@ -137,13 +151,21 @@ def refresh_all_scores():
         db.close()
 
 
-def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
+def _run_scheduler_cycle_for_user(
+    db,
+    user: User,
+    *,
+    shadow_session_id: int | None = None,
+) -> dict[str, Any]:
     """Run one policy-bounded scheduler cycle for exactly one account.
 
     Discovery may continue after an application cap is reached, but quiet hours,
     kill switches, and circuit breakers still pause the cycle. Application creation
     requires the complete user policy plus the live unattended job policy. The
     submission worker independently re-evaluates that job policy before browser work.
+
+    ``shadow_session_id`` is correlation only. It does not weaken any policy or grant
+    submission authority. Phase 11 uses it to reconcile durable full-stack campaigns.
     """
     from app.models.application import (
         Application,
@@ -157,6 +179,8 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
     auto_settings = scheduler_settings(user)
     search_enabled = bool(auto_settings.get("auto_search_enabled", False))
     apply_enabled = bool(auto_settings.get("auto_apply_enabled", False))
+    dry_run = bool(auto_settings.get("dry_run_mode", True)) or not settings.allow_real_application_submit
+
     if not search_enabled and not apply_enabled:
         return {
             "user_id": user.id,
@@ -164,7 +188,11 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
             "reason": "user_scheduler_disabled",
             "searched": False,
             "applications_queued": 0,
+            "application_ids_queued": [],
             "blocked_job_reasons": {},
+            "real_submission_enabled": settings.allow_real_application_submit,
+            "dry_run": dry_run,
+            "shadow_session_id": shadow_session_id,
         }
 
     decision = evaluate_autopilot_policy(db, user)
@@ -177,7 +205,11 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
             "policy_decision": decision.to_dict(),
             "searched": False,
             "applications_queued": 0,
+            "application_ids_queued": [],
             "blocked_job_reasons": {},
+            "real_submission_enabled": settings.allow_real_application_submit,
+            "dry_run": dry_run,
+            "shadow_session_id": shadow_session_id,
         }
 
     result: dict[str, Any] = {
@@ -188,24 +220,30 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
         "discovery_policy_allowed": discovery_allowed,
         "searched": False,
         "search_blocker": None,
+        "search_task_id": None,
         "applications_queued": 0,
+        "application_ids_queued": [],
         "blocked_job_reasons": {},
         "real_submission_enabled": settings.allow_real_application_submit,
         "user_dry_run_mode": bool(auto_settings.get("dry_run_mode", True)),
+        "dry_run": dry_run,
+        "shadow_session_id": shadow_session_id,
     }
 
     if search_enabled and discovery_allowed:
         search_plan = build_search_plan(user)
         if search_plan["ready"]:
-            run_job_search.delay(
+            search_task = run_job_search.delay(
                 user_id=user.id,
                 search_params={
                     **search_plan["search_params"],
                     "_origin": "scheduler",
+                    "_shadow_session_id": shadow_session_id,
                 },
             )
             result["searched"] = True
             result["search_params"] = search_plan["search_params"]
+            result["search_task_id"] = getattr(search_task, "id", None)
         else:
             result["search_blocker"] = {
                 "code": search_plan["reason_code"],
@@ -263,8 +301,8 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
         if len(approved_jobs) >= run_limit:
             break
 
-    dry_run = bool(auto_settings.get("dry_run_mode", True)) or not settings.allow_real_application_submit
     countdown = 120
+    source = "full_stack_shadow_scheduler" if shadow_session_id is not None else "bounded_scheduler"
     for job in approved_jobs:
         job.status = JobStatus.approved
         app_obj = Application(
@@ -276,17 +314,20 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
         )
         db.add(app_obj)
         db.flush()
-        db.add(ApplicationEvent(
-            application_id=app_obj.id,
-            event_type="application_created",
-            from_state=None,
-            to_state=ApplicationAutomationState.preparing.value,
-            payload={
-                "job_id": job.id,
-                "source": "bounded_scheduler",
-                "dry_run": dry_run,
-            },
-        ))
+        db.add(
+            ApplicationEvent(
+                application_id=app_obj.id,
+                event_type="application_created",
+                from_state=None,
+                to_state=ApplicationAutomationState.preparing.value,
+                payload={
+                    "job_id": job.id,
+                    "source": source,
+                    "dry_run": dry_run,
+                    "shadow_session_id": shadow_session_id,
+                },
+            )
+        )
         generate_cover_letter_task.delay(app_obj.id)
         submit_unattended_application_task.apply_async(
             args=[app_obj.id],
@@ -294,9 +335,9 @@ def _run_scheduler_cycle_for_user(db, user: User) -> dict[str, Any]:
             countdown=countdown,
         )
         result["applications_queued"] += 1
+        result["application_ids_queued"].append(app_obj.id)
         countdown += 30
     db.commit()
-    result["dry_run"] = dry_run
     return result
 
 
@@ -347,7 +388,9 @@ def daily_auto_search_all():
             "skipped": False,
             "users_considered": len(users),
             "searched_for": sum(1 for item in cycles if item.get("searched")),
-            "applications_queued": sum(int(item.get("applications_queued") or 0) for item in cycles),
+            "applications_queued": sum(
+                int(item.get("applications_queued") or 0) for item in cycles
+            ),
             "cycles": cycles,
             "real_submission_enabled": settings.allow_real_application_submit,
         }
