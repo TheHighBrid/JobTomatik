@@ -13,6 +13,7 @@ on:
       - "docker-compose.yml"
       - ".env.example"
       - "scripts/jobtomatik-compose.sh"
+      - "scripts/jobtomatik-runtime.sh"
       - ".github/workflows/android-apk.yml"
       - ".github/workflows/full-stack-shadow-campaigns.yml"
       - ".github/workflows/runtime-revision-attestation.yml"
@@ -31,6 +32,7 @@ on:
       - "docker-compose.yml"
       - ".env.example"
       - "scripts/jobtomatik-compose.sh"
+      - "scripts/jobtomatik-runtime.sh"
       - ".github/workflows/android-apk.yml"
       - ".github/workflows/full-stack-shadow-campaigns.yml"
       - ".github/workflows/runtime-revision-attestation.yml"
@@ -157,6 +159,9 @@ jobs:
         run: |
           grep -Fq 'git rev-parse HEAD' scripts/jobtomatik-compose.sh
           grep -Fq 'JOBTOMATIK_EXPECTED_REVISION' scripts/jobtomatik-compose.sh
+          grep -Fq 'git -C "$ROOT_DIR" rev-parse HEAD' scripts/jobtomatik-runtime.sh
+          grep -Fq 'JOBTOMATIK_RUNTIME_ROLE="$ROLE"' scripts/jobtomatik-runtime.sh
+          grep -Fq 'check_runtime_identity.py --require-sensitive' scripts/jobtomatik-runtime.sh
           grep -Fq 'SOURCE-COMMIT.txt' .github/workflows/android-apk.yml
           grep -Fq 'VITE_JOBTOMATIK_RUNTIME_REVISION:' .github/workflows/android-apk.yml
           grep -Fq 'github.sha' .github/workflows/android-apk.yml
