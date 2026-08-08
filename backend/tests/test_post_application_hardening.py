@@ -120,9 +120,10 @@ def test_recruiter_email_matching_is_literal_not_sql_wildcard(auth_client):
     db = TestingSessionLocal()
     try:
         user = _user(db)
+        user_id = user.id
         application = _application(db, user, external_id="phase9-contact-literal")
         existing = RecruiterContact(
-            user_id=user.id,
+            user_id=user_id,
             company="Example Financial",
             full_name="Different Contact",
             email="talentXops@example.com",
@@ -154,7 +155,7 @@ def test_recruiter_email_matching_is_literal_not_sql_wildcard(auth_client):
         contacts = (
             db.query(RecruiterContact)
             .filter(
-                RecruiterContact.user_id == user.id,
+                RecruiterContact.user_id == user_id,
                 RecruiterContact.company == "Example Financial",
             )
             .all()
