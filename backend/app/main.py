@@ -29,6 +29,7 @@ from app.api import (
     profile,
     recovery,
     scheduler,
+    shadow_runs,
     settings as settings_api,
     submission_evidence_reviews,
     supervised_pilot_roster,
@@ -258,6 +259,7 @@ app.include_router(scheduler.router, prefix="/api")
 app.include_router(post_application.router, prefix="/api")
 app.include_router(certification.router, prefix="/api")
 app.include_router(recovery.router, prefix="/api")
+app.include_router(shadow_runs.router, prefix="/api")
 
 
 @app.get("/health")
@@ -291,20 +293,4 @@ async def autonomy_certification():
 
 @app.get("/api/system/operations-readiness")
 async def operations_readiness():
-    readiness = operations_readiness_manifest()
-    ats = ats_certification_manifest()
-    maturities = {
-        item["name"]: item.get("maturity")
-        for item in ats.get("adapters", [])
-    }
-    readiness["product_goal"] = "fully_autonomous_evidence_backed_real_submission"
-    readiness["adapter_maturities"] = maturities
-    readiness["autonomous_adapters"] = list(ats.get("autonomous_adapters", []))
-    readiness["autonomous_adapter_count"] = len(readiness["autonomous_adapters"])
-    readiness["invariants"]["canonical_adapter_maturity_required"] = True
-    readiness["invariants"]["no_autonomous_adapter_currently_enabled"] = not bool(
-        readiness["autonomous_adapters"]
-    )
-    readiness["invariants"]["recruiter_followup_requires_independent_approval"] = True
-    readiness["recruiter_followup_send_enabled"] = bool(settings.allow_real_followup_send)
-    return readiness
+    return operations_readiness_manifest()
