@@ -17,8 +17,8 @@ def _token(client, email: str) -> str:
 
 
 def test_same_external_evidence_identity_does_not_collide_across_accounts(client):
-    first_token = _token(client, "cert-owner-one@example.test")
-    second_token = _token(client, "cert-owner-two@example.test")
+    first_token = _token(client, "cert-owner-one@example.com")
+    second_token = _token(client, "cert-owner-two@example.com")
     payload = {
         "evidence_type": "duplicate_prevention",
         "commit_sha": "a" * 40,
