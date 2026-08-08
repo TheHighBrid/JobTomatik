@@ -52,7 +52,8 @@ def test_active_guard_is_unique_and_terminal_state_releases_it(db_session):
     user = _user(db_session)
     first = _session(user.id)
     db_session.add(first)
-    db_session.flush()
+    db_session.commit()
+    db_session.refresh(first)
     assert first.active_guard == f"user:{user.id}"
 
     conflicting = _session(user.id)
@@ -65,7 +66,8 @@ def test_active_guard_is_unique_and_terminal_state_releases_it(db_session):
     first = db_session.query(ShadowRunSession).filter(ShadowRunSession.user_id == user.id).one()
     first.status = "failed"
     first.completed_at = datetime.now(timezone.utc)
-    db_session.flush()
+    db_session.commit()
+    db_session.refresh(first)
     assert first.active_guard is None
 
     later = _session(user.id)
@@ -86,6 +88,7 @@ def test_stalled_recovery_redispatches_only_stale_active_sessions(db_session, mo
     db_session.add(fresh)
     db_session.commit()
 
+    stale_id = stale.id
     dispatched = []
 
     def fake_delay(session_id):
@@ -99,9 +102,9 @@ def test_stalled_recovery_redispatches_only_stale_active_sessions(db_session, mo
 
     assert result["active_sessions_checked"] == 2
     assert result["stalled_sessions"] == 1
-    assert dispatched == [stale.id]
+    assert dispatched == [stale_id]
     assert result["dispatches"] == [
-        {"session_id": stale.id, "task_id": f"shadow-recovery-{stale.id}"}
+        {"session_id": stale_id, "task_id": f"shadow-recovery-{stale_id}"}
     ]
     assert result["submission_authorized"] is False
     assert result["outreach_authorized"] is False
