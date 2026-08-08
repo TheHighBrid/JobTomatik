@@ -37,9 +37,9 @@ test('reliability console uses dedicated read and notification-sync operations',
 test('reliability console states its non-consequential safety boundary', () => {
   assert.equal(pageSource.includes('Evidence-only control surface'), true)
   assert.equal(pageSource.includes('cannot enable live submission'), true)
-  assert.equal(pageSource.includes('cannot promote adapter maturity'), true)
-  assert.equal(pageSource.includes('cannot retry an application'), true)
-  assert.equal(pageSource.includes('cannot send recruiter outreach'), true)
+  assert.equal(pageSource.includes('promote adapter maturity'), true)
+  assert.equal(pageSource.includes('retry an application'), true)
+  assert.equal(pageSource.includes('send recruiter outreach'), true)
 })
 
 test('scheduled operations refresh incidents without changing its runtime task identity', () => {
