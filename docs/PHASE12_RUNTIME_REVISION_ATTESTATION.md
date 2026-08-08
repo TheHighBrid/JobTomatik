@@ -6,6 +6,8 @@ Phase 11 made it possible to collect real 4-hour, 8-hour, and 24-hour full-stack
 
 This closes a concrete deployment gap. Phase 10's `current_revision()` correctly returns `unknown` rather than inventing a commit when no identity is available. In Docker Compose, however, the backend source is mounted as `./backend:/app`; the repository `.git` directory is normally not present inside `/app`. Before Phase 12, API/worker/beat also did not receive `JOBTOMATIK_RUNTIME_REVISION` through Compose. A production-like shadow campaign could therefore be unable to establish an exact candidate revision even though its application logic was healthy.
 
+The Android/Ubuntu PRoot reference setup had the complementary problem: the repository does contain `.git`, but the documented Uvicorn/Celery commands did not stamp that commit into a shared expected/runtime identity before launch. Phase 12 gives both deployment styles the same contract.
+
 The Phase 12 rule is:
 
 > A sensitive JobTomatik runtime must know the exact commit it is running, know the exact commit it was expected to run, and prove those values are identical before it begins consequential or certification-relevant operation.
@@ -51,7 +53,7 @@ Merely being inside a git checkout is therefore enough to make the revision obse
 
 ## Sensitive-runtime startup gate
 
-`backend/scripts/check_runtime_identity.py` is executed before API, Celery worker, and Celery beat start under Docker Compose.
+`backend/scripts/check_runtime_identity.py` is executed before protected API, Celery worker, and Celery beat launch paths.
 
 With `--require-sensitive`, attestation becomes mandatory when any of these are true:
 
@@ -68,7 +70,7 @@ Non-sensitive local development remains usable without attestation. That preserv
 
 ## Revision-stamped Compose launch
 
-For a repository checkout, use:
+For a repository checkout using Docker, use:
 
 ```bash
 bash scripts/jobtomatik-compose.sh up -d
@@ -90,6 +92,43 @@ bash scripts/jobtomatik-compose.sh config
 ```
 
 API, worker, and beat receive the same exact revision and expected revision, while their roles remain distinct.
+
+## Revision-stamped Android / Ubuntu PRoot launch
+
+The Android-first reference runtime can use the repository launcher directly from `/root/JobTomatik`:
+
+API terminal:
+
+```bash
+cd /root/JobTomatik
+bash scripts/jobtomatik-runtime.sh api
+```
+
+Worker terminal:
+
+```bash
+cd /root/JobTomatik
+bash scripts/jobtomatik-runtime.sh worker
+```
+
+Optional beat terminal:
+
+```bash
+cd /root/JobTomatik
+bash scripts/jobtomatik-runtime.sh beat
+```
+
+The launcher:
+
+- derives the revision with `git -C /root/JobTomatik rev-parse HEAD` through its repository-root calculation;
+- sets the same value as the expected revision unless an expected revision was supplied explicitly;
+- assigns the appropriate `api`, `worker`, or `beat` role;
+- uses `backend/.venv/bin/python` when available;
+- runs the sensitive-runtime checker before the process starts;
+- launches Uvicorn on `127.0.0.1:8010` for the API;
+- launches the Android reference solo Celery worker with the established queues.
+
+This is the recommended launcher when collecting real shadow evidence on the Android/PRoot runtime. The older direct `uvicorn` and `celery` commands remain suitable only for non-sensitive development where no deployment-attestation claim is being made.
 
 ## Read-only runtime identity API
 
@@ -129,7 +168,7 @@ When autopilot is enabled:
 - the Celery shadow worker independently checks attestation before executing a cycle;
 - stalled-session recovery checks the same condition before redispatch.
 
-This is defense in depth. Skipping the Compose launcher and manually starting a process does not bypass the shadow-campaign identity requirement.
+This is defense in depth. Skipping the recommended launchers and manually starting a process does not bypass the shadow-campaign identity requirement.
 
 When autopilot is disabled, deterministic unit tests and ordinary non-sensitive development can still exercise local service logic without claiming a production deployment attestation.
 
@@ -159,11 +198,20 @@ The Android artifact contract remains separate from runtime submission authority
 
 Before starting the 4-hour clock:
 
-1. Check out the exact candidate commit intended for certification.
-2. Start the stack through:
+1. Check out the exact candidate commit intended for certification in the runtime repository.
+2. Start the runtime through the appropriate revision-stamped launcher:
+
+   Docker:
 
    ```bash
    bash scripts/jobtomatik-compose.sh up -d
+   ```
+
+   Android/Ubuntu PRoot:
+
+   ```bash
+   bash scripts/jobtomatik-runtime.sh api
+   bash scripts/jobtomatik-runtime.sh worker
    ```
 
 3. Confirm:
@@ -195,6 +243,7 @@ If any revision changes while a Phase 11 campaign is running, the existing candi
 - ordinary non-sensitive development remains usable;
 - API/worker/beat receive one exact revision through rendered Compose;
 - all three Compose processes run the startup checker;
+- the Android/PRoot launcher derives repository HEAD, assigns a bounded role, and invokes the same startup checker;
 - runtime identity endpoints grant no submission/outreach authority;
 - an unattested shadow API cannot create a campaign;
 - a direct unattested shadow-worker invocation cannot execute a cycle;
