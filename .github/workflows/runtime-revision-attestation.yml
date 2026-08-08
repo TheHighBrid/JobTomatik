@@ -158,6 +158,7 @@ jobs:
           grep -Fq 'git rev-parse HEAD' scripts/jobtomatik-compose.sh
           grep -Fq 'JOBTOMATIK_EXPECTED_REVISION' scripts/jobtomatik-compose.sh
           grep -Fq 'SOURCE-COMMIT.txt' .github/workflows/android-apk.yml
-          grep -Fq 'VITE_JOBTOMATIK_RUNTIME_REVISION: ${{ github.sha }}' .github/workflows/android-apk.yml
+          grep -Fq 'VITE_JOBTOMATIK_RUNTIME_REVISION:' .github/workflows/android-apk.yml
+          grep -Fq 'github.sha' .github/workflows/android-apk.yml
           grep -Fq 'JOBTOMATIK_RUNTIME_REVISION=' .env.example
           grep -Fq 'JOBTOMATIK_EXPECTED_REVISION=' .env.example
