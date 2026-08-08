@@ -15,6 +15,7 @@ on:
       - "scripts/jobtomatik-compose.sh"
       - "scripts/jobtomatik-runtime.sh"
       - ".github/workflows/android-apk.yml"
+      - ".github/workflows/android-runtime-dispatch-acceptance.yml"
       - ".github/workflows/full-stack-shadow-campaigns.yml"
       - ".github/workflows/runtime-revision-attestation.yml"
       - "docs/PHASE12_RUNTIME_REVISION_ATTESTATION.md"
@@ -34,6 +35,7 @@ on:
       - "scripts/jobtomatik-compose.sh"
       - "scripts/jobtomatik-runtime.sh"
       - ".github/workflows/android-apk.yml"
+      - ".github/workflows/android-runtime-dispatch-acceptance.yml"
       - ".github/workflows/full-stack-shadow-campaigns.yml"
       - ".github/workflows/runtime-revision-attestation.yml"
       - "docs/PHASE12_RUNTIME_REVISION_ATTESTATION.md"
@@ -165,5 +167,7 @@ jobs:
           grep -Fq 'SOURCE-COMMIT.txt' .github/workflows/android-apk.yml
           grep -Fq 'VITE_JOBTOMATIK_RUNTIME_REVISION:' .github/workflows/android-apk.yml
           grep -Fq 'github.sha' .github/workflows/android-apk.yml
+          grep -Fq 'JOBTOMATIK_EXPECTED_REVISION:' .github/workflows/android-runtime-dispatch-acceptance.yml
+          grep -Fq 'check_runtime_identity.py --require-attested' .github/workflows/android-runtime-dispatch-acceptance.yml
           grep -Fq 'JOBTOMATIK_RUNTIME_REVISION=' .env.example
           grep -Fq 'JOBTOMATIK_EXPECTED_REVISION=' .env.example
