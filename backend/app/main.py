@@ -24,6 +24,7 @@ from app.api import (
     notifications,
     operations,
     pilot_ledger,
+    post_application,
     profile,
     scheduler,
     settings as settings_api,
@@ -252,6 +253,7 @@ app.include_router(agent_execution.router, prefix="/api")
 app.include_router(evaluations.router, prefix="/api")
 app.include_router(operations.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
+app.include_router(post_application.router, prefix="/api")
 
 
 @app.get("/health")
