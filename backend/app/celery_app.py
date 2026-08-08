@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.tasks.followup",
         "app.tasks.operations",
         "app.tasks.runtime",
+        "app.tasks.shadow_runs",
     ],
 )
 
@@ -31,6 +32,7 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     task_routes={
         "app.tasks.scraping.*": {"queue": "scraping"},
+        "app.tasks.shadow_runs.*": {"queue": "scraping"},
         "app.tasks.applications.*": {"queue": "applications"},
         "app.tasks.handoffs.*": {"queue": "applications"},
         "app.tasks.unattended.*": {"queue": "applications"},
@@ -50,6 +52,10 @@ celery_app.conf.update(
         "recover-stale-application-attempts": {
             "task": "app.tasks.operations.recover_stale_application_attempts",
             "schedule": crontab(minute="5,20,35,50"),
+        },
+        "recover-stalled-shadow-campaigns": {
+            "task": "app.tasks.shadow_runs.recover_stalled_shadow_sessions",
+            "schedule": crontab(minute="11,26,41,56"),
         },
         "refresh-adapter-health-alerts-hourly": {
             "task": "app.tasks.operations.refresh_adapter_health_alerts",
