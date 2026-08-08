@@ -4,20 +4,30 @@ on:
   pull_request:
     paths:
       - "backend/app/api/certification.py"
+      - "backend/app/api/recovery.py"
       - "backend/app/models/certification.py"
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/certification.py"
+      - "backend/app/schemas/recovery.py"
       - "backend/app/services/certification_scale.py"
+      - "backend/app/services/dead_letter.py"
+      - "backend/app/services/dead_letter_drill.py"
       - "backend/app/services/shadow_rehearsal.py"
+      - "backend/app/tasks/agent_execution.py"
       - "backend/app/main.py"
+      - "backend/scripts/run_dead_letter_recovery_drill.py"
       - "backend/scripts/run_shadow_rehearsal.py"
       - "backend/tests/test_certification_scale.py"
+      - "backend/tests/test_dead_letter_drill.py"
+      - "backend/tests/test_dead_letter_recovery.py"
       - "backend/tests/test_shadow_rehearsal.py"
       - "frontend/src/api/certification.js"
       - "frontend/src/pages/CertificationCenter.jsx"
+      - "frontend/src/pages/RecoveryCenter.jsx"
       - "frontend/src/App.jsx"
       - "frontend/src/components/Layout.jsx"
       - "frontend/test/certification-center.test.js"
+      - "frontend/test/recovery-center.test.js"
       - "docs/PHASE10_CERTIFICATION_SCALE.md"
       - ".github/workflows/certification-scale.yml"
   push:
@@ -25,20 +35,30 @@ on:
       - main
     paths:
       - "backend/app/api/certification.py"
+      - "backend/app/api/recovery.py"
       - "backend/app/models/certification.py"
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/certification.py"
+      - "backend/app/schemas/recovery.py"
       - "backend/app/services/certification_scale.py"
+      - "backend/app/services/dead_letter.py"
+      - "backend/app/services/dead_letter_drill.py"
       - "backend/app/services/shadow_rehearsal.py"
+      - "backend/app/tasks/agent_execution.py"
       - "backend/app/main.py"
+      - "backend/scripts/run_dead_letter_recovery_drill.py"
       - "backend/scripts/run_shadow_rehearsal.py"
       - "backend/tests/test_certification_scale.py"
+      - "backend/tests/test_dead_letter_drill.py"
+      - "backend/tests/test_dead_letter_recovery.py"
       - "backend/tests/test_shadow_rehearsal.py"
       - "frontend/src/api/certification.js"
       - "frontend/src/pages/CertificationCenter.jsx"
+      - "frontend/src/pages/RecoveryCenter.jsx"
       - "frontend/src/App.jsx"
       - "frontend/src/components/Layout.jsx"
       - "frontend/test/certification-center.test.js"
+      - "frontend/test/recovery-center.test.js"
       - "docs/PHASE10_CERTIFICATION_SCALE.md"
       - ".github/workflows/certification-scale.yml"
   workflow_dispatch:
@@ -86,11 +106,31 @@ jobs:
         run: |
           python -m pytest -q --tb=short -ra \
             tests/test_certification_scale.py \
+            tests/test_dead_letter_drill.py \
+            tests/test_dead_letter_recovery.py \
             tests/test_shadow_rehearsal.py
 
       - name: Run isolated recovery incident drill
         working-directory: backend
         run: python scripts/run_recovery_incident_drill.py --output certification-artifacts/recovery-drill.json
+
+      - name: Run isolated dead-letter checkpoint drill
+        working-directory: backend
+        run: |
+          python scripts/run_dead_letter_recovery_drill.py --output certification-artifacts/dead-letter-recovery.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('certification-artifacts/dead-letter-recovery.json').read_text())
+          assert report['passed'] is True
+          assert report['certification_metadata']['dead_letter_verified'] is True
+          assert report['certification_metadata']['checkpoint_resume_verified'] is True
+          assert report['certification_metadata']['checkpoint_drift_blocked'] is True
+          assert report['certification_metadata']['submission_authorized'] is False
+          assert report['certification_metadata']['outreach_authorized'] is False
+          assert report['safety']['browser_opened'] is False
+          assert report['safety']['network_contacted'] is False
+          PY
 
       - name: Run short no-submit shadow harness smoke
         working-directory: backend
@@ -133,7 +173,9 @@ jobs:
 
       - name: Run Phase 10 frontend contract
         working-directory: frontend
-        run: node --test test/certification-center.test.js
+        run: |
+          node --test test/certification-center.test.js
+          node --test test/recovery-center.test.js
 
       - name: Build frontend
         working-directory: frontend
