@@ -27,6 +27,7 @@ from app.api import (
     pilot_ledger,
     post_application,
     profile,
+    recovery,
     scheduler,
     settings as settings_api,
     submission_evidence_reviews,
@@ -173,6 +174,12 @@ def _safe_migrate(eng):
                     "ON applications (automation_state)"
                 )
             )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_applications_application_target_status "
+                    "ON applications (application_target_status)"
+                )
+            )
             conn.commit()
         except Exception as exc:
             conn.rollback()
@@ -250,6 +257,7 @@ app.include_router(operations.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
 app.include_router(post_application.router, prefix="/api")
 app.include_router(certification.router, prefix="/api")
+app.include_router(recovery.router, prefix="/api")
 
 
 @app.get("/health")
