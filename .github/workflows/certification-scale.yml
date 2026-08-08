@@ -1,0 +1,140 @@
+name: Certification and scale
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/api/certification.py"
+      - "backend/app/models/certification.py"
+      - "backend/app/models/__init__.py"
+      - "backend/app/schemas/certification.py"
+      - "backend/app/services/certification_scale.py"
+      - "backend/app/services/shadow_rehearsal.py"
+      - "backend/app/main.py"
+      - "backend/scripts/run_shadow_rehearsal.py"
+      - "backend/tests/test_certification_scale.py"
+      - "backend/tests/test_shadow_rehearsal.py"
+      - "frontend/src/api/certification.js"
+      - "frontend/src/pages/CertificationCenter.jsx"
+      - "frontend/src/App.jsx"
+      - "frontend/src/components/Layout.jsx"
+      - "frontend/test/certification-center.test.js"
+      - "docs/PHASE10_CERTIFICATION_SCALE.md"
+      - ".github/workflows/certification-scale.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/api/certification.py"
+      - "backend/app/models/certification.py"
+      - "backend/app/models/__init__.py"
+      - "backend/app/schemas/certification.py"
+      - "backend/app/services/certification_scale.py"
+      - "backend/app/services/shadow_rehearsal.py"
+      - "backend/app/main.py"
+      - "backend/scripts/run_shadow_rehearsal.py"
+      - "backend/tests/test_certification_scale.py"
+      - "backend/tests/test_shadow_rehearsal.py"
+      - "frontend/src/api/certification.js"
+      - "frontend/src/pages/CertificationCenter.jsx"
+      - "frontend/src/App.jsx"
+      - "frontend/src/components/Layout.jsx"
+      - "frontend/test/certification-center.test.js"
+      - "docs/PHASE10_CERTIFICATION_SCALE.md"
+      - ".github/workflows/certification-scale.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: certification-scale-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: sqlite:///./certification-scale.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: certification-scale-secret-2026
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  GLOBAL_KILL_SWITCH: "false"
+
+jobs:
+  phase10-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Run Phase 10 backend safety matrix
+        working-directory: backend
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_certification_scale.py \
+            tests/test_shadow_rehearsal.py
+
+      - name: Run isolated recovery incident drill
+        working-directory: backend
+        run: python scripts/run_recovery_incident_drill.py --output certification-artifacts/recovery-drill.json
+
+      - name: Run short no-submit shadow harness smoke
+        working-directory: backend
+        run: |
+          python scripts/run_shadow_rehearsal.py \
+            --duration-seconds 2 \
+            --interval-seconds 0.25 \
+            --output certification-artifacts/shadow-smoke.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('certification-artifacts/shadow-smoke.json').read_text())
+          assert report['completed'] is True
+          assert report['measured_elapsed_time'] is True
+          assert report['qualification_eligible'] is False
+          assert report['safety']['final_submit_enabled'] is False
+          assert report['safety']['final_submit_clicked'] is False
+          assert report['safety']['browser_opened'] is False
+          assert report['safety']['network_contacted'] is False
+          PY
+
+      - name: Upload no-submit certification smoke artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: phase10-certification-smoke-${{ github.sha }}
+          path: backend/certification-artifacts/*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts
+
+      - name: Run Phase 10 frontend contract
+        working-directory: frontend
+        run: node --test test/certification-center.test.js
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
