@@ -266,6 +266,11 @@ def verify_certification_evidence(
     db: Session = Depends(get_db),
 ):
     record = _owned_or_system_evidence(db, user_id=current_user.id, evidence_id=evidence_id)
+    if record.recorded_by_user_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="System-scoped certification evidence cannot be user-verified",
+        )
     expected = _expected_review_ack(record)
     if payload.acknowledgment != expected:
         raise HTTPException(
