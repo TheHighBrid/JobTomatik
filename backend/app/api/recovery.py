@@ -8,6 +8,7 @@ from app.schemas.recovery import DeadLetterRequeueRequest, DeadLetterResolveRequ
 from app.services.dead_letter import (
     DeadLetterError,
     list_dead_letters,
+    reopen_dead_letter_after_dispatch_failure,
     requeue_dead_letter,
     resolve_dead_letter,
 )
@@ -51,12 +52,35 @@ def requeue_dead_letter_task(
             task_id=task_id,
             acknowledgment=payload.acknowledgment,
         )
+        # The state must exist before a worker can claim it.
         db.commit()
     except DeadLetterError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    dispatch = dispatch_agent_run_task.delay(result["run_id"])
+    try:
+        dispatch = dispatch_agent_run_task.delay(result["run_id"])
+    except Exception as exc:
+        # A broker outage after the commit must not strand the task as requeued.
+        # Reopen the retained envelope so the operator can retry the dispatch safely.
+        try:
+            reopen_dead_letter_after_dispatch_failure(
+                db,
+                user_id=current_user.id,
+                task_id=task_id,
+                error=str(exc),
+            )
+            db.commit()
+        except DeadLetterError:
+            db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Dead-letter requeue was retained but dispatch failed; the dead letter "
+                "was reopened for explicit retry"
+            ),
+        ) from exc
+
     return {
         **result,
         "dispatch_task_id": dispatch.id,
