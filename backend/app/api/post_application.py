@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -56,6 +57,38 @@ def _get_owned_application(db: Session, user_id: int, application_id: int) -> Ap
     return application
 
 
+def _source_reference_duplicate(
+    db: Session,
+    *,
+    application_id: int,
+    source_reference: str,
+) -> ApplicationEvent | None:
+    """Return a prior inbound event bound to the same provider/user message identity.
+
+    ``received_at`` is optional for manual ingestion. Relying only on a hash that
+    includes a server-generated receipt time would therefore make a repeated manual
+    import look new on every attempt. The required source reference is the stable
+    idempotency identity for that path; the content hash remains a second check when
+    a caller supplies distinct source references.
+    """
+    events = (
+        db.query(ApplicationEvent)
+        .filter(
+            ApplicationEvent.application_id == application_id,
+            ApplicationEvent.event_type == "inbound_employer_message",
+        )
+        .order_by(ApplicationEvent.created_at.desc())
+        .limit(250)
+        .all()
+    )
+    identity = source_reference.strip()
+    for event in events:
+        payload = dict(event.payload or {})
+        if str(payload.get("source_reference") or "").strip() == identity:
+            return event
+    return None
+
+
 def _event_to_message_out(event: ApplicationEvent, *, duplicate: bool) -> EmployerMessageOut:
     payload = dict(event.payload or {})
     return EmployerMessageOut(
@@ -94,6 +127,15 @@ def ingest_employer_message(
     db: Session = Depends(get_db),
 ):
     application = _get_owned_application(db, current_user.id, application_id)
+
+    source_duplicate = _source_reference_duplicate(
+        db,
+        application_id=application.id,
+        source_reference=payload.source_reference,
+    )
+    if source_duplicate is not None:
+        return _event_to_message_out(source_duplicate, duplicate=True)
+
     received_at = ensure_aware(payload.received_at) or utc_now()
     message_hash = employer_message_hash(
         sender_email=str(payload.sender_email),
@@ -114,14 +156,15 @@ def ingest_employer_message(
     recruiter_interaction_id = None
     sender_email = str(payload.sender_email).strip().casefold()
     account_email = str(current_user.email or "").strip().casefold()
+    company_identity = str(application.job.company or "").strip().casefold()
 
     if payload.create_recruiter_contact and sender_email != account_email:
         contact = (
             db.query(RecruiterContact)
             .filter(
                 RecruiterContact.user_id == current_user.id,
-                RecruiterContact.company == application.job.company,
-                RecruiterContact.email.ilike(sender_email),
+                func.lower(RecruiterContact.company) == company_identity,
+                func.lower(RecruiterContact.email) == sender_email,
             )
             .first()
         )
