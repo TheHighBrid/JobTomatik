@@ -1,0 +1,99 @@
+name: Post-application operations certification
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/api/post_application.py"
+      - "backend/app/schemas/post_application.py"
+      - "backend/app/services/post_application_operations.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_post_application_operations.py"
+      - "backend/tests/test_post_application_hardening.py"
+      - "frontend/src/api/postApplication.js"
+      - "frontend/src/pages/PostApplicationCenter.jsx"
+      - "frontend/src/App.jsx"
+      - "frontend/src/components/Layout.jsx"
+      - "frontend/test/post-application-center.test.js"
+      - "docs/PHASE9_POST_APPLICATION_OPERATIONS.md"
+      - ".github/workflows/post-application-certification.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/api/post_application.py"
+      - "backend/app/schemas/post_application.py"
+      - "backend/app/services/post_application_operations.py"
+      - "backend/app/main.py"
+      - "backend/tests/test_post_application_operations.py"
+      - "backend/tests/test_post_application_hardening.py"
+      - "frontend/src/api/postApplication.js"
+      - "frontend/src/pages/PostApplicationCenter.jsx"
+      - "frontend/src/App.jsx"
+      - "frontend/src/components/Layout.jsx"
+      - "frontend/test/post-application-center.test.js"
+      - "docs/PHASE9_POST_APPLICATION_OPERATIONS.md"
+      - ".github/workflows/post-application-certification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-application-certification-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: sqlite:///./post-application-certification.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: post-application-certification-secret-2026
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+
+jobs:
+  phase9-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Run Phase 9 backend safety matrix
+        working-directory: backend
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_post_application_operations.py \
+            tests/test_post_application_hardening.py
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts
+
+      - name: Run Phase 9 frontend contract
+        working-directory: frontend
+        run: node --test test/post-application-center.test.js
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build

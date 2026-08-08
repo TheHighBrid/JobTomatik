@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import CommandCenter from './pages/CommandCenter'
 import OperationsCenter from './pages/OperationsCenter'
 import SchedulerCenter from './pages/SchedulerCenter'
+import PostApplicationCenter from './pages/PostApplicationCenter'
 import ExecutionCenter from './pages/ExecutionCenter'
 import HandoffReview from './pages/HandoffReview'
 import FollowUpReview from './pages/FollowUpReview'
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="command-center" element={<CommandCenter />} />
           <Route path="operations" element={<OperationsCenter />} />
           <Route path="scheduler" element={<SchedulerCenter />} />
+          <Route path="post-application" element={<PostApplicationCenter />} />
           <Route path="execution" element={<ExecutionCenter />} />
           <Route path="handoff-review" element={<HandoffReview />} />
           <Route path="followup-review" element={<FollowUpReview />} />
