@@ -32,7 +32,27 @@ def _source_values(sources: list[Any] | None) -> list[str]:
     )
 
 
-async def search_jobs(
+def _diagnostic(
+    *,
+    source: str,
+    kind: str,
+    status: str,
+    result_count: int = 0,
+    target: str | None = None,
+    error_code: str | None = None,
+) -> dict[str, Any]:
+    """Return bounded source telemetry without exception text or credentials."""
+    return {
+        "source": str(source or "unknown").strip().lower(),
+        "kind": kind,
+        "status": status,
+        "result_count": max(0, int(result_count or 0)),
+        "target": str(target).strip()[:180] if target else None,
+        "error_code": str(error_code).strip().lower()[:100] if error_code else None,
+    }
+
+
+async def search_jobs_with_diagnostics(
     keywords: str,
     location: str | None = None,
     salary_min: int | None = None,
@@ -41,23 +61,40 @@ async def search_jobs(
     sources: list[str] | None = None,
     ats_targets: list[dict[str, Any]] | None = None,
     limit: int = 50,
-) -> list[dict[str, Any]]:
-    """Search existing boards plus explicitly configured official ATS tenants."""
+) -> dict[str, Any]:
+    """Search configured sources and return jobs plus safe per-source telemetry.
+
+    A single source failure never aborts the remaining search. Diagnostics deliberately
+    omit raw exception messages because provider libraries can include request URLs or
+    other sensitive runtime detail in exception strings.
+    """
 
     normalized_sources = _source_values(sources)
     targets: list[dict[str, str]] = []
+    diagnostics: list[dict[str, Any]] = []
     for target in ats_targets or []:
         try:
             normalized = normalize_target(target)
-        except PublicATSDiscoveryError as exc:
-            logger.warning("Ignoring invalid ATS target: %s", exc)
+        except PublicATSDiscoveryError:
+            diagnostics.append(_diagnostic(
+                source="ats_target",
+                kind="public_ats",
+                status="failed",
+                error_code="invalid_target",
+            ))
+            logger.warning("Ignoring invalid ATS target")
             continue
         if sources is None or normalized["provider"] in normalized_sources:
             targets.append(normalized)
 
     tasks: list[Any] = []
-    broad_sources = [source for source in normalized_sources if source in BROAD_SOURCES]
-    if broad_sources:
+    task_meta: list[dict[str, Any]] = []
+
+    # Run broad boards independently so one provider outage is observable rather than
+    # collapsing several providers into one opaque aggregate failure.
+    for source in normalized_sources:
+        if source not in BROAD_SOURCES:
+            continue
         tasks.append(
             search_broad_jobs(
                 keywords=keywords,
@@ -65,10 +102,11 @@ async def search_jobs(
                 salary_min=salary_min,
                 salary_max=salary_max,
                 job_type=job_type,
-                sources=broad_sources,
+                sources=[source],
                 limit=limit,
             )
         )
+        task_meta.append({"source": source, "kind": "broad_board", "target": None})
 
     target_limit = max(1, min(50, limit // max(len(targets), 1) + 1))
     for target in targets:
@@ -81,18 +119,38 @@ async def search_jobs(
                 limit=target_limit,
             )
         )
+        task_meta.append({
+            "source": target["provider"],
+            "kind": "public_ats",
+            "target": target.get("identifier"),
+        })
 
     if not tasks:
-        return []
+        return {"jobs": [], "source_diagnostics": diagnostics}
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     discovered: list[dict[str, Any]] = []
-    for result in results:
+    for meta, result in zip(task_meta, results):
         if isinstance(result, Exception):
-            logger.warning("Discovery source failed without aborting the search: %s", result)
+            error_code = type(result).__name__.lower()
+            diagnostics.append(_diagnostic(
+                source=meta["source"],
+                kind=meta["kind"],
+                status="failed",
+                target=meta.get("target"),
+                error_code=error_code,
+            ))
+            logger.warning("Discovery source %s failed: %s", meta["source"], error_code)
             continue
-        if isinstance(result, list):
-            discovered.extend(item for item in result if isinstance(item, dict))
+        rows = [item for item in result if isinstance(item, dict)] if isinstance(result, list) else []
+        diagnostics.append(_diagnostic(
+            source=meta["source"],
+            kind=meta["kind"],
+            status="success",
+            target=meta.get("target"),
+            result_count=len(rows),
+        ))
+        discovered.extend(rows)
 
     seen: set[str] = set()
     unique: list[dict[str, Any]] = []
@@ -112,4 +170,29 @@ async def search_jobs(
         if len(unique) >= limit:
             break
 
-    return unique
+    return {"jobs": unique, "source_diagnostics": diagnostics}
+
+
+async def search_jobs(
+    keywords: str,
+    location: str | None = None,
+    salary_min: int | None = None,
+    salary_max: int | None = None,
+    job_type: str | None = None,
+    sources: list[str] | None = None,
+    ats_targets: list[dict[str, Any]] | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Compatibility entrypoint returning only discovered jobs."""
+
+    result = await search_jobs_with_diagnostics(
+        keywords=keywords,
+        location=location,
+        salary_min=salary_min,
+        salary_max=salary_max,
+        job_type=job_type,
+        sources=sources,
+        ats_targets=ats_targets,
+        limit=limit,
+    )
+    return list(result["jobs"])
