@@ -6,10 +6,13 @@ on:
       - "backend/app/celery_app.py"
       - "backend/app/tasks/runtime.py"
       - "backend/app/services/application_recovery.py"
+      - "backend/app/services/runtime_identity.py"
+      - "backend/scripts/check_runtime_identity.py"
       - "backend/scripts/manage_android_stack.sh"
       - "backend/scripts/prepare_android_runtime.py"
       - "backend/scripts/retire_legacy_android_celery.py"
       - "backend/scripts/refresh_android_jobtomatik_tabs.py"
+      - "scripts/jobtomatik-runtime.sh"
       - "frontend/src/api/client.js"
       - "frontend/src/applicationTaskRuntime.js"
       - "frontend/src/pages/ApplicationDetail.jsx"
@@ -26,10 +29,13 @@ on:
       - "backend/app/celery_app.py"
       - "backend/app/tasks/runtime.py"
       - "backend/app/services/application_recovery.py"
+      - "backend/app/services/runtime_identity.py"
+      - "backend/scripts/check_runtime_identity.py"
       - "backend/scripts/manage_android_stack.sh"
       - "backend/scripts/prepare_android_runtime.py"
       - "backend/scripts/retire_legacy_android_celery.py"
       - "backend/scripts/refresh_android_jobtomatik_tabs.py"
+      - "scripts/jobtomatik-runtime.sh"
       - "frontend/src/api/client.js"
       - "frontend/src/applicationTaskRuntime.js"
       - "frontend/src/pages/ApplicationDetail.jsx"
@@ -57,6 +63,8 @@ env:
   ALLOW_REAL_APPLICATION_SUBMIT: "false"
   AUTOPILOT_ENABLED: "false"
   ENABLE_RESUMABLE_HANDOFFS: "false"
+  JOBTOMATIK_EXPECTED_REVISION: ${{ github.sha }}
+  JOBTOMATIK_RUNTIME_ROLE: worker
 
 jobs:
   applications-queue-round-trip:
@@ -96,6 +104,9 @@ jobs:
           revision="$(git -C .. rev-parse HEAD)"
           echo "JOBTOMATIK_RUNTIME_REVISION=$revision" >> "$GITHUB_ENV"
           echo "JOBTOMATIK_RUNTIME_REVISION_SHORT=${revision:0:12}" >> "$GITHUB_ENV"
+
+      - name: Prove Android worker revision is deployment-attested
+        run: python scripts/check_runtime_identity.py --require-attested
 
       - name: Start revisioned Android worker on Redis DB1
         run: |
