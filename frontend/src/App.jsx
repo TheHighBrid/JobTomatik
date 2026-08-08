@@ -7,6 +7,7 @@ import OperationsCenter from './pages/OperationsCenter'
 import SchedulerCenter from './pages/SchedulerCenter'
 import PostApplicationCenter from './pages/PostApplicationCenter'
 import CertificationCenter from './pages/CertificationCenter'
+import RecoveryCenter from './pages/RecoveryCenter'
 import ExecutionCenter from './pages/ExecutionCenter'
 import HandoffReview from './pages/HandoffReview'
 import FollowUpReview from './pages/FollowUpReview'
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="scheduler" element={<SchedulerCenter />} />
           <Route path="post-application" element={<PostApplicationCenter />} />
           <Route path="certification" element={<CertificationCenter />} />
+          <Route path="recovery" element={<RecoveryCenter />} />
           <Route path="execution" element={<ExecutionCenter />} />
           <Route path="handoff-review" element={<HandoffReview />} />
           <Route path="followup-review" element={<FollowUpReview />} />
