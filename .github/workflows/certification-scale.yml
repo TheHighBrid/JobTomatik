@@ -71,7 +71,7 @@ concurrency:
 env:
   DATABASE_URL: sqlite:///./certification-scale.db
   REDIS_URL: redis://localhost:6379/0
-  SECRET_KEY: certification-scale-secret-2026
+  SECRET_KEY: certification-scale-secret-2026-long-key
   AI_PROVIDER: template
   DEV_MOCK_JOBS: "false"
   ALLOW_REAL_APPLICATION_SUBMIT: "false"
@@ -107,6 +107,7 @@ jobs:
             tests/test_certification_identity_hardening.py \
             tests/test_certification_account_identity_api.py \
             tests/test_certification_system_evidence_guard.py \
+            tests/test_dead_letter_certification_evidence.py \
             tests/test_dead_letter_drill.py \
             tests/test_dead_letter_recovery.py \
             tests/test_shadow_rehearsal.py
