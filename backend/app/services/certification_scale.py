@@ -175,8 +175,14 @@ def evidence_payload(
     }
 
 
-def evidence_key_for(payload: dict[str, Any]) -> str:
+def evidence_key_for(
+    payload: dict[str, Any],
+    *,
+    owner_user_id: int | None = None,
+) -> str:
+    """Create a stable identity without letting one account reserve another's key."""
     identity = {
+        "owner_user_id": owner_user_id,
         "evidence_type": payload["evidence_type"],
         "adapter": payload.get("adapter"),
         "commit_sha": payload["commit_sha"],
@@ -224,6 +230,39 @@ def evidence_is_qualifying(
     if minimum is not None and int(record.duration_seconds or 0) < int(minimum):
         reasons.append("duration_below_minimum")
     return not reasons, reasons
+
+
+def authorization_payload(
+    *,
+    scope: str,
+    release_version: str,
+    commit_sha: str,
+    approved_by_user_id: int,
+    approval_reference: str,
+    expires_at: datetime | None,
+) -> dict[str, Any]:
+    return {
+        "version": EVIDENCE_VERSION,
+        "scope": scope,
+        "release_version": release_version,
+        "commit_sha": commit_sha,
+        "approved_by_user_id": approved_by_user_id,
+        "approval_reference": approval_reference,
+        "expires_at": ensure_aware(expires_at).isoformat() if expires_at else None,
+    }
+
+
+def authorization_integrity_ok(record: ReleaseAuthorization) -> bool:
+    """Bind active authorization to the immutable approval fields and expiry."""
+    payload = authorization_payload(
+        scope=record.scope,
+        release_version=record.release_version,
+        commit_sha=record.commit_sha,
+        approved_by_user_id=record.approved_by_user_id,
+        approval_reference=record.approval_reference,
+        expires_at=record.expires_at,
+    )
+    return canonical_hash(payload) == record.payload_hash
 
 
 def _latest_records(
@@ -281,6 +320,8 @@ def active_authorization(
     )
     for row in rows:
         expires_at = ensure_aware(row.expires_at)
+        if not authorization_integrity_ok(row):
+            continue
         if row.revoked_at is None and (expires_at is None or expires_at > current):
             return row
     return None
@@ -423,29 +464,11 @@ def build_certification_scale_manifest(
             "expired_or_tampered_evidence_fails_closed": True,
             "shadow_duration_is_measured_not_inferred": True,
             "owner_authorization_is_commit_bound": True,
+            "owner_authorization_payload_is_hash_bound": True,
             "runtime_kill_switches_remain_independent": True,
             "certification_evidence_is_account_scoped": True,
+            "certification_evidence_identity_is_account_scoped": True,
         },
-    }
-
-
-def authorization_payload(
-    *,
-    scope: str,
-    release_version: str,
-    commit_sha: str,
-    approved_by_user_id: int,
-    approval_reference: str,
-    expires_at: datetime | None,
-) -> dict[str, Any]:
-    return {
-        "version": EVIDENCE_VERSION,
-        "scope": scope,
-        "release_version": release_version,
-        "commit_sha": commit_sha,
-        "approved_by_user_id": approved_by_user_id,
-        "approval_reference": approval_reference,
-        "expires_at": ensure_aware(expires_at).isoformat() if expires_at else None,
     }
 
 
@@ -463,6 +486,7 @@ __all__ = [
     "SCOPE_REQUIREMENTS",
     "V2_RELEASE_REQUIREMENTS",
     "active_authorization",
+    "authorization_integrity_ok",
     "authorization_payload",
     "build_certification_scale_manifest",
     "build_release_track",
