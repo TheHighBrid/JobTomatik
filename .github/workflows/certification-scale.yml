@@ -17,9 +17,8 @@ on:
       - "backend/app/main.py"
       - "backend/scripts/run_dead_letter_recovery_drill.py"
       - "backend/scripts/run_shadow_rehearsal.py"
-      - "backend/tests/test_certification_scale.py"
-      - "backend/tests/test_dead_letter_drill.py"
-      - "backend/tests/test_dead_letter_recovery.py"
+      - "backend/tests/test_certification_*.py"
+      - "backend/tests/test_dead_letter_*.py"
       - "backend/tests/test_shadow_rehearsal.py"
       - "frontend/src/api/certification.js"
       - "frontend/src/pages/CertificationCenter.jsx"
@@ -48,9 +47,8 @@ on:
       - "backend/app/main.py"
       - "backend/scripts/run_dead_letter_recovery_drill.py"
       - "backend/scripts/run_shadow_rehearsal.py"
-      - "backend/tests/test_certification_scale.py"
-      - "backend/tests/test_dead_letter_drill.py"
-      - "backend/tests/test_dead_letter_recovery.py"
+      - "backend/tests/test_certification_*.py"
+      - "backend/tests/test_dead_letter_*.py"
       - "backend/tests/test_shadow_rehearsal.py"
       - "frontend/src/api/certification.js"
       - "frontend/src/pages/CertificationCenter.jsx"
@@ -106,6 +104,9 @@ jobs:
         run: |
           python -m pytest -q --tb=short -ra \
             tests/test_certification_scale.py \
+            tests/test_certification_identity_hardening.py \
+            tests/test_certification_account_identity_api.py \
+            tests/test_certification_system_evidence_guard.py \
             tests/test_dead_letter_drill.py \
             tests/test_dead_letter_recovery.py \
             tests/test_shadow_rehearsal.py
