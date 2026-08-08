@@ -28,7 +28,7 @@ services:
   backend:
     build: ./backend
     init: true
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: sh -c "python scripts/check_runtime_identity.py --require-sensitive && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
@@ -78,7 +78,7 @@ services:
   celery_worker:
     build: ./backend
     init: true
-    command: celery -A app.celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q celery,scraping,applications,followup
+    command: sh -c "python scripts/check_runtime_identity.py --require-sensitive && exec celery -A app.celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q celery,scraping,applications,followup"
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
@@ -119,7 +119,7 @@ services:
   celery_beat:
     build: ./backend
     init: true
-    command: celery -A app.celery_app beat --loglevel=info
+    command: sh -c "python scripts/check_runtime_identity.py --require-sensitive && exec celery -A app.celery_app beat --loglevel=info"
     volumes:
       - ./backend:/app
     environment:
