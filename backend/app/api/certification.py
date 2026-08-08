@@ -36,6 +36,7 @@ from app.services.certification_scale import (
     evidence_payload,
     utc_now,
 )
+from app.services.shadow_evidence_provenance import SHADOW_EVIDENCE_TYPES
 
 
 router = APIRouter(prefix="/certification", tags=["certification"])
@@ -114,22 +115,14 @@ def _validate_special_evidence(payload: CertificationEvidenceCreate) -> None:
         )
 
     metadata = dict(payload.evidence_metadata or {})
-    if evidence_type.startswith("shadow_run_"):
-        if metadata.get("final_submit_enabled") is not False:
-            raise HTTPException(
-                status_code=422,
-                detail="Shadow-run evidence must prove final_submit_enabled=false",
-            )
-        if metadata.get("final_submit_clicked") is not False:
-            raise HTTPException(
-                status_code=422,
-                detail="Shadow-run evidence must prove final_submit_clicked=false",
-            )
-        if metadata.get("measured_elapsed_time") is not True:
-            raise HTTPException(
-                status_code=422,
-                detail="Shadow-run evidence must prove elapsed duration was measured",
-            )
+    if evidence_type in SHADOW_EVIDENCE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Shadow-run certification evidence must be created from a qualifying "
+                "full-stack shadow campaign via /api/shadow-runs/{session_id}/record-evidence"
+            ),
+        )
 
     if evidence_type == "release_checksum":
         algorithm = str(metadata.get("algorithm") or "").lower()
@@ -278,10 +271,14 @@ def verify_certification_evidence(
             detail=f"Acknowledgment must exactly match: {expected}",
         )
 
-    # Integrity must be established before review state can become verified.
+    # Integrity and full-stack shadow provenance must be established before review
+    # state can become verified. The same provenance is checked again by the release
+    # evaluator, so later session/report drift fails closed after verification too.
     qualifying_before_review, reasons_before_review = evidence_is_qualifying(
         record,
         revision=record.commit_sha,
+        db=db,
+        user_id=current_user.id,
     )
     integrity_reasons = [
         reason for reason in reasons_before_review if reason != "not_independently_verified"
@@ -304,7 +301,12 @@ def verify_certification_evidence(
     db.refresh(record)
 
     current = current_revision()
-    qualifying, reasons = evidence_is_qualifying(record, revision=current)
+    qualifying, reasons = evidence_is_qualifying(
+        record,
+        revision=current,
+        db=db,
+        user_id=current_user.id,
+    )
     return EvidenceReviewOut(
         evidence_id=record.id,
         review_status=record.review_status,
