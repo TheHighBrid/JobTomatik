@@ -39,12 +39,14 @@ async def test_explicit_empty_source_list_searches_nothing(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_default_sources_are_used_only_when_sources_are_omitted(monkeypatch):
-    received_sources = None
+async def test_default_sources_are_observed_independently(monkeypatch):
+    received_sources = []
 
     async def fake_broad(**kwargs):
-        nonlocal received_sources
-        received_sources = kwargs["sources"]
+        source = kwargs["sources"][0]
+        received_sources.append(source)
+        if source != "jobbank":
+            return []
         return [
             {
                 "external_id": "jobbank:1",
@@ -57,11 +59,44 @@ async def test_default_sources_are_used_only_when_sources_are_omitted(monkeypatc
 
     monkeypatch.setattr(discovery_search, "search_broad_jobs", fake_broad)
 
-    result = await discovery_search.search_jobs(keywords="fraud", sources=None)
+    observed = await discovery_search.search_jobs_with_diagnostics(
+        keywords="fraud",
+        sources=None,
+    )
 
     assert received_sources == ["indeed", "linkedin", "jobbank"]
-    assert len(result) == 1
-    assert result[0]["raw_data"]["official_public_ats"] is False
+    assert len(observed["jobs"]) == 1
+    assert observed["jobs"][0]["raw_data"]["official_public_ats"] is False
+    diagnostics = {item["source"]: item for item in observed["source_diagnostics"]}
+    assert diagnostics["indeed"]["status"] == "success"
+    assert diagnostics["indeed"]["result_count"] == 0
+    assert diagnostics["jobbank"]["result_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_source_exception_is_recorded_without_exception_text(monkeypatch):
+    class SecretBearingError(RuntimeError):
+        pass
+
+    async def fake_broad(**kwargs):
+        source = kwargs["sources"][0]
+        if source == "linkedin":
+            raise SecretBearingError("https://user:password@example.test/private-token")
+        return []
+
+    monkeypatch.setattr(discovery_search, "search_broad_jobs", fake_broad)
+
+    observed = await discovery_search.search_jobs_with_diagnostics(
+        keywords="fraud",
+        sources=["linkedin", "jobbank"],
+    )
+
+    linkedin = next(item for item in observed["source_diagnostics"] if item["source"] == "linkedin")
+    assert linkedin["status"] == "failed"
+    assert linkedin["error_code"] == "secretbearingerror"
+    assert "message" not in linkedin
+    assert "password" not in str(linkedin)
+    assert "private-token" not in str(linkedin)
 
 
 @pytest.mark.asyncio
@@ -83,7 +118,7 @@ async def test_official_targets_run_only_for_selected_provider(monkeypatch):
 
     monkeypatch.setattr(discovery_search, "discover_public_ats_target", fake_ats)
 
-    result = await discovery_search.search_jobs(
+    observed = await discovery_search.search_jobs_with_diagnostics(
         keywords="fraud",
         sources=["greenhouse"],
         ats_targets=[
@@ -107,5 +142,15 @@ async def test_official_targets_run_only_for_selected_provider(monkeypatch):
             "company": "Example Bank",
         }
     ]
-    assert len(result) == 1
-    assert result[0]["source"] == "greenhouse"
+    assert len(observed["jobs"]) == 1
+    assert observed["jobs"][0]["source"] == "greenhouse"
+    assert observed["source_diagnostics"] == [
+        {
+            "source": "greenhouse",
+            "kind": "public_ats",
+            "status": "success",
+            "result_count": 1,
+            "target": "example-bank",
+            "error_code": None,
+        }
+    ]
