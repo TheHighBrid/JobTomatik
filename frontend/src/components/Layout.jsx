@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
-  LayoutDashboard, BrainCircuit, PanelsTopLeft, CalendarClock, Inbox, ShieldCheck, Workflow, Fingerprint, MailCheck, Search, ListTodo, ClipboardList, BookOpenCheck,
+  LayoutDashboard, BrainCircuit, PanelsTopLeft, CalendarClock, Inbox, ShieldCheck, RotateCcw, Workflow, Fingerprint, MailCheck, Search, ListTodo, ClipboardList, BookOpenCheck,
   HeartPulse, User, Settings, LogOut, Menu, X
 } from 'lucide-react'
 import { useAuthStore, useNotificationStore } from '../store'
@@ -17,6 +17,7 @@ const NAV = [
   { to: '/scheduler', icon: CalendarClock, label: 'Scheduler Center' },
   { to: '/post-application', icon: Inbox, label: 'Post-Application Center' },
   { to: '/certification', icon: ShieldCheck, label: 'Certification Center' },
+  { to: '/recovery', icon: RotateCcw, label: 'Recovery Center' },
   { to: '/execution', icon: Workflow, label: 'Execution Center' },
   { to: '/handoff-review', icon: Fingerprint, label: 'Handoff Review' },
   { to: '/followup-review', icon: MailCheck, label: 'Follow-up Review' },
