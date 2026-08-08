@@ -56,8 +56,19 @@ test('certification center is routed and visible in primary navigation', () => {
   assert.equal(layoutSource.includes("label: 'Certification Center'"), true)
 })
 
-test('shadow-run evidence form exposes duration and no automatic qualification shortcut', () => {
+test('shadow evidence creation is routed to the full-stack campaign surface', () => {
+  for (const evidenceType of ['shadow_run_4h', 'shadow_run_8h', 'shadow_run_24h']) {
+    assert.equal(pageSource.includes(`'${evidenceType}'`), false, `${evidenceType} must not be manually selectable`)
+  }
+  assert.equal(pageSource.includes('Shadow evidence has a dedicated provenance path.'), true)
+  assert.equal(pageSource.includes('4h, 8h, and 24h shadow records cannot be entered here.'), true)
+  assert.equal(pageSource.includes('href="/shadow-campaigns"'), true)
+  assert.equal(pageSource.includes('revalidates its linked full-stack campaign before and after review'), true)
+  assert.equal(pageSource.includes('unlinked shadow evidence fails closed'), true)
+})
+
+test('manual evidence form retains optional measured duration for non-shadow evidence', () => {
   assert.equal(pageSource.includes('Measured duration seconds'), true)
-  assert.equal(pageSource.includes('Required for shadow-run evidence'), true)
+  assert.equal(pageSource.includes('Optional when this evidence type has a measured duration'), true)
   assert.equal(pageSource.includes('qualification_eligible'), false)
 })

@@ -23,6 +23,10 @@ from app.config import get_settings
 from app.models.certification import CertificationEvidence, ReleaseAuthorization
 from app.services.ats_manifest import ats_certification_manifest
 from app.services.operations_policy import operations_readiness_manifest
+from app.services.shadow_evidence_provenance import (
+    SHADOW_EVIDENCE_TYPES,
+    shadow_evidence_provenance_reasons,
+)
 
 
 EVIDENCE_VERSION = "phase10-certification-v1"
@@ -64,15 +68,15 @@ EVIDENCE_REQUIREMENTS: dict[str, dict[str, Any]] = {
         "description": "Operational monitoring and alert surfaces are verified for the candidate head.",
     },
     "shadow_run_4h": {
-        "description": "Unattended no-submit shadow run retained for at least four hours.",
+        "description": "Full-stack unattended no-submit shadow campaign retained for at least four hours.",
         "minimum_duration_seconds": SHADOW_4H_SECONDS,
     },
     "shadow_run_8h": {
-        "description": "Unattended no-submit shadow run retained for at least eight hours.",
+        "description": "Full-stack unattended no-submit shadow campaign retained for at least eight hours.",
         "minimum_duration_seconds": SHADOW_8H_SECONDS,
     },
     "shadow_run_24h": {
-        "description": "Unattended no-submit shadow run retained for at least twenty-four hours.",
+        "description": "Full-stack unattended no-submit shadow campaign retained for at least twenty-four hours.",
         "minimum_duration_seconds": SHADOW_24H_SECONDS,
     },
     "autonomous_pilot": {
@@ -226,6 +230,8 @@ def evidence_is_qualifying(
     *,
     revision: str,
     now: datetime | None = None,
+    db: Session | None = None,
+    user_id: int | None = None,
 ) -> tuple[bool, list[str]]:
     current = ensure_aware(now) or utc_now()
     reasons: list[str] = []
@@ -244,7 +250,19 @@ def evidence_is_qualifying(
     minimum = requirement.get("minimum_duration_seconds")
     if minimum is not None and int(record.duration_seconds or 0) < int(minimum):
         reasons.append("duration_below_minimum")
-    return not reasons, reasons
+    if record.evidence_type in SHADOW_EVIDENCE_TYPES:
+        if db is None:
+            reasons.append("shadow_provenance_validation_unavailable")
+        else:
+            reasons.extend(
+                shadow_evidence_provenance_reasons(
+                    db,
+                    record,
+                    expected_user_id=user_id,
+                    canonical_hash=canonical_hash,
+                )
+            )
+    return not reasons, list(dict.fromkeys(reasons))
 
 
 def _latest_records(
@@ -371,7 +389,13 @@ def build_release_track(
             }
             blockers.append(f"{evidence_type}:missing")
             continue
-        qualifying, reasons = evidence_is_qualifying(row, revision=revision, now=now)
+        qualifying, reasons = evidence_is_qualifying(
+            row,
+            revision=revision,
+            now=now,
+            db=db,
+            user_id=user_id,
+        )
         evidence[evidence_type] = {
             "evidence_id": row.id,
             "qualifying": qualifying,
@@ -477,6 +501,8 @@ def build_certification_scale_manifest(
             "exact_candidate_head_required": True,
             "expired_or_tampered_evidence_fails_closed": True,
             "shadow_duration_is_measured_not_inferred": True,
+            "shadow_evidence_requires_full_stack_provenance": True,
+            "shadow_provenance_is_revalidated_after_review": True,
             "owner_authorization_is_commit_bound": True,
             "owner_authorization_hash_integrity_required": True,
             "evidence_identity_is_account_namespaced": True,

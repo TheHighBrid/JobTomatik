@@ -26,6 +26,8 @@ def test_short_shadow_smoke_is_measured_but_not_release_qualifying():
     assert report["measured_duration_seconds"] >= 2.0
     assert report["qualification_eligible"] is False
     assert not any(report["qualifications"].values())
+    assert report["certification_evidence_eligible"] is False
+    assert report["certification_evidence_source"] == "full_stack_shadow_campaign_required"
     assert report["safety"] == {
         "final_submit_enabled": False,
         "final_submit_clicked": False,
@@ -36,7 +38,7 @@ def test_short_shadow_smoke_is_measured_but_not_release_qualifying():
     assert len(report["report_sha256"]) == 64
 
 
-def test_shadow_qualification_uses_measured_elapsed_time_not_requested_label():
+def test_policy_only_threshold_crossing_never_becomes_certification_evidence():
     clock = FakeClock()
     four_hours = QUALIFICATION_SECONDS["shadow_run_4h"]
     report = run_shadow_rehearsal(
@@ -50,3 +52,6 @@ def test_shadow_qualification_uses_measured_elapsed_time_not_requested_label():
     assert report["qualifications"]["shadow_run_4h"] is True
     assert report["qualifications"]["shadow_run_8h"] is False
     assert report["qualifications"]["shadow_run_24h"] is False
+    assert report["qualification_eligible"] is True
+    assert report["certification_evidence_eligible"] is False
+    assert report["certification_evidence_source"] == "full_stack_shadow_campaign_required"

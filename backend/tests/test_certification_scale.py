@@ -5,36 +5,37 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import inspect
 
 from app.config import get_settings
-from app.models.certification import CertificationEvidence, ReleaseAuthorization
+from app.models.certification import (
+    CertificationEvidence,
+    ReleaseAuthorization,
+    ShadowRunSession,
+)
 from app.models.user import User
-from app.services import certification_scale
+from app.services import certification_scale, full_stack_shadow
 from app.services.certification_scale import (
     AUTONOMOUS_PILOT_REQUIREMENTS,
     build_release_track,
+    canonical_hash,
 )
+from app.services.full_stack_shadow import record_shadow_certification_evidence
 from app.services.operations_policy import operations_readiness_manifest
 from tests.conftest import TestingSessionLocal
 
 
 REVISION = "a" * 40
 OTHER_REVISION = "b" * 40
+SHADOW_TYPES = {"shadow_run_4h", "shadow_run_8h", "shadow_run_24h"}
 
 
 def _patch_revision(monkeypatch, revision: str = REVISION) -> None:
     monkeypatch.setattr(certification_scale, "current_revision", lambda: revision)
+    monkeypatch.setattr(full_stack_shadow, "current_revision", lambda: revision)
     import app.api.certification as certification_api
 
     monkeypatch.setattr(certification_api, "current_revision", lambda: revision)
 
 
 def _metadata_for(evidence_type: str) -> dict:
-    if evidence_type.startswith("shadow_run_"):
-        return {
-            "final_submit_enabled": False,
-            "final_submit_clicked": False,
-            "measured_elapsed_time": True,
-            "report_sha256": "1" * 64,
-        }
     if evidence_type == "release_artifact":
         return {
             "artifact_name": "jobtomatik-v2.apk",
@@ -54,6 +55,7 @@ def _duration_for(evidence_type: str) -> int | None:
 
 
 def _record(auth_client, evidence_type: str, *, revision: str = REVISION, suffix: str = "primary"):
+    assert evidence_type not in SHADOW_TYPES, "shadow evidence must use the campaign bridge"
     response = auth_client.post(
         "/api/certification/evidence",
         json={
@@ -68,6 +70,124 @@ def _record(auth_client, evidence_type: str, *, revision: str = REVISION, suffix
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def _bridged_shadow_record(auth_client, evidence_type: str, *, suffix: str = "primary"):
+    assert evidence_type in SHADOW_TYPES
+    duration = int(_duration_for(evidence_type) or 0)
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).filter(User.email == "test@example.com").one()
+        completed = datetime.now(timezone.utc)
+        session = ShadowRunSession(
+            user_id=user.id,
+            candidate_revision=REVISION,
+            target_evidence_type=evidence_type,
+            requested_duration_seconds=duration,
+            cycle_interval_seconds=60,
+            status="completed",
+            started_at=completed - timedelta(seconds=duration),
+            expected_end_at=completed,
+            settle_deadline_at=completed + timedelta(minutes=45),
+            completed_at=completed,
+            last_cycle_at=completed,
+            last_heartbeat_at=completed,
+            cycles_completed=1,
+            cycles_failed=0,
+            applications_created=1,
+            applications_ready_to_submit=1,
+            human_boundaries=0,
+            unexplained_records=0,
+            duplicate_application_ids=0,
+            runaway_retry_count=0,
+            final_submit_allowed=False,
+            stop_requested=False,
+            configuration_snapshot={"test_fixture": suffix},
+            baseline_snapshot={},
+        )
+        db.add(session)
+        db.flush()
+        quality = {
+            "duration_satisfied": True,
+            "scheduler_cycles_completed": True,
+            "no_cycle_failures": True,
+            "discovery_path_observed": True,
+            "application_path_observed": True,
+            "no_leaked_or_missing_application_records": True,
+            "no_duplicate_scheduler_application_references": True,
+            "no_false_submitted_status": True,
+            "no_runaway_retry": True,
+            "no_unexplained_failures": True,
+            "no_policy_escape": True,
+            "no_active_application_work": True,
+        }
+        report = {
+            "version": "phase11-full-stack-shadow-v1",
+            "session_id": session.id,
+            "status": "completed",
+            "candidate_revision": REVISION,
+            "target_evidence_type": evidence_type,
+            "requested_duration_seconds": duration,
+            "measured_duration_seconds": float(duration),
+            "measured_elapsed_time": True,
+            "started_at": session.started_at.isoformat(),
+            "completed_at": completed.isoformat(),
+            "cycles_completed": 1,
+            "cycles_failed": 0,
+            "configuration_snapshot": dict(session.configuration_snapshot or {}),
+            "reconciliation": {
+                "reconciled": True,
+                "unique_application_ids": [1000 + session.id],
+                "submitted_application_ids": [],
+                "active_application_ids": [],
+                "missing_application_ids": [],
+                "duplicate_application_references": 0,
+                "runaway_retry_application_ids": [],
+                "unexplained_failure_application_ids": [],
+                "policy_escapes": [],
+                "discovery": {"agent_runs": 1, "total_found": 1, "saved": 1},
+            },
+            "observability": {"summary": {}, "activity": {}, "incidents": [], "unavailable": False},
+            "safety": {
+                "final_submit_enabled": False,
+                "final_submit_clicked": False,
+                "real_submission_remained_disabled": True,
+                "dry_run_required": True,
+                "runtime_settings_changed_by_supervisor": False,
+                "submission_authorized": False,
+                "outreach_authorized": False,
+            },
+            "quality": quality,
+            "failure_reason": None,
+            "qualification_eligible": True,
+        }
+        report["report_sha256"] = canonical_hash(report)
+        session.final_report = report
+        session.report_sha256 = report["report_sha256"]
+        db.flush()
+        evidence, duplicate = record_shadow_certification_evidence(
+            db,
+            user_id=user.id,
+            session_id=session.id,
+        )
+        assert duplicate is False
+        db.commit()
+        db.refresh(evidence)
+        return {
+            "evidence_id": evidence.id,
+            "evidence_key": evidence.evidence_key,
+            "evidence_type": evidence.evidence_type,
+            "commit_sha": evidence.commit_sha,
+            "environment": evidence.environment,
+            "status": evidence.status,
+            "duration_seconds": evidence.duration_seconds,
+            "source_reference": evidence.source_reference,
+            "payload_hash": evidence.payload_hash,
+            "evidence_metadata": dict(evidence.evidence_metadata or {}),
+            "review_status": evidence.review_status,
+        }
+    finally:
+        db.close()
 
 
 def _verify(auth_client, record: dict, *, revision: str, suffix: str = "primary"):
@@ -91,7 +211,11 @@ def _record_and_verify(
     revision: str = REVISION,
     suffix: str = "primary",
 ):
-    record = _record(auth_client, evidence_type, revision=revision, suffix=suffix)
+    if evidence_type in SHADOW_TYPES:
+        assert revision == REVISION
+        record = _bridged_shadow_record(auth_client, evidence_type, suffix=suffix)
+    else:
+        record = _record(auth_client, evidence_type, revision=revision, suffix=suffix)
     assert record["review_status"] == "unreviewed"
     verified = _verify(auth_client, record, revision=revision, suffix=suffix)
     assert verified["review_status"] == "verified"
@@ -206,49 +330,34 @@ def test_tampered_expired_and_wrong_head_evidence_fail_closed(monkeypatch, auth_
     assert "not_exact_candidate_head" in old_gate["reasons"]
 
 
-def test_shadow_evidence_requires_no_submit_metadata_and_measured_duration(monkeypatch, auth_client):
+def test_shadow_evidence_must_use_full_stack_campaign_bridge(monkeypatch, auth_client):
     _patch_revision(monkeypatch)
-    unsafe = auth_client.post(
+    manual = auth_client.post(
         "/api/certification/evidence",
         json={
             "evidence_type": "shadow_run_4h",
             "commit_sha": REVISION,
-            "environment": "test",
+            "environment": "full-stack-shadow",
             "status": "passed",
             "duration_seconds": 4 * 60 * 60,
-            "source_reference": "test:unsafe-shadow",
+            "source_reference": "test:manual-shadow",
             "evidence_metadata": {
-                "final_submit_enabled": True,
+                "full_stack_shadow_session": True,
+                "session_id": 999999,
+                "report_sha256": "1" * 64,
+                "final_submit_enabled": False,
                 "final_submit_clicked": False,
                 "measured_elapsed_time": True,
             },
         },
     )
-    assert unsafe.status_code == 422
+    assert manual.status_code == 422
+    assert "/api/shadow-runs/{session_id}/record-evidence" in str(manual.json()["detail"])
 
-    short = auth_client.post(
-        "/api/certification/evidence",
-        json={
-            "evidence_type": "shadow_run_4h",
-            "commit_sha": REVISION,
-            "environment": "test",
-            "status": "passed",
-            "duration_seconds": 60,
-            "source_reference": "test:short-shadow",
-            "evidence_metadata": _metadata_for("shadow_run_4h"),
-        },
-    ).json()
-    short_review = auth_client.post(
-        f"/api/certification/evidence/{short['evidence_id']}/verify",
-        json={
-            "acknowledgment": (
-                f"VERIFY EVIDENCE {short['evidence_id']} {REVISION[:12]}"
-            ),
-            "review_reference": "review:short-shadow",
-        },
-    )
-    assert short_review.status_code == 409
-    assert "duration_below_minimum" in str(short_review.json()["detail"])
+    bridged = _bridged_shadow_record(auth_client, "shadow_run_4h", suffix="bridge")
+    assert bridged["environment"] == "full-stack-shadow"
+    verified = _verify(auth_client, bridged, revision=REVISION, suffix="bridge")
+    assert verified["qualifying_for_current_head"] is True
 
 
 def test_evidence_is_account_scoped(monkeypatch, auth_client):
