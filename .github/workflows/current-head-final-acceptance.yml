@@ -77,7 +77,7 @@ jobs:
       - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
 
-      - name: Certify LinkedIn Apply to ATS to filled dry-run form
+      - name: Certify LinkedIn Apply to ATS to filled dry-run form and task state
         run: |
           python -m pytest -q --tb=short -ra \
             tests/test_application_entry_and_handoff_order.py \
@@ -86,7 +86,8 @@ jobs:
             tests/test_linkedin_classic_apply_entry.py \
             tests/test_linkedin_apply_click_acceptance.py \
             tests/test_premature_handoff_acceptance.py \
-            tests/test_stale_target_handoff_revalidation.py
+            tests/test_stale_target_handoff_revalidation.py \
+            tests/test_direct_handoff_attachment.py
 
       - name: Start exact-head Android-style worker on Redis DB1
         run: |
@@ -174,6 +175,9 @@ jobs:
                   "click_only_linkedin_apply": "passed",
                   "external_application_form_detected": "passed",
                   "dry_run_form_fill": "passed",
+                  "task_layer_ready_to_apply_without_review": "passed",
+                  "task_layer_handoff_count": 0,
+                  "task_layer_manual_review_count": 0,
                   "premature_navigation_handoff_absent": "passed",
                   "stale_pre_form_handoff_revalidation": "passed",
                   "final_submit_clicked": False,
