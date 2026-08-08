@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from app.services.certification_scale import current_revision as certification_revision
 from app.services.runtime_identity import current_revision, runtime_identity_manifest
 
 
@@ -38,6 +39,7 @@ def test_explicit_revision_and_expected_revision_attest(monkeypatch):
     manifest = runtime_identity_manifest()
 
     assert current_revision() == REVISION
+    assert certification_revision() == REVISION
     assert manifest["revision"] == REVISION
     assert manifest["source"] == "JOBTOMATIK_RUNTIME_REVISION"
     assert manifest["role"] == "worker"
@@ -57,6 +59,7 @@ def test_mismatched_expected_revision_fails_attestation(monkeypatch):
 
     manifest = runtime_identity_manifest()
 
+    assert certification_revision() == REVISION
     assert manifest["known"] is True
     assert manifest["expected_valid"] is True
     assert manifest["matches_expected"] is False
@@ -82,6 +85,7 @@ def test_github_sha_is_used_when_explicit_revision_is_absent(monkeypatch):
 
     manifest = runtime_identity_manifest()
 
+    assert current_revision() == certification_revision() == REVISION
     assert manifest["revision"] == REVISION
     assert manifest["source"] == "GITHUB_SHA"
     assert manifest["deployment_attested"] is False
