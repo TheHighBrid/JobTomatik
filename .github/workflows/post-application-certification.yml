@@ -8,6 +8,7 @@ on:
       - "backend/app/services/post_application_operations.py"
       - "backend/app/main.py"
       - "backend/tests/test_post_application_operations.py"
+      - "backend/tests/test_post_application_hardening.py"
       - "frontend/src/api/postApplication.js"
       - "frontend/src/pages/PostApplicationCenter.jsx"
       - "frontend/src/App.jsx"
@@ -24,6 +25,7 @@ on:
       - "backend/app/services/post_application_operations.py"
       - "backend/app/main.py"
       - "backend/tests/test_post_application_operations.py"
+      - "backend/tests/test_post_application_hardening.py"
       - "frontend/src/api/postApplication.js"
       - "frontend/src/pages/PostApplicationCenter.jsx"
       - "frontend/src/App.jsx"
@@ -72,7 +74,10 @@ jobs:
 
       - name: Run Phase 9 backend safety matrix
         working-directory: backend
-        run: python -m pytest -q --tb=short -ra tests/test_post_application_operations.py
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_post_application_operations.py \
+            tests/test_post_application_hardening.py
 
       - name: Set up Node
         uses: actions/setup-node@v6
