@@ -161,6 +161,72 @@ def test_requeue_requires_exact_checkpoint_and_preserves_attempt_history(db_sess
     assert downstream.id in result["reset_dependency_task_ids"]
 
 
+def test_requeue_resets_only_the_recovered_dependency_chain(db_session):
+    user = _user(db_session)
+    run, task, downstream = _run(db_session, user)
+    run.plan = list(run.plan or []) + [
+        {
+            "id": "other-root",
+            "name": "Other failed root",
+            "agent_type": "company_research",
+            "dependencies": [],
+            "input": {"job_id": 456},
+        },
+        {
+            "id": "other-downstream",
+            "name": "Other downstream",
+            "agent_type": "evaluation",
+            "dependencies": ["other-root"],
+            "input": {"job_id": 456},
+        },
+    ]
+    other_root = AgentTask(
+        run_id=run.id,
+        sequence=2,
+        name="Other failed root",
+        agent_type="company_research",
+        status="failed",
+        dependencies=[],
+        task_input={"job_id": 456},
+        task_output={"execution": {"failure_class": "independent_failure"}},
+        attempt_count=2,
+        max_attempts=2,
+        error="unrelated failure",
+    )
+    other_downstream = AgentTask(
+        run_id=run.id,
+        sequence=3,
+        name="Other downstream",
+        agent_type="evaluation",
+        status="skipped",
+        dependencies=["other-root"],
+        task_input={"job_id": 456},
+        task_output={
+            "dependency_failures": [
+                {"dependency": "other-root", "status": "failed"}
+            ]
+        },
+        error="Skipped because a dependency did not complete safely",
+    )
+    db_session.add_all([other_root, other_downstream])
+    db_session.flush()
+    db_session.refresh(run)
+    envelope = _open_dead_letter(db_session, run, task)
+
+    result = requeue_dead_letter(
+        db_session,
+        user_id=user.id,
+        task_id=task.id,
+        acknowledgment=envelope["expected_requeue_acknowledgment"],
+    )
+
+    assert downstream.status == "pending"
+    assert downstream.id in result["reset_dependency_task_ids"]
+    assert other_root.status == "failed"
+    assert other_downstream.status == "skipped"
+    assert other_downstream.id not in result["reset_dependency_task_ids"]
+
+
 def test_checkpoint_drift_blocks_requeue(db_session):
     user = _user(db_session)
     run, task, _ = _run(db_session, user, with_downstream=False)
@@ -266,3 +332,33 @@ def test_recovery_api_requeues_only_after_exact_acknowledgment(
     assert data["dispatch_task_id"] == f"dispatch-{run.id}"
     assert data["submission_authorized"] is False
     assert data["outreach_authorized"] is False
+
+
+def test_recovery_api_reopens_dead_letter_when_dispatch_is_lost(
+    auth_client,
+    db_session,
+    monkeypatch,
+):
+    user = db_session.query(User).filter(User.email == "test@example.com").first()
+    assert user is not None
+    run, task, _ = _run(db_session, user, with_downstream=False)
+    envelope = _open_dead_letter(db_session, run, task)
+    db_session.commit()
+
+    def fail_dispatch(_run_id):
+        raise RuntimeError("synthetic broker outage")
+
+    monkeypatch.setattr(recovery_api.dispatch_agent_run_task, "delay", fail_dispatch)
+    response = auth_client.post(
+        f"/api/recovery/dead-letters/{task.id}/requeue",
+        json={"acknowledgment": envelope["expected_requeue_acknowledgment"]},
+    )
+    assert response.status_code == 503, response.text
+
+    db_session.expire_all()
+    persisted = db_session.query(AgentTask).filter(AgentTask.id == task.id).one()
+    dead_letter = persisted.task_output["dead_letter"]
+    assert persisted.status == "failed"
+    assert dead_letter["status"] == "open"
+    assert dead_letter["automatic_retry_allowed"] is False
+    assert "synthetic broker outage" in dead_letter["dispatch_error"]
