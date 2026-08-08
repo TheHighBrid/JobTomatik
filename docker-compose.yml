@@ -37,6 +37,9 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-development}
       - ENABLE_API_DOCS=${ENABLE_API_DOCS:-true}
+      - JOBTOMATIK_RUNTIME_REVISION=${JOBTOMATIK_RUNTIME_REVISION:-}
+      - JOBTOMATIK_EXPECTED_REVISION=${JOBTOMATIK_EXPECTED_REVISION:-}
+      - JOBTOMATIK_RUNTIME_ROLE=api
       - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
@@ -81,6 +84,9 @@ services:
       - uploads_data:/app/uploads
     environment:
       - APP_ENV=${APP_ENV:-development}
+      - JOBTOMATIK_RUNTIME_REVISION=${JOBTOMATIK_RUNTIME_REVISION:-}
+      - JOBTOMATIK_EXPECTED_REVISION=${JOBTOMATIK_EXPECTED_REVISION:-}
+      - JOBTOMATIK_RUNTIME_ROLE=worker
       - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
@@ -118,6 +124,9 @@ services:
       - ./backend:/app
     environment:
       - APP_ENV=${APP_ENV:-development}
+      - JOBTOMATIK_RUNTIME_REVISION=${JOBTOMATIK_RUNTIME_REVISION:-}
+      - JOBTOMATIK_EXPECTED_REVISION=${JOBTOMATIK_EXPECTED_REVISION:-}
+      - JOBTOMATIK_RUNTIME_ROLE=beat
       - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
@@ -148,6 +157,7 @@ services:
       - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000
+      - VITE_JOBTOMATIK_RUNTIME_REVISION=${JOBTOMATIK_RUNTIME_REVISION:-}
 
 volumes:
   postgres_data:
