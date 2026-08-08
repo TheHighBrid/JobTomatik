@@ -48,6 +48,12 @@ EVIDENCE_REQUIREMENTS: dict[str, dict[str, Any]] = {
     "recovery_incident_drill": {
         "description": "Crash recovery, rollback, and incident-response drill passed.",
     },
+    "dead_letter_checkpoint_recovery": {
+        "description": (
+            "Irrecoverable bounded work was dead-lettered and a retained checkpoint "
+            "was safely requeued while checkpoint drift failed closed."
+        ),
+    },
     "handoff_notifications": {
         "description": "Human-only handoff notifications are operational and reviewable.",
     },
@@ -89,6 +95,7 @@ AUTONOMOUS_PILOT_REQUIREMENTS: tuple[str, ...] = (
     "duplicate_prevention",
     "confirmation_evidence",
     "recovery_incident_drill",
+    "dead_letter_checkpoint_recovery",
     "handoff_notifications",
     "policy_controls",
     "monitoring_alerting",
@@ -175,8 +182,22 @@ def evidence_payload(
     }
 
 
-def evidence_key_for(payload: dict[str, Any]) -> str:
+def evidence_key_for(
+    payload: dict[str, Any],
+    *,
+    owner_user_id: int | None = None,
+) -> str:
+    """Return an evidence identity scoped to the owning account or system source.
+
+    Evidence payloads may legitimately have identical external source references for
+    different accounts. Namespacing the identity prevents one account from reserving
+    another account's otherwise-valid evidence key.
+    """
+
     identity = {
+        "owner_scope": (
+            f"user:{int(owner_user_id)}" if owner_user_id is not None else "system"
+        ),
         "evidence_type": payload["evidence_type"],
         "adapter": payload.get("adapter"),
         "commit_sha": payload["commit_sha"],
@@ -257,6 +278,38 @@ def _latest_records(
     return selected
 
 
+def authorization_payload(
+    *,
+    scope: str,
+    release_version: str,
+    commit_sha: str,
+    approved_by_user_id: int,
+    approval_reference: str,
+    expires_at: datetime | None,
+) -> dict[str, Any]:
+    return {
+        "version": EVIDENCE_VERSION,
+        "scope": scope,
+        "release_version": release_version,
+        "commit_sha": commit_sha,
+        "approved_by_user_id": approved_by_user_id,
+        "approval_reference": approval_reference,
+        "expires_at": ensure_aware(expires_at).isoformat() if expires_at else None,
+    }
+
+
+def authorization_integrity_ok(record: ReleaseAuthorization) -> bool:
+    payload = authorization_payload(
+        scope=record.scope,
+        release_version=record.release_version,
+        commit_sha=record.commit_sha,
+        approved_by_user_id=record.approved_by_user_id,
+        approval_reference=record.approval_reference,
+        expires_at=ensure_aware(record.expires_at),
+    )
+    return canonical_hash(payload) == record.payload_hash
+
+
 def active_authorization(
     db: Session,
     *,
@@ -281,6 +334,8 @@ def active_authorization(
     )
     for row in rows:
         expires_at = ensure_aware(row.expires_at)
+        if not authorization_integrity_ok(row):
+            continue
         if row.revoked_at is None and (expires_at is None or expires_at > current):
             return row
     return None
@@ -423,29 +478,12 @@ def build_certification_scale_manifest(
             "expired_or_tampered_evidence_fails_closed": True,
             "shadow_duration_is_measured_not_inferred": True,
             "owner_authorization_is_commit_bound": True,
+            "owner_authorization_hash_integrity_required": True,
+            "evidence_identity_is_account_namespaced": True,
             "runtime_kill_switches_remain_independent": True,
             "certification_evidence_is_account_scoped": True,
+            "dead_letter_checkpoint_recovery_is_separate_evidence": True,
         },
-    }
-
-
-def authorization_payload(
-    *,
-    scope: str,
-    release_version: str,
-    commit_sha: str,
-    approved_by_user_id: int,
-    approval_reference: str,
-    expires_at: datetime | None,
-) -> dict[str, Any]:
-    return {
-        "version": EVIDENCE_VERSION,
-        "scope": scope,
-        "release_version": release_version,
-        "commit_sha": commit_sha,
-        "approved_by_user_id": approved_by_user_id,
-        "approval_reference": approval_reference,
-        "expires_at": ensure_aware(expires_at).isoformat() if expires_at else None,
     }
 
 
@@ -463,6 +501,7 @@ __all__ = [
     "SCOPE_REQUIREMENTS",
     "V2_RELEASE_REQUIREMENTS",
     "active_authorization",
+    "authorization_integrity_ok",
     "authorization_payload",
     "build_certification_scale_manifest",
     "build_release_track",
