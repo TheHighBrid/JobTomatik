@@ -44,7 +44,7 @@ def test_manual_message_without_received_at_is_idempotent_by_source_reference(au
 
     payload = {
         "sender_name": "Talent Partner",
-        "sender_email": "talent@example-financial.test",
+        "sender_email": "talent@example.com",
         "subject": "Interview availability",
         "body": "We would like to schedule an interview next week.",
         "source_reference": "manual-email:stable-message-42",
@@ -96,7 +96,7 @@ def test_distinct_source_references_remain_distinct_messages(auth_client):
         db.close()
 
     base = {
-        "sender_email": "talent@example-financial.test",
+        "sender_email": "talent@example.com",
         "subject": "Application status",
         "body": "Your application is still under review.",
     }
@@ -125,7 +125,7 @@ def test_recruiter_email_matching_is_literal_not_sql_wildcard(auth_client):
             user_id=user.id,
             company="Example Financial",
             full_name="Different Contact",
-            email="talentXops@example-financial.test",
+            email="talentXops@example.com",
             relationship_stage="identified",
         )
         db.add(existing)
@@ -139,7 +139,7 @@ def test_recruiter_email_matching_is_literal_not_sql_wildcard(auth_client):
         f"/api/post-application/applications/{application_id}/messages",
         json={
             "sender_name": "Percent Address",
-            "sender_email": "talent%ops@example-financial.test",
+            "sender_email": "talent%ops@example.com",
             "subject": "Interview",
             "body": "We would like to schedule an interview.",
             "source_reference": "provider:literal-email-address",
@@ -160,8 +160,8 @@ def test_recruiter_email_matching_is_literal_not_sql_wildcard(auth_client):
             .all()
         )
         assert {contact.email for contact in contacts} == {
-            "talentXops@example-financial.test",
-            "talent%ops@example-financial.test",
+            "talentXops@example.com",
+            "talent%ops@example.com",
         }
     finally:
         db.close()
