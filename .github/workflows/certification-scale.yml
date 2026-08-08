@@ -10,6 +10,7 @@ on:
       - "backend/app/schemas/certification.py"
       - "backend/app/schemas/recovery.py"
       - "backend/app/services/certification_scale.py"
+      - "backend/app/services/shadow_evidence_provenance.py"
       - "backend/app/services/dead_letter.py"
       - "backend/app/services/dead_letter_drill.py"
       - "backend/app/services/shadow_rehearsal.py"
@@ -18,6 +19,7 @@ on:
       - "backend/scripts/run_dead_letter_recovery_drill.py"
       - "backend/scripts/run_shadow_rehearsal.py"
       - "backend/tests/test_certification_*.py"
+      - "backend/tests/test_shadow_evidence_provenance.py"
       - "backend/tests/test_dead_letter_*.py"
       - "backend/tests/test_shadow_rehearsal.py"
       - "frontend/src/api/certification.js"
@@ -28,6 +30,7 @@ on:
       - "frontend/test/certification-center.test.js"
       - "frontend/test/recovery-center.test.js"
       - "docs/PHASE10_CERTIFICATION_SCALE.md"
+      - "docs/PHASE12_SHADOW_EVIDENCE_PROVENANCE.md"
       - ".github/workflows/certification-scale.yml"
   push:
     branches:
@@ -40,6 +43,7 @@ on:
       - "backend/app/schemas/certification.py"
       - "backend/app/schemas/recovery.py"
       - "backend/app/services/certification_scale.py"
+      - "backend/app/services/shadow_evidence_provenance.py"
       - "backend/app/services/dead_letter.py"
       - "backend/app/services/dead_letter_drill.py"
       - "backend/app/services/shadow_rehearsal.py"
@@ -48,6 +52,7 @@ on:
       - "backend/scripts/run_dead_letter_recovery_drill.py"
       - "backend/scripts/run_shadow_rehearsal.py"
       - "backend/tests/test_certification_*.py"
+      - "backend/tests/test_shadow_evidence_provenance.py"
       - "backend/tests/test_dead_letter_*.py"
       - "backend/tests/test_shadow_rehearsal.py"
       - "frontend/src/api/certification.js"
@@ -58,6 +63,7 @@ on:
       - "frontend/test/certification-center.test.js"
       - "frontend/test/recovery-center.test.js"
       - "docs/PHASE10_CERTIFICATION_SCALE.md"
+      - "docs/PHASE12_SHADOW_EVIDENCE_PROVENANCE.md"
       - ".github/workflows/certification-scale.yml"
   workflow_dispatch:
 
@@ -99,11 +105,12 @@ jobs:
         working-directory: backend
         run: python -m pip install -q --disable-pip-version-check -r requirements.txt
 
-      - name: Run Phase 10 backend safety matrix
+      - name: Run Phase 10 and Phase 12 backend safety matrix
         working-directory: backend
         run: |
           python -m pytest -q --tb=short -ra \
             tests/test_certification_scale.py \
+            tests/test_shadow_evidence_provenance.py \
             tests/test_certification_identity_hardening.py \
             tests/test_certification_account_identity_api.py \
             tests/test_certification_authorization_identity.py \
@@ -135,7 +142,7 @@ jobs:
           assert report['safety']['network_contacted'] is False
           PY
 
-      - name: Run short no-submit shadow harness smoke
+      - name: Run short policy-only no-submit rehearsal smoke
         working-directory: backend
         run: |
           python scripts/run_shadow_rehearsal.py \
@@ -149,6 +156,8 @@ jobs:
           assert report['completed'] is True
           assert report['measured_elapsed_time'] is True
           assert report['qualification_eligible'] is False
+          assert report['certification_evidence_eligible'] is False
+          assert report['certification_evidence_source'] == 'full_stack_shadow_campaign_required'
           assert report['safety']['final_submit_enabled'] is False
           assert report['safety']['final_submit_clicked'] is False
           assert report['safety']['browser_opened'] is False
@@ -174,7 +183,7 @@ jobs:
         working-directory: frontend
         run: npm ci --ignore-scripts
 
-      - name: Run Phase 10 frontend contract
+      - name: Run certification frontend contracts
         working-directory: frontend
         run: |
           node --test test/certification-center.test.js
