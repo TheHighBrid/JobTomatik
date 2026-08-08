@@ -1,0 +1,157 @@
+name: Runtime revision attestation
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/runtime_identity.py"
+      - "backend/app/api/shadow_runs.py"
+      - "backend/app/tasks/shadow_runs.py"
+      - "backend/app/main.py"
+      - "backend/scripts/check_runtime_identity.py"
+      - "backend/tests/test_runtime_identity.py"
+      - "docker-compose.yml"
+      - ".env.example"
+      - "scripts/jobtomatik-compose.sh"
+      - ".github/workflows/android-apk.yml"
+      - ".github/workflows/full-stack-shadow-campaigns.yml"
+      - ".github/workflows/runtime-revision-attestation.yml"
+      - "docs/PHASE12_RUNTIME_REVISION_ATTESTATION.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/services/runtime_identity.py"
+      - "backend/app/api/shadow_runs.py"
+      - "backend/app/tasks/shadow_runs.py"
+      - "backend/app/main.py"
+      - "backend/scripts/check_runtime_identity.py"
+      - "backend/tests/test_runtime_identity.py"
+      - "docker-compose.yml"
+      - ".env.example"
+      - "scripts/jobtomatik-compose.sh"
+      - ".github/workflows/android-apk.yml"
+      - ".github/workflows/full-stack-shadow-campaigns.yml"
+      - ".github/workflows/runtime-revision-attestation.yml"
+      - "docs/PHASE12_RUNTIME_REVISION_ATTESTATION.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-revision-attestation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JOBTOMATIK_RUNTIME_REVISION: ${{ github.sha }}
+  JOBTOMATIK_EXPECTED_REVISION: ${{ github.sha }}
+  JOBTOMATIK_RUNTIME_ROLE: ci
+  DATABASE_URL: sqlite:///./runtime-identity.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: phase12-runtime-identity-secret-key-2026
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "true"
+
+jobs:
+  identity-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Compile identity and shadow chokepoints
+        working-directory: backend
+        run: |
+          python -m compileall -q \
+            app/services/runtime_identity.py \
+            app/api/shadow_runs.py \
+            app/tasks/shadow_runs.py \
+            scripts/check_runtime_identity.py \
+            tests/test_runtime_identity.py
+
+      - name: Run runtime identity safety matrix
+        working-directory: backend
+        run: python -m pytest -q --tb=short -ra tests/test_runtime_identity.py
+
+      - name: Prove sensitive runtime accepts exact identity
+        working-directory: backend
+        run: python scripts/check_runtime_identity.py --require-sensitive
+
+      - name: Prove revision mismatch fails closed
+        working-directory: backend
+        env:
+          JOBTOMATIK_EXPECTED_REVISION: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        run: |
+          set +e
+          python scripts/check_runtime_identity.py --require-sensitive
+          status=$?
+          set -e
+          test "$status" -eq 2
+
+      - name: Prove system identity endpoint is read-only
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.main import runtime_identity
+          payload = runtime_identity()
+          assert payload["revision"] == payload["expected_revision"]
+          assert payload["deployment_attested"] is True
+          assert payload["submission_authorized"] is False
+          assert payload["outreach_authorized"] is False
+          PY
+
+  compose-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Render attested Compose configuration
+        run: |
+          JOBTOMATIK_RUNTIME_REVISION="$GITHUB_SHA" \
+          JOBTOMATIK_EXPECTED_REVISION="$GITHUB_SHA" \
+          docker compose config > compose-attested.yml
+
+      - name: Prove API worker and beat share exact revision
+        run: |
+          test "$(grep -Fc "JOBTOMATIK_RUNTIME_REVISION: $GITHUB_SHA" compose-attested.yml)" -ge 3
+          test "$(grep -Fc "JOBTOMATIK_EXPECTED_REVISION: $GITHUB_SHA" compose-attested.yml)" -ge 3
+          grep -Fq 'JOBTOMATIK_RUNTIME_ROLE: api' compose-attested.yml
+          grep -Fq 'JOBTOMATIK_RUNTIME_ROLE: worker' compose-attested.yml
+          grep -Fq 'JOBTOMATIK_RUNTIME_ROLE: beat' compose-attested.yml
+          test "$(grep -Fc 'check_runtime_identity.py --require-sensitive' compose-attested.yml)" -ge 3
+
+      - name: Prove fail-safe consequential defaults remain off
+        run: |
+          grep -Fq 'ALLOW_REAL_APPLICATION_SUBMIT: "false"' compose-attested.yml
+          grep -Fq 'ALLOW_REAL_FOLLOWUP_SEND: "false"' compose-attested.yml
+
+  source-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Verify revision-stamped launch and Android artifact contract
+        run: |
+          grep -Fq 'git rev-parse HEAD' scripts/jobtomatik-compose.sh
+          grep -Fq 'JOBTOMATIK_EXPECTED_REVISION' scripts/jobtomatik-compose.sh
+          grep -Fq 'SOURCE-COMMIT.txt' .github/workflows/android-apk.yml
+          grep -Fq 'VITE_JOBTOMATIK_RUNTIME_REVISION: ${{ github.sha }}' .github/workflows/android-apk.yml
+          grep -Fq 'JOBTOMATIK_RUNTIME_REVISION=' .env.example
+          grep -Fq 'JOBTOMATIK_EXPECTED_REVISION=' .env.example
