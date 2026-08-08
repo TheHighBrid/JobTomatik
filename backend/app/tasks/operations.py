@@ -3,8 +3,8 @@ import logging
 from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.user import User
-from app.services.adapter_health_notifications import sync_adapter_health_notifications
 from app.services.application_recovery import recover_stale_application_attempts
+from app.services.operational_observability import sync_operational_notifications
 
 
 logger = logging.getLogger(__name__)
@@ -15,24 +15,30 @@ logger = logging.getLogger(__name__)
     queue="followup",
 )
 def refresh_adapter_health_alerts():
-    """Refresh deduplicated adapter-health notifications for active users."""
+    """Refresh deduplicated source, adapter, policy, and material incidents.
+
+    The historical task name is retained so existing beat/runtime contracts do not
+    change. Phase 9 broadens what the task observes without granting any action.
+    """
 
     db = SessionLocal()
     try:
         users = db.query(User).filter(User.is_active.is_(True)).all()
         results = []
         for user in users:
-            results.append(sync_adapter_health_notifications(db, user.id))
+            results.append(sync_operational_notifications(db, user.id))
         db.commit()
         return {
             "users_checked": len(users),
-            "alerts_detected": sum(item["alerts_detected"] for item in results),
+            "alerts_detected": sum(item["incidents_detected"] for item in results),
+            "incidents_detected": sum(item["incidents_detected"] for item in results),
             "notifications_created": sum(
                 item["notifications_created"] for item in results
             ),
             "notifications_deduplicated": sum(
                 item["notifications_deduplicated"] for item in results
             ),
+            "digests_created": sum(1 for item in results if item["digest_created"]),
             "users": results,
         }
     except Exception:
