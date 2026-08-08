@@ -12,6 +12,7 @@ on:
       - "backend/app/main.py"
       - "backend/scripts/run_shadow_rehearsal.py"
       - "backend/tests/test_certification_scale.py"
+      - "backend/tests/test_certification_identity_hardening.py"
       - "backend/tests/test_shadow_rehearsal.py"
       - "frontend/src/api/certification.js"
       - "frontend/src/pages/CertificationCenter.jsx"
@@ -33,6 +34,7 @@ on:
       - "backend/app/main.py"
       - "backend/scripts/run_shadow_rehearsal.py"
       - "backend/tests/test_certification_scale.py"
+      - "backend/tests/test_certification_identity_hardening.py"
       - "backend/tests/test_shadow_rehearsal.py"
       - "frontend/src/api/certification.js"
       - "frontend/src/pages/CertificationCenter.jsx"
@@ -86,6 +88,7 @@ jobs:
         run: |
           python -m pytest -q --tb=short -ra \
             tests/test_certification_scale.py \
+            tests/test_certification_identity_hardening.py \
             tests/test_shadow_rehearsal.py
 
       - name: Run isolated recovery incident drill
