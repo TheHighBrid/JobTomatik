@@ -110,6 +110,37 @@ def normalize_legacy_synthetic_policy_fixtures(monkeypatch, request):
 
 
 @pytest.fixture(autouse=True)
+def normalize_phase10_dead_letter_fixture(monkeypatch, request):
+    """Upgrade the older generic Phase 10 seed helper to the new recovery proof shape.
+
+    Production validation remains strict. This only updates the synthetic helper in
+    ``test_certification_scale.py`` that predates the distinct dead-letter evidence
+    contract; dedicated tests separately prove that missing proof flags are rejected.
+    """
+
+    if request.node.path.name != "test_certification_scale.py":
+        return
+    module = request.module
+    original = getattr(module, "_metadata_for", None)
+    if original is None:
+        return
+
+    def metadata_with_dead_letter_proof(evidence_type):
+        if evidence_type == "dead_letter_checkpoint_recovery":
+            return {
+                "dead_letter_verified": True,
+                "checkpoint_resume_verified": True,
+                "checkpoint_drift_blocked": True,
+                "submission_authorized": False,
+                "outreach_authorized": False,
+                "synthetic_only": True,
+            }
+        return original(evidence_type)
+
+    monkeypatch.setattr(module, "_metadata_for", metadata_with_dead_letter_proof)
+
+
+@pytest.fixture(autouse=True)
 def mock_celery(monkeypatch):
     """Stub API-triggered Celery calls so tests do not need Redis."""
     fake_result = MagicMock(id="test-task-id")
