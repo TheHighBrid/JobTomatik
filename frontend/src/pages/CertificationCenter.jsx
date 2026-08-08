@@ -34,9 +34,6 @@ const EVIDENCE_TYPES = [
   'handoff_notifications',
   'policy_controls',
   'monitoring_alerting',
-  'shadow_run_4h',
-  'shadow_run_8h',
-  'shadow_run_24h',
   'autonomous_pilot',
   'android_device_acceptance',
   'release_artifact',
@@ -190,13 +187,16 @@ function EvidenceLedger({ manifest, evidence }) {
       <Card>
         <div className="flex items-center gap-2"><FileCheck2 className="h-4 w-4 text-blue-600" /><h2 className="text-sm font-bold text-gray-900">Record retained evidence</h2></div>
         <p className="mt-2 text-xs leading-5 text-gray-500">Recording evidence does not certify it and never enables submission. The current candidate commit is fixed by the runtime.</p>
+        <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-[11px] leading-5 text-violet-800">
+          <strong>Shadow evidence has a dedicated provenance path.</strong> 4h, 8h, and 24h shadow records cannot be entered here. Run a qualifying full-stack campaign and record its evidence in <a href="/shadow-campaigns" className="font-bold underline">Shadow Campaigns</a>, then return here for independent review.
+        </div>
         <div className="mt-4 space-y-3">
           <label className="block text-xs font-semibold text-gray-700">Evidence type<select value={recordForm.evidenceType} onChange={(event) => setRecordForm((current) => ({ ...current, evidenceType: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm">{EVIDENCE_TYPES.map((item) => <option key={item} value={item}>{humanize(item)}</option>)}</select></label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs font-semibold text-gray-700">Environment<input value={recordForm.environment} onChange={(event) => setRecordForm((current) => ({ ...current, environment: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" /></label>
             <label className="text-xs font-semibold text-gray-700">Status<select value={recordForm.status} onChange={(event) => setRecordForm((current) => ({ ...current, status: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><option value="passed">Passed</option><option value="failed">Failed</option></select></label>
           </div>
-          <label className="block text-xs font-semibold text-gray-700">Measured duration seconds<input type="number" min="0" value={recordForm.durationSeconds} onChange={(event) => setRecordForm((current) => ({ ...current, durationSeconds: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" placeholder="Required for shadow-run evidence" /></label>
+          <label className="block text-xs font-semibold text-gray-700">Measured duration seconds<input type="number" min="0" value={recordForm.durationSeconds} onChange={(event) => setRecordForm((current) => ({ ...current, durationSeconds: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" placeholder="Optional when this evidence type has a measured duration" /></label>
           <label className="block text-xs font-semibold text-gray-700">Source reference<input value={recordForm.sourceReference} onChange={(event) => setRecordForm((current) => ({ ...current, sourceReference: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" placeholder="workflow run, report, application evidence, artifact…" /></label>
           <label className="block text-xs font-semibold text-gray-700">Evidence metadata JSON<textarea rows={7} value={recordForm.metadata} onChange={(event) => setRecordForm((current) => ({ ...current, metadata: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 font-mono text-xs" /></label>
           <div className="rounded-xl bg-gray-50 p-3 text-[11px] text-gray-500">Candidate head: <code className="font-semibold text-gray-800">{manifest.candidate_revision}</code></div>
@@ -226,7 +226,7 @@ function EvidenceLedger({ manifest, evidence }) {
         {verifyTarget && (
           <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3">
             <div className="text-xs font-bold text-blue-900">Verification is a separate decision</div>
-            <p className="mt-1 text-[11px] leading-5 text-blue-800">Check the source artifact and payload hash first. Type the exact phrase below. Verification still does not enable submission.</p>
+            <p className="mt-1 text-[11px] leading-5 text-blue-800">Check the source artifact and payload hash first. Shadow evidence also revalidates its linked full-stack campaign before and after review. Type the exact phrase below. Verification still does not enable submission.</p>
             <code className="mt-2 block overflow-x-auto rounded-lg bg-white px-2.5 py-2 text-[11px] text-gray-800">{expectedAck}</code>
             <input value={verifyAck} onChange={(event) => setVerifyAck(event.target.value)} className="mt-2 w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs" placeholder="Exact verification phrase" />
             <input value={verifyReference} onChange={(event) => setVerifyReference(event.target.value)} className="mt-2 w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs" placeholder="Review reference" />
@@ -342,9 +342,9 @@ export default function CertificationCenter() {
   const runtime = manifest.runtime_controls || {}
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="section-kicker">Phase 10 · Certification & scale</p><h1 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Certification Center</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-gray-500">Exact-head release evidence, measured shadow runs, explicit review, owner authorization, and independent runtime controls.</p></div><button type="button" onClick={() => { manifestQuery.refetch(); evidenceQuery.refetch() }} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 shadow-sm"><RefreshCw className="h-3.5 w-3.5" /> Refresh</button></div>
+      <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="section-kicker">Phase 10 · Certification & scale</p><h1 className="mt-1 text-2xl font-black tracking-tight text-gray-900">Certification Center</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-gray-500">Exact-head release evidence, full-stack shadow campaign evidence, explicit review, owner authorization, and independent runtime controls.</p></div><button type="button" onClick={() => { manifestQuery.refetch(); evidenceQuery.refetch() }} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 shadow-sm"><RefreshCw className="h-3.5 w-3.5" /> Refresh</button></div>
 
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-700" /><div><div className="text-sm font-bold text-emerald-900">Evidence, review, authorization, and execution are separate gates.</div><p className="mt-1 text-xs leading-5 text-emerald-800">Nothing on this page silently enables real submission. Missing, stale, expired, insufficient-duration, wrong-head, or hash-mismatched evidence fails closed.</p></div></div></div>
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-700" /><div><div className="text-sm font-bold text-emerald-900">Evidence, review, authorization, and execution are separate gates.</div><p className="mt-1 text-xs leading-5 text-emerald-800">Nothing on this page silently enables real submission. Missing, stale, expired, insufficient-duration, wrong-head, hash-mismatched, or unlinked shadow evidence fails closed.</p></div></div></div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Card><div className="flex items-center justify-between"><Gauge className="h-4 w-4 text-blue-600" /><span className="text-xl font-black text-gray-900">{totalQualifying}</span></div><div className="mt-3 text-xs font-bold text-gray-900">Qualifying evidence</div></Card><Card><div className="flex items-center justify-between"><TimerReset className="h-4 w-4 text-violet-600" /><code className="text-xs font-black text-gray-900">{shortSha(manifest.candidate_revision)}</code></div><div className="mt-3 text-xs font-bold text-gray-900">Candidate revision</div></Card><RuntimeControl label="Real submission" value={runtime.real_submission_enabled} safeWhenFalse /><RuntimeControl label="Autopilot" value={runtime.autopilot_enabled} safeWhenFalse /><RuntimeControl label="Global kill switch" value={runtime.global_kill_switch} /></div>
 
