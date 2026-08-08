@@ -4,7 +4,8 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models.certification import ShadowRunSession
+from app.api import shadow_runs as shadow_api
+from app.models.certification import ShadowRunCycle, ShadowRunSession
 from app.models.user import User
 from app.tasks import shadow_runs as shadow_tasks
 from tests.conftest import TestingSessionLocal
@@ -108,3 +109,58 @@ def test_stalled_recovery_redispatches_only_stale_active_sessions(db_session, mo
     ]
     assert result["submission_authorized"] is False
     assert result["outreach_authorized"] is False
+
+
+def test_stop_dispatch_failure_never_exposes_raw_broker_exception(
+    auth_client,
+    db_session,
+    monkeypatch,
+):
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    session = _session(user.id, status="running")
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    secret_error = "redis://internal-user:secret-token@private-host:6379/0"
+
+    def fail_dispatch(_session_id):
+        raise RuntimeError(secret_error)
+
+    monkeypatch.setattr(shadow_api.run_shadow_session_cycle, "delay", fail_dispatch)
+    response = auth_client.post(
+        f"/api/shadow-runs/{session.id}/stop",
+        json={"acknowledgment": f"STOP FULL STACK SHADOW {session.id}"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["dispatch_error"] == "worker_dispatch_unavailable"
+    assert secret_error not in response.text
+    assert "secret-token" not in response.text
+
+
+def test_public_cycle_status_sanitizes_internal_error_detail(auth_client, db_session):
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    session = _session(user.id, status="running")
+    db_session.add(session)
+    db_session.flush()
+    cycle = ShadowRunCycle(
+        session_id=session.id,
+        cycle_number=1,
+        status="failed",
+        started_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        completed_at=datetime.now(timezone.utc),
+        scheduler_result={},
+        observability_snapshot={},
+        reconciliation_snapshot={},
+        error_detail="provider password=super-secret infrastructure trace",
+    )
+    db_session.add(cycle)
+    db_session.commit()
+
+    response = auth_client.get(f"/api/shadow-runs/{session.id}")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["recent_cycles"][0]["error_detail"] == "cycle_failed"
+    assert "super-secret" not in response.text
+    assert "infrastructure trace" not in response.text
