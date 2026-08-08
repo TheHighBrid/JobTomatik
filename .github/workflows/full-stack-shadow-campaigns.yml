@@ -8,12 +8,15 @@ on:
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/shadow_runs.py"
       - "backend/app/services/full_stack_shadow.py"
+      - "backend/app/services/runtime_identity.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/tasks/scraping.py"
       - "backend/app/celery_app.py"
       - "backend/app/main.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
+      - "backend/tests/test_runtime_identity.py"
+      - "backend/tests/test_runtime_identity_shadow_gate.py"
       - "frontend/src/api/shadowCampaigns.js"
       - "frontend/src/pages/ShadowCampaignCenter.jsx"
       - "frontend/src/App.jsx"
@@ -30,12 +33,15 @@ on:
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/shadow_runs.py"
       - "backend/app/services/full_stack_shadow.py"
+      - "backend/app/services/runtime_identity.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/tasks/scraping.py"
       - "backend/app/celery_app.py"
       - "backend/app/main.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
+      - "backend/tests/test_runtime_identity.py"
+      - "backend/tests/test_runtime_identity_shadow_gate.py"
       - "frontend/src/api/shadowCampaigns.js"
       - "frontend/src/pages/ShadowCampaignCenter.jsx"
       - "frontend/src/App.jsx"
@@ -62,6 +68,9 @@ env:
   ALLOW_REAL_FOLLOWUP_SEND: "false"
   AUTOPILOT_ENABLED: "true"
   GLOBAL_KILL_SWITCH: "false"
+  JOBTOMATIK_RUNTIME_REVISION: ${{ github.sha }}
+  JOBTOMATIK_EXPECTED_REVISION: ${{ github.sha }}
+  JOBTOMATIK_RUNTIME_ROLE: ci
 
 jobs:
   phase11-contract:
@@ -90,24 +99,34 @@ jobs:
             app/api/shadow_runs.py \
             app/models/certification.py \
             app/services/full_stack_shadow.py \
+            app/services/runtime_identity.py \
             app/tasks/shadow_runs.py \
-            app/tasks/scraping.py
+            app/tasks/scraping.py \
+            tests/test_runtime_identity_shadow_gate.py
 
       - name: Run Phase 11 backend safety matrix
         working-directory: backend
         run: |
           python -m pytest -q --tb=short -ra \
             tests/test_full_stack_shadow.py \
-            tests/test_full_stack_shadow_recovery.py
+            tests/test_full_stack_shadow_recovery.py \
+            tests/test_runtime_identity.py \
+            tests/test_runtime_identity_shadow_gate.py
 
       - name: Prove consequential runtime controls remain off
         working-directory: backend
         run: |
           python - <<'PY'
           from app.config import get_settings
+          from app.services.runtime_identity import runtime_identity_manifest
+
           settings = get_settings()
+          identity = runtime_identity_manifest()
           assert settings.allow_real_application_submit is False
           assert settings.allow_real_followup_send is False
+          assert identity["deployment_attested"] is True
+          assert identity["revision"] == identity["expected_revision"]
+          assert identity["role"] == "ci"
           PY
 
       - name: Set up Node

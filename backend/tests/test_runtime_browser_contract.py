@@ -152,12 +152,15 @@ def test_playwright_attachment_gets_fresh_budget_after_slow_cdp_startup(
 
 def test_compose_serializes_the_shared_application_browser_profile():
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    command = (
-        "command: celery -A app.celery_app worker --loglevel=info "
+    worker_command = (
+        "exec celery -A app.celery_app worker --loglevel=info "
         "--pool=solo --concurrency=1 -Q celery,scraping,applications,followup"
     )
 
-    assert command in compose
+    # Phase 12 intentionally prepends exact-build attestation, but the worker remains
+    # serialized through the same solo/concurrency=1 application browser profile.
+    assert "check_runtime_identity.py --require-sensitive" in compose
+    assert worker_command in compose
 
 
 def test_compose_published_ports_default_to_loopback_only():

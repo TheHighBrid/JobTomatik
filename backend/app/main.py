@@ -51,6 +51,7 @@ from app.services.followup_schema import ensure_followup_schema
 from app.services.handoff_integration import install_handoff_task_integration
 from app.services.material_task_integration import install_verified_material_task_integration
 from app.services.operations_policy import operations_readiness_manifest
+from app.services.runtime_identity import runtime_identity_manifest
 from app.services.supervised_submission_integration import (
     install_supervised_submission_task_gate,
 )
@@ -276,6 +277,12 @@ def readiness_probe():
     return {"status": "ready", "service": "JobTomatik API", "version": "1.0.0"}
 
 
+@app.get("/api/system/runtime-identity")
+def runtime_identity():
+    """Read-only exact-build identity. This endpoint grants no execution authority."""
+    return runtime_identity_manifest()
+
+
 @app.get("/api/system/control-certification")
 async def control_certification():
     return certification_manifest()
@@ -309,4 +316,5 @@ async def operations_readiness():
     )
     readiness["invariants"]["recruiter_followup_requires_independent_approval"] = True
     readiness["recruiter_followup_send_enabled"] = bool(settings.allow_real_followup_send)
+    readiness["runtime_identity"] = runtime_identity_manifest()
     return readiness

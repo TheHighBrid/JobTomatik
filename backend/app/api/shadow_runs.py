@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
@@ -21,11 +22,31 @@ from app.services.full_stack_shadow import (
     request_shadow_stop,
     shadow_session_status,
 )
+from app.services.runtime_identity import runtime_identity_manifest
 from app.tasks.shadow_runs import run_shadow_session_cycle
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/shadow-runs", tags=["certification"])
+
+
+def _autopilot_enabled() -> bool:
+    return str(os.getenv("AUTOPILOT_ENABLED") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _runtime_identity_gate() -> dict:
+    identity = runtime_identity_manifest()
+    required = _autopilot_enabled()
+    return {
+        "required": required,
+        "ok": (not required) or bool(identity.get("deployment_attested")),
+        "identity": identity,
+    }
 
 
 def _public_shadow_status(db: Session, *, session) -> dict:
@@ -48,11 +69,22 @@ def get_shadow_campaign_preflight(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return full_stack_shadow_preflight(
+    payload = full_stack_shadow_preflight(
         db,
         current_user,
         target_evidence_type=target_evidence_type,
     )
+    gate = _runtime_identity_gate()
+    payload["runtime_identity"] = gate["identity"]
+    payload.setdefault("checks", {})["runtime_identity_attested"] = gate["ok"]
+    if not gate["ok"]:
+        blockers = list(payload.get("blockers") or [])
+        if "runtime_identity_unattested" not in blockers:
+            blockers.append("runtime_identity_unattested")
+        payload["blockers"] = blockers
+        payload["ok"] = False
+        payload["expected_start_acknowledgment"] = None
+    return payload
 
 
 @router.get("")
@@ -64,6 +96,7 @@ def get_shadow_campaigns(
     sessions = list_shadow_sessions(db, user_id=current_user.id, limit=limit)
     return {
         "sessions": [_public_shadow_status(db, session=session) for session in sessions],
+        "runtime_identity": runtime_identity_manifest(),
         "submission_authorized": False,
         "outreach_authorized": False,
     }
@@ -83,7 +116,9 @@ def get_shadow_campaign(
         )
     except ShadowCampaignError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return _public_shadow_status(db, session=session)
+    payload = _public_shadow_status(db, session=session)
+    payload["runtime_identity"] = runtime_identity_manifest()
+    return payload
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -92,6 +127,18 @@ def start_shadow_campaign(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    gate = _runtime_identity_gate()
+    if not gate["ok"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Shadow campaign runtime identity is not deployment-attested",
+                "reason": "runtime_identity_unattested",
+                "revision": gate["identity"].get("revision"),
+                "role": gate["identity"].get("role"),
+            },
+        )
+
     try:
         session = create_shadow_session(
             db,
@@ -136,6 +183,7 @@ def start_shadow_campaign(
         "status": session.status,
         "celery_task_id": task.id,
         "candidate_revision": session.candidate_revision,
+        "runtime_identity": gate["identity"],
         "target_evidence_type": session.target_evidence_type,
         "requested_duration_seconds": int(session.requested_duration_seconds),
         "expected_end_at": _public_shadow_status(db, session=session)["expected_end_at"],
@@ -171,13 +219,11 @@ def stop_shadow_campaign(
             task = run_shadow_session_cycle.delay(session.id)
             dispatch_task_id = task.id
         except Exception:
-            # The stop flag is already durable. Periodic stall recovery will finalize
-            # the session when the broker is available again. Keep raw infrastructure
-            # exceptions in server logs rather than exposing them through the API.
             logger.exception("Shadow campaign stop dispatch failed for session %s", session.id)
             dispatch_error = "worker_dispatch_unavailable"
     return {
         **_public_shadow_status(db, session=session),
+        "runtime_identity": runtime_identity_manifest(),
         "dispatch_task_id": dispatch_task_id,
         "dispatch_error": dispatch_error,
     }
@@ -211,6 +257,7 @@ def record_shadow_campaign_evidence(
         "payload_hash": evidence.payload_hash,
         "review_status": evidence.review_status,
         "duplicate": duplicate,
+        "runtime_identity": runtime_identity_manifest(),
         "submission_authorized": False,
         "outreach_authorized": False,
     }

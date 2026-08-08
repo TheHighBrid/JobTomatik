@@ -28,7 +28,7 @@ services:
   backend:
     build: ./backend
     init: true
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: sh -c "python scripts/check_runtime_identity.py --require-sensitive && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
@@ -37,6 +37,9 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-development}
       - ENABLE_API_DOCS=${ENABLE_API_DOCS:-true}
+      - JOBTOMATIK_RUNTIME_REVISION=${JOBTOMATIK_RUNTIME_REVISION:-}
+      - JOBTOMATIK_EXPECTED_REVISION=${JOBTOMATIK_EXPECTED_REVISION:-}
+      - JOBTOMATIK_RUNTIME_ROLE=api
       - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
@@ -75,12 +78,15 @@ services:
   celery_worker:
     build: ./backend
     init: true
-    command: celery -A app.celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q celery,scraping,applications,followup
+    command: sh -c "python scripts/check_runtime_identity.py --require-sensitive && exec celery -A app.celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q celery,scraping,applications,followup"
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads
     environment:
       - APP_ENV=${APP_ENV:-development}
+      - JOBTOMATIK_RUNTIME_REVISION=${JOBTOMATIK_RUNTIME_REVISION:-}
+      - JOBTOMATIK_EXPECTED_REVISION=${JOBTOMATIK_EXPECTED_REVISION:-}
+      - JOBTOMATIK_RUNTIME_ROLE=worker
       - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
@@ -113,11 +119,14 @@ services:
   celery_beat:
     build: ./backend
     init: true
-    command: celery -A app.celery_app beat --loglevel=info
+    command: sh -c "python scripts/check_runtime_identity.py --require-sensitive && exec celery -A app.celery_app beat --loglevel=info"
     volumes:
       - ./backend:/app
     environment:
       - APP_ENV=${APP_ENV:-development}
+      - JOBTOMATIK_RUNTIME_REVISION=${JOBTOMATIK_RUNTIME_REVISION:-}
+      - JOBTOMATIK_EXPECTED_REVISION=${JOBTOMATIK_EXPECTED_REVISION:-}
+      - JOBTOMATIK_RUNTIME_ROLE=beat
       - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
@@ -148,6 +157,7 @@ services:
       - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000
+      - VITE_JOBTOMATIK_RUNTIME_REVISION=${JOBTOMATIK_RUNTIME_REVISION:-}
 
 volumes:
   postgres_data:
