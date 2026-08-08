@@ -24,12 +24,13 @@ SHADOW_EVIDENCE_TYPES = {
     "shadow_run_8h",
     "shadow_run_24h",
 }
+SHADOW_REPORT_VERSION = "phase11-full-stack-shadow-v1"
 
 
 def _as_int(value: Any) -> int | None:
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        return int(float(value))
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -134,6 +135,8 @@ def shadow_evidence_provenance_reasons(
     if report_hash != embedded_hash or metadata_hash != embedded_hash:
         reasons.append("shadow_report_identity_mismatch")
 
+    if report.get("version") != SHADOW_REPORT_VERSION:
+        reasons.append("shadow_report_version_mismatch")
     if _as_int(report.get("session_id")) != session.id:
         reasons.append("shadow_report_session_mismatch")
     if report.get("status") != "completed":
@@ -142,10 +145,16 @@ def shadow_evidence_provenance_reasons(
         reasons.append("shadow_report_revision_mismatch")
     if report.get("target_evidence_type") != session.target_evidence_type:
         reasons.append("shadow_report_target_mismatch")
+    if _as_int(report.get("requested_duration_seconds")) != int(session.requested_duration_seconds or 0):
+        reasons.append("shadow_report_requested_duration_mismatch")
+    if _as_int(report.get("cycles_completed")) != int(session.cycles_completed or 0):
+        reasons.append("shadow_report_cycle_count_mismatch")
+    if _as_int(report.get("cycles_failed")) != int(session.cycles_failed or 0):
+        reasons.append("shadow_report_cycle_failure_mismatch")
     if report.get("qualification_eligible") is not True:
         reasons.append("shadow_report_not_qualifying")
 
-    measured = _as_int(float(report.get("measured_duration_seconds") or 0))
+    measured = _as_int(report.get("measured_duration_seconds"))
     if measured is None or measured != int(record.duration_seconds or 0):
         reasons.append("shadow_duration_mismatch")
     if measured is None or measured < requirement_seconds:
@@ -211,5 +220,6 @@ def shadow_evidence_provenance_reasons(
 
 __all__ = [
     "SHADOW_EVIDENCE_TYPES",
+    "SHADOW_REPORT_VERSION",
     "shadow_evidence_provenance_reasons",
 ]
