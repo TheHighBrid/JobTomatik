@@ -69,6 +69,10 @@ class ShadowRunSession(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    # Non-terminal campaigns retain ``user:<id>`` here. Terminal campaigns clear it.
+    # The unique constraint works on SQLite and PostgreSQL and closes the race that
+    # ``SELECT ... FOR UPDATE`` alone cannot close on Android/SQLite.
+    active_guard = Column(String(100), nullable=True, unique=True, index=True)
     candidate_revision = Column(String(64), nullable=False, index=True)
     target_evidence_type = Column(String(40), nullable=False, index=True)
     requested_duration_seconds = Column(Integer, nullable=False)
