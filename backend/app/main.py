@@ -12,6 +12,7 @@ from app.api import (
     answer_policies,
     applications,
     auth,
+    certification,
     controller,
     evaluations,
     export,
@@ -26,6 +27,7 @@ from app.api import (
     pilot_ledger,
     post_application,
     profile,
+    recovery,
     scheduler,
     settings as settings_api,
     submission_evidence_reviews,
@@ -254,6 +256,8 @@ app.include_router(evaluations.router, prefix="/api")
 app.include_router(operations.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
 app.include_router(post_application.router, prefix="/api")
+app.include_router(certification.router, prefix="/api")
+app.include_router(recovery.router, prefix="/api")
 
 
 @app.get("/health")
