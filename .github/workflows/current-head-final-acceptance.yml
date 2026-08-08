@@ -1,0 +1,214 @@
+name: Current-head end-to-end acceptance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: current-head-final-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: sqlite:///./current-head-final-acceptance.db
+  REDIS_URL: redis://localhost:6379/1
+  SECRET_KEY: current-head-final-acceptance-secret-2026
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  ENABLE_RESUMABLE_HANDOFFS: "false"
+  GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+  LEVER_SUPERVISED_PILOT_ENABLED: "false"
+  REQUIRE_BROWSER_TESTS: "1"
+  JOBTOMATIK_RUNTIME_ROLE: worker
+
+jobs:
+  exact-head-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 20
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out exact candidate revision
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Bind runtime identity to checked-out revision
+        run: |
+          revision="$(git -C .. rev-parse HEAD)"
+          echo "JOBTOMATIK_RUNTIME_REVISION=$revision" >> "$GITHUB_ENV"
+          echo "JOBTOMATIK_EXPECTED_REVISION=$revision" >> "$GITHUB_ENV"
+          echo "JOBTOMATIK_RUNTIME_REVISION_SHORT=${revision:0:12}" >> "$GITHUB_ENV"
+          printf '%s\n' "$revision" > current-head-revision.txt
+
+      - name: Prove exact runtime identity is deployment-attested
+        run: python scripts/check_runtime_identity.py --require-attested
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Certify LinkedIn Apply to ATS to filled dry-run form
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_application_entry_and_handoff_order.py \
+            tests/test_employer_application_entry_semantics.py \
+            tests/test_intermediate_employer_apply_acceptance.py \
+            tests/test_linkedin_classic_apply_entry.py \
+            tests/test_linkedin_apply_click_acceptance.py \
+            tests/test_premature_handoff_acceptance.py \
+            tests/test_stale_target_handoff_revalidation.py
+
+      - name: Start exact-head Android-style worker on Redis DB1
+        run: |
+          celery -A app.celery_app worker \
+            --hostname="jobtomatik-android-${JOBTOMATIK_RUNTIME_REVISION_SHORT}@%h" \
+            --loglevel=info \
+            --pool=solo \
+            --concurrency=1 \
+            --without-gossip \
+            --without-mingle \
+            -Q applications,celery,followup,scraping \
+            > current-head-celery.log 2>&1 &
+          echo $! > current-head-celery.pid
+
+          python - <<'PY'
+          import os
+          import time
+          from app.celery_app import celery_app
+
+          prefix = f"jobtomatik-android-{os.environ['JOBTOMATIK_RUNTIME_REVISION_SHORT']}@"
+          required = {"applications", "celery", "followup", "scraping"}
+          deadline = time.monotonic() + 30
+          while time.monotonic() < deadline:
+              inspector = celery_app.control.inspect(timeout=1.5)
+              pings = inspector.ping() or {}
+              queues = inspector.active_queues() or {}
+              for node, pong in pings.items():
+                  names = {str(item.get("name") or "") for item in queues.get(node, [])}
+                  if node.startswith(prefix) and pong.get("ok") == "pong" and required.issubset(names):
+                      print(f"CURRENT_HEAD_ANDROID_WORKER_READY node={node}")
+                      raise SystemExit(0)
+              time.sleep(0.5)
+          raise SystemExit("Exact-head Android-style worker did not become control-ready")
+          PY
+
+      - name: Prove producer to applications queue to exact worker round trip
+        run: |
+          python - <<'PY'
+          import os
+          from app.tasks.runtime import application_queue_canary
+
+          expected = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
+          result = application_queue_canary.apply_async(
+              kwargs={"expected_revision": expected},
+              queue="applications",
+          )
+          payload = result.get(timeout=15, propagate=True)
+          print(payload)
+          assert payload["ok"] is True
+          assert payload["revision"] == expected
+          assert payload["expected_revision"] == expected
+          assert payload["redis_db"] == 1
+          assert isinstance(payload["worker_pid"], int)
+          print("CURRENT_HEAD_APPLICATION_QUEUE_ROUND_TRIP_READY")
+          PY
+
+      - name: Re-run Android runtime and stale-worker safety contracts
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_application_recovery.py \
+            tests/test_android_runtime_canary.py \
+            tests/test_android_runtime_scripts.py \
+            tests/test_android_task_runtime_liveness.py \
+            tests/test_refresh_android_jobtomatik_tabs.py \
+            tests/test_retire_legacy_android_celery.py \
+            tests/test_prepare_android_runtime.py
+
+      - name: Write exact-head acceptance receipt
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          revision = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
+          receipt = {
+              "schema_version": "current-head-final-acceptance-v1",
+              "candidate_revision": revision,
+              "runtime_revision": revision,
+              "expected_revision": os.environ["JOBTOMATIK_EXPECTED_REVISION"],
+              "runtime_role": os.environ.get("JOBTOMATIK_RUNTIME_ROLE"),
+              "acceptance": {
+                  "linkedin_apply_to_external_ats": "passed",
+                  "click_only_linkedin_apply": "passed",
+                  "external_application_form_detected": "passed",
+                  "dry_run_form_fill": "passed",
+                  "premature_navigation_handoff_absent": "passed",
+                  "stale_pre_form_handoff_revalidation": "passed",
+                  "final_submit_clicked": False,
+                  "android_style_worker_control_ready": "passed",
+                  "applications_queue_redis_db1_round_trip": "passed",
+                  "runtime_identity_attested": "passed",
+              },
+              "runtime_safety": {
+                  "allow_real_application_submit": False,
+                  "allow_real_followup_send": False,
+                  "autopilot_enabled": False,
+                  "resumable_handoffs_enabled": False,
+                  "greenhouse_supervised_pilot_enabled": False,
+                  "lever_supervised_pilot_enabled": False,
+              },
+              "scope": "automated_non_device_acceptance",
+              "live_device_acceptance_performed": False,
+          }
+          canonical = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          receipt["receipt_sha256"] = hashlib.sha256(canonical).hexdigest()
+          Path("current-head-final-acceptance.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(receipt, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload exact-head acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: current-head-final-acceptance-${{ github.sha }}
+          path: |
+            backend/current-head-final-acceptance.json
+            backend/current-head-revision.txt
+            backend/current-head-celery.log
+          if-no-files-found: warn
+          retention-days: 30
