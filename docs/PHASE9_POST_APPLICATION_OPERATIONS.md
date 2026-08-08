@@ -97,7 +97,9 @@ It is not an AI truth oracle and does not silently modify records.
 
 ## Idempotency and account isolation
 
-Inbound messages are hashed from normalized sender, subject, full body, and received timestamp. Re-ingesting an identical message for the same application returns the existing event instead of creating another CRM interaction.
+The required `source_reference` is the stable message identity for repeated manual/provider ingestion of the same application event. This protects idempotency even when `received_at` was not supplied and the server must record its own receipt time. A normalized SHA256 over sender, subject, full body, and received timestamp remains a second duplicate check for callers that use distinct source references.
+
+Re-ingesting the same source reference for the same application returns the existing event instead of creating another CRM interaction. Distinct source references remain distinct message events. Recruiter email and company matching uses normalized literal equality rather than SQL wildcard semantics.
 
 Every application lookup is scoped to the authenticated user. Recruiter contacts and knowledge/memory lookups are also user-scoped.
 
@@ -106,7 +108,9 @@ Every application lookup is scoped to the authenticated user. Recruiter contacts
 Phase 9 is complete when automated verification proves all of the following:
 
 - inbound employer events attach only to the intended user-owned application;
-- duplicate messages are idempotent;
+- duplicate messages are idempotent even when no provider timestamp is available;
+- distinct source references remain distinct message identities;
+- recruiter contact matching is literal and account-scoped;
 - classification never changes status by itself;
 - exact confirmation is required for proposed status transitions;
 - recruiter CRM interactions retain source and classification metadata;
