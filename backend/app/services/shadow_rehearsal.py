@@ -1,9 +1,10 @@
-"""Measured unattended no-submit rehearsal used by the Phase 10 scale gates.
+"""Measured policy-only no-submit rehearsal retained as a diagnostic smoke harness.
 
-A short smoke run proves the harness itself. Four-, eight-, and twenty-four-hour
-qualification is granted only when the measured monotonic elapsed time reaches the
-corresponding threshold. The harness never launches an application browser and never
-changes runtime submission settings.
+This helper measures monotonic elapsed time and checks static no-submit manifests, but
+it does not exercise the production scheduler, discovery, or application-preparation
+path. Phase 12 therefore never accepts its output as 4h/8h/24h certification evidence.
+Real shadow certification evidence must come from a qualifying full-stack
+``ShadowRunSession`` through the dedicated campaign evidence bridge.
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ def run_shadow_rehearsal(
     monotonic: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
-    """Run a bounded policy-only rehearsal and return a tamper-evident report."""
+    """Run a bounded policy-only rehearsal and return a tamper-evident smoke report."""
     requested = max(0.0, float(duration_seconds))
     interval = max(0.05, float(interval_seconds))
     started_wall = _utc_now()
@@ -100,8 +101,13 @@ def run_shadow_rehearsal(
         "measured_elapsed_time": True,
         "cycles": cycles,
         "completed": completed,
+        # Retained for diagnostic compatibility only. A true value means this local
+        # timer crossed one of its thresholds; it never means CertificationEvidence
+        # can be created from this report after Phase 12.
         "qualification_eligible": any(qualifications.values()),
         "qualifications": qualifications,
+        "certification_evidence_eligible": False,
+        "certification_evidence_source": "full_stack_shadow_campaign_required",
         "failures": failures,
         "safety": {
             "final_submit_enabled": False,
