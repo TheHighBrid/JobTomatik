@@ -28,6 +28,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/shadow-runs", tags=["certification"])
 
 
+def _public_shadow_status(db: Session, *, session) -> dict:
+    """Return operator-safe status without raw worker/provider exception text."""
+
+    payload = shadow_session_status(db, session=session)
+    payload["recent_cycles"] = [
+        {
+            **dict(cycle),
+            "error_detail": "cycle_failed" if cycle.get("error_detail") else None,
+        }
+        for cycle in list(payload.get("recent_cycles") or [])
+    ]
+    return payload
+
+
 @router.get("/preflight")
 def get_shadow_campaign_preflight(
     target_evidence_type: str = Query(default="shadow_run_4h"),
@@ -49,7 +63,7 @@ def get_shadow_campaigns(
 ):
     sessions = list_shadow_sessions(db, user_id=current_user.id, limit=limit)
     return {
-        "sessions": [shadow_session_status(db, session=session) for session in sessions],
+        "sessions": [_public_shadow_status(db, session=session) for session in sessions],
         "submission_authorized": False,
         "outreach_authorized": False,
     }
@@ -69,7 +83,7 @@ def get_shadow_campaign(
         )
     except ShadowCampaignError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return shadow_session_status(db, session=session)
+    return _public_shadow_status(db, session=session)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -124,7 +138,7 @@ def start_shadow_campaign(
         "candidate_revision": session.candidate_revision,
         "target_evidence_type": session.target_evidence_type,
         "requested_duration_seconds": int(session.requested_duration_seconds),
-        "expected_end_at": shadow_session_status(db, session=session)["expected_end_at"],
+        "expected_end_at": _public_shadow_status(db, session=session)["expected_end_at"],
         "submission_authorized": False,
         "outreach_authorized": False,
     }
@@ -163,7 +177,7 @@ def stop_shadow_campaign(
             logger.exception("Shadow campaign stop dispatch failed for session %s", session.id)
             dispatch_error = "worker_dispatch_unavailable"
     return {
-        **shadow_session_status(db, session=session),
+        **_public_shadow_status(db, session=session),
         "dispatch_task_id": dispatch_task_id,
         "dispatch_error": dispatch_error,
     }
