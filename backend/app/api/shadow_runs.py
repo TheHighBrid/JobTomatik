@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -22,6 +24,7 @@ from app.services.full_stack_shadow import (
 from app.tasks.shadow_runs import run_shadow_session_cycle
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/shadow-runs", tags=["certification"])
 
 
@@ -98,15 +101,17 @@ def start_shadow_campaign(
     try:
         task = run_shadow_session_cycle.delay(session.id)
     except Exception as exc:
+        logger.exception("Initial shadow campaign dispatch failed for session %s", session.id)
         try:
             mark_shadow_dispatch_failure(
                 db,
                 session_id=session.id,
-                detail=f"initial_dispatch:{exc}",
+                detail="initial_worker_dispatch_unavailable",
             )
             db.commit()
         except Exception:
             db.rollback()
+            logger.exception("Failed to persist initial shadow dispatch failure")
         raise HTTPException(
             status_code=503,
             detail="Shadow campaign was retained but initial worker dispatch failed",
@@ -151,10 +156,12 @@ def stop_shadow_campaign(
         try:
             task = run_shadow_session_cycle.delay(session.id)
             dispatch_task_id = task.id
-        except Exception as exc:
+        except Exception:
             # The stop flag is already durable. Periodic stall recovery will finalize
-            # the session when the broker is available again.
-            dispatch_error = str(exc)[:1000]
+            # the session when the broker is available again. Keep raw infrastructure
+            # exceptions in server logs rather than exposing them through the API.
+            logger.exception("Shadow campaign stop dispatch failed for session %s", session.id)
+            dispatch_error = "worker_dispatch_unavailable"
     return {
         **shadow_session_status(db, session=session),
         "dispatch_task_id": dispatch_task_id,
