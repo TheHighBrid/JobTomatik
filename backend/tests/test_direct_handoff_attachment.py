@@ -116,9 +116,9 @@ def test_successful_dry_run_reaches_ready_to_apply_without_review_or_handoff(
     """Task-layer invariant for the exact premature-handoff failure class.
 
     The real-browser acceptance suite proves LinkedIn Apply navigation and ATS form
-    filling return a successful, review-free dry-run result. This test proves the
-    worker/task integration cannot reinterpret that ordinary success as a manual
-    review or retained-browser handoff.
+    filling. This test composes a successful target-resolution result through the
+    installed application-target task wrapper and proves the task cannot reinterpret
+    the ordinary ATS success as a manual review or retained-browser handoff.
     """
     linkedin_url = "https://www.linkedin.com/jobs/view/4442675569"
     greenhouse_url = "https://job-boards.greenhouse.io/affirm/jobs/7806920003"
@@ -128,14 +128,42 @@ def test_successful_dry_run_reaches_ready_to_apply_without_review_or_handoff(
         title="Senior Machine Learning Engineer (Fraud)",
         url=linkedin_url,
     )
-    _patch_external_method(monkeypatch)
 
-    async def fake_successful_filled_dry_run(**_kwargs):
+    monkeypatch.setattr("app.tasks.applications.SessionLocal", TestingSessionLocal)
+
+    async def fake_target_resolution(source_url):
+        assert source_url == linkedin_url
+        return {
+            "success": True,
+            "dry_run": True,
+            "source_listing_url": linkedin_url,
+            "application_target_url": greenhouse_url,
+            "application_target_status": "resolved",
+            "application_form_detected": True,
+            "form_evidence": {"visibleControls": 6, "applicantControls": 5},
+            "resolution_method": "application_entry_external_href_navigated",
+            "requires_manual_review": False,
+            "review_items": [],
+            "handoff_snapshot": None,
+            "log": [
+                {"action": "application_entry_external_href_navigated"},
+                {"action": "application_entry_resolved"},
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.services.application_target_task_integration.resolve_application_target_with_browser",
+        fake_target_resolution,
+    )
+
+    async def fake_successful_filled_dry_run(**kwargs):
+        assert kwargs["job_url"] == greenhouse_url
+        assert kwargs["dry_run"] is True
         return {
             "success": True,
             "dry_run": True,
             "ready_to_submit": True,
-            "url": linkedin_url,
+            "url": greenhouse_url,
             "application_url": greenhouse_url,
             "application_form_detected": True,
             "ats_adapter": "greenhouse",
@@ -174,6 +202,9 @@ def test_successful_dry_run_reaches_ready_to_apply_without_review_or_handoff(
         application = db.query(Application).filter(Application.id == app_id).one()
         assert application.status.value == "pending"
         assert application.automation_state == ApplicationAutomationState.ready_to_apply.value
+        assert application.source_listing_url == linkedin_url
+        assert application.application_target_url == greenhouse_url
+        assert application.application_target_status == "resolved"
         assert (
             db.query(ManualReviewTask)
             .filter(ManualReviewTask.application_id == app_id)
