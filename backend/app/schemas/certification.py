@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class CertificationEvidenceCreate(BaseModel):
@@ -32,6 +32,32 @@ class CertificationEvidenceCreate(BaseModel):
         if not all(character in "0123456789abcdef" for character in normalized):
             raise ValueError("commit_sha must be hexadecimal")
         return normalized
+
+    @model_validator(mode="after")
+    def require_dead_letter_proof(self):
+        if self.evidence_type != "dead_letter_checkpoint_recovery":
+            return self
+        metadata = dict(self.evidence_metadata or {})
+        required_true = (
+            "dead_letter_verified",
+            "checkpoint_resume_verified",
+            "checkpoint_drift_blocked",
+        )
+        missing = [key for key in required_true if metadata.get(key) is not True]
+        if missing:
+            raise ValueError(
+                "dead_letter_checkpoint_recovery requires true proof flags: "
+                + ", ".join(missing)
+            )
+        if metadata.get("submission_authorized") is not False:
+            raise ValueError(
+                "dead_letter_checkpoint_recovery requires submission_authorized=false"
+            )
+        if metadata.get("outreach_authorized") is not False:
+            raise ValueError(
+                "dead_letter_checkpoint_recovery requires outreach_authorized=false"
+            )
+        return self
 
 
 class CertificationEvidenceOut(BaseModel):
