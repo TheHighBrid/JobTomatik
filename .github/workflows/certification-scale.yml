@@ -106,6 +106,7 @@ jobs:
             tests/test_certification_scale.py \
             tests/test_certification_identity_hardening.py \
             tests/test_certification_account_identity_api.py \
+            tests/test_certification_authorization_identity.py \
             tests/test_certification_system_evidence_guard.py \
             tests/test_dead_letter_certification_evidence.py \
             tests/test_dead_letter_drill.py \
