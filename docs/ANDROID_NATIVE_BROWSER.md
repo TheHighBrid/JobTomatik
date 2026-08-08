@@ -12,12 +12,20 @@ The managed Android runtime has one authoritative execution path:
 - frontend: `http://127.0.0.1:3000`
 - native Chromium CDP: `http://127.0.0.1:9222`
 - managed Redis/Celery database: `redis://localhost:6379/1`
-- managed Celery hostname: `jobtomatik-android@%h`
+- managed Celery hostname: `jobtomatik-android-<revision-prefix>@%h`
 - managed queues: `applications,celery,followup,scraping`
+- API runtime role: `api`
+- worker runtime role: `worker`
+- runtime revision: exact checked-out Git commit
+- expected revision: exact same checked-out Git commit
 
 Redis DB 1 intentionally isolates the managed runtime from historical manually launched workers that may still be alive in old terminal tabs on Redis DB 0. Those processes do not need to be killed and cannot consume newly queued managed tasks.
 
 The frontend automatically migrates historical loopback API settings such as port `8011` back to the authoritative Android API on port `8010`.
+
+The one-command Android manager now carries the same Phase 12 runtime-identity contract as the standalone revision-stamped launchers. It derives the checked-out revision, binds it as both `JOBTOMATIK_RUNTIME_REVISION` and `JOBTOMATIK_EXPECTED_REVISION`, assigns process-specific roles, runs the unconditional attestation checker before managed processes start, and rechecks the live API plus the worker queue canary before reporting the stack ready.
+
+Runtime identity is evidence only. It never enables application submission, recruiter outreach, adapter promotion, or release authorization.
 
 ## Application execution order
 
@@ -42,7 +50,7 @@ A visible `Apply` button on a LinkedIn job-detail page is not a human boundary. 
 - `backend/scripts/install_android_native_browser_launcher.sh` installs the native `jobtomatik` and `jobtomatik-browser` commands from inside Ubuntu PRoot without assuming where PRoot-Distro stores its root filesystem.
 - `backend/scripts/repair_android_database_url.py` replaces an unreachable localhost PostgreSQL URL with the Android SQLite database after backing up `backend/.env`. Remote PostgreSQL URLs and reachable local servers remain unchanged.
 - `backend/scripts/prepare_android_runtime.py` backs up an existing SQLite database when schema repair is needed, creates missing runtime tables, verifies critical discovery tables, and reports browser reachability.
-- `backend/scripts/manage_android_stack.sh` establishes the authoritative Android settings, repairs configuration and schema, starts Redis when necessary, and supervises FastAPI, Celery, and Vite through PID files and logs.
+- `backend/scripts/manage_android_stack.sh` establishes the authoritative Android settings, repairs configuration and schema, binds exact runtime identity, starts Redis when necessary, and supervises FastAPI, Celery, and Vite through PID files and logs.
 
 ## One-time activation from native Termux
 
@@ -102,12 +110,16 @@ jobtomatik stop
 Successful status markers are:
 
 ```text
-API: READY
+API: READY_ATTESTED
 FRONTEND: READY
 CELERY: READY applications,celery,followup,scraping
+CELERY_APPLICATION_CANARY: READY_ATTESTED
 ANDROID_BROWSER_CDP: READY
 ANDROID_RUNTIME_BROKER: ISOLATED
+ANDROID_RUNTIME_ATTESTATION: READY
 ```
+
+`jobtomatik status` fails closed when the API is reachable but its live Phase 12 identity is stale, unattested, has the wrong process role, or does not match the current checkout. The worker is considered ready only after a real producer → `applications` queue → worker → Redis DB1 result round trip also proves the worker role and exact deployment attestation.
 
 The persistent authenticated browser profile remains at:
 
@@ -124,7 +136,11 @@ REDIS_URL=redis://localhost:6379/1
 APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9222
 APPLICATION_BROWSER_HEADLESS=false
 APPLICATION_TARGET_HUMAN_WAIT_SECONDS=0
+JOBTOMATIK_RUNTIME_REVISION=<checked-out-commit>
+JOBTOMATIK_EXPECTED_REVISION=<same-checked-out-commit>
 ```
+
+The API and worker receive their own `JOBTOMATIK_RUNTIME_ROLE` values when launched. The identity values are process environment, not durable permission flags.
 
 `APPLICATION_TARGET_HUMAN_WAIT_SECONDS=0` is deliberate. The worker must never wait for the operator merely to click an Apply doorway. Human time is reserved for real retained security or policy boundaries.
 
@@ -142,6 +158,20 @@ When `APPLICATION_BROWSER_CDP_ENDPOINT` is set, JobTomatik:
 - does not spawn the PRoot Playwright browser
 - does not terminate the native browser after an application task
 - preserves CDP-backed handoffs only when a genuine resumable boundary exists
+
+## Full-stack shadow certification
+
+The managed Android runtime is suitable for Phase 11/12 shadow preflight only when all independent shadow prerequisites also pass. In particular:
+
+- `ALLOW_REAL_APPLICATION_SUBMIT=false`
+- `AUTOPILOT_ENABLED=true` as the scheduler prerequisite
+- user auto-search and auto-apply are enabled
+- user dry-run mode is enabled
+- global/platform safety controls remain clear
+- `/api/system/runtime-identity` reports the exact current revision and `deployment_attested=true`
+- Shadow Campaign preflight reports runtime identity attested
+
+A green Android runtime status does **not** create 4h, 8h, or 24h certification evidence. The campaign must still run for the real requested duration, settle and reconcile, retain its hash-bound Phase 11 report, bridge that exact session into the certification ledger, and receive independent review under the Phase 12 provenance rules.
 
 ## Component-level commands
 
@@ -162,6 +192,8 @@ bash backend/scripts/manage_android_stack.sh restart
 bash backend/scripts/manage_android_stack.sh stop
 ```
 
+For isolated component development, `scripts/jobtomatik-runtime.sh api|worker|beat` remains available. The native `jobtomatik` command is the preferred integrated Android path because it also owns Redis isolation, schema preparation, browser attachment, frontend routing, queue-canary verification, and exact runtime attestation.
+
 Runtime logs and automatic backups are stored under:
 
 ```text
@@ -179,6 +211,9 @@ $HOME/.jobtomatik-runtime/
 - An explicitly closed job listing is a terminal, non-retryable outcome and does not create a manual handoff.
 - A LinkedIn DOM rerender triggers an automatic Apply-control rescan, not a manual handoff.
 - A stale worker connected to historical Redis DB 0 cannot consume managed tasks routed through Redis DB 1.
+- A stale or unattested managed API is restarted rather than silently adopted.
+- A worker that cannot prove exact Phase 12 attestation through the real applications queue is not declared ready.
+- A caller-supplied expected revision that differs from the checked-out runtime revision stops the manager before API/worker startup.
 - The browser supervisor restarts native Chromium after an unexpected exit. JobTomatik waits briefly for the CDP endpoint to return.
 - SQLite is backed up before missing critical tables are created by the Android runtime preflight. Only the newest three automatic schema backups are retained.
 - Browser logs rotate at a bounded size to avoid consuming the device's limited storage.
@@ -189,5 +224,7 @@ $HOME/.jobtomatik-runtime/
 The native Chromium process belongs to the operator, not JobTomatik. JobTomatik only disconnects its Playwright controller when a task finishes.
 
 The runtime manager never uses broad process matching to terminate arbitrary terminal sessions. Historical manual processes may remain visible, but the managed broker and API routing prevent them from participating in new application tasks.
+
+Runtime attestation proves exact code identity only. It cannot turn on real application submission, recruiter outreach, adapter maturity, supervised approval, or release authorization.
 
 Do not expose port `9222` to the public network. The remote-debugging address remains bound to `127.0.0.1`.

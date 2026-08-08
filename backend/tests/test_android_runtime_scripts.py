@@ -95,6 +95,22 @@ def test_android_worker_readiness_requires_real_application_queue_round_trip():
     assert "CELERY_APPLICATION_CANARY: READY" in manager
 
 
+def test_android_managed_runtime_requires_phase12_attestation_for_api_and_worker():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'EXPECTED_RUNTIME_REVISION="${JOBTOMATIK_EXPECTED_REVISION:-$RUNTIME_REVISION}"' in manager
+    assert "scripts/check_runtime_identity.py --require-attested" in manager
+    assert "JOBTOMATIK_RUNTIME_ROLE=api" in manager
+    assert "JOBTOMATIK_RUNTIME_ROLE=worker" in manager
+    assert "/api/system/runtime-identity" in manager
+    assert 'payload.get("role") == "api"' in manager
+    assert 'payload.get("runtime_role") != "worker"' in manager
+    assert 'payload.get("deployment_attested") is not True' in manager
+    assert "ANDROID_RUNTIME_ATTESTATION: READY" in manager
+
+
 def test_android_managed_runtime_isolated_from_legacy_and_stale_managed_workers():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
