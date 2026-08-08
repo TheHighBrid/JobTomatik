@@ -44,7 +44,9 @@ def test_evidence_identity_is_namespaced_by_owner_account():
 def test_active_authorization_rejects_hash_tampering():
     db = TestingSessionLocal()
     try:
-        user = db.query(User).filter(User.email == "test@example.com").one()
+        user = User(email="phase10-auth-integrity@example.com", hashed_password="unused")
+        db.add(user)
+        db.flush()
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(hours=2)
         approval_reference = "owner:hash-bound-auth"
