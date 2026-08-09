@@ -4,19 +4,24 @@ on:
   pull_request:
     paths:
       - "backend/app/api/shadow_runs.py"
+      - "backend/app/config.py"
       - "backend/app/models/certification.py"
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/shadow_runs.py"
       - "backend/app/services/full_stack_shadow.py"
+      - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/tasks/scraping.py"
       - "backend/app/celery_app.py"
       - "backend/app/main.py"
+      - "backend/scripts/check_runtime_identity.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
+      - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
+      - "docker-compose.yml"
       - "frontend/src/api/shadowCampaigns.js"
       - "frontend/src/pages/ShadowCampaignCenter.jsx"
       - "frontend/src/App.jsx"
@@ -29,19 +34,24 @@ on:
       - main
     paths:
       - "backend/app/api/shadow_runs.py"
+      - "backend/app/config.py"
       - "backend/app/models/certification.py"
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/shadow_runs.py"
       - "backend/app/services/full_stack_shadow.py"
+      - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/tasks/scraping.py"
       - "backend/app/celery_app.py"
       - "backend/app/main.py"
+      - "backend/scripts/check_runtime_identity.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
+      - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
+      - "docker-compose.yml"
       - "frontend/src/api/shadowCampaigns.js"
       - "frontend/src/pages/ShadowCampaignCenter.jsx"
       - "frontend/src/App.jsx"
@@ -67,7 +77,7 @@ env:
   ALLOW_REAL_APPLICATION_SUBMIT: "false"
   ALLOW_REAL_FOLLOWUP_SEND: "false"
   AUTOPILOT_ENABLED: "true"
-  GLOBAL_KILL_SWITCH: "false"
+  AUTOMATION_GLOBAL_KILL_SWITCH: "false"
   JOBTOMATIK_RUNTIME_REVISION: ${{ github.sha }}
   JOBTOMATIK_EXPECTED_REVISION: ${{ github.sha }}
   JOBTOMATIK_RUNTIME_ROLE: ci
@@ -97,11 +107,15 @@ jobs:
         run: |
           python -m compileall -q \
             app/api/shadow_runs.py \
+            app/config.py \
             app/models/certification.py \
             app/services/full_stack_shadow.py \
+            app/services/operations_settings.py \
             app/services/runtime_identity.py \
             app/tasks/shadow_runs.py \
             app/tasks/scraping.py \
+            scripts/check_runtime_identity.py \
+            tests/test_operations_policy.py \
             tests/test_runtime_identity_shadow_gate.py
 
       - name: Run Phase 11 backend safety matrix
@@ -110,6 +124,7 @@ jobs:
           python -m pytest -q --tb=short -ra \
             tests/test_full_stack_shadow.py \
             tests/test_full_stack_shadow_recovery.py \
+            tests/test_operations_policy.py \
             tests/test_runtime_identity.py \
             tests/test_runtime_identity_shadow_gate.py
 
@@ -118,12 +133,16 @@ jobs:
         run: |
           python - <<'PY'
           from app.config import get_settings
+          from app.services.operations_policy import operations_readiness_manifest
           from app.services.runtime_identity import runtime_identity_manifest
 
           settings = get_settings()
+          operations = operations_readiness_manifest()
           identity = runtime_identity_manifest()
           assert settings.allow_real_application_submit is False
           assert settings.allow_real_followup_send is False
+          assert operations["autopilot_enabled"] is True
+          assert operations["global_kill_switch"] is False
           assert identity["deployment_attested"] is True
           assert identity["revision"] == identity["expected_revision"]
           assert identity["role"] == "ci"

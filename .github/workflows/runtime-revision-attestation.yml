@@ -3,11 +3,16 @@ name: Runtime revision attestation
 on:
   pull_request:
     paths:
+      - "backend/app/config.py"
+      - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/app/api/shadow_runs.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/main.py"
       - "backend/scripts/check_runtime_identity.py"
+      - "backend/scripts/manage_android_stack.sh"
+      - "backend/tests/test_operations_policy.py"
+      - "backend/tests/test_runtime_configuration_contract.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
       - "docker-compose.yml"
@@ -23,11 +28,16 @@ on:
     branches:
       - main
     paths:
+      - "backend/app/config.py"
+      - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/app/api/shadow_runs.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/main.py"
       - "backend/scripts/check_runtime_identity.py"
+      - "backend/scripts/manage_android_stack.sh"
+      - "backend/tests/test_operations_policy.py"
+      - "backend/tests/test_runtime_configuration_contract.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
       - "docker-compose.yml"
@@ -58,6 +68,7 @@ env:
   ALLOW_REAL_APPLICATION_SUBMIT: "false"
   ALLOW_REAL_FOLLOWUP_SEND: "false"
   AUTOPILOT_ENABLED: "true"
+  AUTOMATION_GLOBAL_KILL_SWITCH: "false"
 
 jobs:
   identity-contract:
@@ -78,21 +89,27 @@ jobs:
         working-directory: backend
         run: python -m pip install -q --disable-pip-version-check -r requirements.txt
 
-      - name: Compile identity and shadow chokepoints
+      - name: Compile identity configuration and shadow chokepoints
         working-directory: backend
         run: |
           python -m compileall -q \
+            app/config.py \
+            app/services/operations_settings.py \
             app/services/runtime_identity.py \
             app/api/shadow_runs.py \
             app/tasks/shadow_runs.py \
             scripts/check_runtime_identity.py \
+            tests/test_operations_policy.py \
+            tests/test_runtime_configuration_contract.py \
             tests/test_runtime_identity.py \
             tests/test_runtime_identity_shadow_gate.py
 
-      - name: Run runtime identity safety matrix
+      - name: Run runtime identity and configuration safety matrix
         working-directory: backend
         run: |
           python -m pytest -q --tb=short -ra \
+            tests/test_operations_policy.py \
+            tests/test_runtime_configuration_contract.py \
             tests/test_runtime_identity.py \
             tests/test_runtime_identity_shadow_gate.py
 
@@ -145,10 +162,11 @@ jobs:
           grep -Fq 'JOBTOMATIK_RUNTIME_ROLE: beat' compose-attested.yml
           test "$(grep -Fc 'check_runtime_identity.py --require-sensitive' compose-attested.yml)" -ge 3
 
-      - name: Prove fail-safe consequential defaults remain off
+      - name: Prove fail-safe consequential and emergency controls propagate
         run: |
           grep -Fq 'ALLOW_REAL_APPLICATION_SUBMIT: "false"' compose-attested.yml
           grep -Fq 'ALLOW_REAL_FOLLOWUP_SEND: "false"' compose-attested.yml
+          test "$(grep -Fc 'AUTOMATION_GLOBAL_KILL_SWITCH: "false"' compose-attested.yml)" -ge 3
 
   source-contract:
     runs-on: ubuntu-22.04
@@ -169,5 +187,8 @@ jobs:
           grep -Fq 'github.sha' .github/workflows/android-apk.yml
           grep -Fq 'JOBTOMATIK_EXPECTED_REVISION:' .github/workflows/android-runtime-dispatch-acceptance.yml
           grep -Fq 'check_runtime_identity.py --require-attested' .github/workflows/android-runtime-dispatch-acceptance.yml
+          grep -Fq 'JOBTOMATIK_RUNTIME_ROLE=beat' backend/scripts/manage_android_stack.sh
+          grep -Fq 'CELERY_BEAT: READY_ATTESTED' backend/scripts/manage_android_stack.sh
           grep -Fq 'JOBTOMATIK_RUNTIME_REVISION=' .env.example
           grep -Fq 'JOBTOMATIK_EXPECTED_REVISION=' .env.example
+          grep -Fq 'AUTOMATION_GLOBAL_KILL_SWITCH=' .env.example

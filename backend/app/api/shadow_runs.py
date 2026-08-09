@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +21,7 @@ from app.services.full_stack_shadow import (
     request_shadow_stop,
     shadow_session_status,
 )
+from app.services.operations_settings import get_operations_settings
 from app.services.runtime_identity import runtime_identity_manifest
 from app.tasks.shadow_runs import run_shadow_session_cycle
 
@@ -31,12 +31,7 @@ router = APIRouter(prefix="/shadow-runs", tags=["certification"])
 
 
 def _autopilot_enabled() -> bool:
-    return str(os.getenv("AUTOPILOT_ENABLED") or "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return bool(get_operations_settings().autopilot_enabled)
 
 
 def _runtime_identity_gate() -> dict:

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import List, Literal
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,7 +15,10 @@ PLACEHOLDER_SECRET_MARKERS = (
 
 
 class Settings(BaseSettings):
-    app_environment: Literal["development", "test", "production"] = "development"
+    app_environment: Literal["development", "test", "production"] = Field(
+        default="development",
+        validation_alias=AliasChoices("APP_ENV", "APP_ENVIRONMENT"),
+    )
     enable_api_docs: bool = True
 
     database_url: str = "sqlite:///./jobtomatik.db"
@@ -143,7 +146,11 @@ class Settings(BaseSettings):
 
         return self
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        populate_by_name=True,
+    )
 
 
 @lru_cache

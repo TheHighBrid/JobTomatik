@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from app.api import shadow_runs as shadow_api
 from app.models.certification import ShadowRunSession
+from app.services.operations_settings import get_operations_settings
 from app.tasks import shadow_runs as shadow_tasks
 
 
@@ -15,9 +16,12 @@ def _clear_identity(monkeypatch):
         "JOBTOMATIK_RUNTIME_REVISION",
         "JOBTOMATIK_EXPECTED_REVISION",
         "JOBTOMATIK_RUNTIME_ROLE",
+        "JOBTOMATIK_OPERATIONS_ENV_FILE",
         "GITHUB_SHA",
+        "AUTOPILOT_ENABLED",
     ):
         monkeypatch.delenv(name, raising=False)
+    get_operations_settings.cache_clear()
 
 
 def _base_preflight(target="shadow_run_4h"):
@@ -112,6 +116,23 @@ def test_shadow_identity_gate_accepts_matching_exact_revision(monkeypatch):
     assert gate["ok"] is True
     assert gate["identity"]["revision"] == REVISION
     assert gate["identity"]["role"] == "api"
+
+
+def test_shadow_api_and_worker_share_operations_env_file_autopilot_gate(tmp_path, monkeypatch):
+    _clear_identity(monkeypatch)
+    env_file = tmp_path / "jobtomatik.env"
+    env_file.write_text("AUTOPILOT_ENABLED=true\n", encoding="utf-8")
+    monkeypatch.setenv("JOBTOMATIK_OPERATIONS_ENV_FILE", str(env_file))
+    get_operations_settings.cache_clear()
+
+    api_gate = shadow_api._runtime_identity_gate()
+    worker_ok, worker_identity = shadow_tasks._identity_allows_shadow_execution()
+
+    assert api_gate["required"] is True
+    assert api_gate["ok"] is False
+    assert api_gate["identity"]["deployment_attested"] is False
+    assert worker_ok is False
+    assert worker_identity["deployment_attested"] is False
 
 
 def test_shadow_worker_refuses_direct_unattested_execution(monkeypatch):

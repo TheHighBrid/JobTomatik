@@ -95,7 +95,7 @@ def test_android_worker_readiness_requires_real_application_queue_round_trip():
     assert "CELERY_APPLICATION_CANARY: READY" in manager
 
 
-def test_android_managed_runtime_requires_phase12_attestation_for_api_and_worker():
+def test_android_managed_runtime_requires_phase12_attestation_for_api_worker_and_beat():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
     )
@@ -104,11 +104,31 @@ def test_android_managed_runtime_requires_phase12_attestation_for_api_and_worker
     assert "scripts/check_runtime_identity.py --require-attested" in manager
     assert "JOBTOMATIK_RUNTIME_ROLE=api" in manager
     assert "JOBTOMATIK_RUNTIME_ROLE=worker" in manager
+    assert "JOBTOMATIK_RUNTIME_ROLE=beat" in manager
     assert "/api/system/runtime-identity" in manager
     assert 'payload.get("role") == "api"' in manager
     assert 'payload.get("runtime_role") != "worker"' in manager
+    assert 'payload.get("role") == "beat"' in manager
     assert 'payload.get("deployment_attested") is not True' in manager
     assert "ANDROID_RUNTIME_ATTESTATION: READY" in manager
+
+
+def test_android_managed_runtime_supervises_shadow_recovery_beat():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'BEAT_PID_FILE="$RUNTIME_DIR/celery-beat.pid"' in manager
+    assert 'BEAT_IDENTITY_FILE="$RUNTIME_DIR/celery-beat-identity.json"' in manager
+    assert 'BEAT_SCHEDULE="$RUNTIME_DIR/celerybeat-schedule"' in manager
+    assert "beat_schedule_contract_ready" in manager
+    assert '"recover-stalled-shadow-campaigns"' in manager
+    assert '"app.tasks.shadow_runs.recover_stalled_shadow_sessions"' in manager
+    assert "{11, 26, 41, 56}" in manager
+    assert '--schedule="$BEAT_SCHEDULE"' in manager
+    assert "start_beat" in manager
+    assert "CELERY_BEAT: READY_ATTESTED" in manager
+    assert 'stop_pid_file "$BEAT_PID_FILE"' in manager
 
 
 def test_android_managed_runtime_isolated_from_legacy_and_stale_managed_workers():
@@ -133,6 +153,15 @@ def test_android_runtime_forces_nonblocking_automatic_application_entry():
 
     assert "set_env_value APPLICATION_TARGET_HUMAN_WAIT_SECONDS '0'" in manager
     assert "set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'" in manager
+
+
+def test_android_manager_does_not_shell_source_the_secrets_env_file():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'source "$ENV_FILE"' not in manager
+    assert '. "$ENV_FILE"' not in manager
 
 
 def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_refresh():

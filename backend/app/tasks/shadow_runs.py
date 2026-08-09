@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 
 from app.celery_app import celery_app
@@ -13,6 +12,7 @@ from app.services.full_stack_shadow import (
     execute_shadow_cycle,
     mark_shadow_dispatch_failure,
 )
+from app.services.operations_settings import get_operations_settings
 from app.services.runtime_identity import runtime_identity_manifest
 
 
@@ -24,12 +24,7 @@ def _utc_now() -> datetime:
 
 
 def _autopilot_enabled() -> bool:
-    return str(os.getenv("AUTOPILOT_ENABLED") or "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return bool(get_operations_settings().autopilot_enabled)
 
 
 def _identity_allows_shadow_execution() -> tuple[bool, dict]:
