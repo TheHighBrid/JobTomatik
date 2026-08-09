@@ -6,24 +6,11 @@ import { normalizeApiBaseUrl } from './url'
 export const ANDROID_TERMUX_API_URL = 'http://127.0.0.1:8010'
 const API_URL_STORAGE_KEY = 'jobtomatik_api_url'
 
-function isLoopbackHost(hostname) {
-  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1'
-}
-
 export function reconcileAndroidApiBaseUrl(value, fallback = ANDROID_TERMUX_API_URL) {
-  const normalized = normalizeApiBaseUrl(value || fallback, fallback)
-  try {
-    const parsed = new URL(normalized)
-    // Historical Android setup instructions used alternate local backend ports while
-    // the native CDP/browser work was being developed. A persisted loopback URL on
-    // one of those ports must never outrank the managed Android API on 8010.
-    if (isLoopbackHost(parsed.hostname) && parsed.port !== '8010') {
-      return ANDROID_TERMUX_API_URL
-    }
-  } catch {
-    return normalizeApiBaseUrl(fallback, ANDROID_TERMUX_API_URL)
-  }
-  return normalized
+  // 8010 is the managed Android default, not an immutable routing rule. A URL the
+  // operator explicitly saves must remain authoritative, including alternate
+  // loopback ports such as 8011 used by another valid local JobTomatik backend.
+  return normalizeApiBaseUrl(value || fallback, fallback)
 }
 
 const CONFIGURED_API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8010'
@@ -33,11 +20,7 @@ export { normalizeApiBaseUrl }
 
 export function getApiBaseUrl() {
   const saved = safeLocalStorage.getItem(API_URL_STORAGE_KEY)
-  const normalized = reconcileAndroidApiBaseUrl(saved || DEFAULT_API_URL, DEFAULT_API_URL)
-  if (saved && normalizeApiBaseUrl(saved, DEFAULT_API_URL) !== normalized) {
-    safeLocalStorage.setItem(API_URL_STORAGE_KEY, normalized)
-  }
-  return normalized
+  return reconcileAndroidApiBaseUrl(saved || DEFAULT_API_URL, DEFAULT_API_URL)
 }
 
 export function setApiBaseUrl(value) {
@@ -89,9 +72,8 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  // Reconcile the API base for every request instead of freezing it when the Vite
-  // module first loaded. This prevents an Android tab that survived an update from
-  // continuing to dispatch tasks to an obsolete local backend port.
+  // Re-read the saved API base for every request so a connection change takes effect
+  // immediately without requiring a full page reload.
   config.baseURL = `${getApiBaseUrl()}/api`
   const token = safeLocalStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
