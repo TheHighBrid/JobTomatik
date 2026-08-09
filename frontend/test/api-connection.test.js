@@ -31,10 +31,11 @@ const registerSource = readFileSync(
   'utf8',
 )
 
-test('Android connection helper identifies the frontend port and canonical Termux backend', () => {
+test('Android connection helper identifies the frontend port and canonical Termux default', () => {
   assert.equal(ANDROID_TERMUX_API_URL, 'http://127.0.0.1:8010')
   assert.equal(isLikelyFrontendApiUrl('http://10.0.0.231:3000'), true)
   assert.equal(isLikelyFrontendApiUrl('http://127.0.0.1:8010'), false)
+  assert.equal(isLikelyFrontendApiUrl('http://127.0.0.1:8011'), false)
   assert.equal(isLikelyFrontendApiUrl('http://192.168.1.25:8000'), false)
 })
 
@@ -65,14 +66,15 @@ test('connection test uses the backend-specific health endpoint', () => {
   assert.equal(connectionSource.includes('validateJobTomatikHealth(response.data)'), true)
 })
 
-test('Android client migrates stale loopback backend ports to managed 8010', () => {
+test('Android client preserves explicitly saved backend URLs while retaining 8010 as default', () => {
   assert.equal(clientSource.includes("ANDROID_TERMUX_API_URL = 'http://127.0.0.1:8010'"), true)
   assert.equal(clientSource.includes('reconcileAndroidApiBaseUrl'), true)
-  assert.equal(clientSource.includes("parsed.port !== '8010'"), true)
+  assert.equal(clientSource.includes('return normalizeApiBaseUrl(value || fallback, fallback)'), true)
+  assert.equal(clientSource.includes("parsed.port !== '8010'"), false)
   assert.equal(clientSource.includes('safeLocalStorage.setItem(API_URL_STORAGE_KEY, normalized)'), true)
 })
 
-test('every API request re-evaluates the managed Android backend route', () => {
+test('every API request re-evaluates the saved backend route', () => {
   assert.equal(
     clientSource.includes('config.baseURL = `${getApiBaseUrl()}/api`'),
     true,
