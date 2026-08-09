@@ -2,9 +2,10 @@
 """Refresh open JobTomatik frontend tabs after a managed Android runtime update.
 
 A Vite page can remain open across a git pull and keep an older JavaScript module graph
-and saved API address in memory. The managed Android updater uses native Chromium over
-CDP, so it can safely normalize only JobTomatik localhost tabs without touching LinkedIn,
-employer ATS pages, or the authenticated browser profile.
+and stale task state in memory. The managed Android updater uses native Chromium over
+CDP, so it can safely refresh only JobTomatik localhost tabs without touching LinkedIn,
+employer ATS pages, the authenticated browser profile, or an operator-selected backend
+API URL.
 """
 
 from __future__ import annotations
@@ -41,10 +42,10 @@ def is_jobtomatik_frontend_url(value: str) -> bool:
 
 async def normalize_frontend_page(page) -> None:
     await page.evaluate(
-        """({ apiUrl, stalePrefix }) => {
-          try {
-            localStorage.setItem('jobtomatik_api_url', apiUrl);
-          } catch (_) {}
+        """({ stalePrefix }) => {
+          // Preserve jobtomatik_api_url. The managed 8010 endpoint is only the
+          // fallback default; an API URL explicitly saved by the operator must
+          // survive runtime updates and tab refreshes.
           try {
             for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
               const key = sessionStorage.key(i);
@@ -52,7 +53,7 @@ async def normalize_frontend_page(page) -> None:
             }
           } catch (_) {}
         }""",
-        {"apiUrl": MANAGED_API_URL, "stalePrefix": STALE_SUBMIT_TASK_PREFIX},
+        {"stalePrefix": STALE_SUBMIT_TASK_PREFIX},
     )
     await page.reload(wait_until="domcontentloaded", timeout=20_000)
 
@@ -76,7 +77,8 @@ async def main() -> int:
             runtime.terminate(remove_profile=False)
 
     print(f"ANDROID_FRONTEND_TABS_REFRESHED={refreshed}")
-    print(f"ANDROID_FRONTEND_API={MANAGED_API_URL}")
+    print(f"ANDROID_FRONTEND_API_DEFAULT={MANAGED_API_URL}")
+    print("ANDROID_FRONTEND_SAVED_API_PRESERVED=1")
     return 0
 
 
