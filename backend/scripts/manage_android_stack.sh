@@ -18,6 +18,7 @@ API_LOG="$LOG_DIR/api.log"
 CELERY_LOG="$LOG_DIR/celery.log"
 BEAT_LOG="$LOG_DIR/celery-beat.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
+FRONTEND_GUARD="$BACKEND_ROOT/scripts/android_frontend_guard.sh"
 ACTION="${1:-start}"
 ANDROID_REDIS_URL="${JOBTOMATIK_ANDROID_REDIS_URL:-redis://localhost:6379/1}"
 LEGACY_ANDROID_REDIS_URL="${JOBTOMATIK_LEGACY_ANDROID_REDIS_URL:-redis://localhost:6379/0}"
@@ -146,6 +147,15 @@ wait_http() {
     sleep 0.5
   done
   return 1
+}
+
+frontend_guard() {
+  local mode="$1"
+  bash "$FRONTEND_GUARD" "$mode"
+}
+
+frontend_managed_ready() {
+  frontend_guard status >/dev/null 2>&1
 }
 
 configured_redis_url() {
@@ -501,10 +511,19 @@ start_beat() {
 }
 
 start_frontend() {
-  if http_ready 'http://127.0.0.1:3000'; then
-    echo "FRONTEND: ADOPTED_EXISTING_READY_PROCESS"
+  if frontend_managed_ready; then
+    echo "FRONTEND: EXISTING_MANAGED_READY_PROCESS pid=$(pid_file_value "$FRONTEND_PID_FILE")"
     return 0
   fi
+
+  if http_ready 'http://127.0.0.1:3000'; then
+    echo "FRONTEND: UNMANAGED_OR_STALE_PROCESS_RETIRING"
+    if ! frontend_guard reset; then
+      echo "Frontend port 3000 is occupied by a process that cannot be safely identified as JobTomatik Vite." >&2
+      return 1
+    fi
+  fi
+
   stop_pid_file "$FRONTEND_PID_FILE"
   : > "$FRONTEND_LOG"
   cd "$FRONTEND_ROOT"
@@ -518,9 +537,16 @@ start_frontend() {
   if ! wait_http 'http://127.0.0.1:3000' 120; then
     echo "Frontend failed to become ready." >&2
     tail -n 100 "$FRONTEND_LOG" >&2 || true
+    stop_pid_file "$FRONTEND_PID_FILE"
     return 1
   fi
-  echo "FRONTEND: STARTED"
+  if ! frontend_managed_ready; then
+    echo "Frontend became reachable but failed manager-ownership verification." >&2
+    tail -n 100 "$FRONTEND_LOG" >&2 || true
+    stop_pid_file "$FRONTEND_PID_FILE"
+    return 1
+  fi
+  echo "FRONTEND: STARTED_MANAGED pid=$(pid_file_value "$FRONTEND_PID_FILE")"
 }
 
 refresh_frontend_runtime() {
@@ -533,6 +559,7 @@ status_stack() {
   local api_attested=0
   local worker_attested=0
   local beat_attested=0
+  local frontend_managed=0
 
   if http_ready 'http://127.0.0.1:8010/api/system/ready'; then
     if api_runtime_identity_ready; then
@@ -547,8 +574,12 @@ status_stack() {
     failed=1
   fi
 
-  if http_ready 'http://127.0.0.1:3000'; then
-    echo "FRONTEND: READY pid=$(pid_file_value "$FRONTEND_PID_FILE")"
+  if frontend_managed_ready; then
+    echo "FRONTEND: READY_MANAGED pid=$(pid_file_value "$FRONTEND_PID_FILE")"
+    frontend_managed=1
+  elif http_ready 'http://127.0.0.1:3000'; then
+    echo "FRONTEND: READY_BUT_UNMANAGED_OR_STALE"
+    failed=1
   else
     echo "FRONTEND: DOWN"
     failed=1
@@ -588,7 +619,7 @@ status_stack() {
     failed=1
   fi
 
-  if [[ "$api_attested" -eq 1 && "$worker_attested" -eq 1 && "$beat_attested" -eq 1 ]]; then
+  if [[ "$api_attested" -eq 1 && "$worker_attested" -eq 1 && "$beat_attested" -eq 1 && "$frontend_managed" -eq 1 ]]; then
     echo "ANDROID_RUNTIME_ATTESTATION: READY runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION"
   else
     echo "ANDROID_RUNTIME_ATTESTATION: FAILED runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION"
@@ -655,8 +686,8 @@ start_stack() {
   refresh_frontend_runtime
 
   cd "$BACKEND_ROOT"
-  echo "JOBTOMATIK_ANDROID_STACK_READY"
   status_stack
+  echo "JOBTOMATIK_ANDROID_STACK_READY"
   echo "Logs: $LOG_DIR"
 }
 
