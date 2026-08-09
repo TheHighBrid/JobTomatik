@@ -160,6 +160,11 @@ jobs:
           assert payload["expected_revision"] == expected
           assert payload["redis_db"] == 1
           assert isinstance(payload["worker_pid"], int)
+          assert payload["runtime_expected_revision"] == expected
+          assert payload["runtime_role"] == "worker"
+          assert payload["deployment_attested"] is True
+          assert isinstance(payload["runtime_identity_sha256"], str)
+          assert len(payload["runtime_identity_sha256"]) == 64
           print("ANDROID_APPLICATION_QUEUE_ROUND_TRIP_READY")
           PY
 
