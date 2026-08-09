@@ -12,6 +12,7 @@ from urllib.request import urlopen
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 GUARD = BACKEND_ROOT / "scripts/android_frontend_guard.sh"
 WRAPPER = BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh"
+MANAGER = BACKEND_ROOT / "scripts/manage_android_stack.sh"
 
 
 def _free_port() -> int:
@@ -73,6 +74,20 @@ def test_wrapper_requires_frontend_guard_for_adoption_and_status():
     assert "run_stack_foreground status && run_frontend_guard status" in wrapper
     assert "run_frontend_guard reset" in wrapper
     assert "run_frontend_guard status" in wrapper
+
+
+def test_manager_enforces_frontend_ownership_on_first_upgrade_path():
+    manager = MANAGER.read_text(encoding="utf-8")
+    assert 'FRONTEND_GUARD="$BACKEND_ROOT/scripts/android_frontend_guard.sh"' in manager
+    assert "frontend_managed_ready()" in manager
+    assert 'frontend_guard reset' in manager
+    assert 'FRONTEND: EXISTING_MANAGED_READY_PROCESS' in manager
+    assert 'FRONTEND: READY_BUT_UNMANAGED_OR_STALE' in manager
+    assert 'FRONTEND: READY_MANAGED' in manager
+    assert '&& "$frontend_managed" -eq 1' in manager
+
+    start_stack = manager.split("start_stack() {", 1)[1].split("\n}\n\nrestart_stack", 1)[0]
+    assert start_stack.index("status_stack") < start_stack.index('echo "JOBTOMATIK_ANDROID_STACK_READY"')
 
 
 def test_guard_retires_narrowly_identified_jobtomatik_vite(tmp_path):
