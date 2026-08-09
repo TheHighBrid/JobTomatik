@@ -127,7 +127,8 @@ def test_source_health_is_account_scoped(db_session):
 
 
 def test_operational_notifications_are_deduplicated_and_digest_once_per_utc_day(db_session):
-    now = datetime.utcnow().replace(microsecond=0)
+    # Fixed midday UTC keeps the second sync in the same daily-digest bucket.
+    now = datetime(2026, 7, 16, 12, 0, 0)
     user = _user(db_session, "digest@example.test")
     for minutes in (30, 20, 10):
         _discovery_run(
