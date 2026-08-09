@@ -17,6 +17,12 @@ run_stack_foreground() {
     "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed && bash backend/scripts/manage_android_stack.sh '$action'"
 }
 
+run_frontend_guard() {
+  local action="$1"
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "cd '$PROOT_REPO' && bash backend/scripts/android_frontend_guard.sh '$action'"
+}
+
 supervisor_alive() {
   [[ -f "$STACK_PID_FILE" ]] || return 1
   local pid
@@ -27,11 +33,16 @@ supervisor_alive() {
 start_stack_detached() {
   local action="$1"
   if [[ "$action" == "start" ]] && supervisor_alive; then
-    if run_stack_foreground status; then
+    if run_stack_foreground status && run_frontend_guard status; then
       echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
       return 0
     fi
   fi
+
+  # When a new PRoot supervisor is about to take ownership, remove only a narrowly
+  # identified JobTomatik Vite server rooted in this checkout. This prevents an old
+  # manual frontend from being mistaken for the managed localhost:3000 runtime.
+  run_frontend_guard reset
 
   : > "$STACK_LOG"
   # Source the manager in the same long-lived shell that becomes the supervisor.
@@ -50,6 +61,10 @@ start_stack_detached() {
   for _ in {1..360}; do
     if grep -q 'JOBTOMATIK_ANDROID_STACK_READY' "$STACK_LOG" 2>/dev/null; then
       tail -n 30 "$STACK_LOG"
+      if ! run_frontend_guard status; then
+        echo "The Android stack reported ready without a manager-owned frontend." >&2
+        return 1
+      fi
       echo "PROOT stack PID: $proot_pid"
       return 0
     fi
@@ -107,6 +122,7 @@ case "$ACTION" in
   status)
     "$BROWSER_COMMAND" status || true
     run_stack_foreground status
+    run_frontend_guard status
     ;;
   stop)
     stop_stack_supervisor
