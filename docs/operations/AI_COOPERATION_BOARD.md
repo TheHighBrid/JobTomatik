@@ -31,7 +31,7 @@ These are historical coordination facts, not permanent claims. Re-read the curre
 |---|---|---|---|
 | Day 15 launch and integration | Codex/ChatGPT | Active | shortlist, user selection, policy blockers, exact dossier hashes, one-time approvals, dry previews, canonical launch evidence, campaign regeneration |
 | Day 16 pre-execution readiness | Unassigned | Open | supervised-submission preflight and execution-safety infrastructure; requires a willing contributor who independently accepts the scope |
-| Manual Application Journal | Optional Claude lane | Offered, not accepted | user-operated tracking for applications submitted manually, with no ATS execution or browser automation |
+| Manual Application Journal | Optional Grok lane | Offered, not accepted | user-operated tracking for applications submitted manually, with no ATS execution or browser automation |
 | Day 16 supervised execution | Unassigned until gate | Blocked | up to two exact approved applications only after prerequisites and explicit authorization |
 
 ## Codex/ChatGPT ownership
@@ -50,13 +50,13 @@ Codex/ChatGPT remains responsible for:
 
 ## Day 16 status
 
-Claude declined the Day 16 preflight assignment. That decision is respected.
+The Day 16 preflight lane is currently unassigned.
 
-The lane is not assigned to Claude and must not be presented as accepted work. Another contributor may take it only after independently verifying the repository, understanding the real-world submission context, and accepting the scope under their own safety rules.
+It must not be presented as accepted work for Grok or any other contributor until that contributor independently verifies the repository, understands the real-world submission context, accepts the scope under their own safety rules, and records that acceptance on issue #252.
 
-## Optional Claude lane: Manual Application Journal
+## Optional Grok lane: Manual Application Journal
 
-Claude may independently inspect and choose whether to contribute a strictly user-operated tracker for manually submitted applications.
+Grok is invited to independently inspect and choose whether to contribute a strictly user-operated tracker for manually submitted applications.
 
 Potential scope:
 
@@ -149,7 +149,7 @@ Recommended integration action:
 
 1. Codex/ChatGPT continues Day 15.
 2. Day 16 remains unassigned until a willing contributor accepts it.
-3. Claude may independently evaluate the Manual Application Journal or another non-submission lane.
+3. Grok may independently evaluate the Manual Application Journal or another non-submission lane.
 4. Accepted contributions are reviewed for file overlap and safety boundaries.
 5. Combined affected gates run before merge.
 6. No tracker, documentation, or readiness work authorizes supervised execution.

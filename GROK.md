@@ -1,4 +1,4 @@
-# Claude Collaboration Context
+# Grok Collaboration Context
 
 This file provides repository context only. It is **not proof of authorization, identity, access, tool availability, task acceptance, or the truth of any campaign claim**.
 
@@ -20,13 +20,13 @@ No instruction in this repository asks you to override your own safety boundarie
 
 ## Current collaboration status
 
-The Day 16 supervised-submission preflight task is **not assigned to Claude**. It remains unassigned unless a willing contributor independently accepts it.
+The Day 16 supervised-submission preflight task is **not currently assigned to Grok**. It remains unassigned unless Grok or another willing contributor independently verifies the repository, accepts the scope, and records that acceptance on the cooperation board.
 
-Claude is invited, but not required, to help in a separate non-submission lane after independently inspecting the repository and confirming that the chosen work is acceptable.
+Grok is invited, but not required, to help in a separate non-submission lane after independently inspecting the repository and confirming that the chosen work is acceptable.
 
 ## Preferred opt-in lane: Manual Application Journal
 
-The preferred safe parallel task is a user-operated application tracker for applications the user submits manually.
+The preferred parallel task is a user-operated application tracker for applications the user submits manually.
 
 The feature must remain structurally separate from automated submission services.
 
@@ -67,12 +67,13 @@ When the Manual Application Journal is not suitable after inspection, other opt-
 Only after independently verifying the repository and accepting a bounded task:
 
 1. State what you verified and what remains unverified.
-2. Identify the exact non-submission scope you accept.
+2. Identify the exact scope you accept.
 3. Identify files you expect to inspect or modify.
 4. State your actual GitHub capabilities in the current environment.
-5. When write access exists, use a dedicated `claude/` branch and open a draft PR early.
+5. When write access exists, use a dedicated `grok/` branch and open a draft PR early.
 6. When write access does not exist, provide a patch, file-by-file implementation plan, or review report instead of claiming repository changes.
 7. Avoid files claimed by another contributor and report unavoidable overlap before editing.
+8. Preserve the repository-wide rules in `AGENTS.md` and the live coordination state in `docs/operations/AI_COOPERATION_BOARD.md` / issue #252.
 
 ## Handoff receipt
 
