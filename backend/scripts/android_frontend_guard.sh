@@ -39,6 +39,40 @@ jobtomatik_vite_pids() {
   done
 }
 
+stop_identified_vite() {
+  local label="$1"
+  local candidates=()
+  mapfile -t candidates < <(jobtomatik_vite_pids)
+
+  if [[ "${#candidates[@]}" -eq 0 ]]; then
+    if http_ready; then
+      echo "ANDROID_FRONTEND_UNMANAGED_PORT_3000" >&2
+      echo "Port 3000 is reachable, but no narrowly identifiable JobTomatik Vite process owns it." >&2
+      return 1
+    fi
+    rm -f "$FRONTEND_PID_FILE"
+    echo "ANDROID_FRONTEND_PORT_3000_CLEAR"
+    return 0
+  fi
+
+  local pid
+  for pid in "${candidates[@]}"; do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+
+  for _ in {1..40}; do
+    if ! http_ready; then
+      rm -f "$FRONTEND_PID_FILE"
+      echo "${label} pids=${candidates[*]}"
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  echo "ANDROID_FRONTEND_VITE_STILL_LISTENING pids=${candidates[*]}" >&2
+  return 1
+}
+
 retire_unmanaged() {
   if ! http_ready; then
     rm -f "$FRONTEND_PID_FILE"
@@ -51,30 +85,16 @@ retire_unmanaged() {
     return 0
   fi
 
-  local candidates=()
-  mapfile -t candidates < <(jobtomatik_vite_pids)
-  if [[ "${#candidates[@]}" -eq 0 ]]; then
-    echo "ANDROID_FRONTEND_UNMANAGED_PORT_3000" >&2
-    echo "Port 3000 is reachable, but no narrowly identifiable JobTomatik Vite process owns it." >&2
-    return 1
+  stop_identified_vite "ANDROID_FRONTEND_UNMANAGED_VITE_RETIRED"
+}
+
+reset_frontend() {
+  if ! http_ready; then
+    rm -f "$FRONTEND_PID_FILE"
+    echo "ANDROID_FRONTEND_PORT_3000_CLEAR"
+    return 0
   fi
-
-  local pid
-  for pid in "${candidates[@]}"; do
-    kill -TERM "$pid" 2>/dev/null || true
-  done
-
-  for _ in {1..40}; do
-    if ! http_ready; then
-      rm -f "$FRONTEND_PID_FILE"
-      echo "ANDROID_FRONTEND_UNMANAGED_VITE_RETIRED pids=${candidates[*]}"
-      return 0
-    fi
-    sleep 0.25
-  done
-
-  echo "ANDROID_FRONTEND_UNMANAGED_VITE_STILL_LISTENING pids=${candidates[*]}" >&2
-  return 1
+  stop_identified_vite "ANDROID_FRONTEND_EXISTING_VITE_RETIRED"
 }
 
 case "$MODE" in
@@ -93,8 +113,11 @@ case "$MODE" in
   retire)
     retire_unmanaged
     ;;
+  reset)
+    reset_frontend
+    ;;
   *)
-    echo "Usage: $0 [status|retire]" >&2
+    echo "Usage: $0 [status|retire|reset]" >&2
     exit 2
     ;;
 esac
