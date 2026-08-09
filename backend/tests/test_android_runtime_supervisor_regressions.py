@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 from app.celery_app import _beat_scheduler_name
 from scripts.retire_legacy_android_celery import managed_broker_worker_names
@@ -34,13 +35,44 @@ def test_managed_broker_cleanup_includes_legacy_default_worker_on_db1():
     ]
 
 
-def test_detached_android_manager_is_sourced_by_long_lived_proot_shell():
+def test_detached_android_manager_is_sourced_by_long_lived_proot_shell_with_manager_argv0():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
 
-    assert "source backend/scripts/manage_android_stack.sh '$action' && exec sleep infinity" in wrapper
-    assert "bash backend/scripts/manage_android_stack.sh '$action' && exec sleep infinity" not in wrapper
+    detached = (
+        "exec bash -c 'source \\\"\\$0\\\" \\\"\\$1\\\" && exec sleep infinity' "
+        "backend/scripts/manage_android_stack.sh '$action'"
+    )
+    assert detached in wrapper
+    assert "source backend/scripts/manage_android_stack.sh '$action' && exec sleep infinity" not in wrapper
+
+
+def test_sourced_bash_receives_manager_path_as_argv0(tmp_path):
+    manager = tmp_path / "backend" / "scripts" / "manage_android_stack.sh"
+    manager.parent.mkdir(parents=True)
+    manager.write_text(
+        "printf '%s\\n' \"$0\" \"${1:-}\" \"$(cd -- \"$(dirname -- \"$0\")/..\" && pwd)\"\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$0" "$1"',
+            str(manager),
+            "restart",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    lines = result.stdout.splitlines()
+    assert lines[0] == str(manager)
+    assert lines[1] == "restart"
+    assert lines[2] == str(tmp_path / "backend")
 
 
 def test_android_wrapper_propagates_managed_runtime_mode_to_manager():
@@ -54,7 +86,8 @@ def test_android_wrapper_propagates_managed_runtime_mode_to_manager():
     )
     detached = (
         "export JOBTOMATIK_RUNTIME_MODE=android_managed && "
-        "source backend/scripts/manage_android_stack.sh '$action' && exec sleep infinity"
+        "exec bash -c 'source \\\"\\$0\\\" \\\"\\$1\\\" && exec sleep infinity' "
+        "backend/scripts/manage_android_stack.sh '$action'"
     )
 
     assert foreground in wrapper
