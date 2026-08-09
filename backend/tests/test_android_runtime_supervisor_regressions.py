@@ -41,11 +41,9 @@ def test_detached_android_manager_is_sourced_by_long_lived_proot_shell_with_mana
     )
 
     detached = (
-        "exec bash -c 'source \\\"\\$0\\\" \\\"\\$1\\\" && exec sleep infinity' "
+        r"exec bash -c 'source \"\$0\" \"\$1\" && exec sleep infinity' "
         "backend/scripts/manage_android_stack.sh '$action'"
     )
-    # The file itself contains one shell-escaping backslash before each quote/dollar.
-    detached = detached.replace('\\\\\\"', '\\\"').replace('\\\\$', '\\$')
     assert detached in wrapper
     assert "source backend/scripts/manage_android_stack.sh '$action' && exec sleep infinity" not in wrapper
 
@@ -88,10 +86,9 @@ def test_android_wrapper_propagates_managed_runtime_mode_to_manager():
     )
     detached = (
         "export JOBTOMATIK_RUNTIME_MODE=android_managed && "
-        "exec bash -c 'source \\\"\\$0\\\" \\\"\\$1\\\" && exec sleep infinity' "
+        r"exec bash -c 'source \"\$0\" \"\$1\" && exec sleep infinity' "
         "backend/scripts/manage_android_stack.sh '$action'"
     )
-    detached = detached.replace('\\\\\\"', '\\\"').replace('\\\\$', '\\$')
 
     assert foreground in wrapper
     assert detached in wrapper
