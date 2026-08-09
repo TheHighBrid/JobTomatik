@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BACKEND_ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
+BACKEND_ROOT="$(cd -- "$(dirname -- "$SCRIPT_SOURCE")/.." && pwd)"
 REPO_ROOT="$(cd -- "$BACKEND_ROOT/.." && pwd)"
 FRONTEND_ROOT="$REPO_ROOT/frontend"
 VENV="$BACKEND_ROOT/.venv"
