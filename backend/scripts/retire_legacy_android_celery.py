@@ -4,7 +4,8 @@
 The Android supervisor uses this helper for two narrowly scoped cleanups:
 
 * legacy foreground workers such as ``celery@localhost`` on Redis DB 0
-* orphaned managed workers such as ``jobtomatik-android*@localhost`` on Redis DB 1
+* any stale local worker on the managed Redis DB 1, including both old default
+  ``celery@localhost`` workers and orphaned ``jobtomatik-android*@localhost`` workers
 
 The helper never sends an OS signal and never terminates a shell or PRoot session.
 """
@@ -80,6 +81,26 @@ def managed_android_worker_names(
     return sorted(set(selected))
 
 
+def managed_broker_worker_names(
+    names: Iterable[str],
+    *,
+    local_hosts: set[str] | None = None,
+) -> list[str]:
+    """Select every stale local worker capable of consuming managed DB1 tasks.
+
+    The managed broker must contain only the revisioned JobTomatik worker started by
+    the current supervisor. A historical default ``celery@localhost`` process can
+    move onto DB1 after ``REDIS_URL`` is repaired in ``.env`` and would otherwise
+    escape the old DB0-only legacy cleanup.
+    """
+    values = list(names)
+    selected = set(
+        managed_android_worker_names(values, local_hosts=local_hosts)
+    )
+    selected.update(legacy_local_worker_names(values, local_hosts=local_hosts))
+    return sorted(selected)
+
+
 def retire_workers(
     broker_url: str,
     *,
@@ -93,7 +114,7 @@ def retire_workers(
     except Exception:
         return []
 
-    selector = managed_android_worker_names if mode == "managed" else legacy_local_worker_names
+    selector = managed_broker_worker_names if mode == "managed" else legacy_local_worker_names
     selected = selector(pings.keys())
     for worker_name in selected:
         try:
@@ -121,7 +142,7 @@ def main() -> int:
     retired = retire_workers(args.broker, mode=args.mode, timeout=args.timeout)
     if args.mode == "managed":
         marker = "ANDROID_STALE_MANAGED_CELERY_RETIRE_REQUESTED" if retired else "ANDROID_STALE_MANAGED_CELERY_NONE"
-        label = "Managed worker"
+        label = "Managed-broker worker"
     else:
         marker = "ANDROID_LEGACY_CELERY_RETIRE_REQUESTED" if retired else "ANDROID_LEGACY_CELERY_NONE"
         label = "Legacy worker"

@@ -34,8 +34,13 @@ start_stack_detached() {
   fi
 
   : > "$STACK_LOG"
+  # Source the manager in the same long-lived shell that becomes the supervisor.
+  # Under PRoot, children launched by a short-lived nested bash can disappear after
+  # that bash exits even when an outer PRoot session remains alive. Sourcing keeps
+  # API, Celery worker, and Beat parented to the supervisor shell before it execs
+  # into the long-lived sleep process.
   nohup proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "cd '$PROOT_REPO' && bash backend/scripts/manage_android_stack.sh '$action' && exec sleep infinity" \
+    "cd '$PROOT_REPO' && source backend/scripts/manage_android_stack.sh '$action' && exec sleep infinity" \
     > "$STACK_LOG" 2>&1 </dev/null &
 
   local proot_pid=$!

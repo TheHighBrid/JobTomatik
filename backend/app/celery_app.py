@@ -1,3 +1,5 @@
+import os
+
 from celery import Celery
 from celery.schedules import crontab
 from celery.signals import worker_init
@@ -5,6 +7,20 @@ from celery.signals import worker_init
 from app.config import get_settings
 
 settings = get_settings()
+
+
+def _beat_scheduler_name() -> str:
+    """Avoid dbm-backed Beat persistence inside the managed Android PRoot runtime.
+
+    Android's Beat schedule is fully declared in code and recovery tasks are idempotent,
+    so a persistent shelve database is unnecessary there. Keeping the default persistent
+    scheduler elsewhere preserves existing non-Android deployment behavior.
+    """
+    runtime_mode = str(os.getenv("JOBTOMATIK_RUNTIME_MODE") or "").strip().lower()
+    if runtime_mode == "android_managed":
+        return "celery.beat:Scheduler"
+    return "celery.beat:PersistentScheduler"
+
 
 celery_app = Celery(
     "jobtomatik",
@@ -30,6 +46,7 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     broker_connection_retry_on_startup=True,
+    beat_scheduler=_beat_scheduler_name(),
     task_routes={
         "app.tasks.scraping.*": {"queue": "scraping"},
         "app.tasks.shadow_runs.*": {"queue": "scraping"},
