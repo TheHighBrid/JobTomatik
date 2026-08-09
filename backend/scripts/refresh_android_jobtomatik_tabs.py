@@ -7,9 +7,9 @@ CDP, so it can safely refresh only JobTomatik localhost tabs without touching Li
 employer ATS pages, or the authenticated browser profile.
 
 An explicitly saved backend URL remains authoritative unless it points to a loopback
-backend that is not deployment-attested while the managed Android API is attested. That
-specific stale-local case is recovered to the managed endpoint automatically so an old
-manual Uvicorn process cannot silently block exact-runtime shadow evidence.
+backend that is not deployment-attested to the same exact revision as the managed
+Android API. That stale-local case is recovered to the managed endpoint automatically
+so an old manual or stale Uvicorn process cannot silently block exact-runtime evidence.
 """
 
 from __future__ import annotations
@@ -58,21 +58,27 @@ def is_loopback_api_url(value: str) -> bool:
     )
 
 
-def runtime_identity_attested(base_url: str, *, timeout: float = 2.0) -> bool:
+def runtime_identity_payload(base_url: str, *, timeout: float = 2.0) -> dict | None:
     url = f"{str(base_url or '').rstrip('/')}/api/system/runtime-identity"
     try:
         request = Request(url, headers={"Accept": "application/json"})
         with urlopen(request, timeout=timeout) as response:  # noqa: S310 - loopback/operator URL only
             if int(getattr(response, "status", 200)) != 200:
-                return False
+                return None
             payload = json.loads(response.read().decode("utf-8"))
     except Exception:
-        return False
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def runtime_identity_attested(payload: dict | None) -> bool:
     return bool(
         isinstance(payload, dict)
         and payload.get("deployment_attested") is True
         and payload.get("matches_expected") is True
         and payload.get("role") == "api"
+        and bool(payload.get("revision"))
+        and payload.get("revision") == payload.get("expected_revision")
         and payload.get("submission_authorized") is False
         and payload.get("outreach_authorized") is False
     )
@@ -85,9 +91,19 @@ def should_recover_saved_api(saved_api_url: str | None) -> bool:
         return False
     if not is_loopback_api_url(saved):
         return False
-    if not runtime_identity_attested(MANAGED_API_URL):
+
+    managed_identity = runtime_identity_payload(MANAGED_API_URL)
+    if not runtime_identity_attested(managed_identity):
         return False
-    return not runtime_identity_attested(saved)
+
+    saved_identity = runtime_identity_payload(saved)
+    if not runtime_identity_attested(saved_identity):
+        return True
+
+    return not (
+        saved_identity.get("revision") == managed_identity.get("revision")
+        and saved_identity.get("expected_revision") == managed_identity.get("expected_revision")
+    )
 
 
 async def saved_api_url(page) -> str:
@@ -146,7 +162,7 @@ async def main() -> int:
     print(f"ANDROID_FRONTEND_TABS_REFRESHED={refreshed}")
     print(f"ANDROID_FRONTEND_API_DEFAULT={MANAGED_API_URL}")
     print(f"ANDROID_FRONTEND_SAVED_API_RECOVERED={recovered_saved_api}")
-    print("ANDROID_FRONTEND_SAVED_API_POLICY=ATTESTATION_AWARE")
+    print("ANDROID_FRONTEND_SAVED_API_POLICY=ATTESTED_EXACT_REVISION")
     return 0
 
 
