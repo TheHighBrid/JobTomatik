@@ -21,6 +21,18 @@ class _FakePage:
         self.reload_calls.append(kwargs)
 
 
+def _identity(revision: str = "abc1234", *, attested: bool = True) -> dict:
+    return {
+        "deployment_attested": attested,
+        "matches_expected": attested,
+        "role": "api",
+        "revision": revision,
+        "expected_revision": revision,
+        "submission_authorized": False,
+        "outreach_authorized": False,
+    }
+
+
 def test_only_local_jobtomatik_frontend_tabs_are_refresh_targets():
     assert refresh.is_jobtomatik_frontend_url("http://localhost:3000/applications/31") is True
     assert refresh.is_jobtomatik_frontend_url("http://127.0.0.1:3000/search") is True
@@ -43,11 +55,25 @@ def test_refresh_keeps_managed_api_as_default_and_targets_only_legacy_task_stora
     assert refresh.STALE_SUBMIT_TASK_PREFIX == "jobtomatik_submit_task_"
 
 
-def test_unattested_saved_loopback_api_recovers_only_when_managed_api_is_attested(monkeypatch):
-    def fake_attested(url: str, *, timeout: float = 2.0) -> bool:
-        return url.rstrip("/") == refresh.MANAGED_API_URL
+def test_runtime_identity_attestation_requires_exact_api_identity():
+    assert refresh.runtime_identity_attested(_identity()) is True
+    assert refresh.runtime_identity_attested(None) is False
+    assert refresh.runtime_identity_attested(_identity(attested=False)) is False
+    wrong_role = _identity()
+    wrong_role["role"] = "worker"
+    assert refresh.runtime_identity_attested(wrong_role) is False
+    mismatched = _identity()
+    mismatched["expected_revision"] = "def5678"
+    assert refresh.runtime_identity_attested(mismatched) is False
 
-    monkeypatch.setattr(refresh, "runtime_identity_attested", fake_attested)
+
+def test_unattested_saved_loopback_api_recovers_when_managed_api_is_attested(monkeypatch):
+    def fake_payload(url: str, *, timeout: float = 2.0):
+        if url.rstrip("/") == refresh.MANAGED_API_URL:
+            return _identity("managed123")
+        return None
+
+    monkeypatch.setattr(refresh, "runtime_identity_payload", fake_payload)
 
     assert refresh.should_recover_saved_api("http://127.0.0.1:8011") is True
     assert refresh.should_recover_saved_api("http://localhost:8012") is True
@@ -56,13 +82,32 @@ def test_unattested_saved_loopback_api_recovers_only_when_managed_api_is_atteste
     assert refresh.should_recover_saved_api("") is False
 
 
-def test_attested_alternate_loopback_api_is_preserved(monkeypatch):
-    monkeypatch.setattr(refresh, "runtime_identity_attested", lambda *args, **kwargs: True)
+def test_attested_alternate_loopback_api_same_revision_is_preserved(monkeypatch):
+    monkeypatch.setattr(
+        refresh,
+        "runtime_identity_payload",
+        lambda *args, **kwargs: _identity("same123"),
+    )
     assert refresh.should_recover_saved_api("http://127.0.0.1:8011") is False
 
 
+def test_attested_alternate_loopback_api_stale_revision_recovers(monkeypatch):
+    def fake_payload(url: str, *, timeout: float = 2.0):
+        if url.rstrip("/") == refresh.MANAGED_API_URL:
+            return _identity("current123")
+        return _identity("stale456")
+
+    monkeypatch.setattr(refresh, "runtime_identity_payload", fake_payload)
+    assert refresh.should_recover_saved_api("http://127.0.0.1:8011") is True
+
+
 def test_saved_loopback_api_is_preserved_if_managed_api_is_not_attested(monkeypatch):
-    monkeypatch.setattr(refresh, "runtime_identity_attested", lambda *args, **kwargs: False)
+    def fake_payload(url: str, *, timeout: float = 2.0):
+        if url.rstrip("/") == refresh.MANAGED_API_URL:
+            return _identity("managed123", attested=False)
+        return None
+
+    monkeypatch.setattr(refresh, "runtime_identity_payload", fake_payload)
     assert refresh.should_recover_saved_api("http://127.0.0.1:8011") is False
 
 
