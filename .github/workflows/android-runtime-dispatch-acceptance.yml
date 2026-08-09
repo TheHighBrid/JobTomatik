@@ -11,6 +11,7 @@ on:
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/scripts/check_runtime_identity.py"
+      - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/manage_android_stack.sh"
       - "backend/scripts/prepare_android_runtime.py"
       - "backend/scripts/retire_legacy_android_celery.py"
@@ -22,6 +23,7 @@ on:
       - "backend/tests/test_application_recovery.py"
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
+      - "backend/tests/test_android_runtime_supervisor_regressions.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_prepare_android_runtime.py"
@@ -40,6 +42,7 @@ on:
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/scripts/check_runtime_identity.py"
+      - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/manage_android_stack.sh"
       - "backend/scripts/prepare_android_runtime.py"
       - "backend/scripts/retire_legacy_android_celery.py"
@@ -51,6 +54,7 @@ on:
       - "backend/tests/test_application_recovery.py"
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
+      - "backend/tests/test_android_runtime_supervisor_regressions.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_prepare_android_runtime.py"
@@ -121,6 +125,63 @@ jobs:
       - name: Prove Android worker revision is deployment-attested
         run: python scripts/check_runtime_identity.py --require-attested
 
+      - name: Prove managed DB1 cleanup retires leaked default worker
+        run: |
+          celery -A app.celery_app worker \
+            --hostname="celery@%h" \
+            --loglevel=info \
+            --pool=solo \
+            --concurrency=1 \
+            --without-gossip \
+            --without-mingle \
+            -Q celery \
+            > android-runtime-leaked-celery.log 2>&1 &
+          rogue_pid=$!
+          echo "$rogue_pid" > android-runtime-leaked-celery.pid
+
+          python - <<'PY'
+          import time
+          from app.celery_app import celery_app
+
+          deadline = time.monotonic() + 30
+          while time.monotonic() < deadline:
+              pings = celery_app.control.inspect(timeout=1.0).ping() or {}
+              leaked = [name for name in pings if str(name).lower().startswith("celery@")]
+              if leaked:
+                  print(f"ANDROID_LEAKED_DB1_WORKER_OBSERVED names={sorted(leaked)}")
+                  raise SystemExit(0)
+              time.sleep(0.5)
+          raise SystemExit("Default Celery worker did not become visible on managed DB1")
+          PY
+
+          cleanup_output="$(python scripts/retire_legacy_android_celery.py \
+            --broker redis://localhost:6379/1 \
+            --mode managed \
+            --timeout 2.0)"
+          printf '%s\n' "$cleanup_output"
+          grep -q 'ANDROID_STALE_MANAGED_CELERY_RETIRE_REQUESTED' <<<"$cleanup_output"
+          grep -q 'Managed-broker worker: celery@' <<<"$cleanup_output"
+
+          python - <<'PY'
+          import time
+          from app.celery_app import celery_app
+
+          deadline = time.monotonic() + 30
+          while time.monotonic() < deadline:
+              pings = celery_app.control.inspect(timeout=1.0).ping() or {}
+              leaked = [name for name in pings if str(name).lower().startswith("celery@")]
+              if not leaked:
+                  print("ANDROID_LEAKED_DB1_WORKER_RETIRED")
+                  raise SystemExit(0)
+              time.sleep(0.5)
+          raise SystemExit(f"Default Celery worker still visible on managed DB1: {sorted(leaked)}")
+          PY
+
+          if kill -0 "$rogue_pid" 2>/dev/null; then
+            kill -TERM "$rogue_pid" 2>/dev/null || true
+            wait "$rogue_pid" || true
+          fi
+
       - name: Start revisioned Android worker on Redis DB1
         run: |
           celery -A app.celery_app worker \
@@ -181,22 +242,26 @@ jobs:
           print("ANDROID_APPLICATION_QUEUE_ROUND_TRIP_READY")
           PY
 
-      - name: Prove attested Beat boots with the shadow recovery schedule
+      - name: Prove Android-managed Beat avoids dbm and boots with shadow recovery
         env:
           JOBTOMATIK_RUNTIME_ROLE: beat
+          JOBTOMATIK_RUNTIME_MODE: android_managed
         run: |
           python scripts/check_runtime_identity.py --require-attested
           python - <<'PY'
           from app.celery_app import celery_app
 
+          assert celery_app.conf.beat_scheduler == "celery.beat:Scheduler"
           entry = dict(celery_app.conf.beat_schedule or {}).get("recover-stalled-shadow-campaigns")
           assert isinstance(entry, dict)
           assert entry["task"] == "app.tasks.shadow_runs.recover_stalled_shadow_sessions"
           assert set(entry["schedule"].minute) == {11, 26, 41, 56}
           print("ANDROID_SHADOW_RECOVERY_SCHEDULE_READY")
+          print("ANDROID_BEAT_SCHEDULER_NONPERSISTENT_READY")
           PY
 
           REDIS_URL=redis://localhost:6379/15 \
+          JOBTOMATIK_RUNTIME_MODE=android_managed \
           celery -A app.celery_app beat \
             --loglevel=info \
             --schedule=android-runtime-celerybeat-schedule \
@@ -204,6 +269,21 @@ jobs:
           beat_pid=$!
           sleep 3
           kill -0 "$beat_pid"
+
+          cat android-runtime-celery-beat.log
+          if grep -Eiq 'PersistentScheduler|_dbm|cannot add item to database' android-runtime-celery-beat.log; then
+            echo "Android-managed Beat used or failed through dbm-backed persistence." >&2
+            kill -TERM "$beat_pid" 2>/dev/null || true
+            wait "$beat_pid" || true
+            exit 1
+          fi
+          if ! grep -Eq 'scheduler[[:space:]]*->[[:space:]]*celery\.beat\.Scheduler' android-runtime-celery-beat.log; then
+            echo "Android-managed Beat did not report celery.beat.Scheduler." >&2
+            kill -TERM "$beat_pid" 2>/dev/null || true
+            wait "$beat_pid" || true
+            exit 1
+          fi
+
           kill -TERM "$beat_pid"
           wait "$beat_pid" || true
           echo "ANDROID_CELERY_BEAT_BOOT_READY"
@@ -214,6 +294,7 @@ jobs:
             tests/test_application_recovery.py \
             tests/test_android_runtime_canary.py \
             tests/test_android_runtime_scripts.py \
+            tests/test_android_runtime_supervisor_regressions.py \
             tests/test_android_task_runtime_liveness.py \
             tests/test_refresh_android_jobtomatik_tabs.py \
             tests/test_retire_legacy_android_celery.py \
@@ -228,6 +309,7 @@ jobs:
         with:
           name: android-runtime-dispatch-worker-log
           path: |
+            backend/android-runtime-leaked-celery.log
             backend/android-runtime-celery.log
             backend/android-runtime-celery-beat.log
           if-no-files-found: error
