@@ -15,8 +15,28 @@ from app.services.operations_settings import get_operations_settings
 from app.tasks.scraping import daily_auto_search_all
 
 
+OPERATIONS_ENV_KEYS = (
+    "AUTOMATION_GLOBAL_KILL_SWITCH",
+    "AUTOPILOT_ENABLED",
+    "AUTOPILOT_DEFAULT_DAILY_CAP",
+    "AUTOPILOT_DEFAULT_WEEKLY_CAP",
+    "AUTOPILOT_QUIET_HOURS_START_UTC",
+    "AUTOPILOT_QUIET_HOURS_END_UTC",
+    "AUTOPILOT_FAILURE_THRESHOLD",
+    "AUTOPILOT_FAILURE_WINDOW_MINUTES",
+    "AUTOPILOT_CIRCUIT_BREAKER_MINUTES",
+    "AUTOPILOT_STALE_ATTEMPT_MINUTES",
+    "AUTOPILOT_DISABLED_PLATFORMS",
+)
+
+
 def _reset_operations_settings():
     get_operations_settings.cache_clear()
+
+
+def _clear_operations_env(monkeypatch):
+    for name in OPERATIONS_ENV_KEYS:
+        monkeypatch.delenv(name, raising=False)
 
 
 def _user(db_session, email="ops@example.test"):
@@ -58,13 +78,8 @@ def _application(db_session, user, index, created_at):
 
 
 def test_autopilot_and_real_submission_default_off(monkeypatch):
-    for name in (
-        "AUTOPILOT_ENABLED",
-        "AUTOPILOT_DEFAULT_DAILY_CAP",
-        "AUTOPILOT_DEFAULT_WEEKLY_CAP",
-        "AUTOPILOT_DISABLED_PLATFORMS",
-    ):
-        monkeypatch.delenv(name, raising=False)
+    _clear_operations_env(monkeypatch)
+    monkeypatch.setenv("JOBTOMATIK_OPERATIONS_ENV_FILE", "/nonexistent/jobtomatik-operations.env")
     _reset_operations_settings()
 
     manifest = operations_readiness_manifest()
@@ -72,6 +87,59 @@ def test_autopilot_and_real_submission_default_off(monkeypatch):
     assert manifest["real_submission_enabled"] is False
     assert manifest["invariants"]["autopilot_defaults_off"] is True
     assert manifest["invariants"]["real_submission_defaults_off"] is True
+
+
+def test_operations_settings_fall_back_to_backend_style_env_file(tmp_path, monkeypatch):
+    env_file = tmp_path / "jobtomatik.env"
+    env_file.write_text(
+        "\n".join(
+            (
+                "AUTOMATION_GLOBAL_KILL_SWITCH=true",
+                "AUTOPILOT_ENABLED=true",
+                "AUTOPILOT_DEFAULT_DAILY_CAP=7",
+                "AUTOPILOT_DEFAULT_WEEKLY_CAP=28",
+                "AUTOPILOT_DISABLED_PLATFORMS=workday,smartrecruiters",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _clear_operations_env(monkeypatch)
+    monkeypatch.setenv("JOBTOMATIK_OPERATIONS_ENV_FILE", str(env_file))
+    _reset_operations_settings()
+
+    settings = get_operations_settings()
+
+    assert settings.global_kill_switch is True
+    assert settings.autopilot_enabled is True
+    assert settings.default_daily_cap == 7
+    assert settings.default_weekly_cap == 28
+    assert settings.disabled_platforms == "workday,smartrecruiters"
+
+
+def test_process_environment_overrides_operations_env_file(tmp_path, monkeypatch):
+    env_file = tmp_path / "jobtomatik.env"
+    env_file.write_text(
+        "AUTOMATION_GLOBAL_KILL_SWITCH=true\n"
+        "AUTOPILOT_ENABLED=true\n"
+        "AUTOPILOT_DEFAULT_DAILY_CAP=9\n"
+        "AUTOPILOT_DISABLED_PLATFORMS=workday\n",
+        encoding="utf-8",
+    )
+    _clear_operations_env(monkeypatch)
+    monkeypatch.setenv("JOBTOMATIK_OPERATIONS_ENV_FILE", str(env_file))
+    monkeypatch.setenv("AUTOMATION_GLOBAL_KILL_SWITCH", "false")
+    monkeypatch.setenv("AUTOPILOT_ENABLED", "false")
+    monkeypatch.setenv("AUTOPILOT_DEFAULT_DAILY_CAP", "3")
+    monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "")
+    _reset_operations_settings()
+
+    settings = get_operations_settings()
+
+    assert settings.global_kill_switch is False
+    assert settings.autopilot_enabled is False
+    assert settings.default_daily_cap == 3
+    assert settings.disabled_platforms == ""
 
 
 def test_scheduled_task_is_inert_when_global_gate_is_off(monkeypatch):

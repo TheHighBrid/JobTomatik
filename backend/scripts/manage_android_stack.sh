@@ -10,9 +10,13 @@ RUNTIME_DIR="$BACKEND_ROOT/.runtime"
 LOG_DIR="$RUNTIME_DIR/logs"
 API_PID_FILE="$RUNTIME_DIR/api.pid"
 CELERY_PID_FILE="$RUNTIME_DIR/celery.pid"
+BEAT_PID_FILE="$RUNTIME_DIR/celery-beat.pid"
 FRONTEND_PID_FILE="$RUNTIME_DIR/frontend.pid"
+BEAT_IDENTITY_FILE="$RUNTIME_DIR/celery-beat-identity.json"
+BEAT_SCHEDULE="$RUNTIME_DIR/celerybeat-schedule"
 API_LOG="$LOG_DIR/api.log"
 CELERY_LOG="$LOG_DIR/celery.log"
+BEAT_LOG="$LOG_DIR/celery-beat.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 ACTION="${1:-start}"
 ANDROID_REDIS_URL="${JOBTOMATIK_ANDROID_REDIS_URL:-redis://localhost:6379/1}"
@@ -120,6 +124,8 @@ stop_pid_file() {
 
 stop_stack() {
   stop_pid_file "$FRONTEND_PID_FILE"
+  stop_pid_file "$BEAT_PID_FILE"
+  rm -f "$BEAT_IDENTITY_FILE"
   stop_pid_file "$CELERY_PID_FILE"
   stop_pid_file "$API_PID_FILE"
   echo "JOBTOMATIK_ANDROID_STACK_STOPPED"
@@ -155,6 +161,20 @@ require_runtime_attestation() {
     JOBTOMATIK_RUNTIME_ROLE="$role" \
     "$VENV/bin/python" scripts/check_runtime_identity.py --require-attested >/dev/null
   )
+}
+
+write_runtime_attestation_receipt() {
+  local role="$1"
+  local destination="$2"
+  local temporary="${destination}.tmp"
+  (
+    cd "$BACKEND_ROOT"
+    JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
+    JOBTOMATIK_RUNTIME_ROLE="$role" \
+    "$VENV/bin/python" scripts/check_runtime_identity.py --require-attested >"$temporary"
+  )
+  mv "$temporary" "$destination"
 }
 
 api_runtime_identity_ready() {
@@ -299,6 +319,79 @@ wait_worker() {
   return 1
 }
 
+beat_schedule_contract_ready() {
+  local broker
+  broker="$(configured_redis_url)"
+  [[ "$broker" == "$ANDROID_REDIS_URL" ]] || return 1
+  (
+    cd "$BACKEND_ROOT"
+    REDIS_URL="$broker" \
+    "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
+from app.celery_app import celery_app
+
+entry = dict(celery_app.conf.beat_schedule or {}).get("recover-stalled-shadow-campaigns")
+if not isinstance(entry, dict):
+    raise SystemExit(1)
+if entry.get("task") != "app.tasks.shadow_runs.recover_stalled_shadow_sessions":
+    raise SystemExit(1)
+schedule = entry.get("schedule")
+minutes = set(getattr(schedule, "minute", set()) or set())
+if minutes != {11, 26, 41, 56}:
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+  )
+}
+
+beat_identity_receipt_ready() {
+  pid_file_alive "$BEAT_PID_FILE" || return 1
+  [[ -f "$BEAT_IDENTITY_FILE" ]] || return 1
+  JOBTOMATIK_EXPECTED_RUNTIME_REVISION="$RUNTIME_REVISION" \
+  JOBTOMATIK_EXPECTED_DEPLOYMENT_REVISION="$EXPECTED_RUNTIME_REVISION" \
+  "$VENV/bin/python" - "$BEAT_IDENTITY_FILE" <<'PY' >/dev/null 2>&1
+import json
+import os
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+valid = (
+    payload.get("revision") == os.environ["JOBTOMATIK_EXPECTED_RUNTIME_REVISION"]
+    and payload.get("expected_revision") == os.environ["JOBTOMATIK_EXPECTED_DEPLOYMENT_REVISION"]
+    and payload.get("role") == "beat"
+    and payload.get("deployment_attested") is True
+    and payload.get("configuration_valid") is True
+    and bool(payload.get("identity_sha256"))
+    and payload.get("submission_authorized") is False
+    and payload.get("outreach_authorized") is False
+)
+raise SystemExit(0 if valid else 1)
+PY
+}
+
+managed_beat_ready() {
+  beat_identity_receipt_ready && beat_schedule_contract_ready
+}
+
+wait_beat() {
+  local stable_checks=0
+  for _ in {1..40}; do
+    if managed_beat_ready; then
+      stable_checks=$((stable_checks + 1))
+      if [[ "$stable_checks" -ge 4 ]]; then
+        return 0
+      fi
+    else
+      stable_checks=0
+    fi
+    if [[ -f "$BEAT_PID_FILE" ]] && ! pid_file_alive "$BEAT_PID_FILE"; then
+      return 1
+    fi
+    sleep 0.5
+  done
+  return 1
+}
+
 start_api() {
   if pid_file_alive "$API_PID_FILE" && http_ready 'http://127.0.0.1:8010/api/system/ready'; then
     if api_runtime_identity_ready; then
@@ -374,6 +467,39 @@ start_worker() {
   echo "CELERY_APPLICATION_CANARY: READY revision=$RUNTIME_REVISION_SHORT broker=$ANDROID_REDIS_URL"
 }
 
+start_beat() {
+  if managed_beat_ready; then
+    echo "CELERY_BEAT: EXISTING_MANAGED_READY_PROCESS"
+    return 0
+  fi
+
+  stop_pid_file "$BEAT_PID_FILE"
+  rm -f "$BEAT_IDENTITY_FILE"
+  require_runtime_attestation beat
+  beat_schedule_contract_ready
+  write_runtime_attestation_receipt beat "$BEAT_IDENTITY_FILE"
+  : > "$BEAT_LOG"
+  nohup env \
+    REDIS_URL="$ANDROID_REDIS_URL" \
+    JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
+    JOBTOMATIK_RUNTIME_ROLE=beat \
+    "$VENV/bin/celery" -A app.celery_app beat \
+    --loglevel=info \
+    --schedule="$BEAT_SCHEDULE" \
+    >"$BEAT_LOG" 2>&1 </dev/null &
+  echo $! > "$BEAT_PID_FILE"
+
+  if ! wait_beat; then
+    echo "Celery Beat failed exact runtime-attestation or shadow-recovery schedule readiness." >&2
+    tail -n 120 "$BEAT_LOG" >&2 || true
+    stop_pid_file "$BEAT_PID_FILE"
+    rm -f "$BEAT_IDENTITY_FILE"
+    return 1
+  fi
+  echo "CELERY_BEAT: STARTED_ATTESTED shadow-recovery=11,26,41,56"
+}
+
 start_frontend() {
   if http_ready 'http://127.0.0.1:3000'; then
     echo "FRONTEND: ADOPTED_EXISTING_READY_PROCESS"
@@ -406,6 +532,7 @@ status_stack() {
   local failed=0
   local api_attested=0
   local worker_attested=0
+  local beat_attested=0
 
   if http_ready 'http://127.0.0.1:8010/api/system/ready'; then
     if api_runtime_identity_ready; then
@@ -437,6 +564,14 @@ status_stack() {
     failed=1
   fi
 
+  if managed_beat_ready; then
+    echo "CELERY_BEAT: READY_ATTESTED pid=$(pid_file_value "$BEAT_PID_FILE") shadow-recovery=11,26,41,56"
+    beat_attested=1
+  else
+    echo "CELERY_BEAT: DOWN_OR_UNATTESTED"
+    failed=1
+  fi
+
   if curl -fsS --max-time 2 'http://127.0.0.1:9222/json/version' 2>/dev/null | grep -q webSocketDebuggerUrl; then
     echo "ANDROID_BROWSER_CDP: READY"
   else
@@ -453,7 +588,7 @@ status_stack() {
     failed=1
   fi
 
-  if [[ "$api_attested" -eq 1 && "$worker_attested" -eq 1 ]]; then
+  if [[ "$api_attested" -eq 1 && "$worker_attested" -eq 1 && "$beat_attested" -eq 1 ]]; then
     echo "ANDROID_RUNTIME_ATTESTATION: READY runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION"
   else
     echo "ANDROID_RUNTIME_ATTESTATION: FAILED runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION"
@@ -464,6 +599,7 @@ status_stack() {
   echo "ANDROID_EXPECTED_REVISION: $EXPECTED_RUNTIME_REVISION"
   echo "MANAGED_LOGS: $LOG_DIR"
   echo "CELERY_LOG: $CELERY_LOG"
+  echo "CELERY_BEAT_LOG: $BEAT_LOG"
   return "$failed"
 }
 
@@ -514,6 +650,7 @@ start_stack() {
   cd "$BACKEND_ROOT"
   start_api
   start_worker
+  start_beat
   start_frontend
   refresh_frontend_runtime
 

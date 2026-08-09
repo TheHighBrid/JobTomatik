@@ -4,8 +4,11 @@ on:
   pull_request:
     paths:
       - "backend/app/celery_app.py"
+      - "backend/app/config.py"
       - "backend/app/tasks/runtime.py"
+      - "backend/app/tasks/shadow_runs.py"
       - "backend/app/services/application_recovery.py"
+      - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/scripts/check_runtime_identity.py"
       - "backend/scripts/manage_android_stack.sh"
@@ -20,15 +23,21 @@ on:
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_prepare_android_runtime.py"
+      - "backend/tests/test_runtime_configuration_contract.py"
+      - "backend/tests/test_runtime_identity.py"
       - ".github/workflows/android-runtime-dispatch-acceptance.yml"
   push:
     branches:
       - main
     paths:
       - "backend/app/celery_app.py"
+      - "backend/app/config.py"
       - "backend/app/tasks/runtime.py"
+      - "backend/app/tasks/shadow_runs.py"
       - "backend/app/services/application_recovery.py"
+      - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/scripts/check_runtime_identity.py"
       - "backend/scripts/manage_android_stack.sh"
@@ -43,7 +52,10 @@ on:
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_prepare_android_runtime.py"
+      - "backend/tests/test_runtime_configuration_contract.py"
+      - "backend/tests/test_runtime_identity.py"
       - ".github/workflows/android-runtime-dispatch-acceptance.yml"
   workflow_dispatch:
 
@@ -62,6 +74,7 @@ env:
   DEV_MOCK_JOBS: "false"
   ALLOW_REAL_APPLICATION_SUBMIT: "false"
   AUTOPILOT_ENABLED: "false"
+  AUTOMATION_GLOBAL_KILL_SWITCH: "false"
   ENABLE_RESUMABLE_HANDOFFS: "false"
   JOBTOMATIK_EXPECTED_REVISION: ${{ github.sha }}
   JOBTOMATIK_RUNTIME_ROLE: worker
@@ -168,6 +181,33 @@ jobs:
           print("ANDROID_APPLICATION_QUEUE_ROUND_TRIP_READY")
           PY
 
+      - name: Prove attested Beat boots with the shadow recovery schedule
+        env:
+          JOBTOMATIK_RUNTIME_ROLE: beat
+        run: |
+          python scripts/check_runtime_identity.py --require-attested
+          python - <<'PY'
+          from app.celery_app import celery_app
+
+          entry = dict(celery_app.conf.beat_schedule or {}).get("recover-stalled-shadow-campaigns")
+          assert isinstance(entry, dict)
+          assert entry["task"] == "app.tasks.shadow_runs.recover_stalled_shadow_sessions"
+          assert set(entry["schedule"].minute) == {11, 26, 41, 56}
+          print("ANDROID_SHADOW_RECOVERY_SCHEDULE_READY")
+          PY
+
+          REDIS_URL=redis://localhost:6379/15 \
+          celery -A app.celery_app beat \
+            --loglevel=info \
+            --schedule=android-runtime-celerybeat-schedule \
+            > android-runtime-celery-beat.log 2>&1 &
+          beat_pid=$!
+          sleep 3
+          kill -0 "$beat_pid"
+          kill -TERM "$beat_pid"
+          wait "$beat_pid" || true
+          echo "ANDROID_CELERY_BEAT_BOOT_READY"
+
       - name: Run Android runtime regression contracts
         run: |
           python -m pytest -q --tb=short \
@@ -177,13 +217,18 @@ jobs:
             tests/test_android_task_runtime_liveness.py \
             tests/test_refresh_android_jobtomatik_tabs.py \
             tests/test_retire_legacy_android_celery.py \
-            tests/test_prepare_android_runtime.py
+            tests/test_operations_policy.py \
+            tests/test_prepare_android_runtime.py \
+            tests/test_runtime_configuration_contract.py \
+            tests/test_runtime_identity.py
 
-      - name: Upload worker log
+      - name: Upload managed runtime logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: android-runtime-dispatch-worker-log
-          path: backend/android-runtime-celery.log
+          path: |
+            backend/android-runtime-celery.log
+            backend/android-runtime-celery-beat.log
           if-no-files-found: error
           retention-days: 14

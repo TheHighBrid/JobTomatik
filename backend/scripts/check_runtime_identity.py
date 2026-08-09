@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -14,22 +13,22 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.config import get_settings  # noqa: E402
+from app.services.operations_settings import get_operations_settings  # noqa: E402
 from app.services.runtime_identity import runtime_identity_manifest  # noqa: E402
 
 
-def _truthy(name: str) -> bool:
-    return str(os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
-
-
 def sensitive_runtime_requested() -> bool:
+    core = get_settings()
+    operations = get_operations_settings()
     return any(
         (
-            str(os.getenv("APP_ENV") or "development").strip().lower() == "production",
-            _truthy("AUTOPILOT_ENABLED"),
-            _truthy("ALLOW_REAL_APPLICATION_SUBMIT"),
-            _truthy("ALLOW_REAL_FOLLOWUP_SEND"),
-            _truthy("GREENHOUSE_SUPERVISED_PILOT_ENABLED"),
-            _truthy("LEVER_SUPERVISED_PILOT_ENABLED"),
+            core.is_production,
+            operations.autopilot_enabled,
+            core.allow_real_application_submit,
+            core.allow_real_followup_send,
+            core.greenhouse_supervised_pilot_enabled,
+            core.lever_supervised_pilot_enabled,
         )
     )
 
@@ -49,14 +48,30 @@ def main() -> int:
     args = parser.parse_args()
 
     identity = runtime_identity_manifest()
-    sensitive = sensitive_runtime_requested()
+    configuration_error: str | None = None
+    try:
+        sensitive = sensitive_runtime_requested()
+    except Exception as exc:  # Fail closed without exposing config/secrets in output.
+        sensitive = True
+        configuration_error = exc.__class__.__name__
+
     require = args.require_attested or (args.require_sensitive and sensitive)
     result = {
         **identity,
         "sensitive_runtime_requested": sensitive,
         "attestation_required": require,
+        "configuration_valid": configuration_error is None,
     }
+    if configuration_error is not None:
+        result["configuration_error"] = configuration_error
     print(json.dumps(result, sort_keys=True))
+
+    if configuration_error is not None:
+        print(
+            "JobTomatik runtime configuration validation failed before process startup.",
+            file=sys.stderr,
+        )
+        return 2
 
     if require and not identity["deployment_attested"]:
         print(
