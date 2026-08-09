@@ -4,16 +4,22 @@
 A Vite page can remain open across a git pull and keep an older JavaScript module graph
 and stale task state in memory. The managed Android updater uses native Chromium over
 CDP, so it can safely refresh only JobTomatik localhost tabs without touching LinkedIn,
-employer ATS pages, the authenticated browser profile, or an operator-selected backend
-API URL.
+employer ATS pages, or the authenticated browser profile.
+
+An explicitly saved backend URL remains authoritative unless it points to a loopback
+backend that is not deployment-attested to the same exact revision as the managed
+Android API. That stale-local case is recovered to the managed endpoint automatically
+so an old manual or stale Uvicorn process cannot silently block exact-runtime evidence.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -25,6 +31,7 @@ from app.services.browser_runtime import launch_application_browser
 
 
 MANAGED_API_URL = "http://127.0.0.1:8010"
+API_URL_STORAGE_KEY = "jobtomatik_api_url"
 STALE_SUBMIT_TASK_PREFIX = "jobtomatik_submit_task_"
 
 
@@ -40,26 +47,99 @@ def is_jobtomatik_frontend_url(value: str) -> bool:
     )
 
 
-async def normalize_frontend_page(page) -> None:
+def is_loopback_api_url(value: str) -> bool:
+    try:
+        parsed = urlsplit(str(value or ""))
+    except Exception:
+        return False
+    return (
+        parsed.scheme in {"http", "https"}
+        and (parsed.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
+    )
+
+
+def runtime_identity_payload(base_url: str, *, timeout: float = 2.0) -> dict | None:
+    url = f"{str(base_url or '').rstrip('/')}/api/system/runtime-identity"
+    try:
+        request = Request(url, headers={"Accept": "application/json"})
+        with urlopen(request, timeout=timeout) as response:  # noqa: S310 - loopback/operator URL only
+            if int(getattr(response, "status", 200)) != 200:
+                return None
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def runtime_identity_attested(payload: dict | None) -> bool:
+    return bool(
+        isinstance(payload, dict)
+        and payload.get("deployment_attested") is True
+        and payload.get("matches_expected") is True
+        and payload.get("role") == "api"
+        and bool(payload.get("revision"))
+        and payload.get("revision") == payload.get("expected_revision")
+        and payload.get("submission_authorized") is False
+        and payload.get("outreach_authorized") is False
+    )
+
+
+def should_recover_saved_api(saved_api_url: str | None) -> bool:
+    saved = str(saved_api_url or "").strip().rstrip("/")
+    managed = MANAGED_API_URL.rstrip("/")
+    if not saved or saved == managed:
+        return False
+    if not is_loopback_api_url(saved):
+        return False
+
+    managed_identity = runtime_identity_payload(MANAGED_API_URL)
+    if not runtime_identity_attested(managed_identity):
+        return False
+
+    saved_identity = runtime_identity_payload(saved)
+    if not runtime_identity_attested(saved_identity):
+        return True
+
+    return not (
+        saved_identity.get("revision") == managed_identity.get("revision")
+        and saved_identity.get("expected_revision") == managed_identity.get("expected_revision")
+    )
+
+
+async def saved_api_url(page) -> str:
+    value = await page.evaluate(
+        """({ storageKey }) => {
+          try { return localStorage.getItem(storageKey) || ''; } catch (_) { return ''; }
+        }""",
+        {"storageKey": API_URL_STORAGE_KEY},
+    )
+    return str(value or "").strip()
+
+
+async def normalize_frontend_page(page, *, recover_saved_api: bool = False) -> None:
     await page.evaluate(
-        """({ stalePrefix }) => {
-          // Preserve jobtomatik_api_url. The managed 8010 endpoint is only the
-          // fallback default; an API URL explicitly saved by the operator must
-          // survive runtime updates and tab refreshes.
+        """({ stalePrefix, storageKey, managedApiUrl, recoverSavedApi }) => {
           try {
+            if (recoverSavedApi) localStorage.setItem(storageKey, managedApiUrl);
             for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
               const key = sessionStorage.key(i);
               if (key && key.startsWith(stalePrefix)) sessionStorage.removeItem(key);
             }
           } catch (_) {}
         }""",
-        {"stalePrefix": STALE_SUBMIT_TASK_PREFIX},
+        {
+            "stalePrefix": STALE_SUBMIT_TASK_PREFIX,
+            "storageKey": API_URL_STORAGE_KEY,
+            "managedApiUrl": MANAGED_API_URL,
+            "recoverSavedApi": bool(recover_saved_api),
+        },
     )
     await page.reload(wait_until="domcontentloaded", timeout=20_000)
 
 
 async def main() -> int:
     refreshed = 0
+    recovered_saved_api = 0
     async with async_playwright() as playwright:
         runtime = await launch_application_browser(playwright)
         try:
@@ -68,8 +148,11 @@ async def main() -> int:
                     if not is_jobtomatik_frontend_url(page.url):
                         continue
                     try:
-                        await normalize_frontend_page(page)
+                        saved = await saved_api_url(page)
+                        recover = should_recover_saved_api(saved)
+                        await normalize_frontend_page(page, recover_saved_api=recover)
                         refreshed += 1
+                        recovered_saved_api += int(recover)
                     except Exception as exc:
                         print(f"ANDROID_FRONTEND_TAB_REFRESH_FAILED url={page.url} error={str(exc)[:160]}")
                         return 1
@@ -78,7 +161,8 @@ async def main() -> int:
 
     print(f"ANDROID_FRONTEND_TABS_REFRESHED={refreshed}")
     print(f"ANDROID_FRONTEND_API_DEFAULT={MANAGED_API_URL}")
-    print("ANDROID_FRONTEND_SAVED_API_PRESERVED=1")
+    print(f"ANDROID_FRONTEND_SAVED_API_RECOVERED={recovered_saved_api}")
+    print("ANDROID_FRONTEND_SAVED_API_POLICY=ATTESTED_EXACT_REVISION")
     return 0
 
 

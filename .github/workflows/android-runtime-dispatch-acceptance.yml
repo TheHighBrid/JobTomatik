@@ -10,6 +10,7 @@ on:
       - "backend/app/services/application_recovery.py"
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
+      - "backend/scripts/android_frontend_guard.sh"
       - "backend/scripts/check_runtime_identity.py"
       - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/manage_android_stack.sh"
@@ -21,10 +22,12 @@ on:
       - "frontend/src/applicationTaskRuntime.js"
       - "frontend/src/pages/ApplicationDetail.jsx"
       - "backend/tests/test_application_recovery.py"
+      - "backend/tests/test_android_frontend_guard.py"
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
       - "backend/tests/test_android_runtime_supervisor_regressions.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_refresh_android_jobtomatik_tabs.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_prepare_android_runtime.py"
       - "backend/tests/test_runtime_configuration_contract.py"
@@ -41,6 +44,7 @@ on:
       - "backend/app/services/application_recovery.py"
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
+      - "backend/scripts/android_frontend_guard.sh"
       - "backend/scripts/check_runtime_identity.py"
       - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/manage_android_stack.sh"
@@ -52,10 +56,12 @@ on:
       - "frontend/src/applicationTaskRuntime.js"
       - "frontend/src/pages/ApplicationDetail.jsx"
       - "backend/tests/test_application_recovery.py"
+      - "backend/tests/test_android_frontend_guard.py"
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
       - "backend/tests/test_android_runtime_supervisor_regressions.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_refresh_android_jobtomatik_tabs.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_prepare_android_runtime.py"
       - "backend/tests/test_runtime_configuration_contract.py"
@@ -294,6 +300,7 @@ jobs:
         run: |
           python -m pytest -q --tb=short \
             tests/test_application_recovery.py \
+            tests/test_android_frontend_guard.py \
             tests/test_android_runtime_canary.py \
             tests/test_android_runtime_scripts.py \
             tests/test_android_runtime_supervisor_regressions.py \
