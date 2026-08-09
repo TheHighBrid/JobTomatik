@@ -32,10 +32,13 @@ jobtomatik_vite_pids() {
     pid="${proc##*/}"
     [[ "$pid" != "$$" ]] || continue
     cwd="$(readlink "$proc/cwd" 2>/dev/null || true)"
-    [[ "$cwd" == "$FRONTEND_ROOT" ]] || continue
     cmdline="$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null || true)"
     [[ "$cmdline" == *"vite"* ]] || continue
     [[ "$cmdline" == *"--port 3000"* || "$cmdline" == *"--port=3000"* ]] || continue
+    # PRoot can expose a kernel cwd path that differs from the logical path seen by
+    # the process. Accept either an exact logical cwd match or the exact checkout
+    # path embedded in Vite's command line, but never a generic Vite process.
+    [[ "$cwd" == "$FRONTEND_ROOT" || "$cmdline" == *"$FRONTEND_ROOT/"* ]] || continue
     printf '%s\n' "$pid"
   done
 }
