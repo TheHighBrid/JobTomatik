@@ -30,13 +30,13 @@ def test_only_local_jobtomatik_frontend_tabs_are_refresh_targets():
     assert is_jobtomatik_frontend_url("http://localhost:5173") is False
 
 
-def test_refresh_targets_authoritative_android_api_and_legacy_task_storage_only():
+def test_refresh_keeps_managed_api_as_default_and_targets_only_legacy_task_storage():
     assert MANAGED_API_URL == "http://127.0.0.1:8010"
     assert STALE_SUBMIT_TASK_PREFIX == "jobtomatik_submit_task_"
 
 
 @pytest.mark.asyncio
-async def test_refresh_rewrites_api_and_stale_task_storage_before_reloading():
+async def test_refresh_preserves_saved_api_and_clears_stale_task_storage_before_reload():
     page = _FakePage()
 
     await normalize_frontend_page(page)
@@ -44,10 +44,10 @@ async def test_refresh_rewrites_api_and_stale_task_storage_before_reloading():
     assert len(page.evaluate_calls) == 1
     script, payload = page.evaluate_calls[0]
     assert payload == {
-        "apiUrl": "http://127.0.0.1:8010",
         "stalePrefix": "jobtomatik_submit_task_",
     }
-    assert "localStorage.setItem('jobtomatik_api_url', apiUrl)" in script
+    assert "jobtomatik_api_url" in script
+    assert "localStorage.setItem('jobtomatik_api_url'" not in script
     assert "sessionStorage.removeItem(key)" in script
     assert page.reload_calls == [{
         "wait_until": "domcontentloaded",
