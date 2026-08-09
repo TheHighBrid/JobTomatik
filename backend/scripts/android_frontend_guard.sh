@@ -3,11 +3,12 @@ set -euo pipefail
 
 BACKEND_ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 REPO_ROOT="$(cd -- "$BACKEND_ROOT/.." && pwd)"
-FRONTEND_ROOT="$REPO_ROOT/frontend"
-RUNTIME_DIR="$BACKEND_ROOT/.runtime"
+FRONTEND_ROOT="${JOBTOMATIK_FRONTEND_ROOT:-$REPO_ROOT/frontend}"
+RUNTIME_DIR="${JOBTOMATIK_RUNTIME_DIR:-$BACKEND_ROOT/.runtime}"
+PROC_ROOT="${JOBTOMATIK_PROC_ROOT:-/proc}"
 FRONTEND_PID_FILE="$RUNTIME_DIR/frontend.pid"
 MODE="${1:-status}"
-FRONTEND_URL="http://127.0.0.1:3000"
+FRONTEND_URL="${JOBTOMATIK_FRONTEND_URL:-http://127.0.0.1:3000}"
 
 http_ready() {
   curl -fsS --max-time 2 "$FRONTEND_URL" >/dev/null 2>&1
@@ -26,7 +27,7 @@ managed_ready() {
 
 jobtomatik_vite_pids() {
   local proc pid cwd cmdline
-  for proc in /proc/[0-9]*; do
+  for proc in "$PROC_ROOT"/[0-9]*; do
     [[ -r "$proc/cmdline" ]] || continue
     pid="${proc##*/}"
     [[ "$pid" != "$$" ]] || continue
