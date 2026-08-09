@@ -260,6 +260,7 @@ jobs:
           print("ANDROID_BEAT_SCHEDULER_NONPERSISTENT_READY")
           PY
 
+          rm -f android-runtime-celerybeat-schedule*
           REDIS_URL=redis://localhost:6379/15 \
           JOBTOMATIK_RUNTIME_MODE=android_managed \
           celery -A app.celery_app beat \
@@ -277,8 +278,9 @@ jobs:
             wait "$beat_pid" || true
             exit 1
           fi
-          if ! grep -Eq 'scheduler[[:space:]]*->[[:space:]]*celery\.beat\.Scheduler' android-runtime-celery-beat.log; then
-            echo "Android-managed Beat did not report celery.beat.Scheduler." >&2
+          if compgen -G 'android-runtime-celerybeat-schedule*' >/dev/null; then
+            echo "Android-managed Beat unexpectedly created a persistent schedule database." >&2
+            ls -la android-runtime-celerybeat-schedule* >&2 || true
             kill -TERM "$beat_pid" 2>/dev/null || true
             wait "$beat_pid" || true
             exit 1
