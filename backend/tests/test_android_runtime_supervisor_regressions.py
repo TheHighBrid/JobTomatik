@@ -35,6 +35,38 @@ def test_managed_broker_cleanup_includes_legacy_default_worker_on_db1():
     ]
 
 
+def test_android_manager_derives_its_root_from_bash_source():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"' in manager
+    assert 'dirname -- "$SCRIPT_SOURCE"' in manager
+    assert 'BACKEND_ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"' not in manager
+
+
+def test_bash_source_path_survives_parent_shell_argv0(tmp_path):
+    manager = tmp_path / "backend" / "scripts" / "probe.sh"
+    manager.parent.mkdir(parents=True)
+    manager.write_text(
+        'SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"\n'
+        'BACKEND_ROOT="$(cd -- "$(dirname -- "$SCRIPT_SOURCE")/.." && pwd)"\n'
+        'printf "%s\\n" "$SCRIPT_SOURCE" "$BACKEND_ROOT"\n',
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", f'source "{manager}"'],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    lines = result.stdout.splitlines()
+    assert lines[0] == str(manager)
+    assert lines[1] == str(tmp_path / "backend")
+
+
 def test_detached_android_manager_is_sourced_by_long_lived_proot_shell_with_manager_argv0():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
