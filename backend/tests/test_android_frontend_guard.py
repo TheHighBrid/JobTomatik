@@ -50,7 +50,9 @@ def _guard_env(tmp_path: Path, *, frontend_root: Path, proc_root: Path, port: in
 def _fake_proc_entry(proc_root: Path, pid: int, frontend_root: Path) -> None:
     entry = proc_root / str(pid)
     entry.mkdir(parents=True)
-    (entry / "cmdline").write_bytes(b"node\0node_modules/.bin/vite\0--host\00.0.0.0\0--port\03000\0")
+    (entry / "cmdline").write_bytes(
+        b"node\x00node_modules/.bin/vite\x00--host\x000.0.0.0\x00--port\x003000\x00"
+    )
     (entry / "cwd").symlink_to(frontend_root)
 
 
