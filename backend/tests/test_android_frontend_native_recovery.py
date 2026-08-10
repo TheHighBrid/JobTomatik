@@ -16,12 +16,17 @@ from scripts import repair_android_frontend_native_deps as native_deps
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _package_tarball(package_name: str, binary_name: str) -> bytes:
+def _package_tarball(
+    package_name: str,
+    binary_name: str,
+    *,
+    version: str = "1.0.0",
+) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         files = {
             "package/package.json": json.dumps(
-                {"name": package_name, "version": "1.0.0"}
+                {"name": package_name, "version": version}
             ).encode(),
             f"package/{binary_name}": b"native-binding",
         }
@@ -61,6 +66,25 @@ def test_android_arm64_selects_complete_native_toolchain_with_exact_binaries():
         ("lightningcss-android-arm64", "lightningcss.android-arm64.node"),
         ("@rolldown/binding-android-arm64", "rolldown-binding.android-arm64.node"),
         ("@tailwindcss/oxide-android-arm64", "tailwindcss-oxide.android-arm64.node"),
+    ]
+
+
+def test_linux_32bit_arm_selects_complete_native_toolchain(monkeypatch):
+    monkeypatch.setattr(native_deps, "_linux_libc_suffix", lambda: "gnu")
+    specs = native_deps._native_package_specs("linux", "arm")
+    assert [(spec.package_name, spec.expected_binary) for spec in specs] == [
+        (
+            "lightningcss-linux-arm-gnueabihf",
+            "lightningcss.linux-arm-gnueabihf.node",
+        ),
+        (
+            "@rolldown/binding-linux-arm-gnueabihf",
+            "rolldown-binding.linux-arm-gnueabihf.node",
+        ),
+        (
+            "@tailwindcss/oxide-linux-arm-gnueabihf",
+            "tailwindcss-oxide.linux-arm-gnueabihf.node",
+        ),
     ]
 
 
@@ -144,6 +168,10 @@ def test_repair_restores_complete_android_native_toolchain_without_npm_install(
     for binary in expected_files:
         assert binary.is_file()
         assert binary.stat().st_size > 0
+        package_metadata = json.loads(
+            (binary.parent / "package.json").read_text(encoding="utf-8")
+        )
+        assert package_metadata["version"] == "1.0.0"
 
     assert downloads.count("https://registry.example/lightningcss.tgz") == 2
     assert downloads.count("https://registry.example/rolldown.tgz") == 1
@@ -167,6 +195,66 @@ def test_repair_restores_complete_android_native_toolchain_without_npm_install(
         lock_file=lock_file,
     )
     assert sum("source=existing" in item for item in messages) == 4
+
+
+def test_stale_native_package_version_is_repaired_from_locked_version(
+    tmp_path,
+    monkeypatch,
+):
+    frontend = tmp_path / "frontend"
+    destination = frontend / "node_modules/@rolldown/binding-android-arm64"
+    destination.mkdir(parents=True)
+    (destination / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "@rolldown/binding-android-arm64",
+                "version": "0.9.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (destination / "rolldown-binding.android-arm64.node").write_bytes(b"old-binding")
+
+    payload = _package_tarball(
+        "@rolldown/binding-android-arm64",
+        "rolldown-binding.android-arm64.node",
+        version="1.0.0",
+    )
+    lock_file = frontend / "package-lock.json"
+    lock_file.write_text(
+        json.dumps(
+            {
+                "lockfileVersion": 3,
+                "packages": {
+                    "node_modules/@rolldown/binding-android-arm64": {
+                        "version": "1.0.0",
+                        "resolved": "https://registry.example/rolldown.tgz",
+                        "integrity": _integrity(payload),
+                        "optional": True,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    spec = native_deps.NativePackageSpec(
+        "@rolldown/binding-android-arm64",
+        "rolldown-binding.android-arm64.node",
+    )
+    monkeypatch.setattr(native_deps, "_node_runtime", lambda: ("android", "arm64"))
+    monkeypatch.setattr(native_deps, "_native_package_specs", lambda *_args: [spec])
+    monkeypatch.setattr(native_deps, "_download", lambda _url: payload)
+
+    messages = native_deps.repair_frontend_native_dependencies(
+        frontend_root=frontend,
+        lock_file=lock_file,
+    )
+
+    repaired_metadata = json.loads(
+        (destination / "package.json").read_text(encoding="utf-8")
+    )
+    assert repaired_metadata["version"] == "1.0.0"
+    assert "source=verified_lockfile_download" in messages[0]
 
 
 @pytest.mark.parametrize(
@@ -204,7 +292,7 @@ def test_wrong_target_native_file_is_not_considered_healthy(
     (destination / wrong_binary).write_bytes(b"wrong-target")
 
     spec = native_deps.NativePackageSpec(package_name, expected_binary)
-    assert native_deps._healthy_package(destination, spec) is False
+    assert native_deps._healthy_package(destination, spec, "1.0.0") is False
 
 
 @pytest.mark.parametrize(
@@ -229,7 +317,32 @@ def test_zero_length_expected_native_file_is_not_considered_healthy(
     (destination / expected_binary).write_bytes(b"")
 
     spec = native_deps.NativePackageSpec(package_name, expected_binary)
-    assert native_deps._healthy_package(destination, spec) is False
+    assert native_deps._healthy_package(destination, spec, "1.0.0") is False
+
+
+@pytest.mark.parametrize(
+    "package_json_payload",
+    [
+        b"\xff\xfe\xfd",
+        b"null",
+        b"[1,2,3]",
+        b"{broken-json",
+    ],
+)
+def test_malformed_package_metadata_is_unhealthy_not_exception(
+    tmp_path,
+    package_json_payload,
+):
+    destination = tmp_path / "binding"
+    destination.mkdir()
+    (destination / "package.json").write_bytes(package_json_payload)
+    (destination / "rolldown-binding.android-arm64.node").write_bytes(b"binding")
+    spec = native_deps.NativePackageSpec(
+        "@rolldown/binding-android-arm64",
+        "rolldown-binding.android-arm64.node",
+    )
+
+    assert native_deps._healthy_package(destination, spec, "1.0.0") is False
 
 
 def test_repair_rejects_payload_that_does_not_match_lockfile_integrity(
