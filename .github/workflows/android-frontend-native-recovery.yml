@@ -77,10 +77,10 @@ jobs:
       - name: Prove architecture-native Lightning CSS works before fault injection
         working-directory: frontend
         run: |
-          node -e "require('lightningcss'); console.log('LIGHTNINGCSS_BASELINE_READY arch=' + process.arch)"
+          node -e "require('lightningcss'); console.log('LIGHTNINGCSS_BASELINE_READY platform=' + process.platform + ' arch=' + process.arch)"
           test -d "node_modules/$NATIVE_PACKAGE"
 
-      - name: Delete only the architecture-native binding to reproduce the Android failure
+      - name: Delete only the architecture-native binding to reproduce the failure
         run: |
           rm -rf "frontend/node_modules/$NATIVE_PACKAGE"
           test ! -e "frontend/node_modules/$NATIVE_PACKAGE"
@@ -97,6 +97,70 @@ jobs:
         working-directory: frontend
         run: |
           test -d "node_modules/$NATIVE_PACKAGE"
-          node -e "require('lightningcss'); console.log('ANDROID_FRONTEND_LIGHTNINGCSS_RECOVERED arch=' + process.arch)"
+          node -e "require('lightningcss'); console.log('ANDROID_FRONTEND_LIGHTNINGCSS_RECOVERED platform=' + process.platform + ' arch=' + process.arch)"
           npm run build
           echo "ANDROID_FRONTEND_NATIVE_RECOVERY_ACCEPTED package=$NATIVE_PACKAGE arch=$EXPECTED_NODE_ARCH"
+
+  android-node-target-contract:
+    name: android-node-target-contract (android-arm64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Prove CI host differs from Android Node target
+        run: |
+          test "$(node -p 'process.platform')" = "linux"
+          test "$(node -p 'process.arch')" = "arm64"
+          echo "CI_HOST_NODE_TARGET=linux-arm64"
+          echo "PHYSICAL_ANDROID_NODE_TARGET=android-arm64"
+
+      - name: Repair the lockfile-pinned Android ARM64 binding
+        env:
+          JOBTOMATIK_FRONTEND_NODE_PLATFORM: android
+          JOBTOMATIK_FRONTEND_NODE_ARCH: arm64
+        run: |
+          rm -rf frontend/node_modules/lightningcss-android-arm64
+          rm -rf frontend/node_modules/vite/node_modules/lightningcss-android-arm64
+          python backend/scripts/repair_android_frontend_native_deps.py | tee /tmp/android-native-repair.log
+          grep -q 'ANDROID_FRONTEND_NODE_TARGET platform=android arch=arm64 package=lightningcss-android-arm64 binary=lightningcss.android-arm64.node' /tmp/android-native-repair.log
+
+      - name: Verify every locked Android binding contains the exact native binary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          frontend = Path("frontend")
+          lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
+          suffix = "node_modules/lightningcss-android-arm64"
+          keys = [
+              key
+              for key in lock.get("packages", {})
+              if str(key).endswith(suffix)
+          ]
+          if not keys:
+              raise SystemExit("No Android ARM64 Lightning CSS lock entries found")
+          for key in keys:
+              package = frontend / key
+              binary = package / "lightningcss.android-arm64.node"
+              metadata = json.loads((package / "package.json").read_text(encoding="utf-8"))
+              if metadata.get("name") != "lightningcss-android-arm64":
+                  raise SystemExit(f"Wrong package identity at {key}")
+              if not binary.is_file() or binary.stat().st_size <= 0:
+                  raise SystemExit(f"Missing Android native binary at {binary}")
+              print(f"ANDROID_LOCKED_BINDING_VERIFIED path={key} binary={binary.name}")
+          PY
+          echo "ANDROID_NODE_TARGET_RECOVERY_ACCEPTED platform=android arch=arm64"
