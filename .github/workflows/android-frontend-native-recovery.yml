@@ -142,7 +142,7 @@ jobs:
           python backend/scripts/repair_android_frontend_native_deps.py | tee /tmp/android-native-repair.log
           grep -Fq 'ANDROID_FRONTEND_NODE_TARGET platform=android arch=arm64 packages=lightningcss-android-arm64,@rolldown/binding-android-arm64,@tailwindcss/oxide-android-arm64' /tmp/android-native-repair.log
 
-      - name: Verify every locked Android package contains native code
+      - name: Verify every locked Android package contains its exact native binary
         run: |
           python - <<'PY'
           import json
@@ -150,13 +150,13 @@ jobs:
 
           frontend = Path("frontend")
           lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
-          package_names = (
-              "lightningcss-android-arm64",
-              "@rolldown/binding-android-arm64",
-              "@tailwindcss/oxide-android-arm64",
-          )
+          expected_binaries = {
+              "lightningcss-android-arm64": "lightningcss.android-arm64.node",
+              "@rolldown/binding-android-arm64": "rolldown-binding.android-arm64.node",
+              "@tailwindcss/oxide-android-arm64": "tailwindcss-oxide.android-arm64.node",
+          }
           checked = 0
-          for package_name in package_names:
+          for package_name, binary_name in expected_binaries.items():
               suffix = f"node_modules/{package_name}"
               keys = [
                   key
@@ -170,21 +170,15 @@ jobs:
                   metadata = json.loads((package / "package.json").read_text(encoding="utf-8"))
                   if metadata.get("name") != package_name:
                       raise SystemExit(f"Wrong package identity at {key}")
-                  native_files = list(package.rglob("*.node"))
-                  if not native_files:
-                      raise SystemExit(f"No native binary found at {package}")
-                  if package_name == "lightningcss-android-arm64":
-                      expected = package / "lightningcss.android-arm64.node"
-                      if not expected.is_file() or expected.stat().st_size <= 0:
-                          raise SystemExit(f"Missing exact Android Lightning CSS binary at {expected}")
-                  for native_file in native_files:
-                      if native_file.stat().st_size <= 0:
-                          raise SystemExit(f"Empty native binary at {native_file}")
+                  binary = package / binary_name
+                  if not binary.is_file() or binary.stat().st_size <= 0:
+                      raise SystemExit(
+                          f"Missing or empty exact Android native binary at {binary}"
+                      )
                   checked += 1
                   print(
                       "ANDROID_LOCKED_NATIVE_PACKAGE_VERIFIED "
-                      f"package={package_name} path={key} "
-                      f"native={','.join(path.name for path in native_files)}"
+                      f"package={package_name} path={key} native={binary_name}"
                   )
           if checked < 4:
               raise SystemExit(f"Expected at least four Android native lock entries, got {checked}")
