@@ -15,6 +15,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
         "scripts/jobtomatik_termux_wrapper.sh",
         "scripts/install_android_native_browser_launcher.sh",
         "scripts/manage_android_stack.sh",
+        "scripts/jobtomatik_process_identity.sh",
+        "scripts/sanitize_android_runtime_pid_files.sh",
     ],
 )
 def test_android_runtime_shell_script_has_valid_bash_syntax(relative_path):
@@ -40,12 +42,16 @@ def test_android_launcher_installer_copies_native_commands(tmp_path):
 
     browser_command = destination / "jobtomatik-browser"
     stack_command = destination / "jobtomatik"
+    identity_helper = destination / "jobtomatik_process_identity.sh"
     assert browser_command.is_file()
     assert stack_command.is_file()
+    assert identity_helper.is_file()
     assert os.access(browser_command, os.X_OK)
     assert os.access(stack_command, os.X_OK)
+    assert os.access(identity_helper, os.X_OK)
     assert "remote-debugging-port" in browser_command.read_text(encoding="utf-8")
     assert "proot-distro login" in stack_command.read_text(encoding="utf-8")
+    assert "jobtomatik_signal_if_identity" in identity_helper.read_text(encoding="utf-8")
 
 
 def test_termux_wrapper_does_not_assume_a_proot_storage_layout():
@@ -68,6 +74,32 @@ def test_android_stack_manager_never_uses_broad_process_matching():
     assert "killall" not in manager
     assert "stop_pid_file" in manager
     assert "UNMANAGED_PROCESS_OCCUPIES_8010" in manager
+
+
+def test_android_native_wrapper_sanitizes_pid_files_before_manager_signals():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    sanitizer = (
+        BACKEND_ROOT / "scripts/sanitize_android_runtime_pid_files.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "sanitize_runtime_pid_files" in wrapper
+    assert "sanitize_android_runtime_pid_files.sh" in wrapper
+    assert "supervisor_identity_matches" in wrapper
+    assert "jobtomatik_signal_if_identity" in wrapper
+    assert "ANDROID_STALE_PID_REJECTED" in sanitizer
+    assert "pid_file_removed_process_not_signaled" in sanitizer
+
+
+def test_android_browser_supervisor_requires_identity_before_signal():
+    browser = (BACKEND_ROOT / "scripts/start_android_browser_cdp.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "supervisor_identity_matches" in browser
+    assert "jobtomatik_signal_if_identity" in browser
+    assert "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED" in browser
 
 
 def test_android_worker_is_revisioned_and_consumes_all_runtime_queues():

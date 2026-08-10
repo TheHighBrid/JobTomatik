@@ -8,6 +8,15 @@ BROWSER_COMMAND="${JOBTOMATIK_BROWSER_COMMAND:-jobtomatik-browser}"
 RUNTIME_DIR="${JOBTOMATIK_ANDROID_RUNTIME_DIR:-$HOME/.jobtomatik-runtime}"
 STACK_PID_FILE="$RUNTIME_DIR/proot-stack.pid"
 STACK_LOG="$RUNTIME_DIR/proot-stack.log"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+PROCESS_IDENTITY_HELPER="${JOBTOMATIK_PROCESS_IDENTITY_HELPER:-$SCRIPT_DIR/jobtomatik_process_identity.sh}"
+
+if [[ ! -r "$PROCESS_IDENTITY_HELPER" ]]; then
+  echo "JobTomatik Android process-identity helper is missing: $PROCESS_IDENTITY_HELPER" >&2
+  exit 1
+fi
+# shellcheck source=jobtomatik_process_identity.sh
+source "$PROCESS_IDENTITY_HELPER"
 
 mkdir -p "$RUNTIME_DIR"
 
@@ -23,21 +32,39 @@ run_frontend_guard() {
     "cd '$PROOT_REPO' && bash backend/scripts/android_frontend_guard.sh '$action'"
 }
 
+sanitize_runtime_pid_files() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "cd '$PROOT_REPO' && bash backend/scripts/sanitize_android_runtime_pid_files.sh"
+}
+
 ensure_frontend_native_dependencies() {
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "set -e; cd '$PROOT_REPO'; backend/.venv/bin/python backend/scripts/repair_android_frontend_native_deps.py; cd frontend; node -e \"require('lightningcss'); console.log('ANDROID_FRONTEND_LIGHTNINGCSS_READY')\""
+}
+
+supervisor_identity_matches() {
+  local pid="$1"
+  jobtomatik_pid_has_all_tokens "$pid" "proot" "manage_android_stack.sh"
 }
 
 supervisor_alive() {
   [[ -f "$STACK_PID_FILE" ]] || return 1
   local pid
   pid="$(cat "$STACK_PID_FILE" 2>/dev/null || true)"
-  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+  [[ -n "$pid" ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  supervisor_identity_matches "$pid"
 }
 
 reject_stack_supervisor() {
   local proot_pid="$1"
-  kill -TERM "$proot_pid" 2>/dev/null || true
+  if kill -0 "$proot_pid" 2>/dev/null; then
+    if supervisor_identity_matches "$proot_pid"; then
+      jobtomatik_signal_if_identity TERM "$proot_pid" "proot" "manage_android_stack.sh" || true
+    else
+      echo "JOBTOMATIK_STALE_PROOT_PID_REJECTED pid=$proot_pid action=not_signaled" >&2
+    fi
+  fi
   rm -f "$STACK_PID_FILE"
 }
 
@@ -97,11 +124,21 @@ start_stack_detached() {
 }
 
 stop_stack_supervisor() {
+  # PID files survive crashes, while Android can recycle their numeric PIDs. Remove
+  # any PID file that no longer points at the exact JobTomatik process before the
+  # legacy manager stop path is allowed to signal anything.
+  sanitize_runtime_pid_files || return 1
   run_stack_foreground stop || true
-  if supervisor_alive; then
+  if [[ -f "$STACK_PID_FILE" ]]; then
     local stack_pid
-    stack_pid="$(cat "$STACK_PID_FILE")"
-    kill -TERM "$stack_pid" 2>/dev/null || true
+    stack_pid="$(cat "$STACK_PID_FILE" 2>/dev/null || true)"
+    if [[ -n "$stack_pid" ]] && kill -0 "$stack_pid" 2>/dev/null; then
+      if supervisor_identity_matches "$stack_pid"; then
+        jobtomatik_signal_if_identity TERM "$stack_pid" "proot" "manage_android_stack.sh" || true
+      else
+        echo "JOBTOMATIK_STALE_PROOT_PID_REJECTED pid=$stack_pid action=not_signaled" >&2
+      fi
+    fi
   fi
   rm -f "$STACK_PID_FILE"
 }
@@ -118,6 +155,7 @@ update_main() {
 
 activate_stack() {
   local action="$1"
+  sanitize_runtime_pid_files
   # Repair only the platform-native frontend binding declared by the exact lockfile.
   # This avoids a memory- and I/O-heavy full npm reinstall on Android after a partial
   # optional-dependency install, while preserving checksum verification and the
