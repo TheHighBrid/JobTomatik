@@ -74,13 +74,13 @@ jobs:
       - name: Install frontend dependencies in CI only
         run: npm ci --prefix frontend --include=optional --no-audit --no-fund
 
-      - name: Prove architecture-native Lightning CSS works before fault injection
+      - name: Prove architecture-native frontend toolchain works before fault injection
         working-directory: frontend
         run: |
-          node -e "require('lightningcss'); console.log('LIGHTNINGCSS_BASELINE_READY arch=' + process.arch)"
+          node -e "require('lightningcss'); require('rolldown'); require('@tailwindcss/oxide'); console.log('NATIVE_TOOLCHAIN_BASELINE_READY platform=' + process.platform + ' arch=' + process.arch)"
           test -d "node_modules/$NATIVE_PACKAGE"
 
-      - name: Delete only the architecture-native binding to reproduce the Android failure
+      - name: Delete only the architecture-native Lightning CSS binding
         run: |
           rm -rf "frontend/node_modules/$NATIVE_PACKAGE"
           test ! -e "frontend/node_modules/$NATIVE_PACKAGE"
@@ -90,13 +90,94 @@ jobs:
           fi
           echo "ANDROID_FRONTEND_NATIVE_BINDING_FAULT_REPRODUCED package=$NATIVE_PACKAGE arch=$EXPECTED_NODE_ARCH"
 
-      - name: Repair from exact package-lock source and integrity
+      - name: Repair complete host-native toolchain from package lock
         run: python backend/scripts/repair_android_frontend_native_deps.py
 
-      - name: Prove repaired native binding and production frontend build
+      - name: Prove repaired native toolchain and production frontend build
         working-directory: frontend
         run: |
-          test -d "node_modules/$NATIVE_PACKAGE"
-          node -e "require('lightningcss'); console.log('ANDROID_FRONTEND_LIGHTNINGCSS_RECOVERED arch=' + process.arch)"
+          node -e "require('lightningcss'); require('rolldown'); require('@tailwindcss/oxide'); console.log('ANDROID_FRONTEND_NATIVE_TOOLCHAIN_RECOVERED platform=' + process.platform + ' arch=' + process.arch)"
           npm run build
           echo "ANDROID_FRONTEND_NATIVE_RECOVERY_ACCEPTED package=$NATIVE_PACKAGE arch=$EXPECTED_NODE_ARCH"
+
+  android-node-target-contract:
+    name: android-node-target-contract (android-arm64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Prove CI host differs from Android Node target
+        run: |
+          test "$(node -p 'process.platform')" = "linux"
+          test "$(node -p 'process.arch')" = "arm64"
+          echo "CI_HOST_NODE_TARGET=linux-arm64"
+          echo "PHYSICAL_ANDROID_NODE_TARGET=android-arm64"
+
+      - name: Remove every Android ARM64 native package before recovery
+        run: |
+          rm -rf frontend/node_modules/lightningcss-android-arm64
+          rm -rf frontend/node_modules/vite/node_modules/lightningcss-android-arm64
+          rm -rf frontend/node_modules/@rolldown/binding-android-arm64
+          rm -rf frontend/node_modules/@tailwindcss/oxide-android-arm64
+
+      - name: Repair lockfile-pinned Android ARM64 native toolchain
+        env:
+          JOBTOMATIK_FRONTEND_NODE_PLATFORM: android
+          JOBTOMATIK_FRONTEND_NODE_ARCH: arm64
+        run: |
+          python backend/scripts/repair_android_frontend_native_deps.py | tee /tmp/android-native-repair.log
+          grep -Fq 'ANDROID_FRONTEND_NODE_TARGET platform=android arch=arm64 native_load_validation=cross_target_skipped packages=lightningcss-android-arm64,@rolldown/binding-android-arm64,@tailwindcss/oxide-android-arm64' /tmp/android-native-repair.log
+
+      - name: Verify every locked Android package matches version and exact native binary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          frontend = Path("frontend")
+          lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
+          packages = lock.get("packages", {})
+          expected_binaries = {
+              "lightningcss-android-arm64": "lightningcss.android-arm64.node",
+              "@rolldown/binding-android-arm64": "rolldown-binding.android-arm64.node",
+              "@tailwindcss/oxide-android-arm64": "tailwindcss-oxide.android-arm64.node",
+          }
+          for package_name, binary_name in expected_binaries.items():
+              suffix = f"node_modules/{package_name}"
+              keys = [key for key in packages if str(key).endswith(suffix)]
+              if not keys:
+                  raise SystemExit(f"No lock entries found for {package_name}")
+              for key in keys:
+                  package = frontend / key
+                  installed = json.loads((package / "package.json").read_text(encoding="utf-8"))
+                  locked = packages[key]
+                  if installed.get("name") != package_name:
+                      raise SystemExit(f"Wrong package identity at {key}")
+                  if str(installed.get("version") or "") != str(locked.get("version") or ""):
+                      raise SystemExit(
+                          f"Version mismatch at {key}: installed={installed.get('version')} locked={locked.get('version')}"
+                      )
+                  binary = package / binary_name
+                  if not binary.is_file() or binary.stat().st_size <= 0:
+                      raise SystemExit(
+                          f"Missing or empty exact Android native binary at {binary}"
+                      )
+                  print(
+                      "ANDROID_LOCKED_NATIVE_PACKAGE_VERIFIED "
+                      f"package={package_name} path={key} version={installed.get('version')} native={binary_name}"
+                  )
+          PY
+          echo "ANDROID_NODE_TARGET_RECOVERY_ACCEPTED platform=android arch=arm64"
