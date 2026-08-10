@@ -41,16 +41,7 @@ def _linux_libc_suffix() -> str:
     return "gnu"
 
 
-def _node_runtime() -> tuple[str, str]:
-    platform_override = str(os.environ.get(NODE_PLATFORM_OVERRIDE) or "").strip().lower()
-    arch_override = str(os.environ.get(NODE_ARCH_OVERRIDE) or "").strip().lower()
-    if bool(platform_override) != bool(arch_override):
-        raise FrontendNativeDependencyError(
-            f"{NODE_PLATFORM_OVERRIDE} and {NODE_ARCH_OVERRIDE} must be set together"
-        )
-    if platform_override and arch_override:
-        return platform_override, arch_override
-
+def _query_node_runtime() -> tuple[str, str]:
     try:
         completed = subprocess.run(
             [
@@ -80,6 +71,38 @@ def _node_runtime() -> tuple[str, str]:
             "Node runtime did not report a platform and architecture"
         )
     return node_platform, node_arch
+
+
+def _node_runtime() -> tuple[str, str]:
+    platform_override = str(os.environ.get(NODE_PLATFORM_OVERRIDE) or "").strip().lower()
+    arch_override = str(os.environ.get(NODE_ARCH_OVERRIDE) or "").strip().lower()
+    if bool(platform_override) != bool(arch_override):
+        raise FrontendNativeDependencyError(
+            f"{NODE_PLATFORM_OVERRIDE} and {NODE_ARCH_OVERRIDE} must be set together"
+        )
+    if platform_override and arch_override:
+        return platform_override, arch_override
+    return _query_node_runtime()
+
+
+def _normalized_arch(arch: str) -> str:
+    value = str(arch).strip().lower()
+    if value in {"aarch64", "arm64"}:
+        return "arm64"
+    if value in {"x86_64", "amd64", "x64"}:
+        return "x64"
+    return value
+
+
+def _can_execute_target(node_platform: str, node_arch: str) -> bool:
+    try:
+        actual_platform, actual_arch = _query_node_runtime()
+    except FrontendNativeDependencyError:
+        return False
+    return (
+        actual_platform == str(node_platform).lower()
+        and _normalized_arch(actual_arch) == _normalized_arch(node_arch)
+    )
 
 
 def _lightningcss_package_name(
@@ -129,7 +152,7 @@ def _expected_lightningcss_binary(package_name: str) -> str:
 
 def _native_package_specs(node_platform: str, node_arch: str) -> list[NativePackageSpec]:
     lightningcss = _lightningcss_package_name(node_platform, node_arch)
-    lightning_suffix = lightningcss.removeprefix("lightningcss-")
+    suffix = lightningcss.removeprefix("lightningcss-")
     specs = [
         NativePackageSpec(
             package_name=lightningcss,
@@ -139,39 +162,28 @@ def _native_package_specs(node_platform: str, node_arch: str) -> list[NativePack
 
     system = node_platform.lower()
     machine = node_arch.lower()
-    if system == "android" and machine in {"aarch64", "arm64"}:
-        specs.extend(
-            [
-                NativePackageSpec(
-                    "@rolldown/binding-android-arm64",
-                    "rolldown-binding.android-arm64.node",
-                ),
-                NativePackageSpec(
-                    "@tailwindcss/oxide-android-arm64",
-                    "tailwindcss-oxide.android-arm64.node",
-                ),
-            ]
+    complete_toolchain = (
+        system == "android" and machine in {"aarch64", "arm64"}
+    ) or (
+        system == "linux"
+        and (
+            machine in {"x86_64", "x64", "amd64", "aarch64", "arm64"}
+            or machine.startswith("arm")
         )
-    elif system == "linux" and (
-        machine
-        in {
-            "x86_64",
-            "x64",
-            "amd64",
-            "aarch64",
-            "arm64",
-        }
-        or machine.startswith("arm")
-    ):
+    ) or (
+        system == "darwin"
+        and machine in {"x86_64", "x64", "amd64", "aarch64", "arm64"}
+    )
+    if complete_toolchain:
         specs.extend(
             [
                 NativePackageSpec(
-                    f"@rolldown/binding-{lightning_suffix}",
-                    f"rolldown-binding.{lightning_suffix}.node",
+                    f"@rolldown/binding-{suffix}",
+                    f"rolldown-binding.{suffix}.node",
                 ),
                 NativePackageSpec(
-                    f"@tailwindcss/oxide-{lightning_suffix}",
-                    f"tailwindcss-oxide.{lightning_suffix}.node",
+                    f"@tailwindcss/oxide-{suffix}",
+                    f"tailwindcss-oxide.{suffix}.node",
                 ),
             ]
         )
@@ -193,10 +205,27 @@ def _integrity_matches(payload: bytes, integrity: str) -> bool:
     return False
 
 
+def _native_binding_loads(binary: Path) -> bool:
+    try:
+        completed = subprocess.run(
+            ["node", "-e", "require(process.argv[1])", str(binary.resolve())],
+            cwd=str(FRONTEND_ROOT),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return completed.returncode == 0
+
+
 def _healthy_package(
     path: Path,
     spec: NativePackageSpec,
     expected_version: str,
+    *,
+    validate_native_load: bool,
 ) -> bool:
     package_json = path / "package.json"
     if not path.is_dir() or not package_json.is_file() or not expected_version:
@@ -213,9 +242,11 @@ def _healthy_package(
         return False
     binary = path / spec.expected_binary
     try:
-        return binary.is_file() and binary.stat().st_size > 0
+        if not binary.is_file() or binary.stat().st_size <= 0:
+            return False
     except OSError:
         return False
+    return not validate_native_load or _native_binding_loads(binary)
 
 
 def _download(url: str) -> bytes:
@@ -232,7 +263,9 @@ def _safe_extract_package(payload: bytes, destination: Path) -> None:
     try:
         archive_context = tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz")
     except (tarfile.TarError, OSError) as exc:
-        raise FrontendNativeDependencyError("Downloaded native package is not a valid tarball") from exc
+        raise FrontendNativeDependencyError(
+            "Downloaded native package is not a valid tarball"
+        ) from exc
 
     with archive_context as archive:
         for member in archive.getmembers():
@@ -271,6 +304,8 @@ def _repair_entry(
     lock_key: str,
     metadata: dict,
     spec: NativePackageSpec,
+    *,
+    validate_native_load: bool,
 ) -> str:
     destination = frontend_root / lock_key
     version = str(metadata.get("version") or "").strip()
@@ -278,11 +313,16 @@ def _repair_entry(
         raise FrontendNativeDependencyError(
             f"Lockfile entry lacks a package version: {lock_key}"
         )
-    if _healthy_package(destination, spec, version):
+    if _healthy_package(
+        destination,
+        spec,
+        version,
+        validate_native_load=validate_native_load,
+    ):
         return (
             "ANDROID_FRONTEND_NATIVE_DEP_READY "
             f"package={spec.package_name} path={lock_key} version={version} "
-            f"native={spec.expected_binary} source=existing"
+            f"native={spec.expected_binary} source=existing_verified"
         )
 
     resolved = str(metadata.get("resolved") or "")
@@ -312,9 +352,14 @@ def _repair_entry(
     ) as temporary:
         staged = Path(temporary) / "package"
         _safe_extract_package(payload, staged)
-        if not _healthy_package(staged, spec, version):
+        if not _healthy_package(
+            staged,
+            spec,
+            version,
+            validate_native_load=validate_native_load,
+        ):
             raise FrontendNativeDependencyError(
-                f"Downloaded package is incomplete, wrong-version, or wrong-target: {lock_key} "
+                f"Downloaded package is incomplete, unloadable, wrong-version, or wrong-target: {lock_key} "
                 f"expected_version={version} expected_binary={spec.expected_binary}"
             )
 
@@ -345,6 +390,7 @@ def repair_frontend_native_dependencies(
 ) -> list[str]:
     node_platform, node_arch = _node_runtime()
     specs = _native_package_specs(node_platform, node_arch)
+    validate_native_load = _can_execute_target(node_platform, node_arch)
     try:
         lock = json.loads(lock_file.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -369,13 +415,20 @@ def repair_frontend_native_dependencies(
                 f"Required native package is absent from package-lock.json: {spec.package_name}"
             )
         messages.extend(
-            _repair_entry(frontend_root, lock_key, metadata, spec)
+            _repair_entry(
+                frontend_root,
+                lock_key,
+                metadata,
+                spec,
+                validate_native_load=validate_native_load,
+            )
             for lock_key, metadata in entries
         )
 
     messages.append(
         "ANDROID_FRONTEND_NODE_TARGET "
         f"platform={node_platform} arch={node_arch} "
+        f"native_load_validation={'enabled' if validate_native_load else 'cross_target_skipped'} "
         f"packages={','.join(spec.package_name for spec in specs)}"
     )
     return messages
