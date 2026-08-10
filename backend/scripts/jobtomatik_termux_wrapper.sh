@@ -23,6 +23,11 @@ run_frontend_guard() {
     "cd '$PROOT_REPO' && bash backend/scripts/android_frontend_guard.sh '$action'"
 }
 
+ensure_frontend_native_dependencies() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO'; backend/.venv/bin/python backend/scripts/repair_android_frontend_native_deps.py; cd frontend; node -e \"require('lightningcss'); console.log('ANDROID_FRONTEND_LIGHTNINGCSS_READY')\""
+}
+
 supervisor_alive() {
   [[ -f "$STACK_PID_FILE" ]] || return 1
   local pid
@@ -103,6 +108,11 @@ update_main() {
 
 activate_stack() {
   local action="$1"
+  # Repair only the platform-native frontend binding declared by the exact lockfile.
+  # This avoids a memory- and I/O-heavy full npm reinstall on Android after a partial
+  # optional-dependency install, while preserving checksum verification and the
+  # repository's locked package version.
+  ensure_frontend_native_dependencies
   "$BROWSER_COMMAND" start
   # The PRoot manager owns API, worker, frontend, stale-attempt recovery, queue-canary
   # certification, and the single deliberate localhost:3000 JobTomatik-tab reload.
