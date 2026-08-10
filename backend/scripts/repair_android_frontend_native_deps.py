@@ -31,7 +31,7 @@ class FrontendNativeDependencyError(RuntimeError):
 @dataclass(frozen=True)
 class NativePackageSpec:
     package_name: str
-    expected_binary: str | None = None
+    expected_binary: str
 
 
 def _linux_libc_suffix() -> str:
@@ -125,6 +125,7 @@ def _expected_lightningcss_binary(package_name: str) -> str:
 
 def _native_package_specs(node_platform: str, node_arch: str) -> list[NativePackageSpec]:
     lightningcss = _lightningcss_package_name(node_platform, node_arch)
+    lightning_suffix = lightningcss.removeprefix("lightningcss-")
     specs = [
         NativePackageSpec(
             package_name=lightningcss,
@@ -137,8 +138,14 @@ def _native_package_specs(node_platform: str, node_arch: str) -> list[NativePack
     if system == "android" and machine in {"aarch64", "arm64"}:
         specs.extend(
             [
-                NativePackageSpec("@rolldown/binding-android-arm64"),
-                NativePackageSpec("@tailwindcss/oxide-android-arm64"),
+                NativePackageSpec(
+                    "@rolldown/binding-android-arm64",
+                    "rolldown-binding.android-arm64.node",
+                ),
+                NativePackageSpec(
+                    "@tailwindcss/oxide-android-arm64",
+                    "tailwindcss-oxide.android-arm64.node",
+                ),
             ]
         )
     elif system == "linux" and machine in {
@@ -148,11 +155,16 @@ def _native_package_specs(node_platform: str, node_arch: str) -> list[NativePack
         "aarch64",
         "arm64",
     }:
-        suffix = lightningcss.removeprefix("lightningcss-")
         specs.extend(
             [
-                NativePackageSpec(f"@rolldown/binding-{suffix}"),
-                NativePackageSpec(f"@tailwindcss/oxide-{suffix}"),
+                NativePackageSpec(
+                    f"@rolldown/binding-{lightning_suffix}",
+                    f"rolldown-binding.{lightning_suffix}.node",
+                ),
+                NativePackageSpec(
+                    f"@tailwindcss/oxide-{lightning_suffix}",
+                    f"tailwindcss-oxide.{lightning_suffix}.node",
+                ),
             ]
         )
 
@@ -183,9 +195,11 @@ def _healthy_package(path: Path, spec: NativePackageSpec) -> bool:
         return False
     if metadata.get("name") != spec.package_name:
         return False
-    if spec.expected_binary:
-        return (path / spec.expected_binary).is_file()
-    return any(path.rglob("*.node"))
+    binary = path / spec.expected_binary
+    try:
+        return binary.is_file() and binary.stat().st_size > 0
+    except OSError:
+        return False
 
 
 def _download(url: str) -> bytes:
@@ -241,7 +255,8 @@ def _repair_entry(
     if _healthy_package(destination, spec):
         return (
             "ANDROID_FRONTEND_NATIVE_DEP_READY "
-            f"package={spec.package_name} path={lock_key} source=existing"
+            f"package={spec.package_name} path={lock_key} "
+            f"native={spec.expected_binary} source=existing"
         )
 
     resolved = str(metadata.get("resolved") or "")
@@ -266,10 +281,9 @@ def _repair_entry(
         staged = Path(temporary) / "package"
         _safe_extract_package(payload, staged)
         if not _healthy_package(staged, spec):
-            expected = spec.expected_binary or "a native .node binding"
             raise FrontendNativeDependencyError(
                 f"Downloaded package is incomplete or wrong-target: {lock_key} "
-                f"expected={expected}"
+                f"expected={spec.expected_binary}"
             )
 
         backup = destination.with_name(f".{destination.name}.broken-{os.getpid()}")
@@ -286,11 +300,10 @@ def _repair_entry(
         if backup.exists():
             shutil.rmtree(backup)
 
-    native_files = sorted(path.name for path in destination.rglob("*.node"))
     return (
         "ANDROID_FRONTEND_NATIVE_DEP_READY "
         f"package={spec.package_name} path={lock_key} version={version} "
-        f"native={','.join(native_files)} source=verified_lockfile_download"
+        f"native={spec.expected_binary} source=verified_lockfile_download"
     )
 
 
