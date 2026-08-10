@@ -69,6 +69,10 @@ def _node_runtime() -> tuple[str, str]:
             "Unable to resolve the frontend Node runtime platform and architecture"
         ) from exc
 
+    if not isinstance(payload, dict):
+        raise FrontendNativeDependencyError(
+            "Node runtime did not report a platform/architecture object"
+        )
     node_platform = str(payload.get("platform") or "").strip().lower()
     node_arch = str(payload.get("arch") or "").strip().lower()
     if not node_platform or not node_arch:
@@ -148,13 +152,17 @@ def _native_package_specs(node_platform: str, node_arch: str) -> list[NativePack
                 ),
             ]
         )
-    elif system == "linux" and machine in {
-        "x86_64",
-        "x64",
-        "amd64",
-        "aarch64",
-        "arm64",
-    }:
+    elif system == "linux" and (
+        machine
+        in {
+            "x86_64",
+            "x64",
+            "amd64",
+            "aarch64",
+            "arm64",
+        }
+        or machine.startswith("arm")
+    ):
         specs.extend(
             [
                 NativePackageSpec(
@@ -185,15 +193,23 @@ def _integrity_matches(payload: bytes, integrity: str) -> bool:
     return False
 
 
-def _healthy_package(path: Path, spec: NativePackageSpec) -> bool:
+def _healthy_package(
+    path: Path,
+    spec: NativePackageSpec,
+    expected_version: str,
+) -> bool:
     package_json = path / "package.json"
-    if not path.is_dir() or not package_json.is_file():
+    if not path.is_dir() or not package_json.is_file() or not expected_version:
         return False
     try:
         metadata = json.loads(package_json.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(metadata, dict):
         return False
     if metadata.get("name") != spec.package_name:
+        return False
+    if str(metadata.get("version") or "") != expected_version:
         return False
     binary = path / spec.expected_binary
     try:
@@ -213,7 +229,12 @@ def _download(url: str) -> bytes:
 
 def _safe_extract_package(payload: bytes, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+    try:
+        archive_context = tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz")
+    except (tarfile.TarError, OSError) as exc:
+        raise FrontendNativeDependencyError("Downloaded native package is not a valid tarball") from exc
+
+    with archive_context as archive:
         for member in archive.getmembers():
             raw_name = member.name.replace("\\", "/")
             if not raw_name.startswith("package/"):
@@ -252,22 +273,33 @@ def _repair_entry(
     spec: NativePackageSpec,
 ) -> str:
     destination = frontend_root / lock_key
-    if _healthy_package(destination, spec):
+    version = str(metadata.get("version") or "").strip()
+    if not version:
+        raise FrontendNativeDependencyError(
+            f"Lockfile entry lacks a package version: {lock_key}"
+        )
+    if _healthy_package(destination, spec, version):
         return (
             "ANDROID_FRONTEND_NATIVE_DEP_READY "
-            f"package={spec.package_name} path={lock_key} "
+            f"package={spec.package_name} path={lock_key} version={version} "
             f"native={spec.expected_binary} source=existing"
         )
 
     resolved = str(metadata.get("resolved") or "")
     integrity = str(metadata.get("integrity") or "")
-    version = str(metadata.get("version") or "unknown")
     if not resolved.startswith("https://") or not integrity:
         raise FrontendNativeDependencyError(
             f"Lockfile entry lacks verified package source: {lock_key}"
         )
 
-    payload = _download(resolved)
+    try:
+        payload = _download(resolved)
+    except FrontendNativeDependencyError:
+        raise
+    except Exception as exc:
+        raise FrontendNativeDependencyError(
+            f"Unable to download locked native package: {lock_key}"
+        ) from exc
     if not _integrity_matches(payload, integrity):
         raise FrontendNativeDependencyError(
             f"Integrity verification failed for {lock_key}"
@@ -280,10 +312,10 @@ def _repair_entry(
     ) as temporary:
         staged = Path(temporary) / "package"
         _safe_extract_package(payload, staged)
-        if not _healthy_package(staged, spec):
+        if not _healthy_package(staged, spec, version):
             raise FrontendNativeDependencyError(
-                f"Downloaded package is incomplete or wrong-target: {lock_key} "
-                f"expected={spec.expected_binary}"
+                f"Downloaded package is incomplete, wrong-version, or wrong-target: {lock_key} "
+                f"expected_version={version} expected_binary={spec.expected_binary}"
             )
 
         backup = destination.with_name(f".{destination.name}.broken-{os.getpid()}")
@@ -315,12 +347,12 @@ def repair_frontend_native_dependencies(
     specs = _native_package_specs(node_platform, node_arch)
     try:
         lock = json.loads(lock_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise FrontendNativeDependencyError(
             f"Unable to read frontend package lock: {lock_file}"
         ) from exc
 
-    packages = lock.get("packages")
+    packages = lock.get("packages") if isinstance(lock, dict) else None
     if not isinstance(packages, dict):
         raise FrontendNativeDependencyError("Frontend package lock has no packages map")
 
