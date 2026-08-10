@@ -34,9 +34,6 @@ from app.services.unattended_policy import (
 
 logger = logging.getLogger(__name__)
 
-# Celery imports this module before consuming application-queue work. Installing
-# here keeps the worker fail-closed even when a local PRoot pool omits lifecycle
-# signals. The closed-record gate must remain outside the supervised approval gate.
 install_supervised_submission_task_gate()
 install_closed_application_task_gate()
 
@@ -147,9 +144,9 @@ def _block_shadow_worker(
     reason_code: str,
     shadow_session_id: int | None,
 ) -> dict:
-    """Retain the worker block and make safety-invariant observations evidence-fatal."""
+    """Retain a worker block and make pre-browser shadow failures evidence-fatal."""
 
-    reason = f"Shadow application worker blocked by invariant: {reason_code}"
+    reason = f"Shadow application worker blocked: {reason_code}"
     result = {
         "success": False,
         "dry_run": dry_run,
@@ -219,7 +216,11 @@ def _block_shadow_worker(
     )
     db.flush()
 
-    if shadow_session_id is not None and reason_code in _CAMPAIGN_FAILING_SHADOW_ERRORS:
+    campaign_failing = (
+        reason_code in _CAMPAIGN_FAILING_SHADOW_ERRORS
+        or reason_code.startswith("shadow_worker_policy_blocked:")
+    )
+    if shadow_session_id is not None and campaign_failing:
         session = (
             db.query(ShadowRunSession)
             .filter(
@@ -253,12 +254,7 @@ def submit_unattended_application_task(
     dry_run: bool = True,
     shadow_session_id: int | None = None,
 ):
-    """Re-evaluate live policy immediately before the normal submit worker.
-
-    Shadow work derives its session from the durable application event and verifies
-    dry-run, global no-submit, stop state, and the bounded settling window before the
-    narrow shadow policy is visible to candidate evaluation.
-    """
+    """Re-evaluate live policy immediately before the normal submit worker."""
     db = SessionLocal()
     try:
         app = (
@@ -302,6 +298,17 @@ def submit_unattended_application_task(
             decision = evaluate_unattended_job_policy(db, user, job)
 
         if not decision.allowed:
+            if effective_shadow_session_id is not None:
+                return _block_shadow_worker(
+                    db,
+                    app=app,
+                    job=job,
+                    user=user,
+                    dry_run=dry_run,
+                    reason_code=f"shadow_worker_policy_blocked:{decision.code}",
+                    shadow_session_id=effective_shadow_session_id,
+                )
+
             result = {
                 "success": False,
                 "dry_run": dry_run,
