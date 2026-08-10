@@ -147,3 +147,20 @@ def test_android_launcher_repairs_native_binding_before_browser_and_stack_start(
     browser_index = activate.index('"$BROWSER_COMMAND" start')
     stack_index = activate.index('start_stack_detached "$action"')
     assert repair_index < browser_index < stack_index
+
+
+def test_android_launcher_rejects_false_ready_and_retires_supervisor():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+
+    detached = wrapper.split("start_stack_detached() {", 1)[1].split(
+        "\n}\n\nstop_stack_supervisor()",
+        1,
+    )[0]
+    assert "JOBTOMATIK_ANDROID_STACK_READY_REJECTED_FRONTEND_UNATTESTED" in detached
+    assert 'reject_stack_supervisor "$proot_pid"' in detached
+    assert "grep -v '^JOBTOMATIK_ANDROID_STACK_READY$'" in detached
+    guard_index = detached.index("if ! run_frontend_guard status")
+    success_tail_index = detached.index('tail -n 30 "$STACK_LOG"')
+    assert guard_index < success_tail_index
