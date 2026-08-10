@@ -57,6 +57,7 @@ usage() {
 Usage: bash scripts/verify.sh [mode] [--install]
 
 Modes:
+  device         Report a read-only, device-aware verification plan (no version gate).
   toolchain      Validate and print the canonical toolchain.
   bootstrap      Install backend, Playwright Chromium, and frontend dependencies.
   fast           Pre-commit gate: toolchain, compile, focused safety tests, frontend tests.
@@ -310,6 +311,9 @@ case "$MODE" in
     ;;
   bootstrap)
     bootstrap
+    ;;
+  device)
+    bash "$ROOT_DIR/scripts/audit-device-readiness.sh"
     ;;
   toolchain)
     check_base_toolchain

@@ -29,7 +29,7 @@ bash termux-start.sh
 
 Wait for:
 ```
-JobTomatik backend starting on port 8000
+JobTomatik backend starting on port 8010
 ```
 
 ---
@@ -37,7 +37,7 @@ JobTomatik backend starting on port 8000
 ## Block 3 — Test (open a second Termux tab)
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8010/api/system/health
 ```
 
 Expected response:
@@ -54,7 +54,7 @@ If you see that, the backend is running.
 Open the JobTomatik app → Login screen → **API connection** field:
 
 ```
-http://127.0.0.1:8000
+http://127.0.0.1:8010
 ```
 
 Do **not** add `/api`. Then sign up or log in.
@@ -64,7 +64,7 @@ Do **not** add `/api`. Then sign up or log in.
 ## Notes
 
 - Uses **SQLite** locally — no PostgreSQL needed on Android
-- Playwright (browser automation) is not available on Android; form-filling runs in dry-run only
+- Managed Playwright Chromium is not the Android path. Use Termux-native Chromium through the repository's external-CDP runtime; keep application execution in dry-run until the relevant evidence and release gates pass.
 - Cover letter generation works without `ANTHROPIC_API_KEY` (uses a template fallback)
 - Redis starts automatically inside Ubuntu; if it fails the app still works for login/signup
 
