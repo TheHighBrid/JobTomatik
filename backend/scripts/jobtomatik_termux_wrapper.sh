@@ -35,6 +35,12 @@ supervisor_alive() {
   [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
 }
 
+reject_stack_supervisor() {
+  local proot_pid="$1"
+  kill -TERM "$proot_pid" 2>/dev/null || true
+  rm -f "$STACK_PID_FILE"
+}
+
 start_stack_detached() {
   local action="$1"
   if [[ "$action" == "start" ]] && supervisor_alive; then
@@ -65,15 +71,18 @@ start_stack_detached() {
 
   for _ in {1..360}; do
     if grep -q 'JOBTOMATIK_ANDROID_STACK_READY' "$STACK_LOG" 2>/dev/null; then
-      tail -n 30 "$STACK_LOG"
       if ! run_frontend_guard status; then
-        echo "The Android stack reported ready without a manager-owned frontend." >&2
+        echo "JOBTOMATIK_ANDROID_STACK_READY_REJECTED_FRONTEND_UNATTESTED" >&2
+        reject_stack_supervisor "$proot_pid"
+        grep -v '^JOBTOMATIK_ANDROID_STACK_READY$' "$STACK_LOG" | tail -n 140 >&2 || true
         return 1
       fi
+      tail -n 30 "$STACK_LOG"
       echo "PROOT stack PID: $proot_pid"
       return 0
     fi
     if ! kill -0 "$proot_pid" 2>/dev/null; then
+      rm -f "$STACK_PID_FILE"
       echo "The PRoot stack process exited before JobTomatik became ready." >&2
       tail -n 140 "$STACK_LOG" >&2 || true
       return 1
@@ -82,6 +91,7 @@ start_stack_detached() {
   done
 
   echo "The PRoot stack did not become ready within 360 seconds." >&2
+  reject_stack_supervisor "$proot_pid"
   tail -n 140 "$STACK_LOG" >&2 || true
   return 1
 }
