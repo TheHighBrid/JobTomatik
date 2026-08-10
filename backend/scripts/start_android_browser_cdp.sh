@@ -12,7 +12,16 @@ SUPERVISOR_LOG="$RUNTIME_DIR/chromium-supervisor.log"
 BROWSER_LOG="$RUNTIME_DIR/chromium.log"
 DEFAULT_URL="https://www.linkedin.com/feed/"
 SCRIPT_PATH="$(cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")"
+SCRIPT_DIR="$(dirname -- "$SCRIPT_PATH")"
+PROCESS_IDENTITY_HELPER="${JOBTOMATIK_PROCESS_IDENTITY_HELPER:-$SCRIPT_DIR/jobtomatik_process_identity.sh}"
 MAX_LOG_BYTES="${JOBTOMATIK_ANDROID_MAX_LOG_BYTES:-5242880}"
+
+if [[ ! -r "$PROCESS_IDENTITY_HELPER" ]]; then
+  echo "JobTomatik Android process-identity helper is missing: $PROCESS_IDENTITY_HELPER" >&2
+  exit 1
+fi
+# shellcheck source=jobtomatik_process_identity.sh
+source "$PROCESS_IDENTITY_HELPER"
 
 ACTION="${1:-start}"
 case "$ACTION" in
@@ -87,6 +96,23 @@ wait_for_health() {
   return 1
 }
 
+supervisor_identity_matches() {
+  local pid="$1"
+  jobtomatik_pid_has_all_tokens "$pid" "$SCRIPT_PATH" "supervise"
+}
+
+signal_supervisor_if_managed() {
+  local pid="$1"
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  if supervisor_identity_matches "$pid"; then
+    jobtomatik_signal_if_identity TERM "$pid" "$SCRIPT_PATH" "supervise" || true
+    return 0
+  fi
+  echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$pid action=not_signaled" >&2
+}
+
 stop_browser_processes() {
   local pid
   while read -r pid; do
@@ -111,7 +137,7 @@ case "$ACTION" in
     if [[ -f "$SUPERVISOR_PID_FILE" ]]; then
       supervisor_pid="$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null || true)"
       if [[ -n "$supervisor_pid" ]]; then
-        kill -TERM "$supervisor_pid" 2>/dev/null || true
+        signal_supervisor_if_managed "$supervisor_pid"
       fi
     fi
     stop_browser_processes
@@ -166,11 +192,15 @@ case "$ACTION" in
     if [[ -f "$SUPERVISOR_PID_FILE" ]]; then
       old_pid="$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null || true)"
       if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
-        if wait_for_health 40; then
-          echo "ANDROID_BROWSER_CDP_CONNECTED"
-          exit 0
+        if supervisor_identity_matches "$old_pid"; then
+          if wait_for_health 40; then
+            echo "ANDROID_BROWSER_CDP_CONNECTED"
+            exit 0
+          fi
+          jobtomatik_signal_if_identity TERM "$old_pid" "$SCRIPT_PATH" "supervise" || true
+        else
+          echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$old_pid action=not_signaled" >&2
         fi
-        kill -TERM "$old_pid" 2>/dev/null || true
       fi
       rm -f "$SUPERVISOR_PID_FILE"
     fi
