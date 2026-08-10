@@ -37,6 +37,12 @@ At campaign start:
 
 ## Daily operating rhythm
 
+For Android ARM64 execution, apply the capability-aware lane split in
+`docs/roadmaps/2026-08-10-android-arm64-efficient-execution-plan.md`. Run
+`bash scripts/verify.sh device` before choosing a host. A phone-native Chromium
+or focused proot result must not be reported as a managed-browser, Docker,
+Gradle, signed-artifact, or full release-matrix pass.
+
 Every day follows the same six-step loop:
 
 1. **Inspect:** Pull current main, open PRs, workflow health, roadmap issue, and evidence readiness.
