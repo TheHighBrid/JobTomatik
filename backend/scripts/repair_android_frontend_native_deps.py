@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -18,6 +19,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 LOCK_FILE = FRONTEND_ROOT / "package-lock.json"
+NODE_PLATFORM_OVERRIDE = "JOBTOMATIK_FRONTEND_NODE_PLATFORM"
+NODE_ARCH_OVERRIDE = "JOBTOMATIK_FRONTEND_NODE_ARCH"
 
 
 class FrontendNativeDependencyError(RuntimeError):
@@ -31,13 +34,63 @@ def _linux_libc_suffix() -> str:
     return "gnu"
 
 
-def _lightningcss_package_name() -> str:
-    system = platform.system().lower()
-    machine = platform.machine().lower()
+def _node_runtime() -> tuple[str, str]:
+    platform_override = str(os.environ.get(NODE_PLATFORM_OVERRIDE) or "").strip().lower()
+    arch_override = str(os.environ.get(NODE_ARCH_OVERRIDE) or "").strip().lower()
+    if bool(platform_override) != bool(arch_override):
+        raise FrontendNativeDependencyError(
+            f"{NODE_PLATFORM_OVERRIDE} and {NODE_ARCH_OVERRIDE} must be set together"
+        )
+    if platform_override and arch_override:
+        return platform_override, arch_override
 
-    if system == "linux":
+    try:
+        completed = subprocess.run(
+            [
+                "node",
+                "-p",
+                "JSON.stringify({platform:process.platform,arch:process.arch})",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        payload = json.loads(completed.stdout.strip())
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        raise FrontendNativeDependencyError(
+            "Unable to resolve the frontend Node runtime platform and architecture"
+        ) from exc
+
+    node_platform = str(payload.get("platform") or "").strip().lower()
+    node_arch = str(payload.get("arch") or "").strip().lower()
+    if not node_platform or not node_arch:
+        raise FrontendNativeDependencyError(
+            "Node runtime did not report a platform and architecture"
+        )
+    return node_platform, node_arch
+
+
+def _lightningcss_package_name(
+    node_platform: str | None = None,
+    node_arch: str | None = None,
+) -> str:
+    if node_platform is None and node_arch is None:
+        node_platform, node_arch = _node_runtime()
+    elif node_platform is None or node_arch is None:
+        raise FrontendNativeDependencyError(
+            "Lightning CSS target platform and architecture must be supplied together"
+        )
+
+    system = str(node_platform).lower()
+    machine = str(node_arch).lower()
+
+    if system == "android":
+        if machine in {"aarch64", "arm64"}:
+            return "lightningcss-android-arm64"
+    elif system == "linux":
         libc = _linux_libc_suffix()
-        if machine in {"x86_64", "amd64"}:
+        if machine in {"x86_64", "x64", "amd64"}:
             return f"lightningcss-linux-x64-{libc}"
         if machine in {"aarch64", "arm64"}:
             return f"lightningcss-linux-arm64-{libc}"
@@ -50,12 +103,17 @@ def _lightningcss_package_name() -> str:
     elif system == "darwin":
         if machine in {"aarch64", "arm64"}:
             return "lightningcss-darwin-arm64"
-        if machine in {"x86_64", "amd64"}:
+        if machine in {"x86_64", "x64", "amd64"}:
             return "lightningcss-darwin-x64"
 
     raise FrontendNativeDependencyError(
-        f"Unsupported Lightning CSS runtime: system={system} machine={machine}"
+        f"Unsupported Lightning CSS Node runtime: platform={system} arch={machine}"
     )
+
+
+def _expected_native_binary(package_name: str) -> str:
+    suffix = package_name.removeprefix("lightningcss-")
+    return f"lightningcss.{suffix}.node"
 
 
 def _integrity_matches(payload: bytes, integrity: str) -> bool:
@@ -72,12 +130,16 @@ def _integrity_matches(payload: bytes, integrity: str) -> bool:
     return False
 
 
-def _healthy_package(path: Path) -> bool:
-    return (
-        path.is_dir()
-        and (path / "package.json").is_file()
-        and any(path.rglob("*.node"))
-    )
+def _healthy_package(path: Path, package_name: str, expected_binary: str) -> bool:
+    package_json = path / "package.json"
+    binary = path / expected_binary
+    if not path.is_dir() or not package_json.is_file() or not binary.is_file():
+        return False
+    try:
+        metadata = json.loads(package_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return metadata.get("name") == package_name
 
 
 def _download(url: str) -> bytes:
@@ -123,10 +185,19 @@ def _safe_extract_package(payload: bytes, destination: Path) -> None:
             os.chmod(target, member.mode & 0o777)
 
 
-def _repair_entry(frontend_root: Path, lock_key: str, metadata: dict) -> str:
+def _repair_entry(
+    frontend_root: Path,
+    lock_key: str,
+    metadata: dict,
+    package_name: str,
+    expected_binary: str,
+) -> str:
     destination = frontend_root / lock_key
-    if _healthy_package(destination):
-        return f"ANDROID_FRONTEND_NATIVE_DEP_READY path={lock_key} source=existing"
+    if _healthy_package(destination, package_name, expected_binary):
+        return (
+            "ANDROID_FRONTEND_NATIVE_DEP_READY "
+            f"path={lock_key} binary={expected_binary} source=existing"
+        )
 
     resolved = str(metadata.get("resolved") or "")
     integrity = str(metadata.get("integrity") or "")
@@ -149,9 +220,10 @@ def _repair_entry(frontend_root: Path, lock_key: str, metadata: dict) -> str:
     ) as temporary:
         staged = Path(temporary) / "package"
         _safe_extract_package(payload, staged)
-        if not _healthy_package(staged):
+        if not _healthy_package(staged, package_name, expected_binary):
             raise FrontendNativeDependencyError(
-                f"Downloaded package is incomplete: {lock_key}"
+                f"Downloaded package is incomplete or wrong-target: {lock_key} "
+                f"expected_binary={expected_binary}"
             )
 
         backup = destination.with_name(f".{destination.name}.broken-{os.getpid()}")
@@ -170,7 +242,8 @@ def _repair_entry(frontend_root: Path, lock_key: str, metadata: dict) -> str:
 
     return (
         "ANDROID_FRONTEND_NATIVE_DEP_READY "
-        f"path={lock_key} version={version} source=verified_lockfile_download"
+        f"path={lock_key} binary={expected_binary} version={version} "
+        "source=verified_lockfile_download"
     )
 
 
@@ -178,7 +251,9 @@ def repair_frontend_native_dependencies(
     frontend_root: Path = FRONTEND_ROOT,
     lock_file: Path = LOCK_FILE,
 ) -> list[str]:
-    package_name = _lightningcss_package_name()
+    node_platform, node_arch = _node_runtime()
+    package_name = _lightningcss_package_name(node_platform, node_arch)
+    expected_binary = _expected_native_binary(package_name)
     try:
         lock = json.loads(lock_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -202,9 +277,20 @@ def repair_frontend_native_dependencies(
         )
 
     messages = [
-        _repair_entry(frontend_root, lock_key, metadata)
+        _repair_entry(
+            frontend_root,
+            lock_key,
+            metadata,
+            package_name,
+            expected_binary,
+        )
         for lock_key, metadata in entries
     ]
+    messages.append(
+        "ANDROID_FRONTEND_NODE_TARGET "
+        f"platform={node_platform} arch={node_arch} package={package_name} "
+        f"binary={expected_binary}"
+    )
     return messages
 
 
