@@ -55,16 +55,13 @@ def test_node_runtime_uses_node_platform_not_python_host(monkeypatch):
     assert native_deps._lightningcss_package_name() == "lightningcss-android-arm64"
 
 
-def test_android_arm64_selects_complete_native_toolchain():
+def test_android_arm64_selects_complete_native_toolchain_with_exact_binaries():
     specs = native_deps._native_package_specs("android", "arm64")
-    assert [spec.package_name for spec in specs] == [
-        "lightningcss-android-arm64",
-        "@rolldown/binding-android-arm64",
-        "@tailwindcss/oxide-android-arm64",
+    assert [(spec.package_name, spec.expected_binary) for spec in specs] == [
+        ("lightningcss-android-arm64", "lightningcss.android-arm64.node"),
+        ("@rolldown/binding-android-arm64", "rolldown-binding.android-arm64.node"),
+        ("@tailwindcss/oxide-android-arm64", "tailwindcss-oxide.android-arm64.node"),
     ]
-    assert specs[0].expected_binary == "lightningcss.android-arm64.node"
-    assert specs[1].expected_binary is None
-    assert specs[2].expected_binary is None
 
 
 def test_repair_restores_complete_android_native_toolchain_without_npm_install(
@@ -134,20 +131,20 @@ def test_repair_restores_complete_android_native_toolchain_without_npm_install(
         lock_file=lock_file,
     )
 
-    assert (
+    expected_files = [
         frontend
-        / "node_modules/lightningcss-android-arm64/lightningcss.android-arm64.node"
-    ).is_file()
-    assert (
+        / "node_modules/lightningcss-android-arm64/lightningcss.android-arm64.node",
         frontend
-        / "node_modules/vite/node_modules/lightningcss-android-arm64/lightningcss.android-arm64.node"
-    ).is_file()
-    assert any(
-        (frontend / "node_modules/@rolldown/binding-android-arm64").rglob("*.node")
-    )
-    assert any(
-        (frontend / "node_modules/@tailwindcss/oxide-android-arm64").rglob("*.node")
-    )
+        / "node_modules/vite/node_modules/lightningcss-android-arm64/lightningcss.android-arm64.node",
+        frontend
+        / "node_modules/@rolldown/binding-android-arm64/rolldown-binding.android-arm64.node",
+        frontend
+        / "node_modules/@tailwindcss/oxide-android-arm64/tailwindcss-oxide.android-arm64.node",
+    ]
+    for binary in expected_files:
+        assert binary.is_file()
+        assert binary.stat().st_size > 0
+
     assert downloads.count("https://registry.example/lightningcss.tgz") == 2
     assert downloads.count("https://registry.example/rolldown.tgz") == 1
     assert downloads.count("https://registry.example/oxide.tgz") == 1
@@ -172,19 +169,66 @@ def test_repair_restores_complete_android_native_toolchain_without_npm_install(
     assert sum("source=existing" in item for item in messages) == 4
 
 
-def test_wrong_target_lightningcss_node_file_is_not_considered_healthy(tmp_path):
-    destination = tmp_path / "lightningcss-android-arm64"
+@pytest.mark.parametrize(
+    ("package_name", "expected_binary", "wrong_binary"),
+    [
+        (
+            "lightningcss-android-arm64",
+            "lightningcss.android-arm64.node",
+            "lightningcss.linux-arm64-gnu.node",
+        ),
+        (
+            "@rolldown/binding-android-arm64",
+            "rolldown-binding.android-arm64.node",
+            "rolldown-binding.linux-arm64-gnu.node",
+        ),
+        (
+            "@tailwindcss/oxide-android-arm64",
+            "tailwindcss-oxide.android-arm64.node",
+            "tailwindcss-oxide.linux-arm64-gnu.node",
+        ),
+    ],
+)
+def test_wrong_target_native_file_is_not_considered_healthy(
+    tmp_path,
+    package_name,
+    expected_binary,
+    wrong_binary,
+):
+    destination = tmp_path / package_name.replace("/", "-")
     destination.mkdir()
     (destination / "package.json").write_text(
-        json.dumps({"name": "lightningcss-android-arm64", "version": "1.0.0"}),
+        json.dumps({"name": package_name, "version": "1.0.0"}),
         encoding="utf-8",
     )
-    (destination / "lightningcss.linux-arm64-gnu.node").write_bytes(b"wrong-target")
+    (destination / wrong_binary).write_bytes(b"wrong-target")
 
-    spec = native_deps.NativePackageSpec(
-        "lightningcss-android-arm64",
-        "lightningcss.android-arm64.node",
+    spec = native_deps.NativePackageSpec(package_name, expected_binary)
+    assert native_deps._healthy_package(destination, spec) is False
+
+
+@pytest.mark.parametrize(
+    ("package_name", "expected_binary"),
+    [
+        ("lightningcss-android-arm64", "lightningcss.android-arm64.node"),
+        ("@rolldown/binding-android-arm64", "rolldown-binding.android-arm64.node"),
+        ("@tailwindcss/oxide-android-arm64", "tailwindcss-oxide.android-arm64.node"),
+    ],
+)
+def test_zero_length_expected_native_file_is_not_considered_healthy(
+    tmp_path,
+    package_name,
+    expected_binary,
+):
+    destination = tmp_path / package_name.replace("/", "-")
+    destination.mkdir()
+    (destination / "package.json").write_text(
+        json.dumps({"name": package_name, "version": "1.0.0"}),
+        encoding="utf-8",
     )
+    (destination / expected_binary).write_bytes(b"")
+
+    spec = native_deps.NativePackageSpec(package_name, expected_binary)
     assert native_deps._healthy_package(destination, spec) is False
 
 
