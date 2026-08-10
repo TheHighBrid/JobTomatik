@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 import hashlib
 import io
 import json
@@ -25,6 +26,12 @@ NODE_ARCH_OVERRIDE = "JOBTOMATIK_FRONTEND_NODE_ARCH"
 
 class FrontendNativeDependencyError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class NativePackageSpec:
+    package_name: str
+    expected_binary: str | None = None
 
 
 def _linux_libc_suffix() -> str:
@@ -111,9 +118,45 @@ def _lightningcss_package_name(
     )
 
 
-def _expected_native_binary(package_name: str) -> str:
+def _expected_lightningcss_binary(package_name: str) -> str:
     suffix = package_name.removeprefix("lightningcss-")
     return f"lightningcss.{suffix}.node"
+
+
+def _native_package_specs(node_platform: str, node_arch: str) -> list[NativePackageSpec]:
+    lightningcss = _lightningcss_package_name(node_platform, node_arch)
+    specs = [
+        NativePackageSpec(
+            package_name=lightningcss,
+            expected_binary=_expected_lightningcss_binary(lightningcss),
+        )
+    ]
+
+    system = node_platform.lower()
+    machine = node_arch.lower()
+    if system == "android" and machine in {"aarch64", "arm64"}:
+        specs.extend(
+            [
+                NativePackageSpec("@rolldown/binding-android-arm64"),
+                NativePackageSpec("@tailwindcss/oxide-android-arm64"),
+            ]
+        )
+    elif system == "linux" and machine in {
+        "x86_64",
+        "x64",
+        "amd64",
+        "aarch64",
+        "arm64",
+    }:
+        suffix = lightningcss.removeprefix("lightningcss-")
+        specs.extend(
+            [
+                NativePackageSpec(f"@rolldown/binding-{suffix}"),
+                NativePackageSpec(f"@tailwindcss/oxide-{suffix}"),
+            ]
+        )
+
+    return specs
 
 
 def _integrity_matches(payload: bytes, integrity: str) -> bool:
@@ -130,16 +173,19 @@ def _integrity_matches(payload: bytes, integrity: str) -> bool:
     return False
 
 
-def _healthy_package(path: Path, package_name: str, expected_binary: str) -> bool:
+def _healthy_package(path: Path, spec: NativePackageSpec) -> bool:
     package_json = path / "package.json"
-    binary = path / expected_binary
-    if not path.is_dir() or not package_json.is_file() or not binary.is_file():
+    if not path.is_dir() or not package_json.is_file():
         return False
     try:
         metadata = json.loads(package_json.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
-    return metadata.get("name") == package_name
+    if metadata.get("name") != spec.package_name:
+        return False
+    if spec.expected_binary:
+        return (path / spec.expected_binary).is_file()
+    return any(path.rglob("*.node"))
 
 
 def _download(url: str) -> bytes:
@@ -189,14 +235,13 @@ def _repair_entry(
     frontend_root: Path,
     lock_key: str,
     metadata: dict,
-    package_name: str,
-    expected_binary: str,
+    spec: NativePackageSpec,
 ) -> str:
     destination = frontend_root / lock_key
-    if _healthy_package(destination, package_name, expected_binary):
+    if _healthy_package(destination, spec):
         return (
             "ANDROID_FRONTEND_NATIVE_DEP_READY "
-            f"path={lock_key} binary={expected_binary} source=existing"
+            f"package={spec.package_name} path={lock_key} source=existing"
         )
 
     resolved = str(metadata.get("resolved") or "")
@@ -220,10 +265,11 @@ def _repair_entry(
     ) as temporary:
         staged = Path(temporary) / "package"
         _safe_extract_package(payload, staged)
-        if not _healthy_package(staged, package_name, expected_binary):
+        if not _healthy_package(staged, spec):
+            expected = spec.expected_binary or "a native .node binding"
             raise FrontendNativeDependencyError(
                 f"Downloaded package is incomplete or wrong-target: {lock_key} "
-                f"expected_binary={expected_binary}"
+                f"expected={expected}"
             )
 
         backup = destination.with_name(f".{destination.name}.broken-{os.getpid()}")
@@ -240,10 +286,11 @@ def _repair_entry(
         if backup.exists():
             shutil.rmtree(backup)
 
+    native_files = sorted(path.name for path in destination.rglob("*.node"))
     return (
         "ANDROID_FRONTEND_NATIVE_DEP_READY "
-        f"path={lock_key} binary={expected_binary} version={version} "
-        "source=verified_lockfile_download"
+        f"package={spec.package_name} path={lock_key} version={version} "
+        f"native={','.join(native_files)} source=verified_lockfile_download"
     )
 
 
@@ -252,8 +299,7 @@ def repair_frontend_native_dependencies(
     lock_file: Path = LOCK_FILE,
 ) -> list[str]:
     node_platform, node_arch = _node_runtime()
-    package_name = _lightningcss_package_name(node_platform, node_arch)
-    expected_binary = _expected_native_binary(package_name)
+    specs = _native_package_specs(node_platform, node_arch)
     try:
         lock = json.loads(lock_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -265,31 +311,27 @@ def repair_frontend_native_dependencies(
     if not isinstance(packages, dict):
         raise FrontendNativeDependencyError("Frontend package lock has no packages map")
 
-    suffix = f"node_modules/{package_name}"
-    entries = [
-        (str(key), value)
-        for key, value in packages.items()
-        if str(key).endswith(suffix) and isinstance(value, dict)
-    ]
-    if not entries:
-        raise FrontendNativeDependencyError(
-            f"Required native package is absent from package-lock.json: {package_name}"
+    messages: list[str] = []
+    for spec in specs:
+        suffix = f"node_modules/{spec.package_name}"
+        entries = [
+            (str(key), value)
+            for key, value in packages.items()
+            if str(key).endswith(suffix) and isinstance(value, dict)
+        ]
+        if not entries:
+            raise FrontendNativeDependencyError(
+                f"Required native package is absent from package-lock.json: {spec.package_name}"
+            )
+        messages.extend(
+            _repair_entry(frontend_root, lock_key, metadata, spec)
+            for lock_key, metadata in entries
         )
 
-    messages = [
-        _repair_entry(
-            frontend_root,
-            lock_key,
-            metadata,
-            package_name,
-            expected_binary,
-        )
-        for lock_key, metadata in entries
-    ]
     messages.append(
         "ANDROID_FRONTEND_NODE_TARGET "
-        f"platform={node_platform} arch={node_arch} package={package_name} "
-        f"binary={expected_binary}"
+        f"platform={node_platform} arch={node_arch} "
+        f"packages={','.join(spec.package_name for spec in specs)}"
     )
     return messages
 
