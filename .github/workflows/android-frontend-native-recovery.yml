@@ -1,0 +1,88 @@
+name: Android frontend native recovery
+
+on:
+  pull_request:
+    paths:
+      - "backend/scripts/jobtomatik_termux_wrapper.sh"
+      - "backend/scripts/repair_android_frontend_native_deps.py"
+      - "backend/tests/test_android_frontend_native_recovery.py"
+      - "frontend/package-lock.json"
+      - ".github/workflows/android-frontend-native-recovery.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/scripts/jobtomatik_termux_wrapper.sh"
+      - "backend/scripts/repair_android_frontend_native_deps.py"
+      - "backend/tests/test_android_frontend_native_recovery.py"
+      - "frontend/package-lock.json"
+      - ".github/workflows/android-frontend-native-recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-frontend-native-recovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recover-locked-native-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Validate Android recovery scripts
+        run: |
+          bash -n backend/scripts/jobtomatik_termux_wrapper.sh
+          python -m py_compile backend/scripts/repair_android_frontend_native_deps.py
+
+      - name: Install frontend dependencies in CI only
+        run: npm ci --prefix frontend --include=optional --no-audit --no-fund
+
+      - name: Prove Lightning CSS works before fault injection
+        working-directory: frontend
+        run: |
+          node -e "require('lightningcss'); console.log('LIGHTNINGCSS_BASELINE_READY')"
+          test -d node_modules/lightningcss-linux-x64-gnu
+
+      - name: Delete only the native binding to reproduce the Android failure
+        run: |
+          rm -rf frontend/node_modules/lightningcss-linux-x64-gnu
+          test ! -e frontend/node_modules/lightningcss-linux-x64-gnu
+          if (cd frontend && node -e "require('lightningcss')" >/dev/null 2>&1); then
+            echo "Fault injection did not break Lightning CSS as expected." >&2
+            exit 1
+          fi
+          echo "ANDROID_FRONTEND_NATIVE_BINDING_FAULT_REPRODUCED"
+
+      - name: Repair from exact package-lock source and integrity
+        run: python backend/scripts/repair_android_frontend_native_deps.py
+
+      - name: Prove repaired binding and production frontend build
+        working-directory: frontend
+        run: |
+          node -e "require('lightningcss'); console.log('ANDROID_FRONTEND_LIGHTNINGCSS_RECOVERED')"
+          npm run build
+          echo "ANDROID_FRONTEND_NATIVE_RECOVERY_ACCEPTED"
+
+      - name: Run focused regression tests
+        run: |
+          python -m pip install -q --disable-pip-version-check pytest
+          cd backend
+          python -m pytest -q --tb=short tests/test_android_frontend_native_recovery.py
