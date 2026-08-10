@@ -88,6 +88,24 @@ def test_linux_32bit_arm_selects_complete_native_toolchain(monkeypatch):
     ]
 
 
+def test_darwin_arm64_selects_complete_native_toolchain():
+    specs = native_deps._native_package_specs("darwin", "arm64")
+    assert [(spec.package_name, spec.expected_binary) for spec in specs] == [
+        ("lightningcss-darwin-arm64", "lightningcss.darwin-arm64.node"),
+        ("@rolldown/binding-darwin-arm64", "rolldown-binding.darwin-arm64.node"),
+        ("@tailwindcss/oxide-darwin-arm64", "tailwindcss-oxide.darwin-arm64.node"),
+    ]
+
+
+def test_cross_target_override_disables_direct_native_load_probe(monkeypatch):
+    monkeypatch.setenv(native_deps.NODE_PLATFORM_OVERRIDE, "android")
+    monkeypatch.setenv(native_deps.NODE_ARCH_OVERRIDE, "arm64")
+    monkeypatch.setattr(native_deps, "_query_node_runtime", lambda: ("linux", "arm64"))
+
+    assert native_deps._node_runtime() == ("android", "arm64")
+    assert native_deps._can_execute_target("android", "arm64") is False
+
+
 def test_repair_restores_complete_android_native_toolchain_without_npm_install(
     tmp_path,
     monkeypatch,
@@ -142,6 +160,7 @@ def test_repair_restores_complete_android_native_toolchain_without_npm_install(
     lock_file.write_text(json.dumps(lock), encoding="utf-8")
 
     monkeypatch.setattr(native_deps, "_node_runtime", lambda: ("android", "arm64"))
+    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: False)
     downloads: list[str] = []
 
     def fake_download(url: str) -> bytes:
@@ -179,9 +198,7 @@ def test_repair_restores_complete_android_native_toolchain_without_npm_install(
     assert sum("source=verified_lockfile_download" in item for item in messages) == 4
     assert any(
         "platform=android arch=arm64" in item
-        and "lightningcss-android-arm64" in item
-        and "@rolldown/binding-android-arm64" in item
-        and "@tailwindcss/oxide-android-arm64" in item
+        and "native_load_validation=cross_target_skipped" in item
         for item in messages
     )
 
@@ -194,7 +211,45 @@ def test_repair_restores_complete_android_native_toolchain_without_npm_install(
         frontend_root=frontend,
         lock_file=lock_file,
     )
-    assert sum("source=existing" in item for item in messages) == 4
+    assert sum("source=existing_verified" in item for item in messages) == 4
+
+
+def test_native_load_probe_controls_existing_package_health(tmp_path, monkeypatch):
+    destination = tmp_path / "binding"
+    destination.mkdir()
+    (destination / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "@rolldown/binding-android-arm64",
+                "version": "1.0.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (destination / "rolldown-binding.android-arm64.node").write_bytes(b"nonempty")
+    spec = native_deps.NativePackageSpec(
+        "@rolldown/binding-android-arm64",
+        "rolldown-binding.android-arm64.node",
+    )
+
+    monkeypatch.setattr(native_deps, "_native_binding_loads", lambda _path: False)
+    assert (
+        native_deps._healthy_package(
+            destination,
+            spec,
+            "1.0.0",
+            validate_native_load=True,
+        )
+        is False
+    )
+
+    monkeypatch.setattr(native_deps, "_native_binding_loads", lambda _path: True)
+    assert native_deps._healthy_package(
+        destination,
+        spec,
+        "1.0.0",
+        validate_native_load=True,
+    )
 
 
 def test_stale_native_package_version_is_repaired_from_locked_version(
@@ -243,6 +298,7 @@ def test_stale_native_package_version_is_repaired_from_locked_version(
     )
     monkeypatch.setattr(native_deps, "_node_runtime", lambda: ("android", "arm64"))
     monkeypatch.setattr(native_deps, "_native_package_specs", lambda *_args: [spec])
+    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: False)
     monkeypatch.setattr(native_deps, "_download", lambda _url: payload)
 
     messages = native_deps.repair_frontend_native_dependencies(
@@ -292,7 +348,15 @@ def test_wrong_target_native_file_is_not_considered_healthy(
     (destination / wrong_binary).write_bytes(b"wrong-target")
 
     spec = native_deps.NativePackageSpec(package_name, expected_binary)
-    assert native_deps._healthy_package(destination, spec, "1.0.0") is False
+    assert (
+        native_deps._healthy_package(
+            destination,
+            spec,
+            "1.0.0",
+            validate_native_load=False,
+        )
+        is False
+    )
 
 
 @pytest.mark.parametrize(
@@ -317,7 +381,15 @@ def test_zero_length_expected_native_file_is_not_considered_healthy(
     (destination / expected_binary).write_bytes(b"")
 
     spec = native_deps.NativePackageSpec(package_name, expected_binary)
-    assert native_deps._healthy_package(destination, spec, "1.0.0") is False
+    assert (
+        native_deps._healthy_package(
+            destination,
+            spec,
+            "1.0.0",
+            validate_native_load=False,
+        )
+        is False
+    )
 
 
 @pytest.mark.parametrize(
@@ -342,7 +414,15 @@ def test_malformed_package_metadata_is_unhealthy_not_exception(
         "rolldown-binding.android-arm64.node",
     )
 
-    assert native_deps._healthy_package(destination, spec, "1.0.0") is False
+    assert (
+        native_deps._healthy_package(
+            destination,
+            spec,
+            "1.0.0",
+            validate_native_load=False,
+        )
+        is False
+    )
 
 
 def test_repair_rejects_payload_that_does_not_match_lockfile_integrity(
@@ -380,6 +460,7 @@ def test_repair_rejects_payload_that_does_not_match_lockfile_integrity(
             )
         ],
     )
+    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: False)
     monkeypatch.setattr(native_deps, "_download", lambda _url: b"tampered")
 
     with pytest.raises(
@@ -392,7 +473,7 @@ def test_repair_rejects_payload_that_does_not_match_lockfile_integrity(
         )
 
 
-def test_android_launcher_repairs_native_binding_before_browser_and_stack_start():
+def test_android_launcher_repairs_and_smoke_tests_full_native_toolchain():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
@@ -400,6 +481,9 @@ def test_android_launcher_repairs_native_binding_before_browser_and_stack_start(
     assert "ensure_frontend_native_dependencies()" in wrapper
     assert "repair_android_frontend_native_deps.py" in wrapper
     assert "require('lightningcss')" in wrapper
+    assert "require('rolldown')" in wrapper
+    assert "require('@tailwindcss/oxide')" in wrapper
+    assert "ANDROID_FRONTEND_NATIVE_TOOLCHAIN_READY" in wrapper
 
     activate = wrapper.split("activate_stack() {", 1)[1].split("\n}", 1)[0]
     repair_index = activate.index("ensure_frontend_native_dependencies")
