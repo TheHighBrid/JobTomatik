@@ -1,7 +1,7 @@
 """Second fail-closed chokepoint for scheduled application submissions."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.celery_app import celery_app
 from app.config import get_settings
@@ -18,7 +18,11 @@ from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.application_integrity import install_closed_application_task_gate
 from app.services.application_state import create_manual_review_task
-from app.services.full_stack_shadow import ACTIVE_SESSION_STATES
+from app.services.certification_scale import ensure_aware
+from app.services.full_stack_shadow import (
+    ACTIVE_SESSION_STATES,
+    finalize_shadow_session,
+)
 from app.services.supervised_submission_integration import (
     install_supervised_submission_task_gate,
 )
@@ -35,6 +39,19 @@ logger = logging.getLogger(__name__)
 # signals. The closed-record gate must remain outside the supervised approval gate.
 install_supervised_submission_task_gate()
 install_closed_application_task_gate()
+
+
+_CAMPAIGN_FAILING_SHADOW_ERRORS = frozenset(
+    {
+        "shadow_worker_session_mismatch",
+        "shadow_worker_requires_dry_run",
+        "shadow_worker_requires_real_submission_disabled",
+        "shadow_worker_settle_deadline_missing",
+        "shadow_worker_settle_deadline_expired",
+        "shadow_worker_final_submit_flag_changed",
+        "shadow_worker_session_invariants_invalid",
+    }
+)
 
 
 def _shadow_application_context(
@@ -74,19 +91,15 @@ def _shadow_application_context(
         try:
             requested = int(requested_shadow_session_id)
         except (TypeError, ValueError):
-            return None, "shadow_worker_session_mismatch"
+            return event_shadow_session_id, "shadow_worker_session_mismatch"
         if requested != event_shadow_session_id:
-            return None, "shadow_worker_session_mismatch"
+            return event_shadow_session_id, "shadow_worker_session_mismatch"
 
-    # The persisted event and the current task invocation must both say dry-run.
     if payload.get("dry_run") is not True or dry_run is not True:
-        return None, "shadow_worker_requires_dry_run"
+        return event_shadow_session_id, "shadow_worker_requires_dry_run"
 
-    # This is checked again here even though Phase 11 preflight and the scheduler
-    # already enforce it. A delayed/replayed task must fail closed if configuration
-    # changed after it was queued.
     if get_settings().allow_real_application_submit is not False:
-        return None, "shadow_worker_requires_real_submission_disabled"
+        return event_shadow_session_id, "shadow_worker_requires_real_submission_disabled"
 
     session = (
         db.query(ShadowRunSession)
@@ -96,10 +109,22 @@ def _shadow_application_context(
         )
         .first()
     )
-    if session is None or session.status not in ACTIVE_SESSION_STATES:
-        return None, "shadow_worker_session_inactive"
+    if session is None:
+        return event_shadow_session_id, "shadow_worker_session_inactive"
+    if session.stop_requested or session.status == "stopping":
+        return event_shadow_session_id, "shadow_worker_stop_requested"
+    if session.status not in ACTIVE_SESSION_STATES:
+        return event_shadow_session_id, "shadow_worker_session_inactive"
+
+    settle_deadline = ensure_aware(session.settle_deadline_at)
+    current = datetime.now(timezone.utc)
+    if settle_deadline is None:
+        return event_shadow_session_id, "shadow_worker_settle_deadline_missing"
+    if current >= settle_deadline:
+        return event_shadow_session_id, "shadow_worker_settle_deadline_expired"
+
     if session.final_submit_allowed is not False:
-        return None, "shadow_worker_final_submit_flag_changed"
+        return event_shadow_session_id, "shadow_worker_final_submit_flag_changed"
 
     invariants = dict((session.configuration_snapshot or {}).get("invariants") or {})
     if (
@@ -107,7 +132,7 @@ def _shadow_application_context(
         or invariants.get("real_submission_must_remain_disabled") is not True
         or invariants.get("final_submit_allowed") is not False
     ):
-        return None, "shadow_worker_session_invariants_invalid"
+        return event_shadow_session_id, "shadow_worker_session_invariants_invalid"
 
     return event_shadow_session_id, None
 
@@ -120,7 +145,10 @@ def _block_shadow_worker(
     user: User,
     dry_run: bool,
     reason_code: str,
+    shadow_session_id: int | None,
 ) -> dict:
+    """Retain the worker block and make safety-invariant observations evidence-fatal."""
+
     reason = f"Shadow application worker blocked by invariant: {reason_code}"
     result = {
         "success": False,
@@ -131,13 +159,17 @@ def _block_shadow_worker(
             "allowed": False,
             "code": reason_code,
             "reason": reason,
-            "metadata": {"shadow_worker": True},
+            "metadata": {
+                "shadow_worker": True,
+                "shadow_session_id": shadow_session_id,
+            },
         },
         "log": [
             {
                 "action": "shadow_worker_safety_blocked",
                 "reason_code": reason_code,
                 "reason": reason,
+                "shadow_session_id": shadow_session_id,
                 "ts": datetime.utcnow().isoformat(),
             }
         ],
@@ -149,8 +181,26 @@ def _block_shadow_worker(
         app,
         ManualReviewReason.safety_gate_blocked,
         reason,
-        details={"shadow_worker": True, "reason_code": reason_code},
+        details={
+            "shadow_worker": True,
+            "reason_code": reason_code,
+            "shadow_session_id": shadow_session_id,
+        },
         blocking_url=job.url,
+    )
+    db.add(
+        ApplicationEvent(
+            application_id=app.id,
+            event_type="shadow_worker_safety_blocked",
+            from_state=str(app.automation_state or ""),
+            to_state=str(app.automation_state or ""),
+            payload={
+                "source": "full_stack_shadow_scheduler",
+                "dry_run": dry_run,
+                "shadow_session_id": shadow_session_id,
+                "reason_code": reason_code,
+            },
+        )
     )
     db.add(
         Notification(
@@ -163,9 +213,30 @@ def _block_shadow_worker(
                 "application_id": app.id,
                 "reason": reason_code,
                 "shadow_worker": True,
+                "shadow_session_id": shadow_session_id,
             },
         )
     )
+    db.flush()
+
+    if shadow_session_id is not None and reason_code in _CAMPAIGN_FAILING_SHADOW_ERRORS:
+        session = (
+            db.query(ShadowRunSession)
+            .filter(
+                ShadowRunSession.id == int(shadow_session_id),
+                ShadowRunSession.user_id == user.id,
+            )
+            .with_for_update()
+            .first()
+        )
+        if session is not None and session.status in ACTIVE_SESSION_STATES:
+            finalize_shadow_session(
+                db,
+                session,
+                requested_status="failed",
+                failure_reason=f"shadow_worker_safety_invariant:{reason_code}",
+            )
+
     db.commit()
     logger.warning("Blocked shadow application %s: %s", app.id, reason_code)
     return result
@@ -185,8 +256,8 @@ def submit_unattended_application_task(
     """Re-evaluate live policy immediately before the normal submit worker.
 
     Shadow work derives its session from the durable application event and verifies
-    dry-run + global no-submit + active-session invariants before the narrow maturity
-    exception is even visible to policy evaluation.
+    dry-run, global no-submit, stop state, and the bounded settling window before the
+    narrow shadow policy is visible to candidate evaluation.
     """
     db = SessionLocal()
     try:
@@ -217,12 +288,14 @@ def submit_unattended_application_task(
                 user=user,
                 dry_run=dry_run,
                 reason_code=shadow_error,
+                shadow_session_id=effective_shadow_session_id,
             )
 
         if effective_shadow_session_id is not None:
             with shadow_dry_run_policy_context(
                 shadow_session_id=effective_shadow_session_id,
                 dry_run=True,
+                application_id=app.id,
             ):
                 decision = evaluate_unattended_job_policy(db, user, job)
         else:
