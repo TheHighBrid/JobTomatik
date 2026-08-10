@@ -142,7 +142,7 @@ jobs:
           python backend/scripts/repair_android_frontend_native_deps.py | tee /tmp/android-native-repair.log
           grep -Fq 'ANDROID_FRONTEND_NODE_TARGET platform=android arch=arm64 packages=lightningcss-android-arm64,@rolldown/binding-android-arm64,@tailwindcss/oxide-android-arm64' /tmp/android-native-repair.log
 
-      - name: Verify every locked Android package contains its exact native binary
+      - name: Verify every locked Android package matches version and exact native binary
         run: |
           python - <<'PY'
           import json
@@ -150,6 +150,7 @@ jobs:
 
           frontend = Path("frontend")
           lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
+          packages = lock.get("packages", {})
           expected_binaries = {
               "lightningcss-android-arm64": "lightningcss.android-arm64.node",
               "@rolldown/binding-android-arm64": "rolldown-binding.android-arm64.node",
@@ -158,18 +159,19 @@ jobs:
           checked = 0
           for package_name, binary_name in expected_binaries.items():
               suffix = f"node_modules/{package_name}"
-              keys = [
-                  key
-                  for key in lock.get("packages", {})
-                  if str(key).endswith(suffix)
-              ]
+              keys = [key for key in packages if str(key).endswith(suffix)]
               if not keys:
                   raise SystemExit(f"No lock entries found for {package_name}")
               for key in keys:
                   package = frontend / key
-                  metadata = json.loads((package / "package.json").read_text(encoding="utf-8"))
-                  if metadata.get("name") != package_name:
+                  installed = json.loads((package / "package.json").read_text(encoding="utf-8"))
+                  locked = packages[key]
+                  if installed.get("name") != package_name:
                       raise SystemExit(f"Wrong package identity at {key}")
+                  if str(installed.get("version") or "") != str(locked.get("version") or ""):
+                      raise SystemExit(
+                          f"Version mismatch at {key}: installed={installed.get('version')} locked={locked.get('version')}"
+                      )
                   binary = package / binary_name
                   if not binary.is_file() or binary.stat().st_size <= 0:
                       raise SystemExit(
@@ -178,7 +180,7 @@ jobs:
                   checked += 1
                   print(
                       "ANDROID_LOCKED_NATIVE_PACKAGE_VERIFIED "
-                      f"package={package_name} path={key} native={binary_name}"
+                      f"package={package_name} path={key} version={installed.get('version')} native={binary_name}"
                   )
           if checked < 4:
               raise SystemExit(f"Expected at least four Android native lock entries, got {checked}")
