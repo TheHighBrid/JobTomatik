@@ -50,17 +50,23 @@ def disabled_platforms(value: str | Iterable[str] | None = None) -> set[str]:
     return {str(item).strip().lower() for item in items if str(item).strip()}
 
 
+def _host_matches(host: str, suffix: str) -> bool:
+    normalized = (host or "").strip().lower().rstrip(".")
+    expected = suffix.strip().lower().rstrip(".")
+    return normalized == expected or normalized.endswith("." + expected)
+
+
 def platform_key_for_url(url: str) -> str:
     host = (urlparse(url or "").hostname or "").lower()
-    if "greenhouse.io" in host:
+    if _host_matches(host, "greenhouse.io") or _host_matches(host, "greenhouse.com"):
         return "greenhouse"
-    if host.endswith("lever.co") or ".lever.co" in host:
+    if _host_matches(host, "lever.co"):
         return "lever"
-    if host.endswith("ashbyhq.com") or ".ashbyhq.com" in host:
+    if _host_matches(host, "ashbyhq.com"):
         return "ashby"
-    if host.endswith("smartrecruiters.com") or ".smartrecruiters.com" in host:
+    if _host_matches(host, "smartrecruiters.com"):
         return "smartrecruiters"
-    if host.endswith("myworkdayjobs.com") or ".myworkdayjobs.com" in host:
+    if _host_matches(host, "myworkdayjobs.com"):
         return "workday"
     return "generic"
 
@@ -228,10 +234,6 @@ def evaluate_circuit_breaker_policy(
         breaker_minutes=operations.circuit_breaker_minutes,
     )
     if global_state:
-        # When a specific target is being evaluated, a cluster confined to another
-        # adapter must not freeze this platform. A user-wide breaker requires failures
-        # spanning at least two platforms. Scheduler-level checks without a URL retain
-        # the conservative historical behavior.
         if platform and len(global_state.get("platform_counts") or {}) < 2:
             return AutomationDecision(
                 True,
