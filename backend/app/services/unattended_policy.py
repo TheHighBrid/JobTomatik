@@ -39,6 +39,7 @@ SHADOW_DRY_RUN_ALLOWED_MATURITIES = frozenset(
     {
         AdapterMaturity.DRY_RUN.value,
         AdapterMaturity.HUMAN_REVIEWED_SUBMIT.value,
+        AdapterMaturity.CERTIFIED_AUTONOMOUS.value,
     }
 )
 _SHADOW_DRY_RUN_POLICY_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
@@ -48,19 +49,27 @@ _SHADOW_DRY_RUN_POLICY_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
 
 
 @contextmanager
-def shadow_dry_run_policy_context(*, shadow_session_id: int, dry_run: bool):
-    """Scope the narrow Phase 11 maturity exception to one synchronous call tree.
+def shadow_dry_run_policy_context(
+    *,
+    shadow_session_id: int,
+    dry_run: bool,
+    application_id: int | None = None,
+):
+    """Scope the narrow Phase 11 exception to one synchronous call tree.
 
-    This context is not authorization by itself. ``evaluate_unattended_job_policy``
-    still requires real submission to be disabled and reruns every policy check after
-    relaxing only the canonical maturity requirement. The applications worker also
-    independently proves the persisted shadow session and application correlation.
+    The context is never submission authority. The scheduler establishes it only for
+    an explicit Phase 11 shadow cycle, while the applications worker independently
+    derives and validates the same session from durable application evidence. Real
+    submission must remain disabled before any shadow relaxation is considered.
     """
 
     token = _SHADOW_DRY_RUN_POLICY_CONTEXT.set(
         {
             "shadow_session_id": int(shadow_session_id),
             "dry_run": dry_run is True,
+            "application_id": (
+                int(application_id) if application_id is not None else None
+            ),
         }
     )
     try:
@@ -96,12 +105,7 @@ def _optional_bool(value: Any) -> bool | None:
 
 
 def live_platform_maturities() -> Dict[str, str | None]:
-    """Read canonical runtime maturity every time and fail closed if absent.
-
-    Descriptive ``certification_level`` text is deliberately ignored. A missing,
-    malformed, or unknown canonical maturity remains ``None`` and cannot pass
-    the unattended policy gate.
-    """
+    """Read canonical runtime maturity every time and fail closed if absent."""
 
     try:
         adapters = {
@@ -163,9 +167,11 @@ def _employer_daily_count(
     user_id: int,
     employer_name: str,
     now: datetime,
+    *,
+    exclude_application_id: int | None = None,
 ) -> int:
     day_start = datetime(now.year, now.month, now.day)
-    count = (
+    query = (
         db.query(func.count(Application.id))
         .join(Job, Application.job_id == Job.id)
         .filter(
@@ -173,14 +179,14 @@ def _employer_daily_count(
             Application.created_at >= day_start,
             func.lower(Job.company) == employer_name.strip().lower(),
         )
-        .scalar()
-        or 0
     )
-    return int(count)
+    if exclude_application_id is not None:
+        query = query.filter(Application.id != int(exclude_application_id))
+    return int(query.scalar() or 0)
 
 
 def _platform_enabled(user_settings: Dict[str, Any], platform: str) -> bool:
-    """Per-platform switch is explicit opt-in and therefore closed by default."""
+    """Normal live unattended execution requires explicit per-platform opt-in."""
     enabled = _values(user_settings.get("autopilot_enabled_platforms"))
     disabled = disabled_platforms()
     return (
@@ -190,26 +196,32 @@ def _platform_enabled(user_settings: Dict[str, Any], platform: str) -> bool:
     )
 
 
+def _shadow_platform_enabled(platform: str) -> bool:
+    """An explicit no-submit shadow run is the opt-in; emergency disables still win."""
+    disabled = disabled_platforms()
+    return platform not in disabled and "all" not in disabled
+
+
 def evaluate_unattended_job_policy(
     db,
     user,
     job: Job,
     now: datetime | None = None,
 ) -> AutomationDecision:
-    """Gate a scheduled job before record creation and again before the worker.
+    """Gate a scheduled job before record creation and again before browser work.
 
-    The only maturity exception is a scoped Phase 11 shadow dry run. It can relax
-    ``certified_autonomous`` to an already evidence-backed dry-run/human-reviewed
-    maturity only while real submission is disabled. All other policy checks are
-    rerun unchanged before the exception can return ALLOW.
+    Ordinary unattended execution retains the full live contract, including explicit
+    platform opt-in, complete consequential job facts, and ``certified_autonomous``
+    maturity. A durable Phase 11 shadow call tree may relax only what is necessary to
+    exercise a nonconsequential dry-run form before autonomous promotion: canonical
+    maturity may be dry-run or better, the shadow start substitutes for the live-submit
+    platform opt-in, and missing salary/language/sponsorship facts may remain unknown.
+    Explicit known filters, caps, quiet hours, breakers, global controls, and emergency
+    platform disables remain authoritative.
     """
     now = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
 
-    # Historical auto-search/auto-apply values predate the bounded-autonomy
-    # contract and cannot authorize any unattended entry point. This check lives
-    # at the shared worker policy chokepoint so scheduler and non-scheduler callers
-    # fail closed in the same way.
     current_policy_version = str(user_settings.get("scheduler_policy_version") or "")
     if current_policy_version != REQUIRED_SCHEDULER_POLICY_VERSION:
         return AutomationDecision(
@@ -223,10 +235,6 @@ def evaluate_unattended_job_policy(
             },
         )
 
-    user_decision = evaluate_autopilot_policy(db, user, now)
-    if not user_decision.allowed:
-        return user_decision
-
     operations = get_operations_settings()
     core = get_settings()
     ctx = _job_context(job)
@@ -235,12 +243,39 @@ def evaluate_unattended_job_policy(
     shadow_context = _SHADOW_DRY_RUN_POLICY_CONTEXT.get() or {}
     shadow_session_id = shadow_context.get("shadow_session_id")
     shadow_dry_run = shadow_context.get("dry_run") is True
+    shadow_application_id = shadow_context.get("application_id")
     real_submission_enabled = bool(core.allow_real_application_submit)
+    shadow_policy_candidate = bool(
+        shadow_session_id is not None
+        and shadow_dry_run
+        and not real_submission_enabled
+    )
+
+    user_decision = evaluate_autopilot_policy(
+        db,
+        user,
+        now,
+        exclude_application_id=(
+            int(shadow_application_id)
+            if shadow_policy_candidate and shadow_application_id is not None
+            else None
+        ),
+    )
+    if not user_decision.allowed:
+        return user_decision
 
     daily_count = int(user_decision.metadata.get("daily_count", 0))
     weekly_count = int(user_decision.metadata.get("weekly_count", 0))
     employer_count = _employer_daily_count(
-        db, user.id, ctx.employer_name, now
+        db,
+        user.id,
+        ctx.employer_name,
+        now,
+        exclude_application_id=(
+            int(shadow_application_id)
+            if shadow_policy_candidate and shadow_application_id is not None
+            else None
+        ),
     )
 
     try:
@@ -283,13 +318,13 @@ def evaluate_unattended_job_policy(
     config = PolicyConfig(
         global_autonomy_enabled=operations.autopilot_enabled,
         platform_enabled={
-            ctx.adapter_platform: _platform_enabled(
-                user_settings, ctx.adapter_platform
+            ctx.adapter_platform: (
+                _shadow_platform_enabled(ctx.adapter_platform)
+                if shadow_policy_candidate
+                else _platform_enabled(user_settings, ctx.adapter_platform)
             )
         },
-        platform_maturity={
-            ctx.adapter_platform: canonical_maturity
-        },
+        platform_maturity={ctx.adapter_platform: canonical_maturity},
         required_platform_maturity=REQUIRED_AUTONOMOUS_MATURITY,
         daily_cap_global=int(user_decision.metadata.get("daily_cap", 0)),
         weekly_cap_global=int(user_decision.metadata.get("weekly_cap", 0)),
@@ -312,8 +347,8 @@ def evaluate_unattended_job_policy(
         allowed_languages=_optional_values(
             user_settings.get("autopilot_allowed_languages")
         ),
-        require_sponsorship_match=True,
-        require_known_job_attributes=True,
+        require_sponsorship_match=not shadow_policy_candidate,
+        require_known_job_attributes=not shadow_policy_candidate,
         circuit_breaker_failure_threshold=operations.failure_threshold,
     )
     counters = OperationCounters(
@@ -326,27 +361,15 @@ def evaluate_unattended_job_policy(
 
     if (
         result.reason_code == "platform_not_certified"
-        and shadow_session_id is not None
-        and shadow_dry_run
-        and not real_submission_enabled
+        and shadow_policy_candidate
         and canonical_maturity in SHADOW_DRY_RUN_ALLOWED_MATURITIES
     ):
-        # Rerun the complete gate with only the maturity equality relaxed to the
-        # already observed canonical maturity. Circuit breakers, quiet hours,
-        # employer/cap constraints, and verified job attributes still must pass.
         shadow_config = replace(
             config,
             required_platform_maturity=str(canonical_maturity),
         )
-        shadow_result = PolicyGate(shadow_config, now_fn=lambda: now).evaluate(
-            ctx,
-            counters,
-        )
-        if shadow_result.allowed:
-            result = shadow_result
-            shadow_exception_applied = True
-        else:
-            result = shadow_result
+        result = PolicyGate(shadow_config, now_fn=lambda: now).evaluate(ctx, counters)
+        shadow_exception_applied = result.allowed
 
     metadata = {
         **user_decision.metadata,
@@ -357,15 +380,19 @@ def evaluate_unattended_job_policy(
         "scheduler_policy_version": current_policy_version,
         "policy_detail": result.detail,
         "shadow_session_id": shadow_session_id,
+        "shadow_application_id": shadow_application_id,
         "shadow_dry_run": shadow_dry_run,
         "real_submission_enabled": real_submission_enabled,
+        "shadow_policy_candidate": shadow_policy_candidate,
+        "shadow_live_platform_switch_bypassed": shadow_policy_candidate,
+        "shadow_unknown_job_attributes_allowed": shadow_policy_candidate,
         "shadow_dry_run_maturity_exception": shadow_exception_applied,
     }
     if shadow_exception_applied:
         return AutomationDecision(
             True,
             "shadow_dry_run_maturity_exception",
-            "All unattended policy checks passed under the Phase 11 dry-run-only maturity exception.",
+            "All policy checks passed under the Phase 11 no-submit dry-run maturity exception.",
             metadata,
         )
     return AutomationDecision(

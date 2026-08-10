@@ -9,10 +9,13 @@ on:
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/shadow_runs.py"
       - "backend/app/services/full_stack_shadow.py"
+      - "backend/app/services/operations_policy.py"
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
+      - "backend/app/services/unattended_policy.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/tasks/scraping.py"
+      - "backend/app/tasks/unattended.py"
       - "backend/app/celery_app.py"
       - "backend/app/main.py"
       - "backend/scripts/check_runtime_identity.py"
@@ -21,6 +24,8 @@ on:
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
+      - "backend/tests/test_shadow_worker_exception.py"
+      - "backend/tests/test_shadow_worker_cap_exclusion.py"
       - "docker-compose.yml"
       - "frontend/src/api/shadowCampaigns.js"
       - "frontend/src/pages/ShadowCampaignCenter.jsx"
@@ -39,10 +44,13 @@ on:
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/shadow_runs.py"
       - "backend/app/services/full_stack_shadow.py"
+      - "backend/app/services/operations_policy.py"
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
+      - "backend/app/services/unattended_policy.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/tasks/scraping.py"
+      - "backend/app/tasks/unattended.py"
       - "backend/app/celery_app.py"
       - "backend/app/main.py"
       - "backend/scripts/check_runtime_identity.py"
@@ -51,6 +59,8 @@ on:
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
+      - "backend/tests/test_shadow_worker_exception.py"
+      - "backend/tests/test_shadow_worker_cap_exclusion.py"
       - "docker-compose.yml"
       - "frontend/src/api/shadowCampaigns.js"
       - "frontend/src/pages/ShadowCampaignCenter.jsx"
@@ -110,13 +120,18 @@ jobs:
             app/config.py \
             app/models/certification.py \
             app/services/full_stack_shadow.py \
+            app/services/operations_policy.py \
             app/services/operations_settings.py \
             app/services/runtime_identity.py \
+            app/services/unattended_policy.py \
             app/tasks/shadow_runs.py \
             app/tasks/scraping.py \
+            app/tasks/unattended.py \
             scripts/check_runtime_identity.py \
             tests/test_operations_policy.py \
-            tests/test_runtime_identity_shadow_gate.py
+            tests/test_runtime_identity_shadow_gate.py \
+            tests/test_shadow_worker_exception.py \
+            tests/test_shadow_worker_cap_exclusion.py
 
       - name: Run Phase 11 backend safety matrix
         working-directory: backend
@@ -126,7 +141,9 @@ jobs:
             tests/test_full_stack_shadow_recovery.py \
             tests/test_operations_policy.py \
             tests/test_runtime_identity.py \
-            tests/test_runtime_identity_shadow_gate.py
+            tests/test_runtime_identity_shadow_gate.py \
+            tests/test_shadow_worker_exception.py \
+            tests/test_shadow_worker_cap_exclusion.py
 
       - name: Prove consequential runtime controls remain off
         working-directory: backend

@@ -50,17 +50,23 @@ def disabled_platforms(value: str | Iterable[str] | None = None) -> set[str]:
     return {str(item).strip().lower() for item in items if str(item).strip()}
 
 
+def _host_matches(host: str, suffix: str) -> bool:
+    normalized = (host or "").strip().lower().rstrip(".")
+    expected = suffix.strip().lower().rstrip(".")
+    return normalized == expected or normalized.endswith("." + expected)
+
+
 def platform_key_for_url(url: str) -> str:
     host = (urlparse(url or "").hostname or "").lower()
-    if "greenhouse.io" in host:
+    if _host_matches(host, "greenhouse.io") or _host_matches(host, "greenhouse.com"):
         return "greenhouse"
-    if host.endswith("lever.co") or ".lever.co" in host:
+    if _host_matches(host, "lever.co"):
         return "lever"
-    if host.endswith("ashbyhq.com") or ".ashbyhq.com" in host:
+    if _host_matches(host, "ashbyhq.com"):
         return "ashby"
-    if host.endswith("smartrecruiters.com") or ".smartrecruiters.com" in host:
+    if _host_matches(host, "smartrecruiters.com"):
         return "smartrecruiters"
-    if host.endswith("myworkdayjobs.com") or ".myworkdayjobs.com" in host:
+    if _host_matches(host, "myworkdayjobs.com"):
         return "workday"
     return "generic"
 
@@ -75,21 +81,29 @@ def is_quiet_hour(now: datetime, start_hour: int, end_hour: int) -> bool:
     return now.hour >= start or now.hour < end
 
 
-def _period_counts(db, user_id: int, now: datetime) -> tuple[int, int]:
+def _period_counts(
+    db,
+    user_id: int,
+    now: datetime,
+    *,
+    exclude_application_id: int | None = None,
+) -> tuple[int, int]:
     day_start = now - timedelta(days=1)
     week_start = now - timedelta(days=7)
-    daily = (
-        db.query(func.count(Application.id))
-        .filter(Application.user_id == user_id, Application.created_at >= day_start)
-        .scalar()
-        or 0
+    daily_query = db.query(func.count(Application.id)).filter(
+        Application.user_id == user_id,
+        Application.created_at >= day_start,
     )
-    weekly = (
-        db.query(func.count(Application.id))
-        .filter(Application.user_id == user_id, Application.created_at >= week_start)
-        .scalar()
-        or 0
+    weekly_query = db.query(func.count(Application.id)).filter(
+        Application.user_id == user_id,
+        Application.created_at >= week_start,
     )
+    if exclude_application_id is not None:
+        excluded_id = int(exclude_application_id)
+        daily_query = daily_query.filter(Application.id != excluded_id)
+        weekly_query = weekly_query.filter(Application.id != excluded_id)
+    daily = daily_query.scalar() or 0
+    weekly = weekly_query.scalar() or 0
     return int(daily), int(weekly)
 
 
@@ -220,10 +234,6 @@ def evaluate_circuit_breaker_policy(
         breaker_minutes=operations.circuit_breaker_minutes,
     )
     if global_state:
-        # When a specific target is being evaluated, a cluster confined to another
-        # adapter must not freeze this platform. A user-wide breaker requires failures
-        # spanning at least two platforms. Scheduler-level checks without a URL retain
-        # the conservative historical behavior.
         if platform and len(global_state.get("platform_counts") or {}) < 2:
             return AutomationDecision(
                 True,
@@ -274,7 +284,13 @@ def evaluate_platform_policy(url: str) -> AutomationDecision:
     return AutomationDecision(True, "platform_allowed", "Platform is enabled", {"platform": platform})
 
 
-def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> AutomationDecision:
+def evaluate_autopilot_policy(
+    db,
+    user,
+    now: datetime | None = None,
+    *,
+    exclude_application_id: int | None = None,
+) -> AutomationDecision:
     operations = get_operations_settings()
     now = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
@@ -315,7 +331,12 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
     )
     effective_daily = min(operations.default_daily_cap, requested_daily)
     effective_weekly = min(operations.default_weekly_cap, requested_weekly)
-    daily_count, weekly_count = _period_counts(db, user.id, now)
+    daily_count, weekly_count = _period_counts(
+        db,
+        user.id,
+        now,
+        exclude_application_id=exclude_application_id,
+    )
     remaining_daily = max(0, effective_daily - daily_count)
     remaining_weekly = max(0, effective_weekly - weekly_count)
     if remaining_daily == 0 or remaining_weekly == 0:
@@ -330,6 +351,7 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
                 "weekly_cap": effective_weekly,
                 "remaining_daily": remaining_daily,
                 "remaining_weekly": remaining_weekly,
+                "excluded_application_id": exclude_application_id,
             },
         )
 
@@ -350,6 +372,7 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
             "remaining_weekly": remaining_weekly,
             "quiet_hours_start_utc": start_hour,
             "quiet_hours_end_utc": end_hour,
+            "excluded_application_id": exclude_application_id,
         },
     )
 
