@@ -16,10 +16,7 @@ from scripts import repair_android_frontend_native_deps as native_deps
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _package_tarball(
-    package_name: str = "lightningcss-android-arm64",
-    binary_name: str = "lightningcss.android-arm64.node",
-) -> bytes:
+def _package_tarball(package_name: str, binary_name: str) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         files = {
@@ -58,44 +55,77 @@ def test_node_runtime_uses_node_platform_not_python_host(monkeypatch):
     assert native_deps._lightningcss_package_name() == "lightningcss-android-arm64"
 
 
-def test_android_arm64_selects_android_binding_and_exact_binary():
-    package = native_deps._lightningcss_package_name("android", "arm64")
-    assert package == "lightningcss-android-arm64"
-    assert (
-        native_deps._expected_native_binary(package)
-        == "lightningcss.android-arm64.node"
-    )
+def test_android_arm64_selects_complete_native_toolchain():
+    specs = native_deps._native_package_specs("android", "arm64")
+    assert [spec.package_name for spec in specs] == [
+        "lightningcss-android-arm64",
+        "@rolldown/binding-android-arm64",
+        "@tailwindcss/oxide-android-arm64",
+    ]
+    assert specs[0].expected_binary == "lightningcss.android-arm64.node"
+    assert specs[1].expected_binary is None
+    assert specs[2].expected_binary is None
 
 
-def test_repair_restores_all_android_locked_bindings_without_npm_install(
+def test_repair_restores_complete_android_native_toolchain_without_npm_install(
     tmp_path,
     monkeypatch,
 ):
     frontend = tmp_path / "frontend"
     frontend.mkdir()
-    payload = _package_tarball()
-    metadata = {
-        "version": "1.0.0",
-        "resolved": "https://registry.example/lightningcss-android-arm64.tgz",
-        "integrity": _integrity(payload),
-        "optional": True,
+
+    lightning_payload = _package_tarball(
+        "lightningcss-android-arm64",
+        "lightningcss.android-arm64.node",
+    )
+    rolldown_payload = _package_tarball(
+        "@rolldown/binding-android-arm64",
+        "rolldown-binding.android-arm64.node",
+    )
+    oxide_payload = _package_tarball(
+        "@tailwindcss/oxide-android-arm64",
+        "tailwindcss-oxide.android-arm64.node",
+    )
+    payloads = {
+        "https://registry.example/lightningcss.tgz": lightning_payload,
+        "https://registry.example/rolldown.tgz": rolldown_payload,
+        "https://registry.example/oxide.tgz": oxide_payload,
     }
+
+    def metadata(url: str, payload: bytes) -> dict:
+        return {
+            "version": "1.0.0",
+            "resolved": url,
+            "integrity": _integrity(payload),
+            "optional": True,
+        }
+
     lock = {
         "lockfileVersion": 3,
         "packages": {
-            "node_modules/lightningcss-android-arm64": dict(metadata),
-            "node_modules/vite/node_modules/lightningcss-android-arm64": dict(metadata),
+            "node_modules/lightningcss-android-arm64": metadata(
+                "https://registry.example/lightningcss.tgz", lightning_payload
+            ),
+            "node_modules/vite/node_modules/lightningcss-android-arm64": metadata(
+                "https://registry.example/lightningcss.tgz", lightning_payload
+            ),
+            "node_modules/@rolldown/binding-android-arm64": metadata(
+                "https://registry.example/rolldown.tgz", rolldown_payload
+            ),
+            "node_modules/@tailwindcss/oxide-android-arm64": metadata(
+                "https://registry.example/oxide.tgz", oxide_payload
+            ),
         },
     }
     lock_file = frontend / "package-lock.json"
     lock_file.write_text(json.dumps(lock), encoding="utf-8")
 
     monkeypatch.setattr(native_deps, "_node_runtime", lambda: ("android", "arm64"))
-    downloads = []
+    downloads: list[str] = []
 
     def fake_download(url: str) -> bytes:
         downloads.append(url)
-        return payload
+        return payloads[url]
 
     monkeypatch.setattr(native_deps, "_download", fake_download)
 
@@ -104,14 +134,29 @@ def test_repair_restores_all_android_locked_bindings_without_npm_install(
         lock_file=lock_file,
     )
 
-    for key in lock["packages"]:
-        restored = frontend / key
-        assert (restored / "package.json").is_file()
-        assert (restored / "lightningcss.android-arm64.node").is_file()
-    assert downloads == [metadata["resolved"], metadata["resolved"]]
-    assert sum("source=verified_lockfile_download" in item for item in messages) == 2
+    assert (
+        frontend
+        / "node_modules/lightningcss-android-arm64/lightningcss.android-arm64.node"
+    ).is_file()
+    assert (
+        frontend
+        / "node_modules/vite/node_modules/lightningcss-android-arm64/lightningcss.android-arm64.node"
+    ).is_file()
     assert any(
-        "platform=android arch=arm64 package=lightningcss-android-arm64" in item
+        (frontend / "node_modules/@rolldown/binding-android-arm64").rglob("*.node")
+    )
+    assert any(
+        (frontend / "node_modules/@tailwindcss/oxide-android-arm64").rglob("*.node")
+    )
+    assert downloads.count("https://registry.example/lightningcss.tgz") == 2
+    assert downloads.count("https://registry.example/rolldown.tgz") == 1
+    assert downloads.count("https://registry.example/oxide.tgz") == 1
+    assert sum("source=verified_lockfile_download" in item for item in messages) == 4
+    assert any(
+        "platform=android arch=arm64" in item
+        and "lightningcss-android-arm64" in item
+        and "@rolldown/binding-android-arm64" in item
+        and "@tailwindcss/oxide-android-arm64" in item
         for item in messages
     )
 
@@ -124,47 +169,23 @@ def test_repair_restores_all_android_locked_bindings_without_npm_install(
         frontend_root=frontend,
         lock_file=lock_file,
     )
-    assert sum("source=existing" in item for item in messages) == 2
+    assert sum("source=existing" in item for item in messages) == 4
 
 
-def test_wrong_target_node_file_is_not_considered_healthy(tmp_path, monkeypatch):
-    frontend = tmp_path / "frontend"
-    destination = frontend / "node_modules/lightningcss-android-arm64"
-    destination.mkdir(parents=True)
+def test_wrong_target_lightningcss_node_file_is_not_considered_healthy(tmp_path):
+    destination = tmp_path / "lightningcss-android-arm64"
+    destination.mkdir()
     (destination / "package.json").write_text(
         json.dumps({"name": "lightningcss-android-arm64", "version": "1.0.0"}),
         encoding="utf-8",
     )
     (destination / "lightningcss.linux-arm64-gnu.node").write_bytes(b"wrong-target")
 
-    payload = _package_tarball()
-    lock_file = frontend / "package-lock.json"
-    lock_file.write_text(
-        json.dumps(
-            {
-                "lockfileVersion": 3,
-                "packages": {
-                    "node_modules/lightningcss-android-arm64": {
-                        "version": "1.0.0",
-                        "resolved": "https://registry.example/android.tgz",
-                        "integrity": _integrity(payload),
-                        "optional": True,
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
+    spec = native_deps.NativePackageSpec(
+        "lightningcss-android-arm64",
+        "lightningcss.android-arm64.node",
     )
-    monkeypatch.setattr(native_deps, "_node_runtime", lambda: ("android", "arm64"))
-    monkeypatch.setattr(native_deps, "_download", lambda _url: payload)
-
-    messages = native_deps.repair_frontend_native_dependencies(
-        frontend_root=frontend,
-        lock_file=lock_file,
-    )
-
-    assert (destination / "lightningcss.android-arm64.node").is_file()
-    assert "source=verified_lockfile_download" in messages[0]
+    assert native_deps._healthy_package(destination, spec) is False
 
 
 def test_repair_rejects_payload_that_does_not_match_lockfile_integrity(
@@ -192,6 +213,16 @@ def test_repair_rejects_payload_that_does_not_match_lockfile_integrity(
     )
 
     monkeypatch.setattr(native_deps, "_node_runtime", lambda: ("android", "arm64"))
+    monkeypatch.setattr(
+        native_deps,
+        "_native_package_specs",
+        lambda _platform, _arch: [
+            native_deps.NativePackageSpec(
+                "lightningcss-android-arm64",
+                "lightningcss.android-arm64.node",
+            )
+        ],
+    )
     monkeypatch.setattr(native_deps, "_download", lambda _url: b"tampered")
 
     with pytest.raises(
