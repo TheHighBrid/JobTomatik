@@ -75,21 +75,29 @@ def is_quiet_hour(now: datetime, start_hour: int, end_hour: int) -> bool:
     return now.hour >= start or now.hour < end
 
 
-def _period_counts(db, user_id: int, now: datetime) -> tuple[int, int]:
+def _period_counts(
+    db,
+    user_id: int,
+    now: datetime,
+    *,
+    exclude_application_id: int | None = None,
+) -> tuple[int, int]:
     day_start = now - timedelta(days=1)
     week_start = now - timedelta(days=7)
-    daily = (
-        db.query(func.count(Application.id))
-        .filter(Application.user_id == user_id, Application.created_at >= day_start)
-        .scalar()
-        or 0
+    daily_query = db.query(func.count(Application.id)).filter(
+        Application.user_id == user_id,
+        Application.created_at >= day_start,
     )
-    weekly = (
-        db.query(func.count(Application.id))
-        .filter(Application.user_id == user_id, Application.created_at >= week_start)
-        .scalar()
-        or 0
+    weekly_query = db.query(func.count(Application.id)).filter(
+        Application.user_id == user_id,
+        Application.created_at >= week_start,
     )
+    if exclude_application_id is not None:
+        excluded_id = int(exclude_application_id)
+        daily_query = daily_query.filter(Application.id != excluded_id)
+        weekly_query = weekly_query.filter(Application.id != excluded_id)
+    daily = daily_query.scalar() or 0
+    weekly = weekly_query.scalar() or 0
     return int(daily), int(weekly)
 
 
@@ -274,7 +282,13 @@ def evaluate_platform_policy(url: str) -> AutomationDecision:
     return AutomationDecision(True, "platform_allowed", "Platform is enabled", {"platform": platform})
 
 
-def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> AutomationDecision:
+def evaluate_autopilot_policy(
+    db,
+    user,
+    now: datetime | None = None,
+    *,
+    exclude_application_id: int | None = None,
+) -> AutomationDecision:
     operations = get_operations_settings()
     now = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
@@ -315,7 +329,12 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
     )
     effective_daily = min(operations.default_daily_cap, requested_daily)
     effective_weekly = min(operations.default_weekly_cap, requested_weekly)
-    daily_count, weekly_count = _period_counts(db, user.id, now)
+    daily_count, weekly_count = _period_counts(
+        db,
+        user.id,
+        now,
+        exclude_application_id=exclude_application_id,
+    )
     remaining_daily = max(0, effective_daily - daily_count)
     remaining_weekly = max(0, effective_weekly - weekly_count)
     if remaining_daily == 0 or remaining_weekly == 0:
@@ -330,6 +349,7 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
                 "weekly_cap": effective_weekly,
                 "remaining_daily": remaining_daily,
                 "remaining_weekly": remaining_weekly,
+                "excluded_application_id": exclude_application_id,
             },
         )
 
@@ -350,6 +370,7 @@ def evaluate_autopilot_policy(db, user, now: datetime | None = None) -> Automati
             "remaining_weekly": remaining_weekly,
             "quiet_hours_start_utc": start_hour,
             "quiet_hours_end_utc": end_hour,
+            "excluded_application_id": exclude_application_id,
         },
     )
 
