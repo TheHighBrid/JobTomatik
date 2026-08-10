@@ -28,8 +28,22 @@ concurrency:
 
 jobs:
   recover-locked-native-binding:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    name: recover-locked-native-binding (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            node_arch: x64
+            native_package: lightningcss-linux-x64-gnu
+          - runner: ubuntu-24.04-arm
+            node_arch: arm64
+            native_package: lightningcss-linux-arm64-gnu
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      EXPECTED_NODE_ARCH: ${{ matrix.node_arch }}
+      NATIVE_PACKAGE: ${{ matrix.native_package }}
 
     steps:
       - name: Check out repository
@@ -47,36 +61,42 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Validate Android recovery scripts
+      - name: Validate runner architecture and Android recovery scripts
         run: |
+          actual_arch="$(node -p 'process.arch')"
+          echo "RUNNER_NODE_ARCH=$actual_arch"
+          echo "EXPECTED_NODE_ARCH=$EXPECTED_NODE_ARCH"
+          echo "NATIVE_PACKAGE=$NATIVE_PACKAGE"
+          test "$actual_arch" = "$EXPECTED_NODE_ARCH"
           bash -n backend/scripts/jobtomatik_termux_wrapper.sh
           python -m py_compile backend/scripts/repair_android_frontend_native_deps.py
 
       - name: Install frontend dependencies in CI only
         run: npm ci --prefix frontend --include=optional --no-audit --no-fund
 
-      - name: Prove Lightning CSS works before fault injection
+      - name: Prove architecture-native Lightning CSS works before fault injection
         working-directory: frontend
         run: |
-          node -e "require('lightningcss'); console.log('LIGHTNINGCSS_BASELINE_READY')"
-          test -d node_modules/lightningcss-linux-x64-gnu
+          node -e "require('lightningcss'); console.log('LIGHTNINGCSS_BASELINE_READY arch=' + process.arch)"
+          test -d "node_modules/$NATIVE_PACKAGE"
 
-      - name: Delete only the native binding to reproduce the Android failure
+      - name: Delete only the architecture-native binding to reproduce the Android failure
         run: |
-          rm -rf frontend/node_modules/lightningcss-linux-x64-gnu
-          test ! -e frontend/node_modules/lightningcss-linux-x64-gnu
+          rm -rf "frontend/node_modules/$NATIVE_PACKAGE"
+          test ! -e "frontend/node_modules/$NATIVE_PACKAGE"
           if (cd frontend && node -e "require('lightningcss')" >/dev/null 2>&1); then
-            echo "Fault injection did not break Lightning CSS as expected." >&2
+            echo "Fault injection did not break Lightning CSS as expected for $NATIVE_PACKAGE." >&2
             exit 1
           fi
-          echo "ANDROID_FRONTEND_NATIVE_BINDING_FAULT_REPRODUCED"
+          echo "ANDROID_FRONTEND_NATIVE_BINDING_FAULT_REPRODUCED package=$NATIVE_PACKAGE arch=$EXPECTED_NODE_ARCH"
 
       - name: Repair from exact package-lock source and integrity
         run: python backend/scripts/repair_android_frontend_native_deps.py
 
-      - name: Prove repaired binding and production frontend build
+      - name: Prove repaired native binding and production frontend build
         working-directory: frontend
         run: |
-          node -e "require('lightningcss'); console.log('ANDROID_FRONTEND_LIGHTNINGCSS_RECOVERED')"
+          test -d "node_modules/$NATIVE_PACKAGE"
+          node -e "require('lightningcss'); console.log('ANDROID_FRONTEND_LIGHTNINGCSS_RECOVERED arch=' + process.arch)"
           npm run build
-          echo "ANDROID_FRONTEND_NATIVE_RECOVERY_ACCEPTED"
+          echo "ANDROID_FRONTEND_NATIVE_RECOVERY_ACCEPTED package=$NATIVE_PACKAGE arch=$EXPECTED_NODE_ARCH"
