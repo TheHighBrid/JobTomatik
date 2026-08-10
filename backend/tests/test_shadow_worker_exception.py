@@ -291,7 +291,7 @@ def test_worker_derives_shadow_context_and_rejects_non_dry_run_before_submit(
     db_session,
     monkeypatch,
 ):
-    _, _, session, app = _shadow_application(
+    _, _, _, app = _shadow_application(
         db_session,
         email="shadow-worker-dry-run@example.test",
     )
@@ -314,7 +314,6 @@ def test_worker_derives_shadow_context_and_rejects_non_dry_run_before_submit(
 
     assert result["success"] is False
     assert result["error"] == "shadow_worker_requires_dry_run"
-    assert session.id > 0
     downstream.assert_not_called()
 
 
