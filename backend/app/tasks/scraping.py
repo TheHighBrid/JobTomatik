@@ -20,6 +20,7 @@ from app.services.scheduler_policy import (
 )
 from app.services.operations_policy import evaluate_autopilot_policy
 from app.services.operations_settings import get_operations_settings
+from app.services.unattended_policy import shadow_dry_run_policy_context
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -164,8 +165,10 @@ def _run_scheduler_cycle_for_user(
     requires the complete user policy plus the live unattended job policy. The
     submission worker independently re-evaluates that job policy before browser work.
 
-    ``shadow_session_id`` is correlation only. It does not weaken any policy or grant
-    submission authority. Phase 11 uses it to reconcile durable full-stack campaigns.
+    ``shadow_session_id`` may activate only the narrow Phase 11 maturity exception.
+    It never grants submission authority. A shadow cycle must independently prove the
+    user's dry-run switch is on and global real submission is off before discovery,
+    candidate ranking, application creation, or worker dispatch proceeds.
     """
     from app.models.application import (
         Application,
@@ -179,7 +182,27 @@ def _run_scheduler_cycle_for_user(
     auto_settings = scheduler_settings(user)
     search_enabled = bool(auto_settings.get("auto_search_enabled", False))
     apply_enabled = bool(auto_settings.get("auto_apply_enabled", False))
-    dry_run = bool(auto_settings.get("dry_run_mode", True)) or not settings.allow_real_application_submit
+    user_dry_run_mode = bool(auto_settings.get("dry_run_mode", True))
+    dry_run = user_dry_run_mode or not settings.allow_real_application_submit
+
+    if shadow_session_id is not None and (
+        not user_dry_run_mode or settings.allow_real_application_submit is not False
+    ):
+        return {
+            "user_id": user.id,
+            "skipped": True,
+            "reason": "shadow_safety_invariant_blocked",
+            "searched": False,
+            "applications_queued": 0,
+            "application_ids_queued": [],
+            "blocked_job_reasons": {"shadow_safety_invariant_blocked": 1},
+            "real_submission_enabled": bool(settings.allow_real_application_submit),
+            # Report the explicit user switch rather than effective dry-run fallback so
+            # the Phase 11 supervisor also detects a disabled dry-run policy.
+            "dry_run": user_dry_run_mode,
+            "user_dry_run_mode": user_dry_run_mode,
+            "shadow_session_id": shadow_session_id,
+        }
 
     if not search_enabled and not apply_enabled:
         return {
@@ -225,7 +248,7 @@ def _run_scheduler_cycle_for_user(
         "application_ids_queued": [],
         "blocked_job_reasons": {},
         "real_submission_enabled": settings.allow_real_application_submit,
-        "user_dry_run_mode": bool(auto_settings.get("dry_run_mode", True)),
+        "user_dry_run_mode": user_dry_run_mode,
         "dry_run": dry_run,
         "shadow_session_id": shadow_session_id,
     }
@@ -264,11 +287,22 @@ def _run_scheduler_cycle_for_user(
         result["reason"] = "application_cap_reached"
         return result
 
-    ranked = rank_scheduler_candidates(
-        db,
-        user,
-        limit=max(run_limit * 4, run_limit),
-    )
+    if shadow_session_id is not None:
+        with shadow_dry_run_policy_context(
+            shadow_session_id=int(shadow_session_id),
+            dry_run=True,
+        ):
+            ranked = rank_scheduler_candidates(
+                db,
+                user,
+                limit=max(run_limit * 4, run_limit),
+            )
+    else:
+        ranked = rank_scheduler_candidates(
+            db,
+            user,
+            limit=max(run_limit * 4, run_limit),
+        )
     approved_jobs: list[Job] = []
     approved_employers: set[str] = set()
     for item in ranked:
@@ -329,9 +363,12 @@ def _run_scheduler_cycle_for_user(
             )
         )
         generate_cover_letter_task.delay(app_obj.id)
+        worker_kwargs = {"dry_run": dry_run}
+        if shadow_session_id is not None:
+            worker_kwargs["shadow_session_id"] = int(shadow_session_id)
         submit_unattended_application_task.apply_async(
             args=[app_obj.id],
-            kwargs={"dry_run": dry_run},
+            kwargs=worker_kwargs,
             countdown=countdown,
         )
         result["applications_queued"] += 1

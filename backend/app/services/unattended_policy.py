@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import replace
 from datetime import datetime, time
 from typing import Any, Dict, Iterable
 
 from sqlalchemy import func
 
+from app.config import get_settings
 from app.models.application import Application
 from app.models.job import Job
 from app.services.ats_manifest import ats_certification_manifest
@@ -31,6 +35,38 @@ KNOWN_PLATFORMS = {
 }
 REQUIRED_AUTONOMOUS_MATURITY = AdapterMaturity.CERTIFIED_AUTONOMOUS.value
 REQUIRED_SCHEDULER_POLICY_VERSION = "bounded-autonomy-v1"
+SHADOW_DRY_RUN_ALLOWED_MATURITIES = frozenset(
+    {
+        AdapterMaturity.DRY_RUN.value,
+        AdapterMaturity.HUMAN_REVIEWED_SUBMIT.value,
+    }
+)
+_SHADOW_DRY_RUN_POLICY_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
+    "jobtomatik_shadow_dry_run_policy_context",
+    default=None,
+)
+
+
+@contextmanager
+def shadow_dry_run_policy_context(*, shadow_session_id: int, dry_run: bool):
+    """Scope the narrow Phase 11 maturity exception to one synchronous call tree.
+
+    This context is not authorization by itself. ``evaluate_unattended_job_policy``
+    still requires real submission to be disabled and reruns every policy check after
+    relaxing only the canonical maturity requirement. The applications worker also
+    independently proves the persisted shadow session and application correlation.
+    """
+
+    token = _SHADOW_DRY_RUN_POLICY_CONTEXT.set(
+        {
+            "shadow_session_id": int(shadow_session_id),
+            "dry_run": dry_run is True,
+        }
+    )
+    try:
+        yield
+    finally:
+        _SHADOW_DRY_RUN_POLICY_CONTEXT.reset(token)
 
 
 def _values(value: str | Iterable[str] | None) -> set[str]:
@@ -160,7 +196,13 @@ def evaluate_unattended_job_policy(
     job: Job,
     now: datetime | None = None,
 ) -> AutomationDecision:
-    """Gate a scheduled job before record creation and again before the worker."""
+    """Gate a scheduled job before record creation and again before the worker.
+
+    The only maturity exception is a scoped Phase 11 shadow dry run. It can relax
+    ``certified_autonomous`` to an already evidence-backed dry-run/human-reviewed
+    maturity only while real submission is disabled. All other policy checks are
+    rerun unchanged before the exception can return ALLOW.
+    """
     now = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
 
@@ -186,8 +228,14 @@ def evaluate_unattended_job_policy(
         return user_decision
 
     operations = get_operations_settings()
+    core = get_settings()
     ctx = _job_context(job)
     maturities = live_platform_maturities()
+    canonical_maturity = maturities.get(ctx.adapter_platform)
+    shadow_context = _SHADOW_DRY_RUN_POLICY_CONTEXT.get() or {}
+    shadow_session_id = shadow_context.get("shadow_session_id")
+    shadow_dry_run = shadow_context.get("dry_run") is True
+    real_submission_enabled = bool(core.allow_real_application_submit)
 
     daily_count = int(user_decision.metadata.get("daily_count", 0))
     weekly_count = int(user_decision.metadata.get("weekly_count", 0))
@@ -240,7 +288,7 @@ def evaluate_unattended_job_policy(
             )
         },
         platform_maturity={
-            ctx.adapter_platform: maturities.get(ctx.adapter_platform)
+            ctx.adapter_platform: canonical_maturity
         },
         required_platform_maturity=REQUIRED_AUTONOMOUS_MATURITY,
         daily_cap_global=int(user_decision.metadata.get("daily_cap", 0)),
@@ -274,17 +322,55 @@ def evaluate_unattended_job_policy(
         submissions_today_for_employer={ctx.employer_id: employer_count},
     )
     result = PolicyGate(config, now_fn=lambda: now).evaluate(ctx, counters)
+    shadow_exception_applied = False
+
+    if (
+        result.reason_code == "platform_not_certified"
+        and shadow_session_id is not None
+        and shadow_dry_run
+        and not real_submission_enabled
+        and canonical_maturity in SHADOW_DRY_RUN_ALLOWED_MATURITIES
+    ):
+        # Rerun the complete gate with only the maturity equality relaxed to the
+        # already observed canonical maturity. Circuit breakers, quiet hours,
+        # employer/cap constraints, and verified job attributes still must pass.
+        shadow_config = replace(
+            config,
+            required_platform_maturity=str(canonical_maturity),
+        )
+        shadow_result = PolicyGate(shadow_config, now_fn=lambda: now).evaluate(
+            ctx,
+            counters,
+        )
+        if shadow_result.allowed:
+            result = shadow_result
+            shadow_exception_applied = True
+        else:
+            result = shadow_result
+
+    metadata = {
+        **user_decision.metadata,
+        "job_id": ctx.job_id,
+        "platform": ctx.adapter_platform,
+        "platform_maturity": canonical_maturity,
+        "required_platform_maturity": REQUIRED_AUTONOMOUS_MATURITY,
+        "scheduler_policy_version": current_policy_version,
+        "policy_detail": result.detail,
+        "shadow_session_id": shadow_session_id,
+        "shadow_dry_run": shadow_dry_run,
+        "real_submission_enabled": real_submission_enabled,
+        "shadow_dry_run_maturity_exception": shadow_exception_applied,
+    }
+    if shadow_exception_applied:
+        return AutomationDecision(
+            True,
+            "shadow_dry_run_maturity_exception",
+            "All unattended policy checks passed under the Phase 11 dry-run-only maturity exception.",
+            metadata,
+        )
     return AutomationDecision(
         result.allowed,
         result.reason_code,
         result.detail,
-        {
-            **user_decision.metadata,
-            "job_id": ctx.job_id,
-            "platform": ctx.adapter_platform,
-            "platform_maturity": maturities.get(ctx.adapter_platform),
-            "required_platform_maturity": REQUIRED_AUTONOMOUS_MATURITY,
-            "scheduler_policy_version": current_policy_version,
-            "policy_detail": result.detail,
-        },
+        metadata,
     )
