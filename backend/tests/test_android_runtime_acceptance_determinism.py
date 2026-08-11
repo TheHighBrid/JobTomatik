@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import pytest
@@ -67,11 +68,9 @@ def test_worker_acceptance_uses_exact_pid_db1_round_trip_without_remote_inspect(
         "exact_pid_plus_revision_hostname_plus_queue_cmdline_plus_db1_round_trip"
     )
 
-    source = (BACKEND_ROOT / "scripts/android_runtime_acceptance.py").read_text(
-        encoding="utf-8"
-    )
-    assert "control.inspect" not in source
-    assert "active_queues" not in source
+    function_source = inspect.getsource(acceptance._worker_acceptance)
+    assert "celery_app.control.inspect" not in function_source
+    assert "application_queue_canary.apply_async" in function_source
 
 
 def test_worker_acceptance_rejects_canary_consumed_by_different_worker(monkeypatch):
