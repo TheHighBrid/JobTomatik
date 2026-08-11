@@ -38,8 +38,12 @@ sanitize_runtime_pid_files() {
 }
 
 ensure_frontend_native_dependencies() {
+  # Never dlopen Android native addons from this foreground, terminal-attached path.
+  # The repair step verifies the exact lockfile package/version/binary and SRI for any
+  # downloaded replacement. The first native execution happens only after the stack
+  # manager is detached, when Vite starts under managed ownership and logs failures.
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO'; backend/.venv/bin/python backend/scripts/repair_android_frontend_native_deps.py; cd frontend; node -e \"require('lightningcss'); require('rolldown'); require('@tailwindcss/oxide'); console.log('ANDROID_FRONTEND_NATIVE_TOOLCHAIN_READY')\""
+    "set -e; cd '$PROOT_REPO'; backend/.venv/bin/python backend/scripts/repair_android_frontend_native_deps.py; echo 'ANDROID_FRONTEND_NATIVE_REPAIR_READY'"
 }
 
 supervisor_identity_matches() {
@@ -157,8 +161,8 @@ activate_stack() {
   local action="$1"
   sanitize_runtime_pid_files
   # Repair the complete platform-native frontend toolchain declared by the exact
-  # lockfile. This avoids a memory- and I/O-heavy full npm reinstall on Android after
-  # a partial optional-dependency install while preserving integrity and ABI checks.
+  # lockfile. Android native addon execution is deliberately deferred until the
+  # detached manager launches Vite, so a native crash cannot take down the terminal.
   ensure_frontend_native_dependencies
   "$BROWSER_COMMAND" start
   # The PRoot manager owns API, worker, frontend, stale-attempt recovery, queue-canary
