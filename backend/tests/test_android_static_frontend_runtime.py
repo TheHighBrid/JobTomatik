@@ -5,6 +5,7 @@ import pytest
 
 from app.models.certification import ShadowRunSession, _require_android_shadow_admission
 from app.services import runtime_acceptance
+from scripts import install_android_static_frontend_artifact as static_installer
 from scripts.build_frontend_artifact_manifest import build_manifest, sha256_tree
 from scripts.install_android_static_frontend_artifact import _verify_payload
 
@@ -52,6 +53,55 @@ def test_static_frontend_installer_rejects_revision_drift(tmp_path):
         )
 
 
+def test_published_ref_requires_exact_marker_and_manifest_revision(monkeypatch):
+    revision = "c" * 40
+    observed_fetches = []
+
+    monkeypatch.setattr(
+        static_installer,
+        "_fetch_branch",
+        lambda branch: observed_fetches.append(branch),
+    )
+
+    def fake_show(ref, path):
+        assert ref == "refs/remotes/origin/android-static-frontend-runtime"
+        if path == static_installer.REVISION_MARKER:
+            return revision + "\n"
+        if path == static_installer.MANIFEST_NAME:
+            return json.dumps({"revision": revision})
+        raise AssertionError(path)
+
+    monkeypatch.setattr(static_installer, "_show_text", fake_show)
+
+    ref = static_installer._published_ref_for_revision(
+        "android-static-frontend-runtime",
+        revision,
+        timeout_seconds=0,
+    )
+
+    assert ref == "refs/remotes/origin/android-static-frontend-runtime"
+    assert observed_fetches == ["android-static-frontend-runtime"]
+
+
+def test_published_ref_fails_closed_on_stale_runtime_branch(monkeypatch):
+    revision = "d" * 40
+    monkeypatch.setattr(static_installer, "_fetch_branch", lambda _branch: None)
+
+    def fake_show(_ref, path):
+        if path == static_installer.REVISION_MARKER:
+            return ("e" * 40) + "\n"
+        return json.dumps({"revision": "e" * 40})
+
+    monkeypatch.setattr(static_installer, "_show_text", fake_show)
+
+    with pytest.raises(RuntimeError, match="published_revision_mismatch"):
+        static_installer._published_ref_for_revision(
+            "android-static-frontend-runtime",
+            revision,
+            timeout_seconds=0,
+        )
+
+
 def test_android_canonical_runtime_never_launches_node_or_vite():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(encoding="utf-8")
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(encoding="utf-8")
@@ -67,17 +117,36 @@ def test_android_canonical_runtime_never_launches_node_or_vite():
     ).read_text(encoding="utf-8")
 
 
-def test_static_artifact_workflow_builds_every_main_revision():
+def test_static_artifact_workflow_builds_every_main_revision_and_publishes_git_runtime():
     workflow = (
         REPO_ROOT / ".github/workflows/android-static-frontend-artifact.yml"
+    ).read_text(encoding="utf-8")
+    installer = (
+        BACKEND_ROOT / "scripts/install_android_static_frontend_artifact.py"
     ).read_text(encoding="utf-8")
 
     assert "push:" in workflow
     assert "- main" in workflow
+    assert "contents: read" in workflow
+    assert "publish-static-runtime:" in workflow
+    assert "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" in workflow
+    assert "needs: build-static-frontend" in workflow
+    assert "contents: write" in workflow
     assert "jobtomatik-frontend-dist-${{ github.sha }}" in workflow
     assert "npm ci --prefix frontend" in workflow
     assert "npm run build --prefix frontend" in workflow
     assert "serve_static_frontend.py" in workflow
+    assert "android-static-frontend-runtime" in workflow
+    assert "git checkout --orphan" in workflow
+    assert "git push --force origin" in workflow
+
+    assert '"fetch",' in installer
+    assert '"archive",' in installer
+    assert "DEFAULT_ARTIFACT_BRANCH = \"android-static-frontend-runtime\"" in installer
+    assert "api.github.com" not in installer
+    assert "archive_download_url" not in installer
+    assert "JOBTOMATIK_GITHUB_TOKEN" not in installer
+    assert "GITHUB_TOKEN" not in installer
 
 
 def test_qualification_canary_uses_real_scheduler_and_one_application_limit():

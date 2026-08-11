@@ -132,7 +132,7 @@ jobs:
           wait "$server_pid" || true
           trap - EXIT
 
-      - name: Upload immutable exact-revision frontend artifact
+      - name: Upload audit artifact
         id: upload
         uses: actions/upload-artifact@v7
         with:
@@ -141,8 +141,80 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Record GitHub artifact identity
+      - name: Record GitHub audit artifact identity
         run: |
           echo "JOBTOMATIK_FRONTEND_ARTIFACT_ID=${{ steps.upload.outputs.artifact-id }}"
           echo "JOBTOMATIK_FRONTEND_ARTIFACT_DIGEST=${{ steps.upload.outputs.artifact-digest }}"
           echo "JOBTOMATIK_FRONTEND_ARTIFACT_REVISION=${GITHUB_SHA}"
+
+      - name: Prove tokenless runtime branch payload locally
+        env:
+          ARTIFACT_BRANCH: android-static-frontend-runtime
+        run: |
+          set -euo pipefail
+          publish_dir="$(mktemp -d)"
+          trap 'rm -rf "$publish_dir"' EXIT
+          cp -a build/jobtomatik-frontend-artifact/. "$publish_dir/"
+          printf '%s\n' "$GITHUB_SHA" > "$publish_dir/JOBTOMATIK_REVISION"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan "$ARTIFACT_BRANCH"
+          git rm -rf . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a "$publish_dir/." .
+          git add JOBTOMATIK_REVISION jobtomatik-frontend-manifest.json dist
+          git commit -m "Prove Android static frontend ${GITHUB_SHA}"
+
+          test "$(cat JOBTOMATIK_REVISION)" = "$GITHUB_SHA"
+          test "$(python -c 'import json; print(json.load(open("jobtomatik-frontend-manifest.json"))["revision"])')" = "$GITHUB_SHA"
+          test -f dist/index.html
+          echo "JOBTOMATIK_FRONTEND_RUNTIME_BRANCH_DRY_RUN=${ARTIFACT_BRANCH}"
+          echo "JOBTOMATIK_FRONTEND_RUNTIME_REVISION=${GITHUB_SHA}"
+
+  publish-static-runtime:
+    name: publish-static-runtime (main only)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-static-frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Check out exact main revision
+        uses: actions/checkout@v7
+
+      - name: Download verified static frontend from this workflow run
+        uses: actions/download-artifact@v8
+        with:
+          name: jobtomatik-frontend-dist-${{ github.sha }}
+          path: published-frontend
+
+      - name: Publish tokenless Android runtime artifact branch
+        env:
+          ARTIFACT_BRANCH: android-static-frontend-runtime
+        run: |
+          set -euo pipefail
+          test -f published-frontend/jobtomatik-frontend-manifest.json
+          test -f published-frontend/dist/index.html
+          manifest_revision="$(python -c 'import json; print(json.load(open("published-frontend/jobtomatik-frontend-manifest.json"))["revision"])')"
+          test "$manifest_revision" = "$GITHUB_SHA"
+          printf '%s\n' "$GITHUB_SHA" > published-frontend/JOBTOMATIK_REVISION
+
+          publish_dir="$(mktemp -d)"
+          trap 'rm -rf "$publish_dir"' EXIT
+          cp -a published-frontend/. "$publish_dir/"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan "$ARTIFACT_BRANCH"
+          git rm -rf . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a "$publish_dir/." .
+          git add JOBTOMATIK_REVISION jobtomatik-frontend-manifest.json dist
+          git commit -m "Publish Android static frontend ${GITHUB_SHA}"
+          git push --force origin "HEAD:refs/heads/${ARTIFACT_BRANCH}"
+          echo "JOBTOMATIK_FRONTEND_RUNTIME_BRANCH_PUBLISHED=${ARTIFACT_BRANCH}"
+          echo "JOBTOMATIK_FRONTEND_RUNTIME_REVISION=${GITHUB_SHA}"

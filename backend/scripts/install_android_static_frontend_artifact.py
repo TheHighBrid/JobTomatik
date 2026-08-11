@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Install the exact CI-built frontend artifact for the checked-out Android revision.
 
-This deliberately removes Node/Vite/native addons from the certification runtime. The
-only accepted artifact is one whose GitHub Actions workflow head SHA exactly matches
-the checked-out repository revision and whose immutable archive + internal manifest
-hashes verify before installation.
+Runtime delivery deliberately uses the repository's public Git transport rather than
+GitHub Actions' archive-download API. CI publishes only the generated ``dist/`` plus
+its SHA-bound manifest to a dedicated branch. The Android device fetches that branch,
+requires its revision marker to equal the checked-out ``main`` commit, archives the
+Git objects locally, and verifies the lockfile + dist-tree hashes before installation.
+No GitHub API token and no device-side Node/Vite build are required.
 """
 
 from __future__ import annotations
@@ -15,20 +17,18 @@ import json
 import os
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 DEFAULT_RUNTIME_DIR = BACKEND_ROOT / ".runtime"
-DEFAULT_REPOSITORY = "TheHighBrid/JobTomatik"
-ARTIFACT_PREFIX = "jobtomatik-frontend-dist-"
+DEFAULT_ARTIFACT_BRANCH = "android-static-frontend-runtime"
+MANIFEST_NAME = "jobtomatik-frontend-manifest.json"
+REVISION_MARKER = "JOBTOMATIK_REVISION"
 
 
 def sha256_file(path: Path) -> str:
@@ -54,108 +54,107 @@ def sha256_tree(root: Path) -> str:
     return digest.hexdigest()
 
 
-def current_revision() -> str:
-    result = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
-        check=True,
+def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(REPO_ROOT), *args],
+        check=check,
         capture_output=True,
         text=True,
     )
-    revision = result.stdout.strip().lower()
+
+
+def current_revision() -> str:
+    revision = _git("rev-parse", "HEAD").stdout.strip().lower()
     if not revision or any(char not in "0123456789abcdef" for char in revision):
         raise RuntimeError("Unable to derive exact frontend artifact revision")
     return revision
 
 
-def _headers() -> dict[str, str]:
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "JobTomatik-Android-Frontend-Artifact/1",
-    }
-    token = (
-        os.environ.get("JOBTOMATIK_GITHUB_TOKEN")
-        or os.environ.get("GITHUB_TOKEN")
-        or ""
-    ).strip()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    return headers
+def _remote_ref(branch: str) -> str:
+    return f"refs/remotes/origin/{branch}"
 
 
-def _request_json(url: str) -> dict:
-    request = urllib.request.Request(url, headers=_headers())
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
+def _fetch_branch(branch: str) -> None:
+    result = _git(
+        "fetch",
+        "--no-tags",
+        "--force",
+        "origin",
+        f"refs/heads/{branch}:{_remote_ref(branch)}",
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "git fetch failed").strip()
+        raise RuntimeError(detail[:1200])
 
 
-def _download(url: str, destination: Path) -> None:
-    request = urllib.request.Request(url, headers=_headers())
-    with urllib.request.urlopen(request, timeout=60) as response, destination.open("wb") as output:
-        shutil.copyfileobj(response, output)
+def _show_text(ref: str, path: str) -> str:
+    result = _git("show", f"{ref}:{path}", check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"Published frontend artifact is missing {path}")
+    return result.stdout
 
 
-def _artifact_for_revision(repository: str, revision: str) -> dict | None:
-    artifact_name = ARTIFACT_PREFIX + revision
-    encoded_name = urllib.parse.quote(artifact_name, safe="")
-    url = f"https://api.github.com/repos/{repository}/actions/artifacts?name={encoded_name}&per_page=100"
-    payload = _request_json(url)
-    candidates = []
-    for artifact in payload.get("artifacts") or []:
-        if artifact.get("name") != artifact_name or artifact.get("expired") is True:
-            continue
-        workflow = artifact.get("workflow_run") or {}
-        if str(workflow.get("head_sha") or "").lower() != revision:
-            continue
-        candidates.append(artifact)
-    if not candidates:
-        return None
-    candidates.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
-    return candidates[0]
-
-
-def _wait_for_artifact(repository: str, revision: str, timeout_seconds: int) -> dict:
+def _published_ref_for_revision(branch: str, revision: str, timeout_seconds: int) -> str:
     deadline = time.monotonic() + max(0, timeout_seconds)
-    last_error: str | None = None
+    last_error = "artifact_branch_not_published_yet"
     while True:
         try:
-            artifact = _artifact_for_revision(repository, revision)
-            if artifact is not None:
-                return artifact
-            last_error = "artifact_not_published_yet"
-        except urllib.error.HTTPError as exc:
-            last_error = f"github_http_{exc.code}"
-        except urllib.error.URLError as exc:
-            last_error = f"github_network_error:{exc.reason}"
+            _fetch_branch(branch)
+            ref = _remote_ref(branch)
+            marker = _show_text(ref, REVISION_MARKER).strip().lower()
+            manifest = json.loads(_show_text(ref, MANIFEST_NAME))
+            manifest_revision = str(manifest.get("revision") or "").strip().lower()
+            if marker == revision and manifest_revision == revision:
+                return ref
+            last_error = (
+                "published_revision_mismatch:"
+                f"marker={marker or 'missing'} manifest={manifest_revision or 'missing'}"
+            )
+        except (RuntimeError, ValueError, TypeError) as exc:
+            last_error = str(exc)
 
         if time.monotonic() >= deadline:
             raise RuntimeError(
-                "Exact frontend artifact is unavailable for revision "
-                f"{revision}: {last_error or 'not_found'}"
+                f"Exact static frontend is unavailable for revision {revision}: {last_error}"
             )
         time.sleep(5)
 
 
+def _archive_ref(ref: str, destination: Path) -> str:
+    published_commit = _git("rev-parse", ref).stdout.strip().lower()
+    result = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "archive", "--format=tar", "--output", str(destination), ref],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "git archive failed").strip()
+        raise RuntimeError(detail[:1200])
+    return published_commit
+
+
 def _safe_extract(archive: Path, destination: Path) -> None:
-    with zipfile.ZipFile(archive) as bundle:
-        destination_resolved = destination.resolve()
-        for member in bundle.infolist():
-            candidate = (destination / member.filename).resolve()
+    destination_resolved = destination.resolve()
+    with tarfile.open(archive, mode="r:") as bundle:
+        members = bundle.getmembers()
+        for member in members:
+            candidate = (destination / member.name).resolve()
             try:
                 candidate.relative_to(destination_resolved)
             except ValueError as exc:
-                raise RuntimeError(f"Artifact zip contains unsafe path: {member.filename}") from exc
-        bundle.extractall(destination)
+                raise RuntimeError(f"Artifact archive contains unsafe path: {member.name}") from exc
+            if member.issym() or member.islnk() or member.isdev():
+                raise RuntimeError(f"Artifact archive contains unsupported entry: {member.name}")
+        bundle.extractall(destination, members=members)
 
 
 def _locate_payload(extracted: Path) -> tuple[Path, Path]:
-    manifests = list(extracted.rglob("jobtomatik-frontend-manifest.json"))
-    if len(manifests) != 1:
-        raise RuntimeError(
-            "Frontend artifact must contain exactly one jobtomatik-frontend-manifest.json"
-        )
-    manifest_path = manifests[0]
-    dist = manifest_path.parent / "dist"
+    manifest_path = extracted / MANIFEST_NAME
+    dist = extracted / "dist"
+    if not manifest_path.is_file():
+        raise RuntimeError(f"Frontend artifact is missing {MANIFEST_NAME}")
     if not dist.is_dir() or not (dist / "index.html").is_file():
         raise RuntimeError("Frontend artifact is missing dist/index.html")
     return manifest_path, dist
@@ -175,8 +174,7 @@ def _verify_payload(
         raise RuntimeError("Unexpected frontend artifact type")
     if str(manifest.get("revision") or "").lower() != revision:
         raise RuntimeError("Frontend artifact manifest revision does not match checkout")
-    lock_digest = sha256_file(package_lock)
-    if manifest.get("package_lock_sha256") != lock_digest:
+    if manifest.get("package_lock_sha256") != sha256_file(package_lock):
         raise RuntimeError("Frontend artifact package-lock digest does not match checkout")
     dist_digest = sha256_tree(dist)
     if manifest.get("dist_tree_sha256") != dist_digest:
@@ -187,7 +185,7 @@ def _verify_payload(
 
 
 def _verify_existing(destination: Path, revision: str, package_lock: Path) -> dict | None:
-    manifest_path = destination / "jobtomatik-frontend-manifest.json"
+    manifest_path = destination / MANIFEST_NAME
     dist = destination / "dist"
     if not manifest_path.is_file() or not dist.is_dir():
         return None
@@ -216,7 +214,7 @@ def _prune_artifacts(artifact_root: Path, keep_revision: str, keep: int = 3) -> 
         shutil.rmtree(stale, ignore_errors=True)
 
 
-def install(*, repository: str, runtime_dir: Path, revision: str, wait_seconds: int) -> dict:
+def install(*, artifact_branch: str, runtime_dir: Path, revision: str, wait_seconds: int) -> dict:
     package_lock = REPO_ROOT / "frontend" / "package-lock.json"
     artifact_root = runtime_dir / "frontend-artifacts"
     artifact_root.mkdir(parents=True, exist_ok=True)
@@ -230,10 +228,8 @@ def install(*, repository: str, runtime_dir: Path, revision: str, wait_seconds: 
             "status": "ready",
             "source": "existing_verified",
             "revision": revision,
-            "artifact_name": ARTIFACT_PREFIX + revision,
-            "artifact_id": None,
-            "github_artifact_digest": None,
-            "archive_sha256": None,
+            "artifact_branch": artifact_branch,
+            "published_commit": None,
             "package_lock_sha256": existing["package_lock_sha256"],
             "dist_tree_sha256": existing["dist_tree_sha256"],
             "artifact_root": str(destination),
@@ -242,23 +238,14 @@ def install(*, repository: str, runtime_dir: Path, revision: str, wait_seconds: 
         receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return receipt
 
-    artifact = _wait_for_artifact(repository, revision, wait_seconds)
-    artifact_id = int(artifact["id"])
-    download_url = str(artifact.get("archive_download_url") or "")
-    if not download_url:
-        raise RuntimeError("GitHub artifact did not provide an archive download URL")
-
+    ref = _published_ref_for_revision(artifact_branch, revision, wait_seconds)
     with tempfile.TemporaryDirectory(prefix="jobtomatik-frontend-artifact-", dir=artifact_root) as tmp:
         temp_root = Path(tmp)
-        archive = temp_root / "artifact.zip"
+        archive = temp_root / "artifact.tar"
         extracted = temp_root / "extracted"
         extracted.mkdir()
-        _download(download_url, archive)
+        published_commit = _archive_ref(ref, archive)
         archive_digest = sha256_file(archive)
-        github_digest = str(artifact.get("digest") or "")
-        if github_digest.startswith("sha256:") and github_digest.split(":", 1)[1] != archive_digest:
-            raise RuntimeError("Downloaded GitHub artifact archive digest did not verify")
-
         _safe_extract(archive, extracted)
         manifest_path, dist = _locate_payload(extracted)
         manifest = _verify_payload(
@@ -271,7 +258,7 @@ def install(*, repository: str, runtime_dir: Path, revision: str, wait_seconds: 
         staged = artifact_root / f".{revision}.installing"
         shutil.rmtree(staged, ignore_errors=True)
         staged.mkdir(parents=True)
-        shutil.copy2(manifest_path, staged / "jobtomatik-frontend-manifest.json")
+        shutil.copy2(manifest_path, staged / MANIFEST_NAME)
         shutil.copytree(dist, staged / "dist")
         shutil.rmtree(destination, ignore_errors=True)
         staged.replace(destination)
@@ -279,11 +266,10 @@ def install(*, repository: str, runtime_dir: Path, revision: str, wait_seconds: 
     receipt = {
         "version": 1,
         "status": "ready",
-        "source": "github_actions",
+        "source": "git_artifact_branch",
         "revision": revision,
-        "artifact_name": str(artifact.get("name") or ""),
-        "artifact_id": artifact_id,
-        "github_artifact_digest": str(artifact.get("digest") or "") or None,
+        "artifact_branch": artifact_branch,
+        "published_commit": published_commit,
         "archive_sha256": archive_digest,
         "package_lock_sha256": manifest["package_lock_sha256"],
         "dist_tree_sha256": manifest["dist_tree_sha256"],
@@ -297,15 +283,26 @@ def install(*, repository: str, runtime_dir: Path, revision: str, wait_seconds: 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repository", default=os.environ.get("JOBTOMATIK_GITHUB_REPOSITORY", DEFAULT_REPOSITORY))
-    parser.add_argument("--runtime-dir", type=Path, default=Path(os.environ.get("JOBTOMATIK_RUNTIME_DIR", DEFAULT_RUNTIME_DIR)))
+    parser.add_argument(
+        "--artifact-branch",
+        default=os.environ.get("JOBTOMATIK_FRONTEND_ARTIFACT_BRANCH", DEFAULT_ARTIFACT_BRANCH),
+    )
+    parser.add_argument(
+        "--runtime-dir",
+        type=Path,
+        default=Path(os.environ.get("JOBTOMATIK_RUNTIME_DIR", DEFAULT_RUNTIME_DIR)),
+    )
     parser.add_argument("--revision", default=None)
-    parser.add_argument("--wait-seconds", type=int, default=int(os.environ.get("JOBTOMATIK_FRONTEND_ARTIFACT_WAIT_SECONDS", "360")))
+    parser.add_argument(
+        "--wait-seconds",
+        type=int,
+        default=int(os.environ.get("JOBTOMATIK_FRONTEND_ARTIFACT_WAIT_SECONDS", "360")),
+    )
     args = parser.parse_args()
 
     revision = (args.revision or current_revision()).strip().lower()
     receipt = install(
-        repository=args.repository,
+        artifact_branch=args.artifact_branch,
         runtime_dir=args.runtime_dir.resolve(),
         revision=revision,
         wait_seconds=args.wait_seconds,
