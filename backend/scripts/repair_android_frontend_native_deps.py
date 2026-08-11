@@ -227,6 +227,15 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _remove_path(path: Path) -> None:
+    if not os.path.lexists(path):
+        return
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
+
+
 def _native_binding_loads(binary: Path) -> bool:
     try:
         completed = subprocess.run(
@@ -468,18 +477,16 @@ def _repair_entry(
             )
 
         backup = destination.with_name(f".{destination.name}.broken-{os.getpid()}")
-        if backup.exists():
-            shutil.rmtree(backup)
-        if destination.exists():
+        _remove_path(backup)
+        if os.path.lexists(destination):
             os.replace(destination, backup)
         try:
             os.replace(staged, destination)
         except Exception:
-            if backup.exists() and not destination.exists():
+            if os.path.lexists(backup) and not os.path.lexists(destination):
                 os.replace(backup, destination)
             raise
-        if backup.exists():
-            shutil.rmtree(backup)
+        _remove_path(backup)
 
     record = (
         _android_receipt_record(destination, metadata, spec)

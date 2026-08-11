@@ -5,8 +5,10 @@ on:
     paths:
       - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/repair_android_frontend_native_deps.py"
+      - "backend/scripts/stage_android_frontend_native_bindings.py"
       - "backend/tests/test_android_frontend_native_recovery.py"
       - "backend/tests/test_android_frontend_native_integrity_receipt.py"
+      - "backend/tests/test_android_frontend_native_linker_stage.py"
       - "frontend/package-lock.json"
       - ".github/workflows/android-frontend-native-recovery.yml"
   push:
@@ -15,8 +17,10 @@ on:
     paths:
       - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/repair_android_frontend_native_deps.py"
+      - "backend/scripts/stage_android_frontend_native_bindings.py"
       - "backend/tests/test_android_frontend_native_recovery.py"
       - "backend/tests/test_android_frontend_native_integrity_receipt.py"
+      - "backend/tests/test_android_frontend_native_linker_stage.py"
       - "frontend/package-lock.json"
       - ".github/workflows/android-frontend-native-recovery.yml"
   workflow_dispatch:
@@ -72,6 +76,7 @@ jobs:
           test "$actual_arch" = "$EXPECTED_NODE_ARCH"
           bash -n backend/scripts/jobtomatik_termux_wrapper.sh
           python -m py_compile backend/scripts/repair_android_frontend_native_deps.py
+          python -m py_compile backend/scripts/stage_android_frontend_native_bindings.py
 
       - name: Install frontend dependencies in CI only
         run: npm ci --prefix frontend --include=optional --no-audit --no-fund
@@ -106,6 +111,8 @@ jobs:
     name: android-node-target-contract (android-arm64)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
+    env:
+      JOBTOMATIK_ANDROID_NATIVE_STAGE_ROOT: /tmp/jobtomatik-android-native-stage
 
     steps:
       - name: Check out repository
@@ -127,6 +134,7 @@ jobs:
           test "$(node -p 'process.arch')" = "arm64"
           echo "CI_HOST_NODE_TARGET=linux-arm64"
           echo "PHYSICAL_ANDROID_NODE_TARGET=android-arm64"
+          echo "ANDROID_LINKER_STAGE_ROOT=$JOBTOMATIK_ANDROID_NATIVE_STAGE_ROOT"
 
       - name: Remove every Android ARM64 native package before recovery
         run: |
@@ -135,8 +143,9 @@ jobs:
           rm -rf frontend/node_modules/@rolldown/binding-android-arm64
           rm -rf frontend/node_modules/@tailwindcss/oxide-android-arm64
           rm -f frontend/node_modules/.jobtomatik-android-native-integrity.json
+          rm -rf "$JOBTOMATIK_ANDROID_NATIVE_STAGE_ROOT"
 
-      - name: Repair lockfile-pinned Android ARM64 native toolchain
+      - name: Repair lockfile-pinned Android ARM64 native toolchain without loading it
         env:
           JOBTOMATIK_FRONTEND_NODE_PLATFORM: android
           JOBTOMATIK_FRONTEND_NODE_ARCH: arm64
@@ -145,14 +154,32 @@ jobs:
           grep -Fq 'ANDROID_FRONTEND_NODE_TARGET platform=android arch=arm64 native_load_validation=deferred_android_managed_frontend packages=lightningcss-android-arm64,@rolldown/binding-android-arm64,@tailwindcss/oxide-android-arm64' /tmp/android-native-repair.log
           grep -Fq 'ANDROID_FRONTEND_NATIVE_INTEGRITY_RECEIPT_READY' /tmp/android-native-repair.log
 
-      - name: Verify every locked Android package matches version, exact binary, and SRI-backed receipt
+      - name: Stage verified Android packages into linker-safe runtime path
+        run: |
+          python backend/scripts/stage_android_frontend_native_bindings.py | tee /tmp/android-native-stage.log
+          grep -Fq 'ANDROID_FRONTEND_NATIVE_LINKER_STAGE_ROOT_READY' /tmp/android-native-stage.log
+          test "$(grep -c 'ANDROID_FRONTEND_NATIVE_LINKER_STAGE_READY' /tmp/android-native-stage.log)" -eq 4
+
+      - name: Prove a second repair preserves linker-safe symlinks
+        env:
+          JOBTOMATIK_FRONTEND_NODE_PLATFORM: android
+          JOBTOMATIK_FRONTEND_NODE_ARCH: arm64
+        run: |
+          python backend/scripts/repair_android_frontend_native_deps.py | tee /tmp/android-native-repair-reuse.log
+          test "$(grep -c 'source=existing_verified' /tmp/android-native-repair-reuse.log)" -eq 4
+          python backend/scripts/stage_android_frontend_native_bindings.py | tee /tmp/android-native-stage-reuse.log
+          test "$(grep -c 'ANDROID_FRONTEND_NATIVE_LINKER_STAGE_READY' /tmp/android-native-stage-reuse.log)" -eq 4
+
+      - name: Verify lockfile receipt, symlink targets, and exact Android binaries
         run: |
           python - <<'PY'
           import hashlib
           import json
+          import os
           from pathlib import Path
 
           frontend = Path("frontend")
+          stage_root = Path(os.environ["JOBTOMATIK_ANDROID_NATIVE_STAGE_ROOT"]).resolve()
           lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
           packages = lock.get("packages", {})
           receipt_path = frontend / "node_modules/.jobtomatik-android-native-integrity.json"
@@ -173,6 +200,15 @@ jobs:
                   raise SystemExit(f"No lock entries found for {package_name}")
               for key in keys:
                   package = frontend / key
+                  if not package.is_symlink():
+                      raise SystemExit(f"Android native package is not linker-stage symlinked: {key}")
+                  runtime_package = package.resolve(strict=True)
+                  try:
+                      runtime_package.relative_to(stage_root)
+                  except ValueError as exc:
+                      raise SystemExit(
+                          f"Android native package resolves outside linker stage: {key} -> {runtime_package}"
+                      ) from exc
                   installed = json.loads((package / "package.json").read_text(encoding="utf-8"))
                   locked = packages[key]
                   if installed.get("name") != package_name:
@@ -186,6 +222,13 @@ jobs:
                       raise SystemExit(
                           f"Missing or empty exact Android native binary at {binary}"
                       )
+                  runtime_binary = binary.resolve(strict=True)
+                  try:
+                      runtime_binary.relative_to(stage_root)
+                  except ValueError as exc:
+                      raise SystemExit(
+                          f"Android native binary resolves outside linker stage: {key} -> {runtime_binary}"
+                      ) from exc
                   record = receipt_entries.get(key)
                   if not isinstance(record, dict):
                       raise SystemExit(f"Missing integrity receipt entry for {key}")
@@ -202,12 +245,41 @@ jobs:
                       raise SystemExit(f"Receipt binary hash mismatch at {key}")
                   checked += 1
                   print(
-                      "ANDROID_LOCKED_NATIVE_PACKAGE_VERIFIED "
-                      f"package={package_name} path={key} version={installed.get('version')} native={binary_name} sha256={digest}"
+                      "ANDROID_LINKER_SAFE_NATIVE_PACKAGE_VERIFIED "
+                      f"package={package_name} path={key} runtime={runtime_package} native={runtime_binary} sha256={digest}"
                   )
           if checked != len(receipt_entries):
               raise SystemExit(
                   f"Receipt contains unexpected entries: checked={checked} receipt={len(receipt_entries)}"
               )
           PY
+
+      - name: Prove Node resolves Android native package entrypoints under linker stage without dlopen
+        run: |
+          node - <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+          const { createRequire } = require('module')
+
+          const frontend = path.resolve('frontend')
+          const stageRoot = fs.realpathSync(process.env.JOBTOMATIK_ANDROID_NATIVE_STAGE_ROOT)
+          const rootRequire = createRequire(path.join(frontend, 'package.json'))
+          const viteRequire = createRequire(path.join(frontend, 'node_modules/vite/package.json'))
+          const checks = [
+            ['root-lightningcss', rootRequire, 'lightningcss-android-arm64'],
+            ['vite-lightningcss', viteRequire, 'lightningcss-android-arm64'],
+            ['rolldown', rootRequire, '@rolldown/binding-android-arm64'],
+            ['tailwind-oxide', rootRequire, '@tailwindcss/oxide-android-arm64'],
+          ]
+
+          for (const [label, req, packageName] of checks) {
+            const resolved = req.resolve(packageName)
+            const real = fs.realpathSync(resolved)
+            const relative = path.relative(stageRoot, real)
+            if (relative.startsWith('..') || path.isAbsolute(relative)) {
+              throw new Error(`${label} resolved outside linker stage: ${real}`)
+            }
+            console.log(`ANDROID_NODE_RESOLVE_LINKER_SAFE label=${label} package=${packageName} real=${real}`)
+          }
+          NODE
           echo "ANDROID_NODE_TARGET_RECOVERY_ACCEPTED platform=android arch=arm64"
