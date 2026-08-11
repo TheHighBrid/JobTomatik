@@ -173,6 +173,7 @@ def canary_receipt_status(
     runtime = runtime_acceptance_status(max_age_seconds=max_age_seconds)
     fingerprint = runtime.get("runtime_fingerprint") or {}
     revision = current_revision()
+    post_policy = dict((payload or {}).get("post_canary_policy") or {})
     checks = {
         "receipt_present": payload is not None,
         "receipt_passed": bool(payload and payload.get("status") == "pass"),
@@ -184,6 +185,11 @@ def canary_receipt_status(
             payload and payload.get("runtime_fingerprint_sha256") == fingerprint.get("sha256")
         ),
         "application_path_observed": bool(payload and payload.get("application_path_observed") is True),
+        "post_canary_campaign_policy_ready": bool(post_policy.get("ok") is True),
+        "post_canary_campaign_capacity_remaining": bool(
+            int(post_policy.get("remaining_daily") or 0) >= 1
+            and int(post_policy.get("remaining_weekly") or 0) >= 1
+        ),
         "certification_eligible_false": bool(payload and payload.get("certification_eligible") is False),
         "final_submit_disabled": bool(payload and payload.get("safety", {}).get("final_submit_allowed") is False),
         "real_submission_disabled": bool(payload and payload.get("safety", {}).get("real_submission_disabled") is True),
