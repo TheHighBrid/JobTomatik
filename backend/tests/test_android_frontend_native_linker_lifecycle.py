@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import tarfile
 
+import pytest
+
 from scripts import repair_android_frontend_native_deps as native_repair
 from scripts import stage_android_frontend_native_bindings as linker_stage
 
@@ -149,7 +151,7 @@ def test_real_repair_handles_corrupted_staged_package_symlink(tmp_path, monkeypa
     assert (destination.resolve(strict=True) / binary).read_bytes() == binary_payload
 
 
-def test_successful_stage_prunes_obsolete_containers(tmp_path):
+def test_successful_stage_prunes_obsolete_containers_only_after_ownership(tmp_path):
     frontend = tmp_path / "frontend"
     stage_root = tmp_path / "termux-prefix/var/lib/jobtomatik/frontend-native"
     lock_key = "node_modules/lightningcss-android-arm64"
@@ -162,8 +164,15 @@ def test_successful_stage_prunes_obsolete_containers(tmp_path):
     _write_package(destination, package, version, binary, binary_payload)
     _write_receipt(frontend, lock_key, package, version, binary, binary_payload)
 
+    linker_stage.stage_android_native_bindings(
+        frontend_root=frontend,
+        stage_root=stage_root,
+    )
+    owner = stage_root / linker_stage.ANDROID_NATIVE_STAGE_OWNER
+    assert owner.is_file()
+
     obsolete = stage_root / "obsolete-content-addressed-container"
-    obsolete.mkdir(parents=True)
+    obsolete.mkdir()
     (obsolete / "unused.node").write_bytes(b"unused")
 
     messages = linker_stage.stage_android_native_bindings(
@@ -172,8 +181,40 @@ def test_successful_stage_prunes_obsolete_containers(tmp_path):
     )
 
     assert not obsolete.exists()
+    assert owner.is_file()
     assert any(
         "ANDROID_FRONTEND_NATIVE_LINKER_STAGE_PRUNED" in item and "removed=1" in item
         for item in messages
     )
     assert destination.is_symlink()
+
+
+def test_nonempty_unowned_stage_root_is_rejected_without_deleting_user_data(tmp_path):
+    frontend = tmp_path / "frontend"
+    stage_root = tmp_path / "shared-directory"
+    lock_key = "node_modules/lightningcss-android-arm64"
+    package = "lightningcss-android-arm64"
+    version = "1.32.0"
+    binary = "lightningcss.android-arm64.node"
+    binary_payload = b"verified-lightningcss-binding"
+    destination = frontend / lock_key
+
+    _write_package(destination, package, version, binary, binary_payload)
+    _write_receipt(frontend, lock_key, package, version, binary, binary_payload)
+    stage_root.mkdir(parents=True)
+    unrelated = stage_root / "important-user-data.txt"
+    unrelated.write_text("preserve me", encoding="utf-8")
+
+    with pytest.raises(
+        linker_stage.AndroidNativeStageError,
+        match="Refusing to claim a non-empty Android native stage root",
+    ):
+        linker_stage.stage_android_native_bindings(
+            frontend_root=frontend,
+            stage_root=stage_root,
+        )
+
+    assert unrelated.read_text(encoding="utf-8") == "preserve me"
+    assert destination.is_dir()
+    assert not destination.is_symlink()
+    assert not (stage_root / linker_stage.ANDROID_NATIVE_STAGE_OWNER).exists()
