@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint, event
 from sqlalchemy.sql import func
 
@@ -128,6 +130,55 @@ class ShadowRunCycle(Base):
     reconciliation_snapshot = Column(JSON, default=dict)
     error_detail = Column(String(2000), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+_ANDROID_TIMED_SHADOW_TARGETS = frozenset({"shadow_run_4h", "shadow_run_8h", "shadow_run_24h"})
+
+
+def _require_android_shadow_admission(target: ShadowRunSession) -> None:
+    """Make timed Android evidence impossible to start without device/canary proof.
+
+    The guard sits at the ORM insert boundary so an API, CLI, test helper, or future
+    internal caller cannot bypass the qualification receipt merely by skipping the
+    current UI/preflight route. Non-Android environments retain their existing test
+    and development behavior. The 8h/24h stages intentionally remain closed until a
+    legitimate 4h campaign has passed and a duration-specific admission gate lands.
+    """
+
+    if os.environ.get("JOBTOMATIK_RUNTIME_MODE") != "android_managed":
+        return
+    evidence_type = str(target.target_evidence_type or "")
+    if evidence_type not in _ANDROID_TIMED_SHADOW_TARGETS:
+        return
+    if evidence_type != "shadow_run_4h":
+        raise ValueError(
+            "Android 8h/24h shadow evidence is intentionally locked until the 4h stage passes."
+        )
+
+    from app.services.runtime_acceptance import canary_receipt_status
+
+    # A canary is a point-in-time proof, not a day pass. Keep the Android 4h admission
+    # window tight so policy/capacity/quiet-hours state cannot drift far after the
+    # exact-runtime qualification succeeded.
+    admission = canary_receipt_status(int(target.user_id), max_age_seconds=15 * 60)
+    if not admission.get("ok"):
+        blockers = ",".join(admission.get("blockers") or []) or "qualification_receipt_invalid"
+        raise ValueError(
+            "Android shadow_run_4h requires a fresh exact-runtime application-path canary: "
+            + blockers
+        )
+    receipt = dict(admission.get("receipt") or {})
+    if receipt.get("type") != "shadow_qualification_canary":
+        raise ValueError("Android shadow_run_4h qualification receipt has the wrong type")
+    if receipt.get("certification_eligible") is not False:
+        raise ValueError("Shadow qualification canary must remain explicitly non-certifying")
+    if str(receipt.get("revision") or "") != str(target.candidate_revision or ""):
+        raise ValueError("Shadow qualification canary revision does not match the campaign revision")
+
+
+@event.listens_for(ShadowRunSession, "before_insert")
+def _require_shadow_admission_before_insert(_mapper, _connection, target: ShadowRunSession) -> None:
+    _require_android_shadow_admission(target)
 
 
 @event.listens_for(ShadowRunSession, "before_insert")

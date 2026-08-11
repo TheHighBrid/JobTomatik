@@ -1,0 +1,148 @@
+name: Android static frontend artifact
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "backend/scripts/build_frontend_artifact_manifest.py"
+      - "backend/scripts/install_android_static_frontend_artifact.py"
+      - "backend/scripts/serve_static_frontend.py"
+      - "backend/scripts/android_runtime_acceptance.py"
+      - "backend/scripts/run_shadow_qualification_canary.py"
+      - "backend/scripts/android_frontend_guard.sh"
+      - "backend/scripts/sanitize_android_runtime_pid_files.sh"
+      - "backend/scripts/manage_android_stack.sh"
+      - "backend/scripts/jobtomatik_termux_wrapper.sh"
+      - "backend/app/services/runtime_acceptance.py"
+      - "backend/app/services/shadow_qualification.py"
+      - "backend/app/models/certification.py"
+      - "backend/app/tasks/scraping.py"
+      - "backend/tests/test_android_static_frontend_runtime.py"
+      - "backend/tests/test_android_frontend_guard.py"
+      - "backend/tests/test_android_frontend_native_linker_stage.py"
+      - ".github/workflows/android-static-frontend-artifact.yml"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: android-static-frontend-artifact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-static-frontend:
+    name: build-static-frontend (linux-arm64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Compile and lint Runtime V2 entrypoints
+        run: |
+          python -m py_compile \
+            backend/scripts/build_frontend_artifact_manifest.py \
+            backend/scripts/install_android_static_frontend_artifact.py \
+            backend/scripts/serve_static_frontend.py \
+            backend/scripts/android_runtime_acceptance.py \
+            backend/scripts/run_shadow_qualification_canary.py \
+            backend/app/services/runtime_acceptance.py \
+            backend/app/services/shadow_qualification.py \
+            backend/app/models/certification.py \
+            backend/app/tasks/scraping.py
+          bash -n backend/scripts/android_frontend_guard.sh
+          bash -n backend/scripts/sanitize_android_runtime_pid_files.sh
+          bash -n backend/scripts/manage_android_stack.sh
+          bash -n backend/scripts/jobtomatik_termux_wrapper.sh
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Attest Linux ARM64 build executor
+        run: |
+          test "$(node -p 'process.platform')" = "linux"
+          test "$(node -p 'process.arch')" = "arm64"
+          echo "FRONTEND_BUILD_EXECUTOR=$(command -v node)"
+          echo "FRONTEND_BUILD_NODE=$(node --version)"
+          echo "FRONTEND_BUILD_NPM=$(npm --version)"
+          echo "FRONTEND_BUILD_REVISION=${GITHUB_SHA}"
+
+      - name: Install locked frontend dependencies
+        run: npm ci --prefix frontend --include=optional --no-audit --no-fund
+
+      - name: Run frontend tests
+        run: npm test --prefix frontend
+
+      - name: Build production frontend
+        env:
+          VITE_API_URL: http://127.0.0.1:8010
+        run: npm run build --prefix frontend
+
+      - name: Build SHA-bound artifact manifest
+        env:
+          VITE_API_URL: http://127.0.0.1:8010
+          JOBTOMATIK_FRONTEND_BUILD_PLATFORM: linux-arm64-ci
+        run: |
+          rm -rf build/jobtomatik-frontend-artifact
+          mkdir -p build/jobtomatik-frontend-artifact
+          cp -a frontend/dist build/jobtomatik-frontend-artifact/dist
+          python backend/scripts/build_frontend_artifact_manifest.py \
+            --dist build/jobtomatik-frontend-artifact/dist \
+            --revision "$GITHUB_SHA" \
+            --package-lock frontend/package-lock.json \
+            --output build/jobtomatik-frontend-artifact/jobtomatik-frontend-manifest.json
+
+      - name: Prove static SPA runtime including deep-route fallback
+        run: |
+          python backend/scripts/serve_static_frontend.py \
+            --root build/jobtomatik-frontend-artifact/dist \
+            --manifest build/jobtomatik-frontend-artifact/jobtomatik-frontend-manifest.json \
+            --revision "$GITHUB_SHA" \
+            --host 127.0.0.1 \
+            --port 3000 \
+            >/tmp/jobtomatik-static-frontend.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/ >/dev/null
+          curl -fsS http://127.0.0.1:3000/shadow-campaigns | grep -qi '<div id="root"'
+          curl -fsS http://127.0.0.1:3000/__jobtomatik_frontend_identity \
+            | python -c 'import json,sys; p=json.load(sys.stdin); assert p["runtime"] == "static_artifact"; assert p["revision"] == "'"$GITHUB_SHA"'"; assert p["final_submit_allowed"] is False; assert p["outreach_authorized"] is False'
+          kill "$server_pid"
+          wait "$server_pid" || true
+          trap - EXIT
+
+      - name: Upload immutable exact-revision frontend artifact
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: jobtomatik-frontend-dist-${{ github.sha }}
+          path: build/jobtomatik-frontend-artifact
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record GitHub artifact identity
+        run: |
+          echo "JOBTOMATIK_FRONTEND_ARTIFACT_ID=${{ steps.upload.outputs.artifact-id }}"
+          echo "JOBTOMATIK_FRONTEND_ARTIFACT_DIGEST=${{ steps.upload.outputs.artifact-digest }}"
+          echo "JOBTOMATIK_FRONTEND_ARTIFACT_REVISION=${GITHUB_SHA}"

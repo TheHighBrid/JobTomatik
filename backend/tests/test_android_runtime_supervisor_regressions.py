@@ -107,17 +107,19 @@ def test_sourced_bash_receives_manager_path_as_argv0(tmp_path):
     assert lines[2] == str(tmp_path / "backend")
 
 
-def test_android_wrapper_propagates_managed_runtime_mode_to_manager():
+def test_android_wrapper_propagates_managed_runtime_and_static_frontend_modes_to_manager():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
 
     foreground = (
-        "export JOBTOMATIK_RUNTIME_MODE=android_managed && "
+        "export JOBTOMATIK_RUNTIME_MODE=android_managed "
+        "JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && "
         "bash backend/scripts/manage_android_stack.sh '$action'"
     )
     detached = (
-        "export JOBTOMATIK_RUNTIME_MODE=android_managed && "
+        "export JOBTOMATIK_RUNTIME_MODE=android_managed "
+        "JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && "
         r"exec bash -c 'source \"\$0\" \"\$1\" && exec sleep infinity' "
         "backend/scripts/manage_android_stack.sh '$action'"
     )
