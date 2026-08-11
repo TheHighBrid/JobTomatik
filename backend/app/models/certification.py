@@ -157,7 +157,10 @@ def _require_android_shadow_admission(target: ShadowRunSession) -> None:
 
     from app.services.runtime_acceptance import canary_receipt_status
 
-    admission = canary_receipt_status(int(target.user_id), max_age_seconds=60 * 60)
+    # A canary is a point-in-time proof, not a day pass. Keep the Android 4h admission
+    # window tight so policy/capacity/quiet-hours state cannot drift far after the
+    # exact-runtime qualification succeeded.
+    admission = canary_receipt_status(int(target.user_id), max_age_seconds=15 * 60)
     if not admission.get("ok"):
         blockers = ",".join(admission.get("blockers") or []) or "qualification_receipt_invalid"
         raise ValueError(
