@@ -157,6 +157,7 @@ def _run_scheduler_cycle_for_user(
     user: User,
     *,
     shadow_session_id: int | None = None,
+    shadow_application_limit: int | None = None,
 ) -> dict[str, Any]:
     """Run one policy-bounded scheduler cycle for exactly one account.
 
@@ -169,6 +170,11 @@ def _run_scheduler_cycle_for_user(
     It never grants submission authority. A shadow cycle must independently prove the
     user's dry-run switch is on and global real submission is off before discovery,
     candidate ranking, application creation, or worker dispatch proceeds.
+
+    ``shadow_application_limit`` is accepted only for a correlated shadow session and
+    can reduce that one scheduler cycle to at most one application. It exists solely
+    so the non-certifying qualification canary can reuse this exact production path
+    without consuming the user's full daily limit or mutating persisted settings.
     """
     from app.models.application import (
         Application,
@@ -178,6 +184,9 @@ def _run_scheduler_cycle_for_user(
     )
     from app.tasks.applications import generate_cover_letter_task
     from app.tasks.unattended import submit_unattended_application_task
+
+    if shadow_application_limit is not None and shadow_session_id is None:
+        raise ValueError("shadow_application_limit requires a correlated shadow_session_id")
 
     auto_settings = scheduler_settings(user)
     search_enabled = bool(auto_settings.get("auto_search_enabled", False))
@@ -197,11 +206,10 @@ def _run_scheduler_cycle_for_user(
             "application_ids_queued": [],
             "blocked_job_reasons": {"shadow_safety_invariant_blocked": 1},
             "real_submission_enabled": bool(settings.allow_real_application_submit),
-            # Report the explicit user switch rather than effective dry-run fallback so
-            # the Phase 11 supervisor also detects a disabled dry-run policy.
             "dry_run": user_dry_run_mode,
             "user_dry_run_mode": user_dry_run_mode,
             "shadow_session_id": shadow_session_id,
+            "shadow_application_limit": shadow_application_limit,
         }
 
     if not search_enabled and not apply_enabled:
@@ -216,6 +224,7 @@ def _run_scheduler_cycle_for_user(
             "real_submission_enabled": settings.allow_real_application_submit,
             "dry_run": dry_run,
             "shadow_session_id": shadow_session_id,
+            "shadow_application_limit": shadow_application_limit,
         }
 
     decision = evaluate_autopilot_policy(db, user)
@@ -233,6 +242,7 @@ def _run_scheduler_cycle_for_user(
             "real_submission_enabled": settings.allow_real_application_submit,
             "dry_run": dry_run,
             "shadow_session_id": shadow_session_id,
+            "shadow_application_limit": shadow_application_limit,
         }
 
     result: dict[str, Any] = {
@@ -251,6 +261,7 @@ def _run_scheduler_cycle_for_user(
         "user_dry_run_mode": user_dry_run_mode,
         "dry_run": dry_run,
         "shadow_session_id": shadow_session_id,
+        "shadow_application_limit": shadow_application_limit,
     }
 
     if search_enabled and discovery_allowed:
@@ -283,6 +294,10 @@ def _run_scheduler_cycle_for_user(
     remaining_weekly = int(decision.metadata.get("remaining_weekly", 0))
     requested_limit = int(auto_settings.get("auto_apply_daily_limit", remaining_daily or 1))
     run_limit = max(0, min(requested_limit, remaining_daily, remaining_weekly))
+    if shadow_application_limit is not None:
+        bounded_shadow_limit = max(0, min(1, int(shadow_application_limit)))
+        run_limit = min(run_limit, bounded_shadow_limit)
+        result["shadow_application_limit"] = bounded_shadow_limit
     if run_limit == 0:
         result["reason"] = "application_cap_reached"
         return result
@@ -359,6 +374,7 @@ def _run_scheduler_cycle_for_user(
                     "source": source,
                     "dry_run": dry_run,
                     "shadow_session_id": shadow_session_id,
+                    "shadow_application_limit": shadow_application_limit,
                 },
             )
         )
