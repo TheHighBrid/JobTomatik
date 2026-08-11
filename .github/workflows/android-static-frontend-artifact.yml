@@ -147,8 +147,7 @@ jobs:
           echo "JOBTOMATIK_FRONTEND_ARTIFACT_DIGEST=${{ steps.upload.outputs.artifact-digest }}"
           echo "JOBTOMATIK_FRONTEND_ARTIFACT_REVISION=${GITHUB_SHA}"
 
-      - name: Publish tokenless Android runtime artifact branch
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Build tokenless Android runtime artifact branch
         env:
           ARTIFACT_BRANCH: android-static-frontend-runtime
         run: |
@@ -166,6 +165,17 @@ jobs:
           cp -a "$publish_dir/." .
           git add JOBTOMATIK_REVISION jobtomatik-frontend-manifest.json dist
           git commit -m "Publish Android static frontend ${GITHUB_SHA}"
-          git push --force origin "HEAD:refs/heads/${ARTIFACT_BRANCH}"
-          echo "JOBTOMATIK_FRONTEND_RUNTIME_BRANCH=${ARTIFACT_BRANCH}"
+
+          published_revision="$(cat JOBTOMATIK_REVISION)"
+          manifest_revision="$(python -c 'import json; print(json.load(open("jobtomatik-frontend-manifest.json"))["revision"])')"
+          test "$published_revision" = "$GITHUB_SHA"
+          test "$manifest_revision" = "$GITHUB_SHA"
+          test -f dist/index.html
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
+            git push --force origin "HEAD:refs/heads/${ARTIFACT_BRANCH}"
+            echo "JOBTOMATIK_FRONTEND_RUNTIME_BRANCH_PUBLISHED=${ARTIFACT_BRANCH}"
+          else
+            echo "JOBTOMATIK_FRONTEND_RUNTIME_BRANCH_DRY_RUN=${ARTIFACT_BRANCH}"
+          fi
           echo "JOBTOMATIK_FRONTEND_RUNTIME_REVISION=${GITHUB_SHA}"
