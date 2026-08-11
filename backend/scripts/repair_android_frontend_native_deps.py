@@ -22,6 +22,8 @@ FRONTEND_ROOT = REPO_ROOT / "frontend"
 LOCK_FILE = FRONTEND_ROOT / "package-lock.json"
 NODE_PLATFORM_OVERRIDE = "JOBTOMATIK_FRONTEND_NODE_PLATFORM"
 NODE_ARCH_OVERRIDE = "JOBTOMATIK_FRONTEND_NODE_ARCH"
+ANDROID_INTEGRITY_RECEIPT = ".jobtomatik-android-native-integrity.json"
+ANDROID_INTEGRITY_RECEIPT_VERSION = 1
 
 
 class FrontendNativeDependencyError(RuntimeError):
@@ -109,7 +111,8 @@ def _native_load_validation_mode(node_platform: str, node_arch: str) -> tuple[bo
     # Android native addons can abort the Node process before JavaScript can surface a
     # catchable exception. Never execute those binaries from the foreground repair
     # path because that path is invoked synchronously by the user's Termux terminal.
-    # The detached managed Vite process remains the runtime execution boundary.
+    # Android content is instead pinned to an SRI-verified package receipt; the first
+    # execution remains the detached managed Vite process.
     if str(node_platform).lower() == "android":
         return False, "deferred_android_managed_frontend"
     enabled = _can_execute_target(node_platform, node_arch)
@@ -216,6 +219,14 @@ def _integrity_matches(payload: bytes, integrity: str) -> bool:
     return False
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _native_binding_loads(binary: Path) -> bool:
     try:
         completed = subprocess.run(
@@ -237,6 +248,7 @@ def _healthy_package(
     expected_version: str,
     *,
     validate_native_load: bool,
+    expected_binary_sha256: str | None = None,
 ) -> bool:
     package_json = path / "package.json"
     if not path.is_dir() or not package_json.is_file() or not expected_version:
@@ -254,6 +266,8 @@ def _healthy_package(
     binary = path / spec.expected_binary
     try:
         if not binary.is_file() or binary.stat().st_size <= 0:
+            return False
+        if expected_binary_sha256 and _sha256_file(binary) != expected_binary_sha256:
             return False
     except OSError:
         return False
@@ -310,6 +324,75 @@ def _safe_extract_package(payload: bytes, destination: Path) -> None:
             os.chmod(target, member.mode & 0o777)
 
 
+def _android_receipt_path(frontend_root: Path) -> Path:
+    return frontend_root / "node_modules" / ANDROID_INTEGRITY_RECEIPT
+
+
+def _load_android_receipt(frontend_root: Path) -> dict[str, dict]:
+    path = _android_receipt_path(frontend_root)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict) or payload.get("version") != ANDROID_INTEGRITY_RECEIPT_VERSION:
+        return {}
+    entries = payload.get("entries")
+    return entries if isinstance(entries, dict) else {}
+
+
+def _receipt_hash_for_entry(
+    receipt_entries: dict[str, dict],
+    lock_key: str,
+    metadata: dict,
+    spec: NativePackageSpec,
+) -> str | None:
+    record = receipt_entries.get(lock_key)
+    if not isinstance(record, dict):
+        return None
+    expected_version = str(metadata.get("version") or "")
+    expected_integrity = str(metadata.get("integrity") or "")
+    if record.get("package") != spec.package_name:
+        return None
+    if record.get("version") != expected_version:
+        return None
+    if record.get("binary") != spec.expected_binary:
+        return None
+    if record.get("lock_integrity") != expected_integrity:
+        return None
+    digest = str(record.get("binary_sha256") or "")
+    return digest if len(digest) == 64 else None
+
+
+def _android_receipt_record(
+    destination: Path,
+    metadata: dict,
+    spec: NativePackageSpec,
+) -> dict:
+    binary = destination / spec.expected_binary
+    return {
+        "package": spec.package_name,
+        "version": str(metadata.get("version") or ""),
+        "binary": spec.expected_binary,
+        "lock_integrity": str(metadata.get("integrity") or ""),
+        "binary_sha256": _sha256_file(binary),
+    }
+
+
+def _write_android_receipt(frontend_root: Path, entries: dict[str, dict]) -> None:
+    destination = _android_receipt_path(frontend_root)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.tmp-{os.getpid()}")
+    payload = {
+        "version": ANDROID_INTEGRITY_RECEIPT_VERSION,
+        "entries": entries,
+    }
+    temporary.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, destination)
+
+
 def _repair_entry(
     frontend_root: Path,
     lock_key: str,
@@ -317,23 +400,33 @@ def _repair_entry(
     spec: NativePackageSpec,
     *,
     validate_native_load: bool,
-) -> str:
+    require_content_receipt: bool = False,
+    expected_binary_sha256: str | None = None,
+) -> tuple[str, dict | None]:
     destination = frontend_root / lock_key
     version = str(metadata.get("version") or "").strip()
     if not version:
         raise FrontendNativeDependencyError(
             f"Lockfile entry lacks a package version: {lock_key}"
         )
-    if _healthy_package(
+    content_receipt_ready = not require_content_receipt or bool(expected_binary_sha256)
+    if content_receipt_ready and _healthy_package(
         destination,
         spec,
         version,
         validate_native_load=validate_native_load,
+        expected_binary_sha256=expected_binary_sha256,
     ):
+        record = (
+            _android_receipt_record(destination, metadata, spec)
+            if require_content_receipt
+            else None
+        )
         return (
             "ANDROID_FRONTEND_NATIVE_DEP_READY "
             f"package={spec.package_name} path={lock_key} version={version} "
-            f"native={spec.expected_binary} source=existing_verified"
+            f"native={spec.expected_binary} source=existing_verified",
+            record,
         )
 
     resolved = str(metadata.get("resolved") or "")
@@ -388,10 +481,16 @@ def _repair_entry(
         if backup.exists():
             shutil.rmtree(backup)
 
+    record = (
+        _android_receipt_record(destination, metadata, spec)
+        if require_content_receipt
+        else None
+    )
     return (
         "ANDROID_FRONTEND_NATIVE_DEP_READY "
         f"package={spec.package_name} path={lock_key} version={version} "
-        f"native={spec.expected_binary} source=verified_lockfile_download"
+        f"native={spec.expected_binary} source=verified_lockfile_download",
+        record,
     )
 
 
@@ -404,6 +503,9 @@ def repair_frontend_native_dependencies(
     validate_native_load, native_load_validation = _native_load_validation_mode(
         node_platform, node_arch
     )
+    require_android_receipt = node_platform.lower() == "android"
+    receipt_entries = _load_android_receipt(frontend_root) if require_android_receipt else {}
+    next_receipt_entries: dict[str, dict] = {}
     try:
         lock = json.loads(lock_file.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -427,15 +529,30 @@ def repair_frontend_native_dependencies(
             raise FrontendNativeDependencyError(
                 f"Required native package is absent from package-lock.json: {spec.package_name}"
             )
-        messages.extend(
-            _repair_entry(
+        for lock_key, metadata in entries:
+            expected_binary_sha256 = (
+                _receipt_hash_for_entry(receipt_entries, lock_key, metadata, spec)
+                if require_android_receipt
+                else None
+            )
+            message, receipt_record = _repair_entry(
                 frontend_root,
                 lock_key,
                 metadata,
                 spec,
                 validate_native_load=validate_native_load,
+                require_content_receipt=require_android_receipt,
+                expected_binary_sha256=expected_binary_sha256,
             )
-            for lock_key, metadata in entries
+            messages.append(message)
+            if receipt_record is not None:
+                next_receipt_entries[lock_key] = receipt_record
+
+    if require_android_receipt:
+        _write_android_receipt(frontend_root, next_receipt_entries)
+        messages.append(
+            "ANDROID_FRONTEND_NATIVE_INTEGRITY_RECEIPT_READY "
+            f"path={_android_receipt_path(frontend_root)} entries={len(next_receipt_entries)}"
         )
 
     messages.append(
