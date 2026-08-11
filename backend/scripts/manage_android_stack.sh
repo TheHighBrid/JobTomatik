@@ -20,6 +20,7 @@ CELERY_LOG="$LOG_DIR/celery.log"
 BEAT_LOG="$LOG_DIR/celery-beat.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 FRONTEND_GUARD="$BACKEND_ROOT/scripts/android_frontend_guard.sh"
+STATIC_FRONTEND_SERVER="$BACKEND_ROOT/scripts/serve_static_frontend.py"
 ACTION="${1:-start}"
 ANDROID_REDIS_URL="${JOBTOMATIK_ANDROID_REDIS_URL:-redis://localhost:6379/1}"
 LEGACY_ANDROID_REDIS_URL="${JOBTOMATIK_LEGACY_ANDROID_REDIS_URL:-redis://localhost:6379/0}"
@@ -29,6 +30,10 @@ EXPECTED_RUNTIME_REVISION="${JOBTOMATIK_EXPECTED_REVISION:-$RUNTIME_REVISION}"
 EXPECTED_RUNTIME_REVISION="${EXPECTED_RUNTIME_REVISION,,}"
 RUNTIME_REVISION_SHORT="${RUNTIME_REVISION:0:12}"
 WORKER_NODE_PREFIX="jobtomatik-android-${RUNTIME_REVISION_SHORT}@"
+FRONTEND_RUNTIME_MODE="${JOBTOMATIK_FRONTEND_RUNTIME_MODE:-static_artifact}"
+FRONTEND_ARTIFACT_ROOT="${JOBTOMATIK_FRONTEND_ARTIFACT_ROOT:-$RUNTIME_DIR/frontend-artifacts/$RUNTIME_REVISION}"
+FRONTEND_DIST_ROOT="$FRONTEND_ARTIFACT_ROOT/dist"
+FRONTEND_MANIFEST="$FRONTEND_ARTIFACT_ROOT/jobtomatik-frontend-manifest.json"
 
 mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
 
@@ -47,6 +52,11 @@ if [[ ! "$EXPECTED_RUNTIME_REVISION" =~ ^[0-9a-f]{7,64}$ ]]; then
 fi
 if [[ "$EXPECTED_RUNTIME_REVISION" != "$RUNTIME_REVISION" ]]; then
   echo "JOBTOMATIK_EXPECTED_REVISION must equal the Android runtime revision." >&2
+  exit 2
+fi
+if [[ "$FRONTEND_RUNTIME_MODE" != "static_artifact" ]]; then
+  echo "Unsupported Android frontend runtime mode: $FRONTEND_RUNTIME_MODE" >&2
+  echo "Android Runtime Architecture V2 requires JOBTOMATIK_FRONTEND_RUNTIME_MODE=static_artifact." >&2
   exit 2
 fi
 
@@ -152,11 +162,36 @@ wait_http() {
 
 frontend_guard() {
   local mode="$1"
-  bash "$FRONTEND_GUARD" "$mode"
+  JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+  JOBTOMATIK_FRONTEND_ARTIFACT_ROOT="$FRONTEND_ARTIFACT_ROOT" \
+    bash "$FRONTEND_GUARD" "$mode"
 }
 
 frontend_managed_ready() {
   frontend_guard status >/dev/null 2>&1
+}
+
+frontend_artifact_ready() {
+  [[ -f "$FRONTEND_MANIFEST" ]] || return 1
+  [[ -f "$FRONTEND_DIST_ROOT/index.html" ]] || return 1
+  JOBTOMATIK_EXPECTED_FRONTEND_REVISION="$RUNTIME_REVISION" \
+  JOBTOMATIK_FRONTEND_MANIFEST="$FRONTEND_MANIFEST" \
+  "$VENV/bin/python" -c '
+import json
+import os
+from pathlib import Path
+
+manifest = json.loads(Path(os.environ["JOBTOMATIK_FRONTEND_MANIFEST"]).read_text(encoding="utf-8"))
+valid = (
+    manifest.get("version") == 1
+    and manifest.get("artifact_type") == "jobtomatik-static-frontend"
+    and manifest.get("revision") == os.environ["JOBTOMATIK_EXPECTED_FRONTEND_REVISION"]
+    and manifest.get("build_api_url") == "http://127.0.0.1:8010"
+    and bool(manifest.get("dist_tree_sha256"))
+    and bool(manifest.get("package_lock_sha256"))
+)
+raise SystemExit(0 if valid else 1)
+' >/dev/null 2>&1
 }
 
 configured_redis_url() {
@@ -512,42 +547,52 @@ start_beat() {
 }
 
 start_frontend() {
+  if ! frontend_artifact_ready; then
+    echo "Static frontend artifact is missing or does not attest revision $RUNTIME_REVISION." >&2
+    echo "Run the Termux wrapper so it can install the exact GitHub Actions artifact before stack start." >&2
+    return 1
+  fi
+
   if frontend_managed_ready; then
-    echo "FRONTEND: EXISTING_MANAGED_READY_PROCESS pid=$(pid_file_value "$FRONTEND_PID_FILE")"
+    echo "FRONTEND: EXISTING_STATIC_ATTESTED pid=$(pid_file_value "$FRONTEND_PID_FILE") revision=$RUNTIME_REVISION_SHORT"
     return 0
   fi
 
   if http_ready 'http://127.0.0.1:3000'; then
     echo "FRONTEND: UNMANAGED_OR_STALE_PROCESS_RETIRING"
     if ! frontend_guard reset; then
-      echo "Frontend port 3000 is occupied by a process that cannot be safely identified as JobTomatik Vite." >&2
+      echo "Frontend port 3000 is occupied by a process that cannot be safely identified as JobTomatik." >&2
       return 1
     fi
   fi
 
   stop_pid_file "$FRONTEND_PID_FILE"
   : > "$FRONTEND_LOG"
-  cd "$FRONTEND_ROOT"
+  cd "$FRONTEND_ARTIFACT_ROOT"
   nohup env \
-    VITE_API_URL=http://127.0.0.1:8010 \
-    VITE_DEV_PROXY_TARGET=http://127.0.0.1:8010 \
-    npm run dev -- --host 0.0.0.0 --port 3000 \
+    JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    "$VENV/bin/python" "$STATIC_FRONTEND_SERVER" \
+    --root "$FRONTEND_DIST_ROOT" \
+    --manifest "$FRONTEND_MANIFEST" \
+    --revision "$RUNTIME_REVISION" \
+    --host 127.0.0.1 \
+    --port 3000 \
     >"$FRONTEND_LOG" 2>&1 </dev/null &
   echo $! > "$FRONTEND_PID_FILE"
 
   if ! wait_http 'http://127.0.0.1:3000' 120; then
-    echo "Frontend failed to become ready." >&2
+    echo "Static frontend failed to become ready." >&2
     tail -n 100 "$FRONTEND_LOG" >&2 || true
     stop_pid_file "$FRONTEND_PID_FILE"
     return 1
   fi
   if ! frontend_managed_ready; then
-    echo "Frontend became reachable but failed manager-ownership verification." >&2
+    echo "Static frontend became reachable but failed exact artifact/process attestation." >&2
     tail -n 100 "$FRONTEND_LOG" >&2 || true
     stop_pid_file "$FRONTEND_PID_FILE"
     return 1
   fi
-  echo "FRONTEND: STARTED_MANAGED pid=$(pid_file_value "$FRONTEND_PID_FILE")"
+  echo "FRONTEND: STARTED_STATIC_ATTESTED pid=$(pid_file_value "$FRONTEND_PID_FILE") revision=$RUNTIME_REVISION_SHORT"
 }
 
 refresh_frontend_runtime() {
@@ -576,7 +621,7 @@ status_stack() {
   fi
 
   if frontend_managed_ready; then
-    echo "FRONTEND: READY_MANAGED pid=$(pid_file_value "$FRONTEND_PID_FILE")"
+    echo "FRONTEND: READY_STATIC_ATTESTED pid=$(pid_file_value "$FRONTEND_PID_FILE") revision=$RUNTIME_REVISION_SHORT"
     frontend_managed=1
   elif http_ready 'http://127.0.0.1:3000'; then
     echo "FRONTEND: READY_BUT_UNMANAGED_OR_STALE"
@@ -621,14 +666,16 @@ status_stack() {
   fi
 
   if [[ "$api_attested" -eq 1 && "$worker_attested" -eq 1 && "$beat_attested" -eq 1 && "$frontend_managed" -eq 1 ]]; then
-    echo "ANDROID_RUNTIME_ATTESTATION: READY runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION"
+    echo "ANDROID_RUNTIME_ATTESTATION: READY runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION frontend=static_artifact"
   else
-    echo "ANDROID_RUNTIME_ATTESTATION: FAILED runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION"
+    echo "ANDROID_RUNTIME_ATTESTATION: FAILED runtime=$RUNTIME_REVISION expected=$EXPECTED_RUNTIME_REVISION frontend=static_artifact"
     failed=1
   fi
 
   echo "ANDROID_RUNTIME_REVISION: $RUNTIME_REVISION"
   echo "ANDROID_EXPECTED_REVISION: $EXPECTED_RUNTIME_REVISION"
+  echo "ANDROID_FRONTEND_RUNTIME_MODE: $FRONTEND_RUNTIME_MODE"
+  echo "ANDROID_FRONTEND_ARTIFACT_ROOT: $FRONTEND_ARTIFACT_ROOT"
   echo "MANAGED_LOGS: $LOG_DIR"
   echo "CELERY_LOG: $CELERY_LOG"
   echo "CELERY_BEAT_LOG: $BEAT_LOG"
@@ -637,6 +684,11 @@ status_stack() {
 
 prepare_stack() {
   cd "$BACKEND_ROOT"
+
+  if ! frontend_artifact_ready; then
+    echo "ANDROID_STATIC_FRONTEND_ARTIFACT_MISSING revision=$RUNTIME_REVISION" >&2
+    return 1
+  fi
 
   set_env_value REDIS_URL "$ANDROID_REDIS_URL"
   set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
@@ -651,6 +703,8 @@ prepare_stack() {
   export JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION"
   export JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION"
   export JOBTOMATIK_RUNTIME_MODE='android_managed'
+  export JOBTOMATIK_FRONTEND_RUNTIME_MODE="$FRONTEND_RUNTIME_MODE"
+  export JOBTOMATIK_FRONTEND_ARTIFACT_ROOT="$FRONTEND_ARTIFACT_ROOT"
 
   require_runtime_attestation cli
 
