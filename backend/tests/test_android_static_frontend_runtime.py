@@ -127,6 +127,10 @@ def test_static_artifact_workflow_builds_every_main_revision_and_publishes_git_r
 
     assert "push:" in workflow
     assert "- main" in workflow
+    assert "contents: read" in workflow
+    assert "publish-static-runtime:" in workflow
+    assert "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" in workflow
+    assert "needs: build-static-frontend" in workflow
     assert "contents: write" in workflow
     assert "jobtomatik-frontend-dist-${{ github.sha }}" in workflow
     assert "npm ci --prefix frontend" in workflow
@@ -135,8 +139,6 @@ def test_static_artifact_workflow_builds_every_main_revision_and_publishes_git_r
     assert "android-static-frontend-runtime" in workflow
     assert "git checkout --orphan" in workflow
     assert "git push --force origin" in workflow
-    assert 'GITHUB_EVENT_NAME" == "push"' in workflow
-    assert 'GITHUB_REF" == "refs/heads/main"' in workflow
 
     assert '"fetch",' in installer
     assert '"archive",' in installer
