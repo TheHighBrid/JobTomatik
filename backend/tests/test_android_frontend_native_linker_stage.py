@@ -142,9 +142,9 @@ def test_corrupt_staged_binary_is_replaced_from_fresh_repaired_source(tmp_path):
     staged_package = destination.resolve(strict=True)
     (staged_package / binary).write_bytes(b"corrupt-but-nonempty")
 
-    # The repair script runs before the linker staging script in production. When it
-    # detects the receipt hash mismatch it atomically replaces the symlink with a fresh
-    # SRI-verified package under the checkout. Simulate that handoff here.
+    # Legacy compatibility only: if this quarantined bridge is ever invoked manually,
+    # it must retain its existing integrity behavior even though canonical Android V2
+    # startup no longer calls it.
     destination.unlink()
     _write_package(
         destination,
@@ -195,25 +195,27 @@ def test_unsafe_receipt_path_is_rejected(tmp_path):
         )
 
 
-def test_android_launcher_stages_native_packages_before_detached_vite():
+def test_android_launcher_quarantines_native_staging_from_canonical_runtime():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
-
-    ensure = wrapper.split("ensure_frontend_native_dependencies() {", 1)[1].split(
-        "\n}\n\nsupervisor_identity_matches()",
-        1,
-    )[0]
-    assert "repair_android_frontend_native_deps.py" in ensure
-    assert "stage_android_frontend_native_bindings.py" in ensure
-    assert ensure.index("repair_android_frontend_native_deps.py") < ensure.index(
-        "stage_android_frontend_native_bindings.py"
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
     )
-    assert "node -e" not in ensure
-    assert "require('lightningcss')" not in ensure
+
+    # The bridge remains unit-tested for rollback/forensics, but Architecture V2 must
+    # never call it from normal start/restart/update/qualify execution.
+    assert "repair_android_frontend_native_deps.py" not in wrapper
+    assert "stage_android_frontend_native_bindings.py" not in wrapper
+    assert "ensure_frontend_native_dependencies" not in wrapper
+    assert "npm run dev" not in wrapper
+    assert "npm run dev" not in manager
+    assert "install_android_static_frontend_artifact.py" in wrapper
+    assert "serve_static_frontend.py" in manager
 
     activate = wrapper.split("activate_stack() {", 1)[1].split("\n}", 1)[0]
-    stage_index = activate.index("ensure_frontend_native_dependencies")
+    artifact_index = activate.index("ensure_static_frontend_artifact")
     browser_index = activate.index('"$BROWSER_COMMAND" start')
     detached_index = activate.index('start_stack_detached "$action"')
-    assert stage_index < browser_index < detached_index
+    acceptance_index = activate.index("run_runtime_acceptance")
+    assert artifact_index < browser_index < detached_index < acceptance_index
