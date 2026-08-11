@@ -139,7 +139,7 @@ jobs:
           JOBTOMATIK_FRONTEND_NODE_ARCH: arm64
         run: |
           python backend/scripts/repair_android_frontend_native_deps.py | tee /tmp/android-native-repair.log
-          grep -Fq 'ANDROID_FRONTEND_NODE_TARGET platform=android arch=arm64 native_load_validation=cross_target_skipped packages=lightningcss-android-arm64,@rolldown/binding-android-arm64,@tailwindcss/oxide-android-arm64' /tmp/android-native-repair.log
+          grep -Fq 'ANDROID_FRONTEND_NODE_TARGET platform=android arch=arm64 native_load_validation=deferred_android_managed_frontend packages=lightningcss-android-arm64,@rolldown/binding-android-arm64,@tailwindcss/oxide-android-arm64' /tmp/android-native-repair.log
 
       - name: Verify every locked Android package matches version and exact native binary
         run: |
