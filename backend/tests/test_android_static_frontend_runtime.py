@@ -49,8 +49,43 @@ def test_static_frontend_installer_rejects_revision_drift(tmp_path):
             manifest_path=manifest_path,
             dist=dist,
             revision="c" * 40,
-            package_lock=lock,
+            package_lock_sha256=static_installer.sha256_file(lock),
         )
+
+
+def test_static_frontend_verification_uses_committed_lock_digest_not_dirty_worktree(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
+
+    committed_lock = tmp_path / "committed-package-lock.json"
+    committed_lock.write_text('{"lockfileVersion":3,"packages":{}}', encoding="utf-8")
+    dirty_worktree_lock = tmp_path / "dirty-package-lock.json"
+    dirty_worktree_lock.write_text(
+        '{"lockfileVersion":3,"packages":{"node_modules/old-android-repair":{}}}',
+        encoding="utf-8",
+    )
+    revision = "9" * 40
+    manifest = build_manifest(dist=dist, revision=revision, package_lock=committed_lock)
+    manifest_path = tmp_path / "jobtomatik-frontend-manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert static_installer.sha256_file(committed_lock) != static_installer.sha256_file(
+        dirty_worktree_lock
+    )
+    verified = _verify_payload(
+        manifest_path=manifest_path,
+        dist=dist,
+        revision=revision,
+        package_lock_sha256=static_installer.sha256_file(committed_lock),
+    )
+
+    assert verified["package_lock_sha256"] == static_installer.sha256_file(committed_lock)
+    installer_source = (
+        BACKEND_ROOT / "scripts/install_android_static_frontend_artifact.py"
+    ).read_text(encoding="utf-8")
+    assert "_git_blob_sha256(revision, PACKAGE_LOCK_GIT_PATH)" in installer_source
+    assert 'REPO_ROOT / "frontend" / "package-lock.json"' not in installer_source
 
 
 def test_published_ref_requires_exact_marker_and_manifest_revision(monkeypatch):
