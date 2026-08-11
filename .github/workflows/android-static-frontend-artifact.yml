@@ -7,10 +7,19 @@ on:
       - "backend/scripts/build_frontend_artifact_manifest.py"
       - "backend/scripts/install_android_static_frontend_artifact.py"
       - "backend/scripts/serve_static_frontend.py"
+      - "backend/scripts/android_runtime_acceptance.py"
+      - "backend/scripts/run_shadow_qualification_canary.py"
       - "backend/scripts/android_frontend_guard.sh"
+      - "backend/scripts/sanitize_android_runtime_pid_files.sh"
       - "backend/scripts/manage_android_stack.sh"
       - "backend/scripts/jobtomatik_termux_wrapper.sh"
+      - "backend/app/services/runtime_acceptance.py"
+      - "backend/app/services/shadow_qualification.py"
+      - "backend/app/models/certification.py"
+      - "backend/app/tasks/scraping.py"
       - "backend/tests/test_android_static_frontend_runtime.py"
+      - "backend/tests/test_android_frontend_guard.py"
+      - "backend/tests/test_android_frontend_native_linker_stage.py"
       - ".github/workflows/android-static-frontend-artifact.yml"
   push:
     branches:
@@ -39,6 +48,23 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+
+      - name: Compile and lint Runtime V2 entrypoints
+        run: |
+          python -m py_compile \
+            backend/scripts/build_frontend_artifact_manifest.py \
+            backend/scripts/install_android_static_frontend_artifact.py \
+            backend/scripts/serve_static_frontend.py \
+            backend/scripts/android_runtime_acceptance.py \
+            backend/scripts/run_shadow_qualification_canary.py \
+            backend/app/services/runtime_acceptance.py \
+            backend/app/services/shadow_qualification.py \
+            backend/app/models/certification.py \
+            backend/app/tasks/scraping.py
+          bash -n backend/scripts/android_frontend_guard.sh
+          bash -n backend/scripts/sanitize_android_runtime_pid_files.sh
+          bash -n backend/scripts/manage_android_stack.sh
+          bash -n backend/scripts/jobtomatik_termux_wrapper.sh
 
       - name: Set up Node
         uses: actions/setup-node@v6
