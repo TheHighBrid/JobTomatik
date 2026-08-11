@@ -112,7 +112,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     env:
-      JOBTOMATIK_ANDROID_NATIVE_STAGE_ROOT: ${{ runner.temp }}/jobtomatik-android-native-stage
+      JOBTOMATIK_ANDROID_NATIVE_STAGE_ROOT: /tmp/jobtomatik-android-native-stage
 
     steps:
       - name: Check out repository
