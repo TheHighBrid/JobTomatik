@@ -5,8 +5,8 @@ Runtime delivery deliberately uses the repository's public Git transport rather 
 GitHub Actions' archive-download API. CI publishes only the generated ``dist/`` plus
 its SHA-bound manifest to a dedicated branch. The Android device fetches that branch,
 requires its revision marker to equal the checked-out ``main`` commit, archives the
-Git objects locally, and verifies the lockfile + dist-tree hashes before installation.
-No GitHub API token and no device-side Node/Vite build are required.
+Git objects locally, and verifies the committed lockfile + dist-tree hashes before
+installation. No GitHub API token and no device-side Node/Vite build are required.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ DEFAULT_RUNTIME_DIR = BACKEND_ROOT / ".runtime"
 DEFAULT_ARTIFACT_BRANCH = "android-static-frontend-runtime"
 MANIFEST_NAME = "jobtomatik-frontend-manifest.json"
 REVISION_MARKER = "JOBTOMATIK_REVISION"
+PACKAGE_LOCK_GIT_PATH = "frontend/package-lock.json"
 
 
 def sha256_file(path: Path) -> str:
@@ -61,6 +62,23 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
     )
+
+
+def _git_blob_sha256(ref: str, path: str) -> str:
+    """Hash the immutable Git blob, never a possibly dirty working-tree file."""
+    result = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "show", f"{ref}:{path}"],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or b"git show failed").decode(
+            "utf-8", errors="replace"
+        ).strip()
+        raise RuntimeError(
+            f"Unable to read committed frontend lockfile at {ref}:{path}: {detail[:1200]}"
+        )
+    return hashlib.sha256(result.stdout).hexdigest()
 
 
 def current_revision() -> str:
@@ -165,7 +183,7 @@ def _verify_payload(
     manifest_path: Path,
     dist: Path,
     revision: str,
-    package_lock: Path,
+    package_lock_sha256: str,
 ) -> dict:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("version") != 1:
@@ -174,8 +192,8 @@ def _verify_payload(
         raise RuntimeError("Unexpected frontend artifact type")
     if str(manifest.get("revision") or "").lower() != revision:
         raise RuntimeError("Frontend artifact manifest revision does not match checkout")
-    if manifest.get("package_lock_sha256") != sha256_file(package_lock):
-        raise RuntimeError("Frontend artifact package-lock digest does not match checkout")
+    if manifest.get("package_lock_sha256") != package_lock_sha256:
+        raise RuntimeError("Frontend artifact package-lock digest does not match committed revision")
     dist_digest = sha256_tree(dist)
     if manifest.get("dist_tree_sha256") != dist_digest:
         raise RuntimeError("Frontend artifact dist tree digest verification failed")
@@ -184,7 +202,9 @@ def _verify_payload(
     return manifest
 
 
-def _verify_existing(destination: Path, revision: str, package_lock: Path) -> dict | None:
+def _verify_existing(
+    destination: Path, revision: str, package_lock_sha256: str
+) -> dict | None:
     manifest_path = destination / MANIFEST_NAME
     dist = destination / "dist"
     if not manifest_path.is_file() or not dist.is_dir():
@@ -194,7 +214,7 @@ def _verify_existing(destination: Path, revision: str, package_lock: Path) -> di
             manifest_path=manifest_path,
             dist=dist,
             revision=revision,
-            package_lock=package_lock,
+            package_lock_sha256=package_lock_sha256,
         )
     except Exception:
         return None
@@ -215,13 +235,18 @@ def _prune_artifacts(artifact_root: Path, keep_revision: str, keep: int = 3) -> 
 
 
 def install(*, artifact_branch: str, runtime_dir: Path, revision: str, wait_seconds: int) -> dict:
-    package_lock = REPO_ROOT / "frontend" / "package-lock.json"
+    # The artifact was built from the immutable Git revision, so that same Git object
+    # is the verification authority. Local npm repair experiments may leave package
+    # files dirty on a device, but they must neither redefine nor veto a SHA-bound
+    # certification artifact.
+    package_lock_sha256 = _git_blob_sha256(revision, PACKAGE_LOCK_GIT_PATH)
+    package_lock_source = f"{revision}:{PACKAGE_LOCK_GIT_PATH}"
     artifact_root = runtime_dir / "frontend-artifacts"
     artifact_root.mkdir(parents=True, exist_ok=True)
     destination = artifact_root / revision
     receipt_path = runtime_dir / "frontend-artifact-receipt.json"
 
-    existing = _verify_existing(destination, revision, package_lock)
+    existing = _verify_existing(destination, revision, package_lock_sha256)
     if existing is not None:
         receipt = {
             "version": 1,
@@ -231,6 +256,7 @@ def install(*, artifact_branch: str, runtime_dir: Path, revision: str, wait_seco
             "artifact_branch": artifact_branch,
             "published_commit": None,
             "package_lock_sha256": existing["package_lock_sha256"],
+            "package_lock_source": package_lock_source,
             "dist_tree_sha256": existing["dist_tree_sha256"],
             "artifact_root": str(destination),
             "installed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -252,7 +278,7 @@ def install(*, artifact_branch: str, runtime_dir: Path, revision: str, wait_seco
             manifest_path=manifest_path,
             dist=dist,
             revision=revision,
-            package_lock=package_lock,
+            package_lock_sha256=package_lock_sha256,
         )
 
         staged = artifact_root / f".{revision}.installing"
@@ -272,6 +298,7 @@ def install(*, artifact_branch: str, runtime_dir: Path, revision: str, wait_seco
         "published_commit": published_commit,
         "archive_sha256": archive_digest,
         "package_lock_sha256": manifest["package_lock_sha256"],
+        "package_lock_source": package_lock_source,
         "dist_tree_sha256": manifest["dist_tree_sha256"],
         "artifact_root": str(destination),
         "installed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
