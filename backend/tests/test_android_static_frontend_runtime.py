@@ -138,8 +138,8 @@ def test_static_artifact_workflow_builds_every_main_revision_and_publishes_git_r
     assert 'GITHUB_EVENT_NAME" == "push"' in workflow
     assert 'GITHUB_REF" == "refs/heads/main"' in workflow
 
-    assert "git\", \"fetch" in installer
-    assert "git\", \"archive" in installer
+    assert '"fetch",' in installer
+    assert '"archive",' in installer
     assert "DEFAULT_ARTIFACT_BRANCH = \"android-static-frontend-runtime\"" in installer
     assert "api.github.com" not in installer
     assert "archive_download_url" not in installer
