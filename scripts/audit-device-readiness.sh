@@ -56,15 +56,22 @@ case "$profile" in
   termux_arm64)
     cat <<'EOF'
 recommended_runtime=Termux-native Chromium plus the Ubuntu/proot API-worker stack
-recommended_gate=bash backend/scripts/android_frontend_guard.sh check
+recommended_gate=bash backend/scripts/android_frontend_guard.sh status
 defer=Playwright-managed Chromium, Docker Compose, and Gradle APK builds
 EOF
     ;;
-  ubuntu_proot_arm64|linux_arm64)
+  ubuntu_proot_arm64)
     cat <<'EOF'
 recommended_runtime=SQLite, Redis, API, worker, Beat, Vite, and external Termux Chromium CDP
-recommended_gate=python -m pytest -q tests/test_android_runtime_scripts.py tests/test_external_cdp_runtime.py tests/test_campaign_day_gates.py
+recommended_gate=(cd backend && python -m pytest -q tests/test_android_runtime_scripts.py tests/test_external_cdp_runtime.py tests/test_campaign_day_gates.py)
 defer=Docker Compose and on-device Gradle unless their toolchains are explicitly installed
+EOF
+    ;;
+  linux_arm64)
+    cat <<EOF
+recommended_runtime=canonical Linux ARM64 development and verification stack
+recommended_gate=bash scripts/verify.sh fast
+defer=$(if [[ "$docker_state" == available && "$java_state" == available ]]; then printf '%s' 'none; capable host may run deployment and Android lanes'; else printf '%s' 'only unavailable Docker/Android lanes; delegate those to capable CI'; fi)
 EOF
     ;;
   *)
