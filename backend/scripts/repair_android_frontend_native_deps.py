@@ -105,6 +105,17 @@ def _can_execute_target(node_platform: str, node_arch: str) -> bool:
     )
 
 
+def _native_load_validation_mode(node_platform: str, node_arch: str) -> tuple[bool, str]:
+    # Android native addons can abort the Node process before JavaScript can surface a
+    # catchable exception. Never execute those binaries from the foreground repair
+    # path because that path is invoked synchronously by the user's Termux terminal.
+    # The detached managed Vite process remains the runtime execution boundary.
+    if str(node_platform).lower() == "android":
+        return False, "deferred_android_managed_frontend"
+    enabled = _can_execute_target(node_platform, node_arch)
+    return enabled, "enabled" if enabled else "cross_target_skipped"
+
+
 def _lightningcss_package_name(
     node_platform: str | None = None,
     node_arch: str | None = None,
@@ -390,7 +401,9 @@ def repair_frontend_native_dependencies(
 ) -> list[str]:
     node_platform, node_arch = _node_runtime()
     specs = _native_package_specs(node_platform, node_arch)
-    validate_native_load = _can_execute_target(node_platform, node_arch)
+    validate_native_load, native_load_validation = _native_load_validation_mode(
+        node_platform, node_arch
+    )
     try:
         lock = json.loads(lock_file.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -428,7 +441,7 @@ def repair_frontend_native_dependencies(
     messages.append(
         "ANDROID_FRONTEND_NODE_TARGET "
         f"platform={node_platform} arch={node_arch} "
-        f"native_load_validation={'enabled' if validate_native_load else 'cross_target_skipped'} "
+        f"native_load_validation={native_load_validation} "
         f"packages={','.join(spec.package_name for spec in specs)}"
     )
     return messages
