@@ -30,12 +30,12 @@ run_stack_foreground() {
 run_frontend_guard() {
   local action="$1"
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "cd '$PROOT_REPO' && export JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/android_frontend_guard.sh '$action'"
+    "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/android_frontend_guard.sh '$action'"
 }
 
 sanitize_runtime_pid_files() {
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "cd '$PROOT_REPO' && export JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/sanitize_android_runtime_pid_files.sh"
+    "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/sanitize_android_runtime_pid_files.sh"
 }
 
 ensure_static_frontend_artifact() {
@@ -45,7 +45,26 @@ ensure_static_frontend_artifact() {
   # only an artifact whose workflow head SHA, package-lock hash, archive digest, and
   # internal dist-tree hash all match this checkout.
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/install_android_static_frontend_artifact.py"
+    "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/install_android_static_frontend_artifact.py"
+}
+
+run_runtime_acceptance() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/android_runtime_acceptance.py"
+}
+
+run_shadow_qualification() {
+  local user_id="${JOBTOMATIK_SHADOW_CANARY_USER_ID:-}"
+  local user_arg=""
+  if [[ -n "$user_id" ]]; then
+    if [[ ! "$user_id" =~ ^[0-9]+$ ]] || [[ "$user_id" -le 0 ]]; then
+      echo "JOBTOMATIK_SHADOW_CANARY_USER_ID must be a positive integer." >&2
+      return 2
+    fi
+    user_arg="--user-id $user_id"
+  fi
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/run_shadow_qualification_canary.py $user_arg"
 }
 
 supervisor_identity_matches() {
@@ -164,6 +183,7 @@ activate_stack() {
   # Chromium remains outside PRoot and is crossed only through the localhost CDP
   # protocol boundary.
   start_stack_detached "$action"
+  run_runtime_acceptance
 }
 
 case "$ACTION" in
@@ -181,6 +201,19 @@ case "$ACTION" in
     run_stack_foreground status
     run_frontend_guard status
     ;;
+  acceptance)
+    "$BROWSER_COMMAND" status
+    run_stack_foreground status
+    run_frontend_guard status
+    run_runtime_acceptance
+    ;;
+  qualify)
+    "$BROWSER_COMMAND" status
+    run_stack_foreground status
+    run_frontend_guard status
+    run_runtime_acceptance
+    run_shadow_qualification
+    ;;
   stop)
     stop_stack_supervisor
     "$BROWSER_COMMAND" stop
@@ -196,7 +229,7 @@ case "$ACTION" in
     exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart
     ;;
   *)
-    echo "Usage: jobtomatik [start|restart|status|stop|update]" >&2
+    echo "Usage: jobtomatik [start|restart|status|acceptance|qualify|stop|update]" >&2
     exit 2
     ;;
 esac
