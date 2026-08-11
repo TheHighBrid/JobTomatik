@@ -261,6 +261,23 @@ def _link_package(destination: Path, staged_package: Path) -> None:
         _remove_path(backup)
 
 
+def _prune_stage_root(stage_root: Path, active_containers: set[Path]) -> int:
+    if not stage_root.is_dir():
+        return 0
+    active = {path.resolve() for path in active_containers}
+    removed = 0
+    for child in list(stage_root.iterdir()):
+        try:
+            child_real = child.resolve()
+        except OSError:
+            child_real = child.absolute()
+        if child_real in active:
+            continue
+        _remove_path(child)
+        removed += 1
+    return removed
+
+
 def stage_android_native_bindings(
     frontend_root: Path = FRONTEND_ROOT,
     stage_root: Path | None = None,
@@ -278,6 +295,7 @@ def stage_android_native_bindings(
 
     entries = _load_receipt(frontend_root)
     messages: list[str] = []
+    active_containers: set[Path] = set()
     for lock_key, raw_record in sorted(entries.items()):
         if not isinstance(raw_record, dict):
             raise AndroidNativeStageError(
@@ -297,6 +315,7 @@ def stage_android_native_bindings(
             lock_integrity=lock_integrity,
             binary_sha256=binary_sha256,
         )
+        active_containers.add(staged_package.parent.resolve(strict=True))
         _link_package(destination, staged_package)
         resolved = destination.resolve(strict=True)
         try:
@@ -311,6 +330,11 @@ def stage_android_native_bindings(
             f"native={binary} runtime_path={resolved} sha256={binary_sha256}"
         )
 
+    pruned = _prune_stage_root(selected_stage_root, active_containers)
+    messages.append(
+        "ANDROID_FRONTEND_NATIVE_LINKER_STAGE_PRUNED "
+        f"path={selected_stage_root} removed={pruned}"
+    )
     messages.append(
         "ANDROID_FRONTEND_NATIVE_LINKER_STAGE_ROOT_READY "
         f"path={selected_stage_root} entries={len(entries)}"
