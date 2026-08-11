@@ -39,11 +39,13 @@ sanitize_runtime_pid_files() {
 
 ensure_frontend_native_dependencies() {
   # Never dlopen Android native addons from this foreground, terminal-attached path.
-  # The repair step verifies the exact lockfile package/version/binary and SRI for any
-  # downloaded replacement. The first native execution happens only after the stack
-  # manager is detached, when Vite starts under managed ownership and logs failures.
+  # First repair the exact lockfile package/version/binary and SRI-backed content.
+  # Then stage those verified optional native package directories under Termux's real
+  # /data prefix and replace the PRoot node_modules package paths with symlinks. The
+  # Android linker therefore sees an allowed /data/... realpath when detached Vite
+  # performs the first native load.
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO'; backend/.venv/bin/python backend/scripts/repair_android_frontend_native_deps.py; echo 'ANDROID_FRONTEND_NATIVE_REPAIR_READY'"
+    "set -e; cd '$PROOT_REPO'; backend/.venv/bin/python backend/scripts/repair_android_frontend_native_deps.py; backend/.venv/bin/python backend/scripts/stage_android_frontend_native_bindings.py; echo 'ANDROID_FRONTEND_NATIVE_REPAIR_READY'"
 }
 
 supervisor_identity_matches() {
@@ -160,9 +162,9 @@ update_main() {
 activate_stack() {
   local action="$1"
   sanitize_runtime_pid_files
-  # Repair the complete platform-native frontend toolchain declared by the exact
-  # lockfile. Android native addon execution is deliberately deferred until the
-  # detached manager launches Vite, so a native crash cannot take down the terminal.
+  # Repair the complete platform-native frontend toolchain, then stage Android native
+  # packages under the linker-permitted Termux /data prefix before detached Vite starts.
+  # No native addon is executed from this terminal-attached path.
   ensure_frontend_native_dependencies
   "$BROWSER_COMMAND" start
   # The PRoot manager owns API, worker, frontend, stale-attempt recovery, queue-canary
