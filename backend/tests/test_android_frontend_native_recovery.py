@@ -489,27 +489,26 @@ def test_repair_rejects_payload_that_does_not_match_lockfile_integrity(
         )
 
 
-def test_android_launcher_repairs_without_foreground_native_smoke_test():
+def test_android_launcher_quarantines_native_repair_from_canonical_runtime():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
 
-    assert "ensure_frontend_native_dependencies()" in wrapper
-    assert "repair_android_frontend_native_deps.py" in wrapper
-    ensure = wrapper.split("ensure_frontend_native_dependencies() {", 1)[1].split(
-        "\n}", 1
-    )[0]
-    assert "node -e" not in ensure
-    assert "require('lightningcss')" not in ensure
-    assert "require('rolldown')" not in ensure
-    assert "require('@tailwindcss/oxide')" not in ensure
-    assert "ANDROID_FRONTEND_NATIVE_REPAIR_READY" in ensure
+    assert "ensure_frontend_native_dependencies()" not in wrapper
+    assert "repair_android_frontend_native_deps.py" not in wrapper
+    assert "stage_android_frontend_native_bindings.py" not in wrapper
+    assert "install_android_static_frontend_artifact.py" in wrapper
+    assert "node -e" not in wrapper
+    assert "require('lightningcss')" not in wrapper
+    assert "require('rolldown')" not in wrapper
+    assert "require('@tailwindcss/oxide')" not in wrapper
 
     activate = wrapper.split("activate_stack() {", 1)[1].split("\n}", 1)[0]
-    repair_index = activate.index("ensure_frontend_native_dependencies")
+    artifact_index = activate.index("ensure_static_frontend_artifact")
     browser_index = activate.index('"$BROWSER_COMMAND" start')
     stack_index = activate.index('start_stack_detached "$action"')
-    assert repair_index < browser_index < stack_index
+    acceptance_index = activate.index("run_runtime_acceptance")
+    assert artifact_index < browser_index < stack_index < acceptance_index
 
 
 def test_android_launcher_rejects_false_ready_and_retires_supervisor():
