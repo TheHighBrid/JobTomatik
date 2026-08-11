@@ -17,6 +17,9 @@ ANDROID_NATIVE_STAGE_ROOT_ENV = "JOBTOMATIK_ANDROID_NATIVE_STAGE_ROOT"
 DEFAULT_ANDROID_NATIVE_STAGE_ROOT = Path(
     "/data/data/com.termux/files/usr/var/lib/jobtomatik/frontend-native"
 )
+ANDROID_NATIVE_STAGE_OWNER = ".jobtomatik-native-stage-owner.json"
+ANDROID_NATIVE_STAGE_OWNER_VERSION = 1
+ANDROID_NATIVE_STAGE_OWNER_NAME = "jobtomatik-android-frontend-native-stage"
 
 
 class AndroidNativeStageError(RuntimeError):
@@ -67,6 +70,53 @@ def _stage_root() -> Path:
             f"Default Android native stage root must remain under /data: {root}"
         )
     return root
+
+
+def _stage_owner_path(stage_root: Path) -> Path:
+    return stage_root / ANDROID_NATIVE_STAGE_OWNER
+
+
+def _stage_owner_payload() -> dict[str, object]:
+    return {
+        "version": ANDROID_NATIVE_STAGE_OWNER_VERSION,
+        "owner": ANDROID_NATIVE_STAGE_OWNER_NAME,
+    }
+
+
+def _stage_root_is_owned(stage_root: Path) -> bool:
+    marker = _stage_owner_path(stage_root)
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    return payload == _stage_owner_payload()
+
+
+def _ensure_owned_stage_root(stage_root: Path) -> None:
+    if os.path.lexists(stage_root) and not stage_root.is_dir():
+        raise AndroidNativeStageError(
+            f"Android native stage root is not a directory: {stage_root}"
+        )
+    if stage_root.is_dir() and _stage_root_is_owned(stage_root):
+        return
+    if stage_root.is_dir() and any(stage_root.iterdir()):
+        raise AndroidNativeStageError(
+            "Refusing to claim a non-empty Android native stage root without the "
+            f"JobTomatik ownership marker: {stage_root}"
+        )
+
+    stage_root.mkdir(parents=True, exist_ok=True)
+    marker = _stage_owner_path(stage_root)
+    temporary = marker.with_name(f".{marker.name}.tmp-{os.getpid()}")
+    temporary.write_text(
+        json.dumps(_stage_owner_payload(), sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, marker)
+    if not _stage_root_is_owned(stage_root):
+        raise AndroidNativeStageError(
+            f"Unable to establish Android native stage ownership: {stage_root}"
+        )
 
 
 def _safe_lock_destination(frontend_root: Path, lock_key: str) -> Path:
@@ -182,7 +232,6 @@ def _ensure_staged_package(
             f"Source Android native package does not match its SRI-backed receipt: {lock_key}"
         )
 
-    stage_root.mkdir(parents=True, exist_ok=True)
     container = stage_root / _stage_container_name(
         lock_key,
         package,
@@ -262,11 +311,16 @@ def _link_package(destination: Path, staged_package: Path) -> None:
 
 
 def _prune_stage_root(stage_root: Path, active_containers: set[Path]) -> int:
-    if not stage_root.is_dir():
-        return 0
+    if not _stage_root_is_owned(stage_root):
+        raise AndroidNativeStageError(
+            f"Refusing to prune unowned Android native stage root: {stage_root}"
+        )
     active = {path.resolve() for path in active_containers}
+    owner_marker = _stage_owner_path(stage_root)
     removed = 0
     for child in list(stage_root.iterdir()):
+        if child == owner_marker:
+            continue
         try:
             child_real = child.resolve()
         except OSError:
@@ -293,6 +347,7 @@ def stage_android_native_bindings(
             "Android native stage root must be outside the frontend checkout"
         )
 
+    _ensure_owned_stage_root(selected_stage_root)
     entries = _load_receipt(frontend_root)
     messages: list[str] = []
     active_containers: set[Path] = set()
