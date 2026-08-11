@@ -71,6 +71,33 @@ def _fake_vite_proc_entry(proc_root: Path, pid: int, frontend_root: Path) -> Non
     (entry / "cwd").symlink_to(frontend_root)
 
 
+def _fake_static_proc_entry(
+    proc_root: Path,
+    pid: int,
+    *,
+    python_path: Path,
+    artifact_root: Path,
+    revision: str,
+) -> None:
+    entry = proc_root / str(pid)
+    entry.mkdir(parents=True)
+    cmdline = [
+        str(python_path),
+        str(STATIC_SERVER),
+        "--root",
+        str(artifact_root / "dist"),
+        "--manifest",
+        str(artifact_root / "jobtomatik-frontend-manifest.json"),
+        "--revision",
+        revision,
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "3000",
+    ]
+    (entry / "cmdline").write_bytes(b"\0".join(part.encode("utf-8") for part in cmdline) + b"\0")
+
+
 def _static_artifact(tmp_path: Path, revision: str) -> tuple[Path, Path, Path]:
     artifact_root = tmp_path / "artifact"
     dist = artifact_root / "dist"
@@ -196,15 +223,18 @@ def test_guard_refuses_to_kill_unrelated_service_on_frontend_port(tmp_path):
 def test_guard_status_requires_exact_static_process_and_artifact_identity(tmp_path):
     frontend_root = tmp_path / "frontend"
     frontend_root.mkdir()
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
     port = _free_port()
     revision = "b" * 40
     artifact_root, dist, manifest = _static_artifact(tmp_path, revision)
     runtime_dir = tmp_path / "runtime"
     runtime_dir.mkdir(exist_ok=True)
+    python_path = Path(sys.executable).resolve()
 
     process = subprocess.Popen(
         [
-            sys.executable,
+            str(python_path),
             str(STATIC_SERVER),
             "--root",
             str(dist),
@@ -222,13 +252,20 @@ def test_guard_status_requires_exact_static_process_and_artifact_identity(tmp_pa
     )
     try:
         _wait_http(f"http://127.0.0.1:{port}")
+        _fake_static_proc_entry(
+            proc_root,
+            process.pid,
+            python_path=python_path,
+            artifact_root=artifact_root,
+            revision=revision,
+        )
         (runtime_dir / "frontend.pid").write_text(str(process.pid), encoding="utf-8")
         result = subprocess.run(
             ["bash", str(GUARD), "status"],
             env=_guard_env(
                 tmp_path,
                 frontend_root=frontend_root,
-                proc_root=Path("/proc"),
+                proc_root=proc_root,
                 port=port,
                 revision=revision,
                 artifact_root=artifact_root,
