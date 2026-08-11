@@ -10,6 +10,7 @@ STACK_PID_FILE="$RUNTIME_DIR/proot-stack.pid"
 STACK_LOG="$RUNTIME_DIR/proot-stack.log"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 PROCESS_IDENTITY_HELPER="${JOBTOMATIK_PROCESS_IDENTITY_HELPER:-$SCRIPT_DIR/jobtomatik_process_identity.sh}"
+FRONTEND_RUNTIME_MODE="static_artifact"
 
 if [[ ! -r "$PROCESS_IDENTITY_HELPER" ]]; then
   echo "JobTomatik Android process-identity helper is missing: $PROCESS_IDENTITY_HELPER" >&2
@@ -23,29 +24,28 @@ mkdir -p "$RUNTIME_DIR"
 run_stack_foreground() {
   local action="$1"
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed && bash backend/scripts/manage_android_stack.sh '$action'"
+    "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/manage_android_stack.sh '$action'"
 }
 
 run_frontend_guard() {
   local action="$1"
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "cd '$PROOT_REPO' && bash backend/scripts/android_frontend_guard.sh '$action'"
+    "cd '$PROOT_REPO' && export JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/android_frontend_guard.sh '$action'"
 }
 
 sanitize_runtime_pid_files() {
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "cd '$PROOT_REPO' && bash backend/scripts/sanitize_android_runtime_pid_files.sh"
+    "cd '$PROOT_REPO' && export JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/sanitize_android_runtime_pid_files.sh"
 }
 
-ensure_frontend_native_dependencies() {
-  # Never dlopen Android native addons from this foreground, terminal-attached path.
-  # First repair the exact lockfile package/version/binary and SRI-backed content.
-  # Then stage those verified optional native package directories under Termux's real
-  # /data prefix and replace the PRoot node_modules package paths with symlinks. The
-  # Android linker therefore sees an allowed /data/... realpath when detached Vite
-  # performs the first native load.
+ensure_static_frontend_artifact() {
+  # The certification runtime no longer executes Node, Vite, Lightning CSS, Rolldown,
+  # Tailwind Oxide, or any other frontend native addon on the Android device. GitHub
+  # Actions builds immutable static bytes for the exact revision. The installer accepts
+  # only an artifact whose workflow head SHA, package-lock hash, archive digest, and
+  # internal dist-tree hash all match this checkout.
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO'; backend/.venv/bin/python backend/scripts/repair_android_frontend_native_deps.py; backend/.venv/bin/python backend/scripts/stage_android_frontend_native_bindings.py; echo 'ANDROID_FRONTEND_NATIVE_REPAIR_READY'"
+    "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/install_android_static_frontend_artifact.py"
 }
 
 supervisor_identity_matches() {
@@ -83,20 +83,16 @@ start_stack_detached() {
     fi
   fi
 
-  # When a new PRoot supervisor is about to take ownership, remove only a narrowly
-  # identified JobTomatik Vite server rooted in this checkout. This prevents an old
-  # manual frontend from being mistaken for the managed localhost:3000 runtime.
+  # Retire only a narrowly identified JobTomatik static frontend or legacy Vite
+  # process. The guard refuses to signal an unrelated process occupying port 3000.
   run_frontend_guard reset
 
   : > "$STACK_LOG"
   # Source the manager in the same long-lived shell that becomes the supervisor.
-  # Under PRoot, children launched by a short-lived nested bash can disappear after
-  # that bash exits even when an outer PRoot session remains alive. The manager
-  # currently resolves its own location from $0, so launch an inner Bash with argv0
-  # set to the manager path before sourcing it. This preserves source semantics while
-  # making BACKEND_ROOT/REPO_ROOT resolution identical to direct script execution.
+  # This preserves the Android worker/Beat parenting fix while the frontend itself is
+  # now a plain Python static server over a SHA-bound CI artifact.
   nohup proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed && exec bash -c 'source \"\$0\" \"\$1\" && exec sleep infinity' backend/scripts/manage_android_stack.sh '$action'" \
+    "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && exec bash -c 'source \"\$0\" \"\$1\" && exec sleep infinity' backend/scripts/manage_android_stack.sh '$action'" \
     > "$STACK_LOG" 2>&1 </dev/null &
 
   local proot_pid=$!
@@ -162,13 +158,11 @@ update_main() {
 activate_stack() {
   local action="$1"
   sanitize_runtime_pid_files
-  # Repair the complete platform-native frontend toolchain, then stage Android native
-  # packages under the linker-permitted Termux /data prefix before detached Vite starts.
-  # No native addon is executed from this terminal-attached path.
-  ensure_frontend_native_dependencies
+  ensure_static_frontend_artifact
   "$BROWSER_COMMAND" start
-  # The PRoot manager owns API, worker, frontend, stale-attempt recovery, queue-canary
-  # certification, and the single deliberate localhost:3000 JobTomatik-tab reload.
+  # The PRoot manager owns API, worker, Beat and the attested static frontend. Native
+  # Chromium remains outside PRoot and is crossed only through the localhost CDP
+  # protocol boundary.
   start_stack_detached "$action"
 }
 
