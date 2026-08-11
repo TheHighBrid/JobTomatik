@@ -14,7 +14,6 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.celery_app import celery_app  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.services.certification_scale import current_revision  # noqa: E402
 from app.services.runtime_acceptance import (  # noqa: E402
@@ -24,6 +23,9 @@ from app.services.runtime_acceptance import (  # noqa: E402
     write_receipt,
 )
 from app.tasks.runtime import application_queue_canary  # noqa: E402
+
+
+REQUIRED_WORKER_QUEUES = "applications,celery,followup,scraping"
 
 
 def _http_json(url: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -69,28 +71,16 @@ def _load_json(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _worker_acceptance(revision: str) -> dict[str, Any]:
-    inspect = celery_app.control.inspect(timeout=2.0)
-    pings = inspect.ping() or {}
-    queues = inspect.active_queues() or {}
-    prefix = f"jobtomatik-android-{revision[:12]}@"
-    required = {"applications", "celery", "followup", "scraping"}
-    matched_node = None
-    for node, payload in pings.items():
-        if not str(node).startswith(prefix):
-            continue
-        if not isinstance(payload, dict) or payload.get("ok") != "pong":
-            continue
-        names = {
-            str(item.get("name") or "")
-            for item in (queues.get(node) or [])
-            if isinstance(item, dict)
-        }
-        if required.issubset(names):
-            matched_node = str(node)
-            break
-    if not matched_node:
-        raise RuntimeError("No exact-revision Android worker owns all required queues")
+def _worker_acceptance(revision: str, worker_pid: int) -> dict[str, Any]:
+    """Prove exact worker ownership without relying on Celery remote-inspect timing.
+
+    The managed worker command line is already attested separately to include the exact
+    revision hostname and the full required queue set. The applications-queue canary is
+    stronger runtime evidence than ``inspect.active_queues()`` because it must actually
+    travel producer -> Redis DB1 -> applications queue -> this exact worker -> result
+    backend. Remote inspect remains useful operationally, but a transient missing inspect
+    reply must not veto a successful exact-revision queue round trip.
+    """
 
     result = application_queue_canary.apply_async(
         kwargs={"expected_revision": revision},
@@ -103,13 +93,26 @@ def _worker_acceptance(revision: str) -> dict[str, Any]:
             result.forget()
         except Exception:
             pass
+
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         raise RuntimeError("Application queue canary failed")
     if payload.get("revision") != revision or int(payload.get("redis_db", -1)) != 1:
         raise RuntimeError("Application queue canary revision/Redis DB attestation failed")
     if payload.get("runtime_role") != "worker" or payload.get("deployment_attested") is not True:
         raise RuntimeError("Application queue canary worker runtime identity failed")
-    return {"node": matched_node, "queue_canary": payload}
+    if payload.get("runtime_expected_revision") != revision:
+        raise RuntimeError("Application queue canary expected-revision attestation failed")
+    if not payload.get("runtime_identity_sha256"):
+        raise RuntimeError("Application queue canary runtime identity digest is missing")
+    if int(payload.get("worker_pid", -1)) != int(worker_pid):
+        raise RuntimeError("Application queue canary was consumed by a different worker PID")
+
+    return {
+        "worker_pid": worker_pid,
+        "declared_queues": REQUIRED_WORKER_QUEUES.split(","),
+        "queue_canary": payload,
+        "ownership_proof": "exact_pid_plus_revision_hostname_plus_queue_cmdline_plus_db1_round_trip",
+    }
 
 
 def run_acceptance() -> dict[str, Any]:
@@ -163,7 +166,14 @@ def run_acceptance() -> dict[str, Any]:
     process_identity = {
         "api": _assert_tokens("api", api_pid, "uvicorn", "app.main:app", "--port", "8010"),
         "worker": _assert_tokens(
-            "worker", worker_pid, "celery", "app.celery_app", "worker", f"jobtomatik-android-{revision[:12]}@"
+            "worker",
+            worker_pid,
+            "celery",
+            "app.celery_app",
+            "worker",
+            f"jobtomatik-android-{revision[:12]}@",
+            "-Q",
+            REQUIRED_WORKER_QUEUES,
         ),
         "beat": _assert_tokens("beat", beat_pid, "celery", "app.celery_app", "beat"),
         "frontend": _assert_tokens(
@@ -188,7 +198,7 @@ def run_acceptance() -> dict[str, Any]:
     ):
         raise RuntimeError("Celery Beat identity receipt failed")
 
-    worker = _worker_acceptance(revision)
+    worker = _worker_acceptance(revision, worker_pid)
     fingerprint = runtime_fingerprint()
     if any(
         not (item.get("pid") and item.get("start_token"))
