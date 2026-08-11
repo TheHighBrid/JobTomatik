@@ -194,8 +194,12 @@ case "$ACTION" in
   update)
     update_main
     install_native_commands
-    stop_stack_supervisor
-    activate_stack restart
+    # Never call activate_stack restart from this pre-update shell: Bash parsed this
+    # launcher before the git pull, so its functions can belong to the previous
+    # revision even though install_native_commands has already replaced the file on
+    # disk. Re-exec the freshly installed launcher so restart uses the pulled code.
+    echo "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING"
+    exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart
     ;;
   *)
     echo "Usage: jobtomatik [start|restart|status|stop|update]" >&2
