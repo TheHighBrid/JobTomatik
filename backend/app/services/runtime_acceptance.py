@@ -65,8 +65,6 @@ def _proc_start_token(pid: int, proc_root: Path = Path("/proc")) -> str | None:
         stat = (proc_root / str(pid) / "stat").read_text(encoding="utf-8")
     except OSError:
         return None
-    # Linux /proc/<pid>/stat field 22 is process start time. The command field can
-    # contain spaces inside parentheses, so split only after the final ') '.
     try:
         remainder = stat.rsplit(") ", 1)[1]
         fields = remainder.split()
@@ -136,6 +134,7 @@ def runtime_acceptance_status(*, max_age_seconds: int = DEFAULT_RECEIPT_MAX_AGE_
     revision = current_revision()
     checks = {
         "receipt_present": payload is not None,
+        "receipt_passed": bool(payload and payload.get("status") == "pass"),
         "receipt_fresh": bool(payload and _fresh(payload, max_age_seconds=max_age_seconds)),
         "revision_matches": bool(payload and payload.get("revision") == revision),
         "runtime_fingerprint_matches": bool(
@@ -176,6 +175,7 @@ def canary_receipt_status(
     revision = current_revision()
     checks = {
         "receipt_present": payload is not None,
+        "receipt_passed": bool(payload and payload.get("status") == "pass"),
         "receipt_fresh": bool(payload and _fresh(payload, max_age_seconds=max_age_seconds)),
         "user_matches": bool(payload and int(payload.get("user_id") or 0) == int(user_id)),
         "revision_matches": bool(payload and payload.get("revision") == revision),
