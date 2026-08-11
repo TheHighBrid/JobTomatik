@@ -144,11 +144,38 @@ jobs:
           print("CURRENT_HEAD_APPLICATION_QUEUE_ROUND_TRIP_READY")
           PY
 
+      - name: Prove Android acceptance uses durable exact-worker execution evidence
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.android_runtime_acceptance import _worker_acceptance
+
+          expected = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
+          worker_pid = int(Path("current-head-celery.pid").read_text().strip())
+          proof = _worker_acceptance(expected, worker_pid)
+          print(proof)
+          assert proof["worker_pid"] == worker_pid
+          assert proof["declared_queues"] == [
+              "applications",
+              "celery",
+              "followup",
+              "scraping",
+          ]
+          assert proof["queue_canary"]["worker_pid"] == worker_pid
+          assert proof["queue_canary"]["revision"] == expected
+          assert proof["queue_canary"]["redis_db"] == 1
+          assert proof["queue_canary"]["runtime_role"] == "worker"
+          assert proof["queue_canary"]["deployment_attested"] is True
+          print("CURRENT_HEAD_ANDROID_RUNTIME_ACCEPTANCE_WORKER_PROOF_READY")
+          PY
+
       - name: Re-run Android runtime and stale-worker safety contracts
         run: |
           python -m pytest -q --tb=short -ra \
             tests/test_application_recovery.py \
             tests/test_android_runtime_canary.py \
+            tests/test_android_runtime_acceptance_determinism.py \
             tests/test_android_runtime_scripts.py \
             tests/test_android_task_runtime_liveness.py \
             tests/test_refresh_android_jobtomatik_tabs.py \
@@ -183,6 +210,7 @@ jobs:
                   "final_submit_clicked": False,
                   "android_style_worker_control_ready": "passed",
                   "applications_queue_redis_db1_round_trip": "passed",
+                  "android_runtime_acceptance_worker_proof": "passed",
                   "runtime_identity_attested": "passed",
               },
               "runtime_safety": {
