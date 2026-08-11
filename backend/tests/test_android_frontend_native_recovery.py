@@ -106,6 +106,15 @@ def test_cross_target_override_disables_direct_native_load_probe(monkeypatch):
     assert native_deps._can_execute_target("android", "arm64") is False
 
 
+def test_android_runtime_defers_direct_native_load_even_when_target_matches(monkeypatch):
+    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: True)
+
+    enabled, mode = native_deps._native_load_validation_mode("android", "arm64")
+
+    assert enabled is False
+    assert mode == "deferred_android_managed_frontend"
+
+
 def test_repair_restores_complete_android_native_toolchain_without_npm_install(
     tmp_path,
     monkeypatch,
@@ -160,7 +169,14 @@ def test_repair_restores_complete_android_native_toolchain_without_npm_install(
     lock_file.write_text(json.dumps(lock), encoding="utf-8")
 
     monkeypatch.setattr(native_deps, "_node_runtime", lambda: ("android", "arm64"))
-    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: False)
+    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: True)
+    monkeypatch.setattr(
+        native_deps,
+        "_native_binding_loads",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("Android foreground repair must not execute native addons")
+        ),
+    )
     downloads: list[str] = []
 
     def fake_download(url: str) -> bytes:
@@ -198,7 +214,7 @@ def test_repair_restores_complete_android_native_toolchain_without_npm_install(
     assert sum("source=verified_lockfile_download" in item for item in messages) == 4
     assert any(
         "platform=android arch=arm64" in item
-        and "native_load_validation=cross_target_skipped" in item
+        and "native_load_validation=deferred_android_managed_frontend" in item
         for item in messages
     )
 
@@ -298,7 +314,7 @@ def test_stale_native_package_version_is_repaired_from_locked_version(
     )
     monkeypatch.setattr(native_deps, "_node_runtime", lambda: ("android", "arm64"))
     monkeypatch.setattr(native_deps, "_native_package_specs", lambda *_args: [spec])
-    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: False)
+    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: True)
     monkeypatch.setattr(native_deps, "_download", lambda _url: payload)
 
     messages = native_deps.repair_frontend_native_dependencies(
@@ -460,7 +476,7 @@ def test_repair_rejects_payload_that_does_not_match_lockfile_integrity(
             )
         ],
     )
-    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: False)
+    monkeypatch.setattr(native_deps, "_can_execute_target", lambda *_args: True)
     monkeypatch.setattr(native_deps, "_download", lambda _url: b"tampered")
 
     with pytest.raises(
@@ -473,17 +489,21 @@ def test_repair_rejects_payload_that_does_not_match_lockfile_integrity(
         )
 
 
-def test_android_launcher_repairs_and_smoke_tests_full_native_toolchain():
+def test_android_launcher_repairs_without_foreground_native_smoke_test():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
 
     assert "ensure_frontend_native_dependencies()" in wrapper
     assert "repair_android_frontend_native_deps.py" in wrapper
-    assert "require('lightningcss')" in wrapper
-    assert "require('rolldown')" in wrapper
-    assert "require('@tailwindcss/oxide')" in wrapper
-    assert "ANDROID_FRONTEND_NATIVE_TOOLCHAIN_READY" in wrapper
+    ensure = wrapper.split("ensure_frontend_native_dependencies() {", 1)[1].split(
+        "\n}", 1
+    )[0]
+    assert "node -e" not in ensure
+    assert "require('lightningcss')" not in ensure
+    assert "require('rolldown')" not in ensure
+    assert "require('@tailwindcss/oxide')" not in ensure
+    assert "ANDROID_FRONTEND_NATIVE_REPAIR_READY" in ensure
 
     activate = wrapper.split("activate_stack() {", 1)[1].split("\n}", 1)[0]
     repair_index = activate.index("ensure_frontend_native_dependencies")

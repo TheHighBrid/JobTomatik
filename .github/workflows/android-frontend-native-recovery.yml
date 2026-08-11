@@ -6,6 +6,7 @@ on:
       - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/repair_android_frontend_native_deps.py"
       - "backend/tests/test_android_frontend_native_recovery.py"
+      - "backend/tests/test_android_frontend_native_integrity_receipt.py"
       - "frontend/package-lock.json"
       - ".github/workflows/android-frontend-native-recovery.yml"
   push:
@@ -15,6 +16,7 @@ on:
       - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/repair_android_frontend_native_deps.py"
       - "backend/tests/test_android_frontend_native_recovery.py"
+      - "backend/tests/test_android_frontend_native_integrity_receipt.py"
       - "frontend/package-lock.json"
       - ".github/workflows/android-frontend-native-recovery.yml"
   workflow_dispatch:
@@ -132,6 +134,7 @@ jobs:
           rm -rf frontend/node_modules/vite/node_modules/lightningcss-android-arm64
           rm -rf frontend/node_modules/@rolldown/binding-android-arm64
           rm -rf frontend/node_modules/@tailwindcss/oxide-android-arm64
+          rm -f frontend/node_modules/.jobtomatik-android-native-integrity.json
 
       - name: Repair lockfile-pinned Android ARM64 native toolchain
         env:
@@ -139,22 +142,30 @@ jobs:
           JOBTOMATIK_FRONTEND_NODE_ARCH: arm64
         run: |
           python backend/scripts/repair_android_frontend_native_deps.py | tee /tmp/android-native-repair.log
-          grep -Fq 'ANDROID_FRONTEND_NODE_TARGET platform=android arch=arm64 native_load_validation=cross_target_skipped packages=lightningcss-android-arm64,@rolldown/binding-android-arm64,@tailwindcss/oxide-android-arm64' /tmp/android-native-repair.log
+          grep -Fq 'ANDROID_FRONTEND_NODE_TARGET platform=android arch=arm64 native_load_validation=deferred_android_managed_frontend packages=lightningcss-android-arm64,@rolldown/binding-android-arm64,@tailwindcss/oxide-android-arm64' /tmp/android-native-repair.log
+          grep -Fq 'ANDROID_FRONTEND_NATIVE_INTEGRITY_RECEIPT_READY' /tmp/android-native-repair.log
 
-      - name: Verify every locked Android package matches version and exact native binary
+      - name: Verify every locked Android package matches version, exact binary, and SRI-backed receipt
         run: |
           python - <<'PY'
+          import hashlib
           import json
           from pathlib import Path
 
           frontend = Path("frontend")
           lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
           packages = lock.get("packages", {})
+          receipt_path = frontend / "node_modules/.jobtomatik-android-native-integrity.json"
+          receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+          if receipt.get("version") != 1 or not isinstance(receipt.get("entries"), dict):
+              raise SystemExit("Android native integrity receipt is missing or malformed")
+          receipt_entries = receipt["entries"]
           expected_binaries = {
               "lightningcss-android-arm64": "lightningcss.android-arm64.node",
               "@rolldown/binding-android-arm64": "rolldown-binding.android-arm64.node",
               "@tailwindcss/oxide-android-arm64": "tailwindcss-oxide.android-arm64.node",
           }
+          checked = 0
           for package_name, binary_name in expected_binaries.items():
               suffix = f"node_modules/{package_name}"
               keys = [key for key in packages if str(key).endswith(suffix)]
@@ -175,9 +186,28 @@ jobs:
                       raise SystemExit(
                           f"Missing or empty exact Android native binary at {binary}"
                       )
+                  record = receipt_entries.get(key)
+                  if not isinstance(record, dict):
+                      raise SystemExit(f"Missing integrity receipt entry for {key}")
+                  if record.get("package") != package_name:
+                      raise SystemExit(f"Receipt package mismatch at {key}")
+                  if record.get("version") != str(locked.get("version") or ""):
+                      raise SystemExit(f"Receipt version mismatch at {key}")
+                  if record.get("binary") != binary_name:
+                      raise SystemExit(f"Receipt binary mismatch at {key}")
+                  if record.get("lock_integrity") != str(locked.get("integrity") or ""):
+                      raise SystemExit(f"Receipt lock integrity mismatch at {key}")
+                  digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+                  if record.get("binary_sha256") != digest:
+                      raise SystemExit(f"Receipt binary hash mismatch at {key}")
+                  checked += 1
                   print(
                       "ANDROID_LOCKED_NATIVE_PACKAGE_VERIFIED "
-                      f"package={package_name} path={key} version={installed.get('version')} native={binary_name}"
+                      f"package={package_name} path={key} version={installed.get('version')} native={binary_name} sha256={digest}"
                   )
+          if checked != len(receipt_entries):
+              raise SystemExit(
+                  f"Receipt contains unexpected entries: checked={checked} receipt={len(receipt_entries)}"
+              )
           PY
           echo "ANDROID_NODE_TARGET_RECOVERY_ACCEPTED platform=android arch=arm64"
