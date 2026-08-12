@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
-import time
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -16,6 +14,10 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.config import get_settings  # noqa: E402
+from app.services.android_worker_canary import (  # noqa: E402
+    WORKER_CANARY_RECEIPT_FILENAME,
+    validate_worker_canary_receipt,
+)
 from app.services.certification_scale import current_revision  # noqa: E402
 from app.services.runtime_acceptance import (  # noqa: E402
     runtime_acceptance_path,
@@ -23,12 +25,9 @@ from app.services.runtime_acceptance import (  # noqa: E402
     runtime_fingerprint,
     write_receipt,
 )
-from app.tasks.runtime import application_queue_canary  # noqa: E402
 
 
 REQUIRED_WORKER_QUEUES = "applications,celery,followup,scraping"
-WORKER_CANARY_MAX_WAIT_SECONDS = 180.0
-WORKER_CANARY_POLL_SECONDS = 1.0
 
 
 def _http_json(url: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -85,66 +84,44 @@ def _worker_identity_tokens(revision: str) -> tuple[str, ...]:
     )
 
 
-def _worker_acceptance(revision: str, worker_pid: int) -> dict[str, Any]:
-    """Prove exact worker ownership without treating short queue latency as worker failure.
+def _worker_acceptance(
+    revision: str,
+    worker_pid: int,
+    *,
+    directory: Path | None = None,
+) -> dict[str, Any]:
+    """Validate the exact startup round-trip proof without queueing duplicate work.
 
-    The physical Android worker intentionally uses ``--pool=solo --concurrency=1`` and
-    consumes the applications, celery, followup, and scraping queues. Beat or a recovered
-    shadow task can therefore occupy the only execution slot briefly even while the worker
-    is healthy and exactly attested. A fixed 15-second ``AsyncResult.get`` incorrectly
-    turned that legitimate queue contention into a runtime-acceptance failure.
-
-    Dispatch one applications-queue canary, then wait boundedly for *that same task* while
-    continuously re-attesting the exact worker PID, revision hostname, and queue command
-    line. This preserves the producer -> Redis DB1 -> applications queue -> exact worker ->
-    result-backend proof without relying on Celery remote inspect or dispatching retries.
+    The Android production worker intentionally uses a solo pool and consumes long-running
+    application, discovery, follow-up, and shadow-recovery tasks. Runtime acceptance must
+    not confuse "busy" with "dead" by dispatching another health task after Beat has begun
+    scheduling real work. The manager therefore proves producer -> Redis DB1 -> applications
+    queue -> exact worker once during startup, before Beat is admitted, and persists a receipt
+    bound to the worker PID and /proc start token. Later acceptance verifies that durable proof
+    together with the live worker command line instead of requiring the worker to be idle.
     """
 
-    result = application_queue_canary.apply_async(
-        kwargs={"expected_revision": revision},
-        queue="applications",
+    runtime_directory = directory or runtime_dir()
+    status = validate_worker_canary_receipt(
+        runtime_directory / WORKER_CANARY_RECEIPT_FILENAME,
+        expected_revision=revision,
+        expected_worker_pid=worker_pid,
+        required_queues=REQUIRED_WORKER_QUEUES.split(","),
     )
-    started = time.monotonic()
-    try:
-        while not result.ready():
-            elapsed = time.monotonic() - started
-            if elapsed >= WORKER_CANARY_MAX_WAIT_SECONDS:
-                raise RuntimeError(
-                    "Application queue canary did not complete within "
-                    f"{int(WORKER_CANARY_MAX_WAIT_SECONDS)} seconds while waiting for the "
-                    "exact Android solo worker"
-                )
-            _assert_tokens("worker", worker_pid, *_worker_identity_tokens(revision))
-            remaining = WORKER_CANARY_MAX_WAIT_SECONDS - elapsed
-            time.sleep(min(WORKER_CANARY_POLL_SECONDS, max(0.05, remaining)))
-
-        payload = result.get(timeout=5, propagate=True)
-    finally:
-        try:
-            result.forget()
-        except Exception:
-            pass
-
-    queue_wait_seconds = max(0.0, time.monotonic() - started)
-    if not isinstance(payload, dict) or payload.get("ok") is not True:
-        raise RuntimeError("Application queue canary failed")
-    if payload.get("revision") != revision or int(payload.get("redis_db", -1)) != 1:
-        raise RuntimeError("Application queue canary revision/Redis DB attestation failed")
-    if payload.get("runtime_role") != "worker" or payload.get("deployment_attested") is not True:
-        raise RuntimeError("Application queue canary worker runtime identity failed")
-    if payload.get("runtime_expected_revision") != revision:
-        raise RuntimeError("Application queue canary expected-revision attestation failed")
-    if not payload.get("runtime_identity_sha256"):
-        raise RuntimeError("Application queue canary runtime identity digest is missing")
-    if int(payload.get("worker_pid", -1)) != int(worker_pid):
-        raise RuntimeError("Application queue canary was consumed by a different worker PID")
-
+    if not status.get("ok"):
+        blockers = ",".join(status.get("blockers") or []) or "unknown"
+        raise RuntimeError(f"Android worker startup canary receipt failed: {blockers}")
+    receipt = dict(status.get("receipt") or {})
     return {
         "worker_pid": worker_pid,
+        "worker_start_token": status.get("worker_start_token"),
         "declared_queues": REQUIRED_WORKER_QUEUES.split(","),
-        "queue_canary": payload,
-        "queue_wait_seconds": round(queue_wait_seconds, 3),
-        "ownership_proof": "exact_pid_plus_revision_hostname_plus_queue_cmdline_plus_db1_round_trip",
+        "startup_canary_receipt": receipt,
+        "queue_canary": dict(receipt.get("queue_canary") or {}),
+        "ownership_proof": (
+            "exact_pid_plus_process_start_token_plus_revision_hostname_plus_queue_cmdline_"
+            "plus_startup_db1_round_trip_receipt"
+        ),
     }
 
 
@@ -226,7 +203,7 @@ def run_acceptance() -> dict[str, Any]:
     ):
         raise RuntimeError("Celery Beat identity receipt failed")
 
-    worker = _worker_acceptance(revision, worker_pid)
+    worker = _worker_acceptance(revision, worker_pid, directory=directory)
     fingerprint = runtime_fingerprint()
     if any(
         not (item.get("pid") and item.get("start_token"))

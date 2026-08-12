@@ -115,16 +115,21 @@ def test_android_worker_is_revisioned_and_consumes_all_runtime_queues():
     assert "WORKER_NODE_PREFIX" in manager
 
 
-def test_android_worker_readiness_requires_real_application_queue_round_trip():
+def test_android_worker_readiness_requires_one_persisted_application_queue_round_trip():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
     )
 
-    assert "worker_application_canary_ready" in manager
+    assert 'WORKER_CANARY_RECEIPT_FILE="$RUNTIME_DIR/celery-application-canary.json"' in manager
+    assert "worker_application_canary_probe" in manager
+    assert "worker_application_canary_receipt_ready" in manager
     assert "application_queue_canary.apply_async" in manager
     assert 'queue="applications"' in manager
-    assert "result.get(timeout=12" in manager
+    assert "result.get(timeout=60" in manager
+    assert "write_worker_canary_receipt" in manager
+    assert "validate_worker_canary_receipt" in manager
     assert "CELERY_APPLICATION_CANARY: READY" in manager
+    assert "source=startup_receipt" in manager
 
 
 def test_android_managed_runtime_requires_phase12_attestation_for_api_worker_and_beat():
@@ -223,4 +228,9 @@ def test_android_update_always_fast_forwards_authoritative_main():
     assert "git switch main" in wrapper
     assert "git pull --ff-only origin main" in wrapper
     update_case = wrapper.split("update)", 1)[1].split(";;", 1)[0]
-    assert "activate_stack restart" in update_case
+    executable_update_case = "\n".join(
+        line for line in update_case.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "activate_stack restart" not in executable_update_case
+    assert "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING" in executable_update_case
+    assert 'exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart' in executable_update_case

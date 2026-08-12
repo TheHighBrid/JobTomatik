@@ -15,22 +15,29 @@ def test_celery_exposes_started_state_for_long_browser_tasks():
     assert "app.tasks.runtime" in celery_app.conf.include
 
 
-def test_android_status_requires_managed_worker_identity_and_application_queue_round_trip():
+def test_android_status_requires_managed_worker_identity_and_startup_round_trip_receipt():
     source = MANAGER.read_text(encoding="utf-8")
 
     assert "worker_process_identity_ready" in source
     assert 'JOBTOMATIK_EXPECTED_WORKER_QUEUES="applications,celery,followup,scraping"' in source
     assert 'f"jobtomatik-android-{revision_short}@"' in source
     assert 'Path("/proc") / str(pid) / "cmdline"' in source
-    assert "worker_application_canary_ready" in source
+    assert "worker_application_canary_probe" in source
+    assert "worker_application_canary_receipt_ready" in source
     assert 'JOBTOMATIK_EXPECTED_WORKER_PID="$worker_pid"' in source
     assert "application_queue_canary.apply_async" in source
     assert 'int(payload.get("worker_pid", -1)) != expected_worker_pid' in source
+    assert "write_worker_canary_receipt" in source
+    assert "validate_worker_canary_receipt" in source
     assert "celery_app.control.inspect" not in source
     assert "active_queues()" not in source
-    assert "CELERY_APPLICATION_CANARY: READY" in source
-    assert "DOWN_OR_UNRESPONSIVE_ON_ANDROID_BROKER" in source
+    assert "CELERY_APPLICATION_CANARY: STARTUP_RECEIPT_ATTESTED" in source
+    assert "DOWN_OR_UNATTESTED_STARTUP_PROOF" in source
     assert "CELERY_LOG:" in source
+
+    managed_worker = source.split("managed_worker_ready()", 1)[1].split("wait_worker()", 1)[0]
+    assert "worker_process_identity_ready && worker_application_canary_receipt_ready" in managed_worker
+    assert "application_queue_canary.apply_async" not in managed_worker
 
 
 def test_application_page_does_not_restore_old_celery_task_ids_after_runtime_restart():
