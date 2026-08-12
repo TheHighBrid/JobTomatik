@@ -11,6 +11,7 @@ RUNTIME_DIR="$BACKEND_ROOT/.runtime"
 LOG_DIR="$RUNTIME_DIR/logs"
 API_PID_FILE="$RUNTIME_DIR/api.pid"
 CELERY_PID_FILE="$RUNTIME_DIR/celery.pid"
+WORKER_CANARY_RECEIPT_FILE="$RUNTIME_DIR/celery-application-canary.json"
 BEAT_PID_FILE="$RUNTIME_DIR/celery-beat.pid"
 FRONTEND_PID_FILE="$RUNTIME_DIR/frontend.pid"
 BEAT_IDENTITY_FILE="$RUNTIME_DIR/celery-beat-identity.json"
@@ -138,6 +139,7 @@ stop_stack() {
   stop_pid_file "$FRONTEND_PID_FILE"
   stop_pid_file "$BEAT_PID_FILE"
   rm -f "$BEAT_IDENTITY_FILE"
+  rm -f "$WORKER_CANARY_RECEIPT_FILE"
   stop_pid_file "$CELERY_PID_FILE"
   stop_pid_file "$API_PID_FILE"
   echo "JOBTOMATIK_ANDROID_STACK_STOPPED"
@@ -280,7 +282,40 @@ raise SystemExit(0 if all(token in cmdline for token in required_tokens) else 1)
 PY
 }
 
-worker_application_canary_ready() {
+worker_application_canary_receipt_ready() {
+  pid_file_alive "$CELERY_PID_FILE" || return 1
+  [[ -f "$WORKER_CANARY_RECEIPT_FILE" ]] || return 1
+  local broker
+  local worker_pid
+  broker="$(configured_redis_url)"
+  worker_pid="$(pid_file_value "$CELERY_PID_FILE")"
+  [[ "$broker" == "$ANDROID_REDIS_URL" ]] || return 1
+  [[ "$worker_pid" =~ ^[0-9]+$ ]] || return 1
+
+  (
+    cd "$BACKEND_ROOT"
+    JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
+    JOBTOMATIK_EXPECTED_WORKER_PID="$worker_pid" \
+    JOBTOMATIK_EXPECTED_WORKER_QUEUES="applications,celery,followup,scraping" \
+    JOBTOMATIK_WORKER_CANARY_RECEIPT_FILE="$WORKER_CANARY_RECEIPT_FILE" \
+    "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
+import os
+from pathlib import Path
+
+from app.services.android_worker_canary import validate_worker_canary_receipt
+
+status = validate_worker_canary_receipt(
+    Path(os.environ["JOBTOMATIK_WORKER_CANARY_RECEIPT_FILE"]),
+    expected_revision=os.environ["JOBTOMATIK_RUNTIME_REVISION"],
+    expected_worker_pid=int(os.environ["JOBTOMATIK_EXPECTED_WORKER_PID"]),
+    required_queues=os.environ["JOBTOMATIK_EXPECTED_WORKER_QUEUES"].split(","),
+)
+raise SystemExit(0 if status.get("ok") else 1)
+PY
+  )
+}
+
+worker_application_canary_probe() {
   pid_file_alive "$CELERY_PID_FILE" || return 1
   local broker
   local worker_pid
@@ -296,21 +331,26 @@ worker_application_canary_ready() {
     JOBTOMATIK_EXPECTED_RUNTIME_REVISION="$EXPECTED_RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_REDIS_DB="1" \
     JOBTOMATIK_EXPECTED_WORKER_PID="$worker_pid" \
+    JOBTOMATIK_EXPECTED_WORKER_QUEUES="applications,celery,followup,scraping" \
+    JOBTOMATIK_WORKER_CANARY_RECEIPT_FILE="$WORKER_CANARY_RECEIPT_FILE" \
     "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
 import os
+from pathlib import Path
 
+from app.services.android_worker_canary import write_worker_canary_receipt
 from app.tasks.runtime import application_queue_canary
 
 expected_revision = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
 expected_deployment = os.environ["JOBTOMATIK_EXPECTED_RUNTIME_REVISION"]
 expected_db = int(os.environ.get("JOBTOMATIK_EXPECTED_REDIS_DB", "1"))
 expected_worker_pid = int(os.environ["JOBTOMATIK_EXPECTED_WORKER_PID"])
+declared_queues = os.environ["JOBTOMATIK_EXPECTED_WORKER_QUEUES"].split(",")
 result = application_queue_canary.apply_async(
     kwargs={"expected_revision": expected_revision},
     queue="applications",
 )
 try:
-    payload = result.get(timeout=12, propagate=True)
+    payload = result.get(timeout=60, propagate=True)
 finally:
     try:
         result.forget()
@@ -333,19 +373,33 @@ if not payload.get("runtime_identity_sha256"):
     raise SystemExit(1)
 if int(payload.get("worker_pid", -1)) != expected_worker_pid:
     raise SystemExit(1)
+
+write_worker_canary_receipt(
+    Path(os.environ["JOBTOMATIK_WORKER_CANARY_RECEIPT_FILE"]),
+    payload=payload,
+    expected_revision=expected_revision,
+    expected_worker_pid=expected_worker_pid,
+    declared_queues=declared_queues,
+)
 raise SystemExit(0)
 PY
   )
 }
 
 managed_worker_ready() {
-  worker_process_identity_ready && worker_application_canary_ready
+  worker_process_identity_ready && worker_application_canary_receipt_ready
 }
 
 wait_worker() {
   for _ in {1..120}; do
-    if worker_process_identity_ready && worker_application_canary_ready; then
-      return 0
+    if worker_process_identity_ready; then
+      if worker_application_canary_receipt_ready; then
+        return 0
+      fi
+      if worker_application_canary_probe && worker_application_canary_receipt_ready; then
+        return 0
+      fi
+      return 1
     fi
     if [[ -f "$CELERY_PID_FILE" ]] && ! pid_file_alive "$CELERY_PID_FILE"; then
       return 1
@@ -476,6 +530,7 @@ start_worker() {
     echo "CELERY: EXISTING_MANAGED_WORKER_READY"
     return 0
   fi
+  rm -f "$WORKER_CANARY_RECEIPT_FILE"
   stop_pid_file "$CELERY_PID_FILE"
   require_runtime_attestation worker
   : > "$CELERY_LOG"
@@ -495,12 +550,12 @@ start_worker() {
   echo $! > "$CELERY_PID_FILE"
 
   if ! wait_worker; then
-    echo "Celery failed the Android application-queue end-to-end canary or runtime-attestation check." >&2
+    echo "Celery failed the Android startup application-queue proof or runtime-attestation check." >&2
     tail -n 160 "$CELERY_LOG" >&2 || true
     return 1
   fi
   echo "CELERY: STARTED_WITH_REQUIRED_QUEUES_ATTESTED"
-  echo "CELERY_APPLICATION_CANARY: READY revision=$RUNTIME_REVISION_SHORT broker=$ANDROID_REDIS_URL"
+  echo "CELERY_APPLICATION_CANARY: READY revision=$RUNTIME_REVISION_SHORT broker=$ANDROID_REDIS_URL source=startup_receipt"
 }
 
 start_beat() {
@@ -623,11 +678,11 @@ status_stack() {
 
   if managed_worker_ready; then
     echo "CELERY: READY applications,celery,followup,scraping pid=$(pid_file_value "$CELERY_PID_FILE") broker=$ANDROID_REDIS_URL revision=$RUNTIME_REVISION_SHORT"
-    echo "CELERY_APPLICATION_CANARY: READY_ATTESTED"
+    echo "CELERY_APPLICATION_CANARY: STARTUP_RECEIPT_ATTESTED"
     worker_attested=1
   else
-    echo "CELERY: DOWN_OR_UNRESPONSIVE_ON_ANDROID_BROKER"
-    echo "CELERY_APPLICATION_CANARY: FAILED"
+    echo "CELERY: DOWN_OR_UNATTESTED_STARTUP_PROOF"
+    echo "CELERY_APPLICATION_CANARY: STARTUP_RECEIPT_FAILED"
     failed=1
   fi
 
