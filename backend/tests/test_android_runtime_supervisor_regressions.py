@@ -126,3 +126,25 @@ def test_android_wrapper_propagates_managed_runtime_and_static_frontend_modes_to
 
     assert foreground in wrapper
     assert detached in wrapper
+
+
+def test_android_manager_worker_readiness_does_not_depend_on_remote_inspect():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "celery_app.control.inspect" not in manager
+    assert "active_queues()" not in manager
+    assert "worker_control_ready" not in manager
+    assert "worker_process_identity_ready && worker_application_canary_ready" in manager
+
+
+def test_android_manager_worker_canary_is_bound_to_managed_pid_and_queue_cmdline():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'JOBTOMATIK_EXPECTED_WORKER_PID="$worker_pid"' in manager
+    assert 'JOBTOMATIK_EXPECTED_WORKER_QUEUES="applications,celery,followup,scraping"' in manager
+    assert 'f"jobtomatik-android-{revision_short}@"' in manager
+    assert 'if int(payload.get("worker_pid", -1)) != expected_worker_pid:' in manager
