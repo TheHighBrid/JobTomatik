@@ -128,7 +128,7 @@ def test_android_wrapper_propagates_managed_runtime_and_static_frontend_modes_to
     assert detached in wrapper
 
 
-def test_android_manager_worker_readiness_does_not_depend_on_remote_inspect():
+def test_android_manager_worker_readiness_does_not_depend_on_remote_inspect_or_live_status_dispatch():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
     )
@@ -136,10 +136,13 @@ def test_android_manager_worker_readiness_does_not_depend_on_remote_inspect():
     assert "celery_app.control.inspect" not in manager
     assert "active_queues()" not in manager
     assert "worker_control_ready" not in manager
-    assert "worker_process_identity_ready && worker_application_canary_ready" in manager
+    assert "worker_process_identity_ready && worker_application_canary_receipt_ready" in manager
+    status_body = manager.split("status_stack()", 1)[1].split("prepare_stack()", 1)[0]
+    assert "application_queue_canary.apply_async" not in status_body
+    assert "worker_application_canary_receipt_ready" in status_body or "managed_worker_ready" in status_body
 
 
-def test_android_manager_worker_canary_is_bound_to_managed_pid_and_queue_cmdline():
+def test_android_manager_worker_startup_canary_is_bound_to_managed_pid_start_token_and_queue_cmdline():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
     )
@@ -148,3 +151,6 @@ def test_android_manager_worker_canary_is_bound_to_managed_pid_and_queue_cmdline
     assert 'JOBTOMATIK_EXPECTED_WORKER_QUEUES="applications,celery,followup,scraping"' in manager
     assert 'f"jobtomatik-android-{revision_short}@"' in manager
     assert 'if int(payload.get("worker_pid", -1)) != expected_worker_pid:' in manager
+    assert "write_worker_canary_receipt" in manager
+    assert "validate_worker_canary_receipt" in manager
+    assert 'WORKER_CANARY_RECEIPT_FILE="$RUNTIME_DIR/celery-application-canary.json"' in manager
