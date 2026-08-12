@@ -64,7 +64,7 @@ run_shadow_qualification() {
     user_arg="--user-id $user_id"
   fi
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/run_shadow_qualification_canary.py $user_arg"
+    "set -e; cd '$PROOT_REPO/backend'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; .venv/bin/python scripts/run_shadow_qualification_canary.py $user_arg"
 }
 
 supervisor_identity_matches() {
