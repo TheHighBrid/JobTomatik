@@ -249,57 +249,45 @@ raise SystemExit(0 if valid else 1)
 ' >/dev/null 2>&1
 }
 
-worker_log_ready() {
+worker_process_identity_ready() {
   pid_file_alive "$CELERY_PID_FILE" || return 1
-  [[ -f "$CELERY_LOG" ]] || return 1
-  grep -Eq 'jobtomatik-android-[[:alnum:]]+@.* ready\.' "$CELERY_LOG" \
-    && grep -q 'applications' "$CELERY_LOG" \
-    && grep -q 'scraping' "$CELERY_LOG"
-}
+  local worker_pid
+  worker_pid="$(pid_file_value "$CELERY_PID_FILE")"
+  [[ "$worker_pid" =~ ^[0-9]+$ ]] || return 1
 
-worker_control_ready() {
-  pid_file_alive "$CELERY_PID_FILE" || return 1
-  local broker
-  broker="$(configured_redis_url)"
-  [[ "$broker" == "$ANDROID_REDIS_URL" ]] || return 1
-
-  (
-    cd "$BACKEND_ROOT"
-    REDIS_URL="$broker" \
-    JOBTOMATIK_EXPECTED_WORKER_PREFIX="$WORKER_NODE_PREFIX" \
-    "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
+  JOBTOMATIK_EXPECTED_WORKER_PID="$worker_pid" \
+  JOBTOMATIK_EXPECTED_WORKER_REVISION_SHORT="$RUNTIME_REVISION_SHORT" \
+  JOBTOMATIK_EXPECTED_WORKER_QUEUES="applications,celery,followup,scraping" \
+  "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
 import os
+from pathlib import Path
 
-from app.celery_app import celery_app
-
-required = {"applications", "celery", "followup", "scraping"}
-expected_prefix = os.environ["JOBTOMATIK_EXPECTED_WORKER_PREFIX"]
-inspect = celery_app.control.inspect(timeout=2.0)
-pings = inspect.ping() or {}
-queues = inspect.active_queues() or {}
-
-for node, payload in pings.items():
-    if not str(node).startswith(expected_prefix):
-        continue
-    if not isinstance(payload, dict) or payload.get("ok") != "pong":
-        continue
-    names = {
-        str(item.get("name") or "")
-        for item in (queues.get(node) or [])
-        if isinstance(item, dict)
-    }
-    if required.issubset(names):
-        raise SystemExit(0)
-raise SystemExit(1)
+pid = int(os.environ["JOBTOMATIK_EXPECTED_WORKER_PID"])
+revision_short = os.environ["JOBTOMATIK_EXPECTED_WORKER_REVISION_SHORT"]
+queues = os.environ["JOBTOMATIK_EXPECTED_WORKER_QUEUES"]
+cmdline = (Path("/proc") / str(pid) / "cmdline").read_bytes().replace(b"\0", b" ").decode(
+    "utf-8", errors="replace"
+)
+required_tokens = (
+    "celery",
+    "app.celery_app",
+    "worker",
+    f"jobtomatik-android-{revision_short}@",
+    "-Q",
+    queues,
+)
+raise SystemExit(0 if all(token in cmdline for token in required_tokens) else 1)
 PY
-  )
 }
 
 worker_application_canary_ready() {
   pid_file_alive "$CELERY_PID_FILE" || return 1
   local broker
+  local worker_pid
   broker="$(configured_redis_url)"
+  worker_pid="$(pid_file_value "$CELERY_PID_FILE")"
   [[ "$broker" == "$ANDROID_REDIS_URL" ]] || return 1
+  [[ "$worker_pid" =~ ^[0-9]+$ ]] || return 1
 
   (
     cd "$BACKEND_ROOT"
@@ -307,6 +295,7 @@ worker_application_canary_ready() {
     JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_RUNTIME_REVISION="$EXPECTED_RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_REDIS_DB="1" \
+    JOBTOMATIK_EXPECTED_WORKER_PID="$worker_pid" \
     "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
 import os
 
@@ -315,6 +304,7 @@ from app.tasks.runtime import application_queue_canary
 expected_revision = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
 expected_deployment = os.environ["JOBTOMATIK_EXPECTED_RUNTIME_REVISION"]
 expected_db = int(os.environ.get("JOBTOMATIK_EXPECTED_REDIS_DB", "1"))
+expected_worker_pid = int(os.environ["JOBTOMATIK_EXPECTED_WORKER_PID"])
 result = application_queue_canary.apply_async(
     kwargs={"expected_revision": expected_revision},
     queue="applications",
@@ -341,21 +331,21 @@ if payload.get("deployment_attested") is not True:
     raise SystemExit(1)
 if not payload.get("runtime_identity_sha256"):
     raise SystemExit(1)
+if int(payload.get("worker_pid", -1)) != expected_worker_pid:
+    raise SystemExit(1)
 raise SystemExit(0)
 PY
   )
 }
 
 managed_worker_ready() {
-  worker_log_ready && worker_control_ready && worker_application_canary_ready
+  worker_process_identity_ready && worker_application_canary_ready
 }
 
 wait_worker() {
   for _ in {1..120}; do
-    if worker_log_ready && worker_control_ready; then
-      if worker_application_canary_ready; then
-        return 0
-      fi
+    if worker_process_identity_ready && worker_application_canary_ready; then
+      return 0
     fi
     if [[ -f "$CELERY_PID_FILE" ]] && ! pid_file_alive "$CELERY_PID_FILE"; then
       return 1
