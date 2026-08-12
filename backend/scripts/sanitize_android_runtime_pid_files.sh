@@ -10,7 +10,7 @@ VENV="${JOBTOMATIK_BACKEND_VENV:-$BACKEND_ROOT/.venv}"
 BEAT_SCHEDULE="$RUNTIME_DIR/celerybeat-schedule"
 RUNTIME_REVISION="${JOBTOMATIK_RUNTIME_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)}"
 FRONTEND_ARTIFACT_ROOT="${JOBTOMATIK_FRONTEND_ARTIFACT_ROOT:-$RUNTIME_DIR/frontend-artifacts/$RUNTIME_REVISION}"
-FRONTEND_DIST_ROOT="$FRONTEND_ARTIFACT_ROOT/dist"
+FRONTEND_ARTIFACTS_ROOT="$(dirname -- "$FRONTEND_ARTIFACT_ROOT")"
 STATIC_FRONTEND_SERVER="$BACKEND_ROOT/scripts/serve_static_frontend.py"
 
 # shellcheck source=jobtomatik_process_identity.sh
@@ -18,16 +18,11 @@ source "$SCRIPT_DIR/jobtomatik_process_identity.sh"
 
 frontend_static_identity_matches() {
   local pid="$1"
-  jobtomatik_pid_has_all_tokens \
+  jobtomatik_static_frontend_pid_matches \
     "$pid" \
     "$VENV/bin/python" \
     "$STATIC_FRONTEND_SERVER" \
-    "--root" \
-    "$FRONTEND_DIST_ROOT" \
-    "--revision" \
-    "$RUNTIME_REVISION" \
-    "--port" \
-    "3000"
+    "$FRONTEND_ARTIFACTS_ROOT"
 }
 
 frontend_legacy_vite_identity_matches() {
