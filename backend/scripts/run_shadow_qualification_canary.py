@@ -15,6 +15,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +98,26 @@ def _user(db, requested_user_id: int | None) -> User:
             f"observed={ids}"
         )
     return users[0]
+
+
+def _apply_only_scheduler_user(user: User) -> SimpleNamespace:
+    """Project one persisted user into an apply-only scheduler view.
+
+    Qualification already completed and waited for the real discovery task immediately
+    before the scheduler cycle. Re-running scheduler discovery here would create a
+    second external search whose result is not part of the bounded canary and can race
+    the one-application qualification path. The projection is detached and never
+    mutates or persists the user's automation settings; every application policy gate
+    still receives the real user id and the same policy values.
+    """
+
+    automation_settings = dict(user.automation_settings or {})
+    automation_settings["auto_search_enabled"] = False
+    return SimpleNamespace(
+        id=int(user.id),
+        automation_settings=automation_settings,
+        job_preferences=dict(user.job_preferences or {}),
+    )
 
 
 def _create_canary_session(db, user: User, revision: str) -> ShadowRunSession:
@@ -326,10 +347,14 @@ def run_canary(*, requested_user_id: int | None, timeout_seconds: int) -> dict[s
             raise RuntimeError("Canary user disappeared after discovery")
         scheduler_result = _run_scheduler_cycle_for_user(
             db,
-            user,
+            _apply_only_scheduler_user(user),
             shadow_session_id=int(session.id),
             shadow_application_limit=1,
         )
+        if scheduler_result.get("searched") is not False:
+            raise RuntimeError(
+                "Qualification scheduler launched duplicate discovery after the blocking canary search"
+            )
         application_ids = [int(value) for value in scheduler_result.get("application_ids_queued") or []]
         if scheduler_result.get("real_submission_enabled") is not False or scheduler_result.get("dry_run") is not True:
             raise RuntimeError("Scheduler violated canary no-submit invariants")
@@ -375,6 +400,7 @@ def run_canary(*, requested_user_id: int | None, timeout_seconds: int) -> dict[s
             "application_path_observed": True,
             "certification_eligible": False,
             "discovery": discovery,
+            "discovery_reused_by_scheduler": True,
             "scheduler_result": scheduler_result,
             "application": application,
             "pre_canary_policy": pre_policy,
