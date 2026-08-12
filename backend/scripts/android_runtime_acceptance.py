@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,8 @@ from app.tasks.runtime import application_queue_canary  # noqa: E402
 
 
 REQUIRED_WORKER_QUEUES = "applications,celery,followup,scraping"
+WORKER_CANARY_MAX_WAIT_SECONDS = 180.0
+WORKER_CANARY_POLL_SECONDS = 1.0
 
 
 def _http_json(url: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -71,29 +74,58 @@ def _load_json(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _worker_acceptance(revision: str, worker_pid: int) -> dict[str, Any]:
-    """Prove exact worker ownership without relying on Celery remote-inspect timing.
+def _worker_identity_tokens(revision: str) -> tuple[str, ...]:
+    return (
+        "celery",
+        "app.celery_app",
+        "worker",
+        f"jobtomatik-android-{revision[:12]}@",
+        "-Q",
+        REQUIRED_WORKER_QUEUES,
+    )
 
-    The managed worker command line is already attested separately to include the exact
-    revision hostname and the full required queue set. The applications-queue canary is
-    stronger runtime evidence than ``inspect.active_queues()`` because it must actually
-    travel producer -> Redis DB1 -> applications queue -> this exact worker -> result
-    backend. Remote inspect remains useful operationally, but a transient missing inspect
-    reply must not veto a successful exact-revision queue round trip.
+
+def _worker_acceptance(revision: str, worker_pid: int) -> dict[str, Any]:
+    """Prove exact worker ownership without treating short queue latency as worker failure.
+
+    The physical Android worker intentionally uses ``--pool=solo --concurrency=1`` and
+    consumes the applications, celery, followup, and scraping queues. Beat or a recovered
+    shadow task can therefore occupy the only execution slot briefly even while the worker
+    is healthy and exactly attested. A fixed 15-second ``AsyncResult.get`` incorrectly
+    turned that legitimate queue contention into a runtime-acceptance failure.
+
+    Dispatch one applications-queue canary, then wait boundedly for *that same task* while
+    continuously re-attesting the exact worker PID, revision hostname, and queue command
+    line. This preserves the producer -> Redis DB1 -> applications queue -> exact worker ->
+    result-backend proof without relying on Celery remote inspect or dispatching retries.
     """
 
     result = application_queue_canary.apply_async(
         kwargs={"expected_revision": revision},
         queue="applications",
     )
+    started = time.monotonic()
     try:
-        payload = result.get(timeout=15, propagate=True)
+        while not result.ready():
+            elapsed = time.monotonic() - started
+            if elapsed >= WORKER_CANARY_MAX_WAIT_SECONDS:
+                raise RuntimeError(
+                    "Application queue canary did not complete within "
+                    f"{int(WORKER_CANARY_MAX_WAIT_SECONDS)} seconds while waiting for the "
+                    "exact Android solo worker"
+                )
+            _assert_tokens("worker", worker_pid, *_worker_identity_tokens(revision))
+            remaining = WORKER_CANARY_MAX_WAIT_SECONDS - elapsed
+            time.sleep(min(WORKER_CANARY_POLL_SECONDS, max(0.05, remaining)))
+
+        payload = result.get(timeout=5, propagate=True)
     finally:
         try:
             result.forget()
         except Exception:
             pass
 
+    queue_wait_seconds = max(0.0, time.monotonic() - started)
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         raise RuntimeError("Application queue canary failed")
     if payload.get("revision") != revision or int(payload.get("redis_db", -1)) != 1:
@@ -111,6 +143,7 @@ def _worker_acceptance(revision: str, worker_pid: int) -> dict[str, Any]:
         "worker_pid": worker_pid,
         "declared_queues": REQUIRED_WORKER_QUEUES.split(","),
         "queue_canary": payload,
+        "queue_wait_seconds": round(queue_wait_seconds, 3),
         "ownership_proof": "exact_pid_plus_revision_hostname_plus_queue_cmdline_plus_db1_round_trip",
     }
 
@@ -168,12 +201,7 @@ def run_acceptance() -> dict[str, Any]:
         "worker": _assert_tokens(
             "worker",
             worker_pid,
-            "celery",
-            "app.celery_app",
-            "worker",
-            f"jobtomatik-android-{revision[:12]}@",
-            "-Q",
-            REQUIRED_WORKER_QUEUES,
+            *_worker_identity_tokens(revision),
         ),
         "beat": _assert_tokens("beat", beat_pid, "celery", "app.celery_app", "beat"),
         "frontend": _assert_tokens(
