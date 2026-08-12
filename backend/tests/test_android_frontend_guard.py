@@ -126,13 +126,17 @@ def _static_artifact(tmp_path: Path, revision: str) -> tuple[Path, Path, Path]:
 
 def test_frontend_guard_has_valid_bash_syntax_and_no_broad_kill():
     subprocess.run(["bash", "-n", str(GUARD)], check=True)
+    subprocess.run(["bash", "-n", str(SANITIZER)], check=True)
     content = GUARD.read_text(encoding="utf-8")
+    sanitizer = SANITIZER.read_text(encoding="utf-8")
     assert "pkill" not in content
     assert "killall" not in content
     assert "jobtomatik_process_identity.sh" in content
     assert "jobtomatik_pid_has_all_tokens" in content
     assert "serve_static_frontend.py" in content
     assert "static_pid_matches_any_revision" in content
+    assert "jobtomatik_static_frontend_pid_matches" in content
+    assert "jobtomatik_static_frontend_pid_matches" in sanitizer
     assert "legacy_vite_pid_matches" in content
     assert '"--port"' in content
     assert '"3000"' in content
@@ -286,8 +290,8 @@ def test_guard_status_requires_exact_static_process_and_artifact_identity(tmp_pa
         process.wait(timeout=5)
 
 
-def test_upgrade_sanitizer_then_guard_retires_previous_revision_static_frontend(tmp_path):
-    """Reproduce the physical 061a -> 0f99 failure without using the Android device."""
+def test_upgrade_sanitizer_and_guard_recognize_previous_revision_static_frontend(tmp_path):
+    """Reproduce the physical 061a -> 0f99 stale-server transition without Android."""
 
     frontend_root = tmp_path / "frontend"
     frontend_root.mkdir()
@@ -354,8 +358,8 @@ def test_upgrade_sanitizer_then_guard_retires_previous_revision_static_frontend(
             timeout=10,
         )
         assert sanitized.returncode == 0, sanitized.stderr
-        assert "ANDROID_STALE_PID_REJECTED role=frontend" in sanitized.stdout
-        assert not (runtime_dir / "frontend.pid").exists()
+        assert "ANDROID_MANAGED_PID_VERIFIED role=frontend" in sanitized.stdout
+        assert (runtime_dir / "frontend.pid").read_text(encoding="utf-8") == str(process.pid)
         assert process.poll() is None
 
         retired = subprocess.run(
@@ -372,3 +376,61 @@ def test_upgrade_sanitizer_then_guard_retires_previous_revision_static_frontend(
         if process.poll() is None:
             process.terminate()
             process.wait(timeout=5)
+
+
+def test_sanitizer_rejects_recycled_pid_with_malformed_static_frontend_identity(tmp_path):
+    frontend_root = tmp_path / "frontend"
+    frontend_root.mkdir()
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    artifacts_root = runtime_dir / "frontend-artifacts"
+    current_revision = "a" * 40
+    stale_revision = "b" * 40
+    current_artifact, _, _ = _write_static_artifact(
+        artifacts_root / current_revision,
+        current_revision,
+    )
+    port = _free_port()
+    env = _guard_env(
+        tmp_path,
+        frontend_root=frontend_root,
+        proc_root=proc_root,
+        port=port,
+        revision=current_revision,
+        artifact_root=current_artifact,
+    )
+    expected_python = Path(env["JOBTOMATIK_BACKEND_VENV"]) / "bin" / "python"
+
+    process = subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+        cwd=tmp_path,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        _wait_http(f"http://127.0.0.1:{port}")
+        _fake_static_proc_entry(
+            proc_root,
+            process.pid,
+            python_path=expected_python,
+            artifact_root=artifacts_root / "wrong-root",
+            revision=stale_revision,
+        )
+        (runtime_dir / "frontend.pid").write_text(str(process.pid), encoding="utf-8")
+
+        sanitized = subprocess.run(
+            ["bash", str(SANITIZER)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert sanitized.returncode == 0, sanitized.stderr
+        assert "ANDROID_STALE_PID_REJECTED role=frontend" in sanitized.stdout
+        assert not (runtime_dir / "frontend.pid").exists()
+        assert process.poll() is None
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
