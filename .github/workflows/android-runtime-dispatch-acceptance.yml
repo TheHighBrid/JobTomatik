@@ -7,10 +7,12 @@ on:
       - "backend/app/config.py"
       - "backend/app/tasks/runtime.py"
       - "backend/app/tasks/shadow_runs.py"
+      - "backend/app/services/android_worker_canary.py"
       - "backend/app/services/application_recovery.py"
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/scripts/android_frontend_guard.sh"
+      - "backend/scripts/android_runtime_acceptance.py"
       - "backend/scripts/check_runtime_identity.py"
       - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/manage_android_stack.sh"
@@ -23,10 +25,13 @@ on:
       - "frontend/src/pages/ApplicationDetail.jsx"
       - "backend/tests/test_application_recovery.py"
       - "backend/tests/test_android_frontend_guard.py"
+      - "backend/tests/test_android_runtime_acceptance_determinism.py"
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
       - "backend/tests/test_android_runtime_supervisor_regressions.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_android_worker_busy_status_contract.py"
+      - "backend/tests/test_android_worker_canary_receipt.py"
       - "backend/tests/test_refresh_android_jobtomatik_tabs.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_prepare_android_runtime.py"
@@ -41,10 +46,12 @@ on:
       - "backend/app/config.py"
       - "backend/app/tasks/runtime.py"
       - "backend/app/tasks/shadow_runs.py"
+      - "backend/app/services/android_worker_canary.py"
       - "backend/app/services/application_recovery.py"
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/scripts/android_frontend_guard.sh"
+      - "backend/scripts/android_runtime_acceptance.py"
       - "backend/scripts/check_runtime_identity.py"
       - "backend/scripts/jobtomatik_termux_wrapper.sh"
       - "backend/scripts/manage_android_stack.sh"
@@ -57,10 +64,13 @@ on:
       - "frontend/src/pages/ApplicationDetail.jsx"
       - "backend/tests/test_application_recovery.py"
       - "backend/tests/test_android_frontend_guard.py"
+      - "backend/tests/test_android_runtime_acceptance_determinism.py"
       - "backend/tests/test_android_runtime_canary.py"
       - "backend/tests/test_android_runtime_scripts.py"
       - "backend/tests/test_android_runtime_supervisor_regressions.py"
       - "backend/tests/test_android_task_runtime_liveness.py"
+      - "backend/tests/test_android_worker_busy_status_contract.py"
+      - "backend/tests/test_android_worker_canary_receipt.py"
       - "backend/tests/test_refresh_android_jobtomatik_tabs.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_prepare_android_runtime.py"
@@ -301,10 +311,13 @@ jobs:
           python -m pytest -q --tb=short \
             tests/test_application_recovery.py \
             tests/test_android_frontend_guard.py \
+            tests/test_android_runtime_acceptance_determinism.py \
             tests/test_android_runtime_canary.py \
             tests/test_android_runtime_scripts.py \
             tests/test_android_runtime_supervisor_regressions.py \
             tests/test_android_task_runtime_liveness.py \
+            tests/test_android_worker_busy_status_contract.py \
+            tests/test_android_worker_canary_receipt.py \
             tests/test_refresh_android_jobtomatik_tabs.py \
             tests/test_retire_legacy_android_celery.py \
             tests/test_operations_policy.py \
