@@ -12,6 +12,7 @@ MODE="${1:-status}"
 FRONTEND_URL="${JOBTOMATIK_FRONTEND_URL:-http://127.0.0.1:3000}"
 RUNTIME_REVISION="${JOBTOMATIK_RUNTIME_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)}"
 FRONTEND_ARTIFACT_ROOT="${JOBTOMATIK_FRONTEND_ARTIFACT_ROOT:-$RUNTIME_DIR/frontend-artifacts/$RUNTIME_REVISION}"
+FRONTEND_ARTIFACTS_ROOT="$(dirname -- "$FRONTEND_ARTIFACT_ROOT")"
 FRONTEND_DIST_ROOT="$FRONTEND_ARTIFACT_ROOT/dist"
 FRONTEND_MANIFEST="$FRONTEND_ARTIFACT_ROOT/jobtomatik-frontend-manifest.json"
 STATIC_FRONTEND_SERVER="$BACKEND_ROOT/scripts/serve_static_frontend.py"
@@ -54,6 +55,15 @@ static_pid_matches() {
     "$RUNTIME_REVISION" \
     "--port" \
     "3000"
+}
+
+static_pid_matches_any_revision() {
+  local pid="$1"
+  jobtomatik_static_frontend_pid_matches \
+    "$pid" \
+    "$VENV/bin/python" \
+    "$STATIC_FRONTEND_SERVER" \
+    "$FRONTEND_ARTIFACTS_ROOT"
 }
 
 legacy_vite_pid_matches() {
@@ -107,7 +117,7 @@ identified_frontend_pids() {
     [[ -r "$proc/cmdline" ]] || continue
     pid="${proc##*/}"
     [[ "$pid" != "$$" ]] || continue
-    if static_pid_matches "$pid" || legacy_vite_pid_matches "$pid"; then
+    if static_pid_matches_any_revision "$pid" || legacy_vite_pid_matches "$pid"; then
       printf '%s\n' "$pid"
     fi
   done
@@ -131,7 +141,7 @@ stop_identified_frontend() {
 
   local pid
   for pid in "${candidates[@]}"; do
-    if static_pid_matches "$pid" || legacy_vite_pid_matches "$pid"; then
+    if static_pid_matches_any_revision "$pid" || legacy_vite_pid_matches "$pid"; then
       kill -TERM "$pid" 2>/dev/null || true
     fi
   done

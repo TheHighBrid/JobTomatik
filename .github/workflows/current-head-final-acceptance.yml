@@ -52,6 +52,8 @@ jobs:
     steps:
       - name: Check out exact candidate revision
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -88,6 +90,12 @@ jobs:
             tests/test_premature_handoff_acceptance.py \
             tests/test_stale_target_handoff_revalidation.py \
             tests/test_direct_handoff_attachment.py
+
+      - name: Prove Android artifact and cross-revision frontend retirement contracts
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_android_static_frontend_runtime.py \
+            tests/test_android_frontend_guard.py
 
       - name: Prove qualify and Android 4h launch admission contracts
         run: |
@@ -214,6 +222,9 @@ jobs:
                   "premature_navigation_handoff_absent": "passed",
                   "stale_pre_form_handoff_revalidation": "passed",
                   "final_submit_clicked": False,
+                  "android_static_frontend_dirty_worktree_lock_contract": "passed",
+                  "android_cross_revision_frontend_retirement_contract": "passed",
+                  "android_unrelated_frontend_process_safety_contract": "passed",
                   "shadow_qualification_orchestration_contract": "passed",
                   "android_shadow_launch_live_policy_recheck": "passed",
                   "android_style_worker_control_ready": "passed",

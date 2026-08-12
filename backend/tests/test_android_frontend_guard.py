@@ -12,6 +12,7 @@ from urllib.request import urlopen
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 GUARD = BACKEND_ROOT / "scripts/android_frontend_guard.sh"
+SANITIZER = BACKEND_ROOT / "scripts/sanitize_android_runtime_pid_files.sh"
 WRAPPER = BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh"
 MANAGER = BACKEND_ROOT / "scripts/manage_android_stack.sh"
 STATIC_SERVER = BACKEND_ROOT / "scripts/serve_static_frontend.py"
@@ -98,8 +99,7 @@ def _fake_static_proc_entry(
     (entry / "cmdline").write_bytes(b"\0".join(part.encode("utf-8") for part in cmdline) + b"\0")
 
 
-def _static_artifact(tmp_path: Path, revision: str) -> tuple[Path, Path, Path]:
-    artifact_root = tmp_path / "artifact"
+def _write_static_artifact(artifact_root: Path, revision: str) -> tuple[Path, Path, Path]:
     dist = artifact_root / "dist"
     dist.mkdir(parents=True)
     (dist / "index.html").write_text('<!doctype html><div id="root"></div>', encoding="utf-8")
@@ -120,14 +120,23 @@ def _static_artifact(tmp_path: Path, revision: str) -> tuple[Path, Path, Path]:
     return artifact_root, dist, manifest
 
 
+def _static_artifact(tmp_path: Path, revision: str) -> tuple[Path, Path, Path]:
+    return _write_static_artifact(tmp_path / "artifact", revision)
+
+
 def test_frontend_guard_has_valid_bash_syntax_and_no_broad_kill():
     subprocess.run(["bash", "-n", str(GUARD)], check=True)
+    subprocess.run(["bash", "-n", str(SANITIZER)], check=True)
     content = GUARD.read_text(encoding="utf-8")
+    sanitizer = SANITIZER.read_text(encoding="utf-8")
     assert "pkill" not in content
     assert "killall" not in content
     assert "jobtomatik_process_identity.sh" in content
     assert "jobtomatik_pid_has_all_tokens" in content
     assert "serve_static_frontend.py" in content
+    assert "static_pid_matches_any_revision" in content
+    assert "jobtomatik_static_frontend_pid_matches" in content
+    assert "jobtomatik_static_frontend_pid_matches" not in sanitizer
     assert "legacy_vite_pid_matches" in content
     assert '"--port"' in content
     assert '"3000"' in content
@@ -276,6 +285,152 @@ def test_guard_status_requires_exact_static_process_and_artifact_identity(tmp_pa
         )
         assert result.returncode == 0, result.stderr + result.stdout
         assert f"ANDROID_FRONTEND_STATIC_MANAGED_READY pid={process.pid}" in result.stdout
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+
+def test_upgrade_sanitizer_then_guard_retires_previous_revision_static_frontend(tmp_path):
+    """Reproduce the physical 061a -> 0f99 stale-server transition without Android."""
+
+    frontend_root = tmp_path / "frontend"
+    frontend_root.mkdir()
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    artifacts_root = runtime_dir / "frontend-artifacts"
+    previous_revision = "6" * 40
+    current_revision = "f" * 40
+    previous_artifact, previous_dist, previous_manifest = _write_static_artifact(
+        artifacts_root / previous_revision,
+        previous_revision,
+    )
+    current_artifact, _, _ = _write_static_artifact(
+        artifacts_root / current_revision,
+        current_revision,
+    )
+    port = _free_port()
+    env = _guard_env(
+        tmp_path,
+        frontend_root=frontend_root,
+        proc_root=proc_root,
+        port=port,
+        revision=current_revision,
+        artifact_root=current_artifact,
+    )
+    expected_python = Path(env["JOBTOMATIK_BACKEND_VENV"]) / "bin" / "python"
+
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(STATIC_SERVER),
+            "--root",
+            str(previous_dist),
+            "--manifest",
+            str(previous_manifest),
+            "--revision",
+            previous_revision,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        _wait_http(f"http://127.0.0.1:{port}")
+        _fake_static_proc_entry(
+            proc_root,
+            process.pid,
+            python_path=expected_python,
+            artifact_root=previous_artifact,
+            revision=previous_revision,
+        )
+        (runtime_dir / "frontend.pid").write_text(str(process.pid), encoding="utf-8")
+
+        sanitized = subprocess.run(
+            ["bash", str(SANITIZER)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert sanitized.returncode == 0, sanitized.stderr
+        assert "ANDROID_STALE_PID_REJECTED role=frontend" in sanitized.stdout
+        assert not (runtime_dir / "frontend.pid").exists()
+        assert process.poll() is None
+
+        retired = subprocess.run(
+            ["bash", str(GUARD), "reset"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert retired.returncode == 0, retired.stderr + retired.stdout
+        assert "ANDROID_FRONTEND_EXISTING_JOBTOMATIK_RETIRED" in retired.stdout
+        process.wait(timeout=5)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait(timeout=5)
+
+
+def test_sanitizer_rejects_recycled_pid_with_malformed_static_frontend_identity(tmp_path):
+    frontend_root = tmp_path / "frontend"
+    frontend_root.mkdir()
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    artifacts_root = runtime_dir / "frontend-artifacts"
+    current_revision = "a" * 40
+    stale_revision = "b" * 40
+    current_artifact, _, _ = _write_static_artifact(
+        artifacts_root / current_revision,
+        current_revision,
+    )
+    port = _free_port()
+    env = _guard_env(
+        tmp_path,
+        frontend_root=frontend_root,
+        proc_root=proc_root,
+        port=port,
+        revision=current_revision,
+        artifact_root=current_artifact,
+    )
+    expected_python = Path(env["JOBTOMATIK_BACKEND_VENV"]) / "bin" / "python"
+
+    process = subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+        cwd=tmp_path,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        _wait_http(f"http://127.0.0.1:{port}")
+        _fake_static_proc_entry(
+            proc_root,
+            process.pid,
+            python_path=expected_python,
+            artifact_root=artifacts_root / "wrong-root",
+            revision=stale_revision,
+        )
+        (runtime_dir / "frontend.pid").write_text(str(process.pid), encoding="utf-8")
+
+        sanitized = subprocess.run(
+            ["bash", str(SANITIZER)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert sanitized.returncode == 0, sanitized.stderr
+        assert "ANDROID_STALE_PID_REJECTED role=frontend" in sanitized.stdout
+        assert not (runtime_dir / "frontend.pid").exists()
+        assert process.poll() is None
     finally:
         process.terminate()
         process.wait(timeout=5)
