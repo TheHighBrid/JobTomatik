@@ -1,6 +1,7 @@
 import os
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint, event
+from sqlalchemy.orm import Session as OrmSession
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -133,6 +134,7 @@ class ShadowRunCycle(Base):
 
 
 _ANDROID_TIMED_SHADOW_TARGETS = frozenset({"shadow_run_4h", "shadow_run_8h", "shadow_run_24h"})
+_ANDROID_FOUR_HOUR_SECONDS = 4 * 60 * 60
 
 
 def _require_android_shadow_admission(target: ShadowRunSession) -> None:
@@ -174,6 +176,76 @@ def _require_android_shadow_admission(target: ShadowRunSession) -> None:
         raise ValueError("Shadow qualification canary must remain explicitly non-certifying")
     if str(receipt.get("revision") or "") != str(target.candidate_revision or ""):
         raise ValueError("Shadow qualification canary revision does not match the campaign revision")
+
+
+def _require_android_shadow_live_launch_policy(session: OrmSession, target: ShadowRunSession) -> None:
+    """Re-evaluate mutable policy immediately before Android 4h insertion.
+
+    The canary receipt proves that the path worked on the exact runtime. It is not a
+    reservation of future policy state. Capacity, quiet hours, circuit breakers, user
+    scheduler settings, or hard submit/outreach controls may change during the receipt
+    freshness window. Re-evaluating here prevents a campaign from being admitted only
+    to fail its first cycle because the live policy no longer supports the full run.
+    """
+
+    if os.environ.get("JOBTOMATIK_RUNTIME_MODE") != "android_managed":
+        return
+    if str(target.target_evidence_type or "") != "shadow_run_4h":
+        return
+
+    blockers: list[str] = []
+    if int(target.requested_duration_seconds or 0) != _ANDROID_FOUR_HOUR_SECONDS:
+        blockers.append("requested_duration_not_exactly_4h")
+    if target.final_submit_allowed is not False:
+        blockers.append("final_submit_allowed_not_false")
+    if target.stop_requested not in {False, None}:
+        blockers.append("stop_requested_at_launch")
+
+    from app.config import get_settings
+
+    settings = get_settings()
+    if settings.allow_real_application_submit is not False:
+        blockers.append("real_submission_not_disabled")
+    if settings.allow_real_followup_send is not False:
+        blockers.append("outreach_not_disabled")
+
+    from app.models.user import User
+    from app.services.shadow_qualification import campaign_policy_readiness
+
+    with session.no_autoflush:
+        user = (
+            session.query(User)
+            .filter(User.id == int(target.user_id), User.is_active == True)
+            .first()
+        )
+        if user is None:
+            blockers.append("active_user_missing")
+            policy = {"ok": False, "blockers": ["active_user_missing"]}
+        else:
+            policy = campaign_policy_readiness(
+                session,
+                user,
+                requested_duration_seconds=_ANDROID_FOUR_HOUR_SECONDS,
+                required_remaining_applications=1,
+            )
+            blockers.extend(str(item) for item in (policy.get("blockers") or []))
+
+    if blockers:
+        raise ValueError(
+            "Android shadow_run_4h live launch policy blocked: "
+            + ",".join(sorted(set(blockers)))
+        )
+
+
+@event.listens_for(OrmSession, "before_flush")
+def _require_android_shadow_live_launch_policy_before_flush(
+    session: OrmSession,
+    _flush_context,
+    _instances,
+) -> None:
+    for target in tuple(session.new):
+        if isinstance(target, ShadowRunSession):
+            _require_android_shadow_live_launch_policy(session, target)
 
 
 @event.listens_for(ShadowRunSession, "before_insert")
