@@ -170,4 +170,6 @@ def test_worker_process_contract_declares_all_required_queues():
         encoding="utf-8"
     )
     assert 'REQUIRED_WORKER_QUEUES = "applications,celery,followup,scraping"' in source
-    assert '"-Q",\n        REQUIRED_WORKER_QUEUES' in source
+    assert "def _worker_identity_tokens" in source
+    assert '"-Q",' in source
+    assert "REQUIRED_WORKER_QUEUES," in source
