@@ -136,7 +136,7 @@ def test_frontend_guard_has_valid_bash_syntax_and_no_broad_kill():
     assert "serve_static_frontend.py" in content
     assert "static_pid_matches_any_revision" in content
     assert "jobtomatik_static_frontend_pid_matches" in content
-    assert "jobtomatik_static_frontend_pid_matches" in sanitizer
+    assert "jobtomatik_static_frontend_pid_matches" not in sanitizer
     assert "legacy_vite_pid_matches" in content
     assert '"--port"' in content
     assert '"3000"' in content
@@ -290,7 +290,7 @@ def test_guard_status_requires_exact_static_process_and_artifact_identity(tmp_pa
         process.wait(timeout=5)
 
 
-def test_upgrade_sanitizer_and_guard_recognize_previous_revision_static_frontend(tmp_path):
+def test_upgrade_sanitizer_then_guard_retires_previous_revision_static_frontend(tmp_path):
     """Reproduce the physical 061a -> 0f99 stale-server transition without Android."""
 
     frontend_root = tmp_path / "frontend"
@@ -358,8 +358,8 @@ def test_upgrade_sanitizer_and_guard_recognize_previous_revision_static_frontend
             timeout=10,
         )
         assert sanitized.returncode == 0, sanitized.stderr
-        assert "ANDROID_MANAGED_PID_VERIFIED role=frontend" in sanitized.stdout
-        assert (runtime_dir / "frontend.pid").read_text(encoding="utf-8") == str(process.pid)
+        assert "ANDROID_STALE_PID_REJECTED role=frontend" in sanitized.stdout
+        assert not (runtime_dir / "frontend.pid").exists()
         assert process.poll() is None
 
         retired = subprocess.run(
