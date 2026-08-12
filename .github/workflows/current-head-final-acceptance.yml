@@ -89,8 +89,11 @@ jobs:
             tests/test_stale_target_handoff_revalidation.py \
             tests/test_direct_handoff_attachment.py
 
-      - name: Prove qualify composes discovery policy scheduler worker and dry-run terminal
-        run: python -m pytest -q --tb=short -ra tests/test_shadow_qualification_contract.py
+      - name: Prove qualify and Android 4h launch admission contracts
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_shadow_qualification_contract.py \
+            tests/test_android_shadow_launch_admission.py
 
       - name: Start exact-head Android-style worker on Redis DB1
         run: |
@@ -212,6 +215,7 @@ jobs:
                   "stale_pre_form_handoff_revalidation": "passed",
                   "final_submit_clicked": False,
                   "shadow_qualification_orchestration_contract": "passed",
+                  "android_shadow_launch_live_policy_recheck": "passed",
                   "android_style_worker_control_ready": "passed",
                   "applications_queue_redis_db1_round_trip": "passed",
                   "android_runtime_acceptance_worker_proof": "passed",
