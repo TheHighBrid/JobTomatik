@@ -137,13 +137,17 @@ jobs:
           raise SystemExit("Exact-head Android-style worker did not become control-ready")
           PY
 
-      - name: Prove producer to applications queue to exact worker round trip
+      - name: Prove producer to applications queue to exact worker round trip and persist startup proof
         run: |
           python - <<'PY'
           import os
+          from pathlib import Path
+
+          from app.services.android_worker_canary import write_worker_canary_receipt
           from app.tasks.runtime import application_queue_canary
 
           expected = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
+          worker_pid = int(Path("current-head-celery.pid").read_text().strip())
           result = application_queue_canary.apply_async(
               kwargs={"expected_revision": expected},
               queue="applications",
@@ -154,11 +158,19 @@ jobs:
           assert payload["revision"] == expected
           assert payload["expected_revision"] == expected
           assert payload["redis_db"] == 1
-          assert isinstance(payload["worker_pid"], int)
+          assert payload["worker_pid"] == worker_pid
+          write_worker_canary_receipt(
+              Path(".runtime/celery-application-canary.json"),
+              payload=payload,
+              expected_revision=expected,
+              expected_worker_pid=worker_pid,
+              declared_queues=["applications", "celery", "followup", "scraping"],
+          )
           print("CURRENT_HEAD_APPLICATION_QUEUE_ROUND_TRIP_READY")
+          print("CURRENT_HEAD_ANDROID_WORKER_STARTUP_RECEIPT_READY")
           PY
 
-      - name: Prove Android acceptance uses durable exact-worker execution evidence
+      - name: Prove Android acceptance reuses durable exact-worker startup evidence
         run: |
           python - <<'PY'
           import os
@@ -170,6 +182,7 @@ jobs:
           proof = _worker_acceptance(expected, worker_pid)
           print(proof)
           assert proof["worker_pid"] == worker_pid
+          assert proof["worker_start_token"]
           assert proof["declared_queues"] == [
               "applications",
               "celery",
@@ -181,6 +194,7 @@ jobs:
           assert proof["queue_canary"]["redis_db"] == 1
           assert proof["queue_canary"]["runtime_role"] == "worker"
           assert proof["queue_canary"]["deployment_attested"] is True
+          assert proof["startup_canary_receipt"]["proof"] == "startup_exact_worker_db1_round_trip"
           print("CURRENT_HEAD_ANDROID_RUNTIME_ACCEPTANCE_WORKER_PROOF_READY")
           PY
 
@@ -189,6 +203,7 @@ jobs:
           python -m pytest -q --tb=short -ra \
             tests/test_application_recovery.py \
             tests/test_android_runtime_canary.py \
+            tests/test_android_worker_canary_receipt.py \
             tests/test_android_runtime_acceptance_determinism.py \
             tests/test_android_runtime_scripts.py \
             tests/test_android_task_runtime_liveness.py \
@@ -229,6 +244,7 @@ jobs:
                   "android_shadow_launch_live_policy_recheck": "passed",
                   "android_style_worker_control_ready": "passed",
                   "applications_queue_redis_db1_round_trip": "passed",
+                  "android_worker_startup_receipt": "passed",
                   "android_runtime_acceptance_worker_proof": "passed",
                   "runtime_identity_attested": "passed",
               },
