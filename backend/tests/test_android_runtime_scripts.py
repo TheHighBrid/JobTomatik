@@ -228,6 +228,9 @@ def test_android_update_always_fast_forwards_authoritative_main():
     assert "git switch main" in wrapper
     assert "git pull --ff-only origin main" in wrapper
     update_case = wrapper.split("update)", 1)[1].split(";;", 1)[0]
-    assert "activate_stack restart" not in update_case
-    assert "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING" in update_case
-    assert 'exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart' in update_case
+    executable_update_case = "\n".join(
+        line for line in update_case.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "activate_stack restart" not in executable_update_case
+    assert "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING" in executable_update_case
+    assert 'exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart' in executable_update_case
