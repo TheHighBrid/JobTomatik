@@ -130,8 +130,8 @@ def _ensure_android_account_qualification(
     A fresh valid receipt for the exact account/runtime is reused. If only the physical
     runtime proof is stale, acceptance is refreshed in-process without an operator
     command. Otherwise the real production qualification path runs once for the exact
-    authenticated account. Public responses never include raw provider, broker,
-    database, browser, or credential-bearing exception text.
+    authenticated account. Public responses and API logs never include raw provider,
+    broker, database, browser, or credential-bearing exception text.
     """
 
     if not _android_account_qualification_required(target_evidence_type):
@@ -155,8 +155,8 @@ def _ensure_android_account_qualification(
     if "runtime_acceptance_ready" in blockers:
         try:
             _refresh_android_runtime_acceptance()
-        except Exception as exc:
-            logger.exception(
+        except Exception:
+            logger.error(
                 "Android runtime acceptance refresh failed before account qualification for %s",
                 int(user_id),
             )
@@ -166,7 +166,7 @@ def _ensure_android_account_qualification(
                     "message": "Android runtime acceptance did not pass",
                     "reason": "android_runtime_acceptance_failed",
                 },
-            ) from exc
+            ) from None
 
         admission = canary_receipt_status(
             int(user_id),
@@ -177,8 +177,8 @@ def _ensure_android_account_qualification(
 
     try:
         _run_account_qualification(int(user_id))
-    except Exception as exc:
-        logger.exception(
+    except Exception:
+        logger.error(
             "Authenticated Android qualification failed for account %s",
             int(user_id),
         )
@@ -188,7 +188,7 @@ def _ensure_android_account_qualification(
                 "message": "Authenticated account qualification did not pass",
                 "reason": "account_qualification_failed",
             },
-        ) from exc
+        ) from None
 
     admission = canary_receipt_status(
         int(user_id),
