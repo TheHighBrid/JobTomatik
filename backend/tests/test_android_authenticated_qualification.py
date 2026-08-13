@@ -288,7 +288,7 @@ def test_start_route_passes_authenticated_account_to_qualification(
     )
     monkeypatch.setattr(
         shadow_api,
-        "full_stack_shadow_preflight",
+        "_shadow_start_preflight",
         lambda _db, _user, target_evidence_type="shadow_run_4h": {
             "ok": True,
             "blockers": [],
