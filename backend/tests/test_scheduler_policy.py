@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 from app.models.application import Application
 from app.models.job import Job, JobStatus, JobSource
 from app.models.user import User
+from app.services import scheduler_policy
+from app.services.operations_policy import AutomationDecision
 from app.services.operations_settings import get_operations_settings
 from app.services.scheduler_policy import (
     SCHEDULER_DEFAULTS,
@@ -319,3 +321,105 @@ def test_scheduler_preview_ranks_policy_candidates_without_mutating_jobs(db_sess
     assert preview["invariants"]["application_caps_do_not_stop_discovery"] is True
     db_session.refresh(job)
     assert job.status == JobStatus.queued
+
+
+def test_normal_scheduler_scan_reaches_eligible_job_beyond_old_first_fifty(db_session, monkeypatch):
+    """Timed scheduler cycles must not let blocked queue rows hide a later ATS candidate."""
+
+    user = _user(db_session, email="deep-scan@example.test")
+    monkeypatch.setattr(
+        scheduler_policy,
+        "scheduler_settings",
+        lambda _user: {"auto_apply_min_score": 0.65},
+    )
+
+    for index in range(60):
+        db_session.add(
+            Job(
+                external_id=f"blocked-{index}",
+                title="Blocked role",
+                company=f"Blocked Co {index}",
+                source=JobSource.manual,
+                status=JobStatus.queued,
+                relevance_score=0.99,
+                url=f"https://example.test/blocked/{index}",
+            )
+        )
+    db_session.add(
+        Job(
+            external_id="eligible-deep",
+            title="Eligible Lever role",
+            company="Eligible Co",
+            source=JobSource.lever,
+            status=JobStatus.queued,
+            relevance_score=0.70,
+            url="https://jobs.lever.co/eligible/role",
+        )
+    )
+    db_session.commit()
+
+    def fake_job_policy(_db, _user, job, now=None):
+        allowed = job.external_id == "eligible-deep"
+        return AutomationDecision(
+            allowed,
+            "shadow_dry_run_maturity_exception" if allowed else "platform_not_certified",
+            "allowed" if allowed else "blocked",
+            {},
+        )
+
+    monkeypatch.setattr(scheduler_policy, "evaluate_unattended_job_policy", fake_job_policy)
+
+    ranked = scheduler_policy.rank_scheduler_candidates(db_session, user, limit=4)
+
+    assert ranked
+    assert ranked[0]["job"].external_id == "eligible-deep"
+    assert ranked[0]["decision"]["allowed"] is True
+
+
+def test_qualification_cohort_never_falls_back_to_global_queue(db_session, monkeypatch):
+    """PR #323 exact discovery binding stays authoritative after normal scan hardening."""
+
+    user = _user(db_session, email="cohort-preserved@example.test")
+    blocked = Job(
+        external_id="global-blocked",
+        title="Global blocked",
+        company="Global Co",
+        source=JobSource.manual,
+        status=JobStatus.queued,
+        relevance_score=1.0,
+        url="https://example.test/global",
+    )
+    cohort = Job(
+        external_id="cohort-eligible",
+        title="Cohort eligible",
+        company="Cohort Co",
+        source=JobSource.lever,
+        status=JobStatus.queued,
+        relevance_score=0.70,
+        url="https://jobs.lever.co/cohort/role",
+    )
+    db_session.add_all([blocked, cohort])
+    db_session.commit()
+
+    projection = type("QualificationProjection", (), {})()
+    projection.id = user.id
+    projection.automation_settings = {}
+    projection.job_preferences = {}
+    projection._qualification_candidate_job_ids = (cohort.id,)
+    monkeypatch.setattr(
+        scheduler_policy,
+        "scheduler_settings",
+        lambda _user: {"auto_apply_min_score": 0.65},
+    )
+    observed = []
+
+    def fake_job_policy(_db, _user, job, now=None):
+        observed.append(job.id)
+        return AutomationDecision(True, "allowed", "allowed", {})
+
+    monkeypatch.setattr(scheduler_policy, "evaluate_unattended_job_policy", fake_job_policy)
+
+    ranked = scheduler_policy.rank_scheduler_candidates(db_session, projection, limit=4)
+
+    assert observed == [cohort.id]
+    assert [item["job"].id for item in ranked] == [cohort.id]
