@@ -53,20 +53,6 @@ run_runtime_acceptance() {
     "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/android_runtime_acceptance.py"
 }
 
-run_shadow_qualification() {
-  local user_id="${JOBTOMATIK_SHADOW_CANARY_USER_ID:-}"
-  local user_arg=""
-  if [[ -n "$user_id" ]]; then
-    if [[ ! "$user_id" =~ ^[0-9]+$ ]] || [[ "$user_id" -le 0 ]]; then
-      echo "JOBTOMATIK_SHADOW_CANARY_USER_ID must be a positive integer." >&2
-      return 2
-    fi
-    user_arg="--user-id $user_id"
-  fi
-  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO/backend'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; .venv/bin/python scripts/run_shadow_qualification_canary.py $user_arg"
-}
-
 supervisor_identity_matches() {
   local pid="$1"
   jobtomatik_pid_has_all_tokens "$pid" "proot" "manage_android_stack.sh"
@@ -208,11 +194,12 @@ case "$ACTION" in
     run_runtime_acceptance
     ;;
   qualify)
-    "$BROWSER_COMMAND" status
-    run_stack_foreground status
-    run_frontend_guard status
-    run_runtime_acceptance
-    run_shadow_qualification
+    # Direct database qualification is intentionally retired. It cannot establish the
+    # authenticated campaign owner and previously guessed from active-user cardinality.
+    # The real Android 4h start now runs qualification automatically for get_current_user.
+    echo "JOBTOMATIK_DIRECT_QUALIFICATION_RETIRED"
+    echo "Qualification is account-scoped and runs automatically from the authenticated Shadow Campaign Center 4-hour start."
+    exit 2
     ;;
   stop)
     stop_stack_supervisor
