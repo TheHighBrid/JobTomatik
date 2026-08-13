@@ -72,6 +72,29 @@ def _android_account_qualification_required(target_evidence_type: str) -> bool:
     )
 
 
+def _qualification_reuse_state(user_id: int) -> dict:
+    """Return whether 4h admission can avoid consuming a new canary application.
+
+    A fully valid receipt is reusable immediately. A receipt blocked only because the
+    physical runtime-acceptance receipt is stale is also reusable after the in-process
+    acceptance refresh performed by `_ensure_android_account_qualification`; that
+    refresh does not create another application. Any other blocker means the real
+    qualification canary must run again and consumes one application-cap slot.
+    """
+
+    admission = canary_receipt_status(
+        int(user_id),
+        max_age_seconds=ANDROID_QUALIFICATION_RECEIPT_MAX_AGE_SECONDS,
+    )
+    blockers = {str(item) for item in (admission.get("blockers") or [])}
+    reusable = bool(admission.get("ok")) or blockers == {"runtime_acceptance_ready"}
+    return {
+        "reusable": reusable,
+        "admission": admission,
+        "blockers": sorted(blockers),
+    }
+
+
 def _shadow_start_preflight(
     db: Session,
     user: User,
@@ -80,11 +103,11 @@ def _shadow_start_preflight(
 ) -> dict:
     """Expose every cheap prerequisite before the expensive Android qualification.
 
-    The physical 4h qualification canary consumes one application-cap slot before the
-    timed campaign starts. Android therefore needs two remaining slots at the visible
-    preflight boundary: one for qualification and at least one for the real campaign.
-    The canary and ORM insertion guard still re-check policy afterward, so mutable
-    runtime state remains fail-closed.
+    A fresh account/runtime qualification receipt lets the timed campaign use the one
+    remaining application slot required by launch policy. If a new canary is required,
+    preflight reserves two slots: one for the canary plus one still available for the
+    campaign. The canary and ORM insertion guard re-check mutable policy afterward so
+    drift remains fail-closed.
     """
 
     payload = full_stack_shadow_preflight(
@@ -95,11 +118,13 @@ def _shadow_start_preflight(
     if not _android_account_qualification_required(target_evidence_type):
         return payload
 
+    reuse = _qualification_reuse_state(int(user.id))
+    required_remaining = 1 if reuse["reusable"] else 2
     policy = campaign_policy_readiness(
         db,
         user,
         requested_duration_seconds=ANDROID_FOUR_HOUR_SECONDS,
-        required_remaining_applications=2,
+        required_remaining_applications=required_remaining,
     )
     search_plan = build_search_plan(user)
     checks = payload.setdefault("checks", {})
@@ -121,7 +146,9 @@ def _shadow_start_preflight(
 
     payload["qualification_preflight"] = {
         "required": True,
-        "required_remaining_applications": 2,
+        "qualification_receipt_reusable": bool(reuse["reusable"]),
+        "qualification_receipt_blockers": list(reuse["blockers"]),
+        "required_remaining_applications": required_remaining,
         "policy": policy,
         "search_plan": search_plan,
     }
