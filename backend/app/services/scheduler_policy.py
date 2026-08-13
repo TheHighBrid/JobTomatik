@@ -258,6 +258,30 @@ def candidate_priority(job: Job, now: datetime | None = None) -> tuple[float, di
     }
 
 
+def _transient_candidate_job_ids(user) -> list[int] | None:
+    """Read an in-process qualification cohort without changing persisted user policy.
+
+    Normal ORM ``User`` instances do not carry this attribute. The qualification
+    canary uses a detached scheduler projection with the exact durable Job ids returned
+    by its immediately preceding real discovery. This keeps the production ranking and
+    unattended-policy code path intact while preventing unrelated stale queue rows from
+    becoming qualification evidence.
+    """
+
+    raw = getattr(user, "_qualification_candidate_job_ids", None)
+    if raw is None:
+        return None
+    normalized: set[int] = set()
+    for value in raw:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            normalized.add(parsed)
+    return sorted(normalized)
+
+
 def rank_scheduler_candidates(
     db,
     user,
@@ -280,20 +304,19 @@ def rank_scheduler_candidates(
     except (TypeError, ValueError):
         min_score = 0.65
 
-    requested_limit = max(1, int(limit))
-    page_size = max(
-        SCHEDULER_CANDIDATE_SCAN_PAGE_SIZE,
-        min(100, requested_limit * 5),
+    candidate_job_ids = _transient_candidate_job_ids(user)
+    query = db.query(Job).filter(
+        Job.status == JobStatus.queued,
+        Job.relevance_score >= min_score,
     )
-    scan_ceiling = min(
-        SCHEDULER_CANDIDATE_SCAN_MAX,
-        max(250, requested_limit * 25),
-    )
-    query = (
-        db.query(Job)
-        .filter(Job.status == JobStatus.queued, Job.relevance_score >= min_score)
-        .order_by(Job.relevance_score.desc(), Job.id.desc())
-    )
+    if candidate_job_ids is not None:
+        if not candidate_job_ids:
+            return []
+        # Qualification cohorts are bounded by the scheduler search limit (<=100), so
+        # evaluate the full exact cohort before sorting allowed candidates to the top.
+        rows = query.filter(Job.id.in_(candidate_job_ids)).all()
+    else:
+        rows = query.limit(max(limit * 5, 50)).all()
 
     ranked: list[dict[str, Any]] = []
     allowed_count = 0

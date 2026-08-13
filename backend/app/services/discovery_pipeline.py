@@ -405,6 +405,11 @@ def persist_discovery_results(
         "knowledge_edges_created": 0,
         "memories_used": 0,
         "blocked_reasons": {},
+        # Durable ids are the exact persisted, non-hard-blocked cohort touched by this
+        # discovery call. Qualification uses them to prove that its scheduler
+        # application came from the immediately preceding real discovery rather than
+        # from unrelated stale rows already present in the global queue.
+        "job_ids": [],
     }
     used_memory_ids: set[int] = set()
 
@@ -434,6 +439,7 @@ def persist_discovery_results(
         )
         if job is not None:
             stats["duplicates"] += 1
+            stats["job_ids"].append(int(job.id))
             existing_evaluation = (
                 db.query(OpportunityEvaluation)
                 .filter(
@@ -476,6 +482,7 @@ def persist_discovery_results(
         )
         db.add(job)
         db.flush()
+        stats["job_ids"].append(int(job.id))
 
         _persist_evaluation(db, user, job, tagged, scoring)
         nodes, edges = _upsert_knowledge(db, user, job, contextual_raw)
