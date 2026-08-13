@@ -59,8 +59,18 @@ def campaign_policy_readiness(
             break
 
     required_remaining = max(1, int(required_remaining_applications))
-    remaining_daily = int(metadata.get("remaining_daily", 0) or 0)
-    remaining_weekly = int(metadata.get("remaining_weekly", 0) or 0)
+    daily_capacity_evaluated = "remaining_daily" in metadata
+    weekly_capacity_evaluated = "remaining_weekly" in metadata
+    remaining_daily = (
+        int(metadata.get("remaining_daily") or 0)
+        if daily_capacity_evaluated
+        else None
+    )
+    remaining_weekly = (
+        int(metadata.get("remaining_weekly") or 0)
+        if weekly_capacity_evaluated
+        else None
+    )
     current_policy_version = str(user_settings.get("scheduler_policy_version") or "")
 
     checks = {
@@ -72,8 +82,19 @@ def campaign_policy_readiness(
         "scheduler_dry_run_enabled": bool(scheduler.get("dry_run_mode", True)),
         "autopilot_policy_currently_allowed": bool(decision.allowed),
         "quiet_hours_clear_for_requested_window": quiet_collision_at is None,
-        "daily_capacity_headroom": remaining_daily >= required_remaining,
-        "weekly_capacity_headroom": remaining_weekly >= required_remaining,
+        # Some policy verdicts intentionally short-circuit before capacity is counted
+        # (for example quiet hours). Unknown capacity must never be rendered as zero
+        # remaining; the real cap check becomes authoritative once it is evaluated.
+        "daily_capacity_headroom": (
+            True
+            if not daily_capacity_evaluated
+            else remaining_daily >= required_remaining
+        ),
+        "weekly_capacity_headroom": (
+            True
+            if not weekly_capacity_evaluated
+            else remaining_weekly >= required_remaining
+        ),
         "circuit_breaker_clear": decision.code not in {
             "circuit_breaker_open",
             "platform_circuit_breaker_open",
@@ -87,6 +108,8 @@ def campaign_policy_readiness(
         "required_remaining_applications": required_remaining,
         "remaining_daily": remaining_daily,
         "remaining_weekly": remaining_weekly,
+        "daily_capacity_evaluated": daily_capacity_evaluated,
+        "weekly_capacity_evaluated": weekly_capacity_evaluated,
         "quiet_hours_start_utc": start_hour,
         "quiet_hours_end_utc": end_hour,
         "quiet_hours_collision_at": quiet_collision_at,

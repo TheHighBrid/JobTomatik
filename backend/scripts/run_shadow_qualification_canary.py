@@ -100,7 +100,25 @@ def _user(db, requested_user_id: int | None) -> User:
     return users[0]
 
 
-def _apply_only_scheduler_user(user: User) -> SimpleNamespace:
+def _discovery_job_ids(discovery: dict[str, Any]) -> list[int]:
+    """Normalize the exact durable Job cohort returned by real discovery."""
+
+    result: set[int] = set()
+    for value in discovery.get("job_ids") or []:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            result.add(parsed)
+    return sorted(result)
+
+
+def _apply_only_scheduler_user(
+    user: User,
+    *,
+    qualification_candidate_job_ids: list[int],
+) -> SimpleNamespace:
     """Project one persisted user into an apply-only scheduler view.
 
     Qualification already completed and waited for the real discovery task immediately
@@ -109,6 +127,11 @@ def _apply_only_scheduler_user(user: User) -> SimpleNamespace:
     the one-application qualification path. The projection is detached and never
     mutates or persists the user's automation settings; every application policy gate
     still receives the real user id and the same policy values.
+
+    The transient cohort is the exact set of durable Job ids returned by that blocking
+    discovery task. The shared production ranker recognizes this attribute only on the
+    detached in-process projection, so unrelated queued jobs cannot become canary
+    evidence and normal scheduler users are unaffected.
     """
 
     automation_settings = dict(user.automation_settings or {})
@@ -117,6 +140,7 @@ def _apply_only_scheduler_user(user: User) -> SimpleNamespace:
         id=int(user.id),
         automation_settings=automation_settings,
         job_preferences=dict(user.job_preferences or {}),
+        _qualification_candidate_job_ids=tuple(qualification_candidate_job_ids),
     )
 
 
@@ -340,6 +364,12 @@ def run_canary(*, requested_user_id: int | None, timeout_seconds: int) -> dict[s
             )
         if int(discovery.get("shadow_session_id") or 0) != int(session.id):
             raise RuntimeError("Real discovery lost shadow-session correlation")
+        discovery_job_ids = _discovery_job_ids(discovery)
+        if not discovery_job_ids:
+            raise RuntimeError(
+                "Real discovery produced no persisted qualification cohort; "
+                "no scheduler application can be attributed to this discovery"
+            )
 
         db.expire_all()
         user = db.query(User).filter(User.id == int(user.id), User.is_active == True).first()
@@ -347,7 +377,10 @@ def run_canary(*, requested_user_id: int | None, timeout_seconds: int) -> dict[s
             raise RuntimeError("Canary user disappeared after discovery")
         scheduler_result = _run_scheduler_cycle_for_user(
             db,
-            _apply_only_scheduler_user(user),
+            _apply_only_scheduler_user(
+                user,
+                qualification_candidate_job_ids=discovery_job_ids,
+            ),
             shadow_session_id=int(session.id),
             shadow_application_limit=1,
         )
@@ -367,12 +400,24 @@ def run_canary(*, requested_user_id: int | None, timeout_seconds: int) -> dict[s
                 f"blocked={scheduler_result.get('blocked_job_reasons')}"
             )
 
+        queued_application = _application_snapshot(db, application_ids[0])
+        queued_job_id = int(queued_application.get("job_id") or 0)
+        if queued_job_id not in set(discovery_job_ids):
+            raise RuntimeError(
+                "Qualification scheduler selected an Application outside the exact discovery cohort"
+            )
+
         application = _wait_for_application_path(
             db,
             application_ids[0],
             int(session.id),
             timeout_seconds,
         )
+        if int(application.get("job_id") or 0) not in set(discovery_job_ids):
+            raise RuntimeError(
+                "Qualification application lost exact discovery-cohort binding during worker execution"
+            )
+
         db.expire_all()
         user = db.query(User).filter(User.id == int(user.id), User.is_active == True).first()
         if user is None:
@@ -400,7 +445,9 @@ def run_canary(*, requested_user_id: int | None, timeout_seconds: int) -> dict[s
             "application_path_observed": True,
             "certification_eligible": False,
             "discovery": discovery,
+            "discovery_job_ids": discovery_job_ids,
             "discovery_reused_by_scheduler": True,
+            "scheduler_application_bound_to_discovery": True,
             "scheduler_result": scheduler_result,
             "application": application,
             "pre_canary_policy": pre_policy,
