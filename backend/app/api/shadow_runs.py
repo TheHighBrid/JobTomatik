@@ -89,6 +89,21 @@ def _run_account_qualification(user_id: int) -> dict:
     )
 
 
+def _refresh_android_runtime_acceptance() -> dict:
+    """Refresh physical-runtime proof without restarting or dispatching health work.
+
+    Runtime V2 acceptance revalidates the existing exact worker startup receipt,
+    process start identities, static frontend artifact, API identity, external CDP and
+    no-submit controls. It does not enqueue another Celery canary, restart a managed
+    process, or mutate submission/outreach policy.
+    """
+
+    from app.services.runtime_acceptance import runtime_acceptance_path, write_receipt
+    from scripts.android_runtime_acceptance import run_acceptance
+
+    return write_receipt(runtime_acceptance_path(), run_acceptance())
+
+
 def _qualification_summary(admission: dict, *, user_id: int, performed: bool) -> dict:
     receipt = dict(admission.get("receipt") or {})
     application = dict(receipt.get("application") or {})
@@ -112,9 +127,11 @@ def _ensure_android_account_qualification(
 ) -> dict:
     """Bind Android 4h qualification to the authenticated campaign owner.
 
-    A fresh valid receipt for the exact account/runtime is reused. Otherwise the real
-    production qualification path runs once for that exact account. The public API
-    never returns raw provider, broker, database, or browser exception text.
+    A fresh valid receipt for the exact account/runtime is reused. If only the physical
+    runtime proof is stale, acceptance is refreshed in-process without an operator
+    command. Otherwise the real production qualification path runs once for the exact
+    authenticated account. Public responses never include raw provider, broker,
+    database, browser, or credential-bearing exception text.
     """
 
     if not _android_account_qualification_required(target_evidence_type):
@@ -133,6 +150,30 @@ def _ensure_android_account_qualification(
     )
     if admission.get("ok"):
         return _qualification_summary(admission, user_id=int(user_id), performed=False)
+
+    blockers = {str(item) for item in (admission.get("blockers") or [])}
+    if "runtime_acceptance_ready" in blockers:
+        try:
+            _refresh_android_runtime_acceptance()
+        except Exception as exc:
+            logger.exception(
+                "Android runtime acceptance refresh failed before account qualification for %s",
+                int(user_id),
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Android runtime acceptance did not pass",
+                    "reason": "android_runtime_acceptance_failed",
+                },
+            ) from exc
+
+        admission = canary_receipt_status(
+            int(user_id),
+            max_age_seconds=ANDROID_QUALIFICATION_RECEIPT_MAX_AGE_SECONDS,
+        )
+        if admission.get("ok"):
+            return _qualification_summary(admission, user_id=int(user_id), performed=False)
 
     try:
         _run_account_qualification(int(user_id))
