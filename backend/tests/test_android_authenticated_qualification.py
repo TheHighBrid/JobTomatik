@@ -60,15 +60,28 @@ def test_three_active_users_never_trigger_database_user_guessing(db_session, mon
 
     status_calls: list[int] = []
     canary_calls: list[int] = []
+    acceptance_refreshes: list[bool] = []
 
     def fake_status(user_id: int, **_kwargs):
         status_calls.append(int(user_id))
         if len(status_calls) == 1:
-            # Simulate an unrelated account having a receipt. It must never be reused
-            # for the authenticated account selected by the caller.
+            # Simulate an unrelated account receipt plus stale runtime proof. Neither
+            # condition may permit selecting another account from database contents.
             return {
                 "ok": False,
-                "blockers": ["receipt_present", "user_matches"],
+                "blockers": ["user_matches", "runtime_acceptance_ready"],
+                "receipt": {
+                    "status": "pass",
+                    "user_id": int(first.id),
+                    "revision": REVISION,
+                },
+            }
+        if len(status_calls) == 2:
+            # Runtime refresh fixed only the physical proof. This account still has no
+            # valid receipt, so the canary must run for the authenticated account.
+            return {
+                "ok": False,
+                "blockers": ["user_matches"],
                 "receipt": {
                     "status": "pass",
                     "user_id": int(first.id),
@@ -80,6 +93,11 @@ def test_three_active_users_never_trigger_database_user_guessing(db_session, mon
     monkeypatch.setattr(shadow_api, "canary_receipt_status", fake_status)
     monkeypatch.setattr(
         shadow_api,
+        "_refresh_android_runtime_acceptance",
+        lambda: acceptance_refreshes.append(True) or {"status": "pass"},
+    )
+    monkeypatch.setattr(
+        shadow_api,
         "_run_account_qualification",
         lambda user_id: canary_calls.append(int(user_id)) or {"status": "pass"},
     )
@@ -89,7 +107,8 @@ def test_three_active_users_never_trigger_database_user_guessing(db_session, mon
         target_evidence_type="shadow_run_4h",
     )
 
-    assert status_calls == [int(selected.id), int(selected.id)]
+    assert status_calls == [int(selected.id), int(selected.id), int(selected.id)]
+    assert acceptance_refreshes == [True]
     assert canary_calls == [int(selected.id)]
     assert result["user_id"] == int(selected.id)
     assert result["performed"] is True
@@ -105,11 +124,17 @@ def test_exact_account_receipt_is_reused_without_another_real_canary(monkeypatch
         lambda user_id, **_kwargs: _valid_admission(int(user_id)),
     )
 
-    called = []
+    canary_calls = []
+    acceptance_refreshes = []
     monkeypatch.setattr(
         shadow_api,
         "_run_account_qualification",
-        lambda user_id: called.append(int(user_id)),
+        lambda user_id: canary_calls.append(int(user_id)),
+    )
+    monkeypatch.setattr(
+        shadow_api,
+        "_refresh_android_runtime_acceptance",
+        lambda: acceptance_refreshes.append(True),
     )
 
     result = shadow_api._ensure_android_account_qualification(
@@ -117,10 +142,87 @@ def test_exact_account_receipt_is_reused_without_another_real_canary(monkeypatch
         target_evidence_type="shadow_run_4h",
     )
 
-    assert called == []
+    assert canary_calls == []
+    assert acceptance_refreshes == []
     assert result["user_id"] == 42
     assert result["reused"] is True
     assert result["performed"] is False
+
+
+def test_stale_runtime_receipt_is_refreshed_without_operator_action(monkeypatch):
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    status_calls: list[int] = []
+    acceptance_refreshes: list[bool] = []
+    canary_calls: list[int] = []
+
+    def fake_status(user_id: int, **_kwargs):
+        status_calls.append(int(user_id))
+        if len(status_calls) == 1:
+            return {
+                "ok": False,
+                "blockers": ["runtime_acceptance_ready"],
+                "receipt": _valid_admission(int(user_id))["receipt"],
+            }
+        return _valid_admission(int(user_id))
+
+    monkeypatch.setattr(shadow_api, "canary_receipt_status", fake_status)
+    monkeypatch.setattr(
+        shadow_api,
+        "_refresh_android_runtime_acceptance",
+        lambda: acceptance_refreshes.append(True) or {"status": "pass"},
+    )
+    monkeypatch.setattr(
+        shadow_api,
+        "_run_account_qualification",
+        lambda user_id: canary_calls.append(int(user_id)),
+    )
+
+    result = shadow_api._ensure_android_account_qualification(
+        user_id=77,
+        target_evidence_type="shadow_run_4h",
+    )
+
+    assert status_calls == [77, 77]
+    assert acceptance_refreshes == [True]
+    assert canary_calls == []
+    assert result["reused"] is True
+    assert result["performed"] is False
+
+
+def test_runtime_acceptance_failure_is_bounded_and_does_not_run_canary(monkeypatch):
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    monkeypatch.setattr(
+        shadow_api,
+        "canary_receipt_status",
+        lambda _user_id, **_kwargs: {
+            "ok": False,
+            "blockers": ["runtime_acceptance_ready"],
+            "receipt": {},
+        },
+    )
+    monkeypatch.setattr(
+        shadow_api,
+        "_refresh_android_runtime_acceptance",
+        lambda: (_ for _ in ()).throw(RuntimeError("sensitive runtime detail")),
+    )
+    canary_calls = []
+    monkeypatch.setattr(
+        shadow_api,
+        "_run_account_qualification",
+        lambda user_id: canary_calls.append(int(user_id)),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        shadow_api._ensure_android_account_qualification(
+            user_id=7,
+            target_evidence_type="shadow_run_4h",
+        )
+
+    assert canary_calls == []
+    assert exc_info.value.status_code == 409
+    detail = exc_info.value.detail
+    assert detail["reason"] == "android_runtime_acceptance_failed"
+    assert "sensitive" not in str(detail)
 
 
 def test_qualification_failure_never_exposes_raw_runtime_exception(monkeypatch):
@@ -133,6 +235,11 @@ def test_qualification_failure_never_exposes_raw_runtime_exception(monkeypatch):
             "blockers": ["receipt_present"],
             "receipt": {},
         },
+    )
+    monkeypatch.setattr(
+        shadow_api,
+        "_refresh_android_runtime_acceptance",
+        lambda: {"status": "pass"},
     )
     monkeypatch.setattr(
         shadow_api,
