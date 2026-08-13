@@ -104,7 +104,9 @@ jobs:
             tests/test_android_qualification_runtime_context.py \
             tests/test_shadow_qualification_contract.py \
             tests/test_android_shadow_launch_admission.py \
-            tests/test_android_shadow_preflight_truth.py
+            tests/test_android_shadow_preflight_truth.py \
+            tests/test_discovery_search.py \
+            tests/test_scheduler_policy.py
 
       - name: Start exact-head Android-style worker on Redis DB1
         run: |
@@ -247,6 +249,8 @@ jobs:
                   "unscoped_android_qualification_cli_retired": "passed",
                   "android_shadow_launch_live_policy_recheck": "passed",
                   "android_shadow_preflight_truth": "passed",
+                  "explicit_public_ats_discovery_priority": "passed",
+                  "deterministic_scheduler_candidate_scan": "passed",
                   "android_style_worker_control_ready": "passed",
                   "applications_queue_redis_db1_round_trip": "passed",
                   "android_worker_startup_receipt": "passed",
