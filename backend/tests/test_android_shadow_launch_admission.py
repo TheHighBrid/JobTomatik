@@ -48,7 +48,15 @@ def _user(db_session, *, policy_version: str = SCHEDULER_POLICY_VERSION) -> User
             "quiet_hours_start_utc": 0,
             "quiet_hours_end_utc": 0,
         },
-        job_preferences={},
+        job_preferences={
+            "ats_targets": [
+                {
+                    "provider": "lever",
+                    "identifier": "example-bank",
+                    "company": "Example Bank",
+                }
+            ]
+        },
         is_active=True,
     )
     db_session.add(user)
@@ -81,6 +89,11 @@ def _install_safe_android(monkeypatch, *, followup_send: bool = False) -> None:
     operations = _operations()
     monkeypatch.setattr(operations_policy, "get_operations_settings", lambda: operations)
     monkeypatch.setattr(shadow_qualification, "get_operations_settings", lambda: operations)
+    monkeypatch.setattr(
+        shadow_qualification,
+        "live_platform_maturities",
+        lambda: {"lever": "dry_run"},
+    )
     monkeypatch.setattr(
         config,
         "get_settings",
