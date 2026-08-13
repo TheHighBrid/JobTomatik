@@ -154,3 +154,61 @@ async def test_official_targets_run_only_for_selected_provider(monkeypatch):
             "error_code": None,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_explicit_public_ats_results_survive_broad_board_global_limit(monkeypatch):
+    """Broad-board volume must not evict an explicitly configured public ATS path."""
+
+    async def fake_broad(**kwargs):
+        source = kwargs["sources"][0]
+        return [
+            {
+                "external_id": f"{source}:{index}",
+                "title": f"Broad role {index}",
+                "company": "Broad Co",
+                "url": f"https://example.test/{source}/{index}",
+                "source": source,
+            }
+            for index in range(50)
+        ]
+
+    async def fake_ats(target, **kwargs):
+        return [
+            {
+                "external_id": f"lever:{target['identifier']}:eligible",
+                "title": "Eligible Risk Analyst",
+                "company": target["company"],
+                "url": "https://jobs.lever.co/example-bank/eligible",
+                "source": "lever",
+                "raw_data": {
+                    "official_public_ats": True,
+                    "ats_identifier": target["identifier"],
+                },
+            }
+        ]
+
+    monkeypatch.setattr(discovery_search, "search_broad_jobs", fake_broad)
+    monkeypatch.setattr(discovery_search, "discover_public_ats_target", fake_ats)
+
+    observed = await discovery_search.search_jobs_with_diagnostics(
+        keywords="risk analyst",
+        location="Ottawa, ON",
+        sources=["jobbank", "linkedin", "indeed", "lever"],
+        ats_targets=[
+            {
+                "provider": "lever",
+                "identifier": "example-bank",
+                "company": "Example Bank",
+            }
+        ],
+        limit=50,
+    )
+
+    assert len(observed["jobs"]) == 50
+    assert observed["jobs"][0]["external_id"] == "lever:example-bank:eligible"
+    assert observed["jobs"][0]["raw_data"]["official_public_ats"] is True
+    assert any(
+        item["kind"] == "public_ats" and item["result_count"] == 1
+        for item in observed["source_diagnostics"]
+    )

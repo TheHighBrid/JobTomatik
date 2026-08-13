@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.api import shadow_runs as shadow_api
 from app.models.user import User
+from app.services import shadow_qualification
+from app.services.operations_policy import AutomationDecision
+from app.services.scheduler_policy import SCHEDULER_POLICY_VERSION
 
 
 def _user(db_session) -> User:
@@ -48,6 +53,7 @@ def _ready_policy() -> dict:
             "daily_capacity_headroom": True,
             "weekly_capacity_headroom": True,
             "circuit_breaker_clear": True,
+            "shadow_eligible_public_ats_target_configured": True,
         },
         "blockers": [],
         "remaining_daily": 5,
@@ -129,6 +135,33 @@ def test_android_preflight_surfaces_search_plan_blocker_before_qualification(
     assert result["checks"]["qualification_search_plan_ready"] is False
     assert "qualification_search_location_missing" in result["blockers"]
     assert result["expected_start_acknowledgment"] is None
+
+
+def test_android_preflight_blocks_before_canary_without_shadow_eligible_ats_target(
+    db_session,
+    monkeypatch,
+):
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    user = _user(db_session)
+    monkeypatch.setattr(shadow_api, "full_stack_shadow_preflight", lambda *_args, **_kwargs: _base_preflight())
+    monkeypatch.setattr(shadow_api, "canary_receipt_status", lambda *_args, **_kwargs: _new_canary_required())
+    policy = _ready_policy()
+    policy["ok"] = False
+    policy["checks"]["shadow_eligible_public_ats_target_configured"] = False
+    policy["blockers"] = ["shadow_eligible_public_ats_target_configured"]
+    monkeypatch.setattr(shadow_api, "campaign_policy_readiness", lambda *_args, **_kwargs: policy)
+    _install_ready_search(monkeypatch)
+
+    result = shadow_api._shadow_start_preflight(
+        db_session,
+        user,
+        target_evidence_type="shadow_run_4h",
+    )
+
+    assert result["ok"] is False
+    assert result["expected_start_acknowledgment"] is None
+    assert result["checks"]["qualification_shadow_eligible_public_ats_target_configured"] is False
+    assert "qualification_shadow_eligible_public_ats_target_configured" in result["blockers"]
 
 
 def test_android_preflight_reserves_canary_and_campaign_capacity_when_canary_is_needed(
@@ -311,3 +344,85 @@ def test_start_route_blocks_before_running_canary_when_visible_preflight_is_not_
     assert response.status_code == 409
     assert "qualification_quiet_hours_clear_for_requested_window" in response.text
     assert qualification_calls == []
+
+
+def test_policy_readiness_requires_canonical_shadow_eligible_public_ats_target(
+    db_session,
+    monkeypatch,
+):
+    user = _user(db_session)
+    user.automation_settings = {
+        "scheduler_policy_version": SCHEDULER_POLICY_VERSION,
+        "auto_search_enabled": True,
+        "auto_apply_enabled": True,
+        "dry_run_mode": True,
+        "quiet_hours_start_utc": 0,
+        "quiet_hours_end_utc": 0,
+    }
+    db_session.commit()
+
+    monkeypatch.setattr(
+        shadow_qualification,
+        "get_operations_settings",
+        lambda: SimpleNamespace(
+            default_daily_cap=5,
+            default_weekly_cap=20,
+            quiet_hours_start_utc=0,
+            quiet_hours_end_utc=0,
+        ),
+    )
+    monkeypatch.setattr(
+        shadow_qualification,
+        "scheduler_settings",
+        lambda _user: {
+            "auto_search_enabled": True,
+            "auto_apply_enabled": True,
+            "dry_run_mode": True,
+        },
+    )
+    monkeypatch.setattr(
+        shadow_qualification,
+        "evaluate_autopilot_policy",
+        lambda *_args, **_kwargs: AutomationDecision(
+            True,
+            "autopilot_allowed",
+            "allowed",
+            {"remaining_daily": 5, "remaining_weekly": 20},
+        ),
+    )
+    monkeypatch.setattr(
+        shadow_qualification,
+        "live_platform_maturities",
+        lambda: {"lever": "dry_run", "greenhouse": "detect_only"},
+    )
+
+    missing = shadow_qualification.campaign_policy_readiness(
+        db_session,
+        user,
+        requested_duration_seconds=4 * 60 * 60,
+    )
+    assert missing["checks"]["shadow_eligible_public_ats_target_configured"] is False
+    assert "shadow_eligible_public_ats_target_configured" in missing["blockers"]
+
+    user.job_preferences = {
+        "ats_targets": [
+            {"provider": "greenhouse", "identifier": "detect-only", "company": "Detect Only"},
+            {"provider": "lever", "identifier": "example-bank", "company": "Example Bank"},
+        ]
+    }
+    db_session.commit()
+
+    ready = shadow_qualification.campaign_policy_readiness(
+        db_session,
+        user,
+        requested_duration_seconds=4 * 60 * 60,
+    )
+    assert ready["checks"]["shadow_eligible_public_ats_target_configured"] is True
+    assert ready["eligible_shadow_ats_targets"] == [
+        {
+            "provider": "lever",
+            "identifier": "example-bank",
+            "company": "Example Bank",
+            "maturity": "dry_run",
+        }
+    ]

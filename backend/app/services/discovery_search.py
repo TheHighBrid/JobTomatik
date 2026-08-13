@@ -67,6 +67,11 @@ async def search_jobs_with_diagnostics(
     A single source failure never aborts the remaining search. Diagnostics deliberately
     omit raw exception messages because provider libraries can include request URLs or
     other sensitive runtime detail in exception strings.
+
+    Explicit account-owned public ATS targets are retained before broad-board rows when
+    enforcing the global result limit. This does not grant those jobs policy authority;
+    it only prevents a high-volume broad source from starving the deterministic ATS path
+    the user explicitly configured for qualification and scheduler application work.
     """
 
     normalized_sources = _source_values(sources)
@@ -129,7 +134,8 @@ async def search_jobs_with_diagnostics(
         return {"jobs": [], "source_diagnostics": diagnostics}
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    discovered: list[dict[str, Any]] = []
+    discovered_public_ats: list[dict[str, Any]] = []
+    discovered_broad: list[dict[str, Any]] = []
     for meta, result in zip(task_meta, results):
         if isinstance(result, Exception):
             error_code = type(result).__name__.lower()
@@ -150,8 +156,15 @@ async def search_jobs_with_diagnostics(
             target=meta.get("target"),
             result_count=len(rows),
         ))
-        discovered.extend(rows)
+        if meta["kind"] == "public_ats":
+            discovered_public_ats.extend(rows)
+        else:
+            discovered_broad.extend(rows)
 
+    # User-owned public ATS targets are intentional high-trust discovery inputs. Keep
+    # their rows ahead of broad-board volume when applying the aggregate limit, while
+    # preserving deterministic target/source order and the same global dedup contract.
+    discovered = [*discovered_public_ats, *discovered_broad]
     seen: set[str] = set()
     unique: list[dict[str, Any]] = []
     for job in discovered:

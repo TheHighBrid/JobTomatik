@@ -23,6 +23,11 @@ from scripts import run_shadow_qualification_canary as canary
 
 
 REVISION = "7" * 40
+ATS_TARGET = {
+    "provider": "lever",
+    "identifier": "qualification-contract",
+    "company": "Qualification Contract Co",
+}
 
 
 def _operations() -> OperationsSettings:
@@ -80,7 +85,7 @@ def test_qualification_canary_wires_real_policy_scheduler_application_and_worker
             "scheduler_search_location": "Ottawa, ON",
             "scheduler_search_sources": ["lever"],
         },
-        job_preferences={},
+        job_preferences={"ats_targets": [dict(ATS_TARGET)]},
         is_active=True,
     )
     db_session.add(user)
@@ -121,17 +126,23 @@ def test_qualification_canary_wires_real_policy_scheduler_application_and_worker
     monkeypatch.setattr(canary, "get_settings", lambda: core)
     monkeypatch.setattr(unattended, "get_settings", lambda: core)
     monkeypatch.setattr(scraping, "settings", core)
+    maturity_map = {
+        "greenhouse": "dry_run",
+        "lever": "dry_run",
+        "ashby": "dry_run",
+        "smartrecruiters": "dry_run",
+        "workday": "dry_run",
+        "generic": None,
+    }
     monkeypatch.setattr(
         unattended_policy,
         "live_platform_maturities",
-        lambda: {
-            "greenhouse": "dry_run",
-            "lever": "dry_run",
-            "ashby": "dry_run",
-            "smartrecruiters": "dry_run",
-            "workday": "dry_run",
-            "generic": None,
-        },
+        lambda: dict(maturity_map),
+    )
+    monkeypatch.setattr(
+        shadow_qualification,
+        "live_platform_maturities",
+        lambda: dict(maturity_map),
     )
 
     monkeypatch.setattr(canary, "current_revision", lambda: REVISION)
@@ -199,6 +210,7 @@ def test_qualification_canary_wires_real_policy_scheduler_application_and_worker
     def fake_discovery_apply_async(*, kwargs, queue):
         assert queue == "scraping"
         assert kwargs["user_id"] == user_id
+        assert kwargs["search_params"]["ats_targets"] == [ATS_TARGET]
         discovery_calls.append(kwargs)
         return DiscoveryResult(kwargs)
 
@@ -307,6 +319,7 @@ def test_qualification_canary_wires_real_policy_scheduler_application_and_worker
     assert receipt["post_canary_policy"]["ok"] is True
     assert receipt["post_canary_policy"]["remaining_daily"] >= 1
     assert receipt["post_canary_policy"]["remaining_weekly"] >= 1
+    assert receipt["pre_canary_policy"]["checks"]["shadow_eligible_public_ats_target_configured"] is True
 
     assert len(discovery_calls) == 1
     duplicate_scheduler_search.assert_not_called()
@@ -351,6 +364,11 @@ def test_quiet_hours_do_not_fabricate_zero_capacity_blockers(db_session, monkeyp
     )
     for module in (operations_policy, scheduler_policy, shadow_qualification):
         monkeypatch.setattr(module, "get_operations_settings", lambda: operations)
+    monkeypatch.setattr(
+        shadow_qualification,
+        "live_platform_maturities",
+        lambda: {"lever": "dry_run"},
+    )
 
     user = User(
         email="quiet-capacity@example.test",
@@ -363,7 +381,7 @@ def test_quiet_hours_do_not_fabricate_zero_capacity_blockers(db_session, monkeyp
             "quiet_hours_start_utc": 0,
             "quiet_hours_end_utc": 6,
         },
-        job_preferences={},
+        job_preferences={"ats_targets": [dict(ATS_TARGET)]},
         is_active=True,
     )
     db_session.add(user)
@@ -384,6 +402,7 @@ def test_quiet_hours_do_not_fabricate_zero_capacity_blockers(db_session, monkeyp
     assert readiness["remaining_weekly"] is None
     assert readiness["checks"]["daily_capacity_headroom"] is True
     assert readiness["checks"]["weekly_capacity_headroom"] is True
+    assert readiness["checks"]["shadow_eligible_public_ats_target_configured"] is True
     assert "daily_capacity_headroom" not in readiness["blockers"]
     assert "weekly_capacity_headroom" not in readiness["blockers"]
     assert "autopilot_policy_currently_allowed" in readiness["blockers"]
