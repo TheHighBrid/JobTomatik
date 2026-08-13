@@ -57,6 +57,8 @@ SCHEDULER_DEFAULTS: dict[str, Any] = {
     "scheduler_search_limit": 50,
 }
 SCHEDULER_SETTING_FIELDS = frozenset(SCHEDULER_DEFAULTS)
+SCHEDULER_CANDIDATE_SCAN_PAGE_SIZE = 50
+SCHEDULER_CANDIDATE_SCAN_MAX = 500
 
 
 def _list_values(value: Any) -> list[str]:
@@ -263,41 +265,75 @@ def rank_scheduler_candidates(
     limit: int = 20,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
+    """Return the best policy-ranked candidates from a deterministic bounded scan.
+
+    The former query applied an unordered SQL LIMIT before policy evaluation. A queue
+    dominated by generic or uncertified jobs could therefore hide an eligible ATS job
+    just beyond the arbitrary slice. Scan deterministic relevance/id pages until enough
+    allowed candidates are found, the queue is exhausted, or the bounded scan ceiling is
+    reached. The returned set is still ranked with allowed candidates first.
+    """
+
     settings = scheduler_settings(user)
     try:
         min_score = max(0.0, min(1.0, float(settings.get("auto_apply_min_score", 0.65))))
     except (TypeError, ValueError):
         min_score = 0.65
 
-    rows = (
+    requested_limit = max(1, int(limit))
+    page_size = max(
+        SCHEDULER_CANDIDATE_SCAN_PAGE_SIZE,
+        min(100, requested_limit * 5),
+    )
+    scan_ceiling = min(
+        SCHEDULER_CANDIDATE_SCAN_MAX,
+        max(250, requested_limit * 25),
+    )
+    query = (
         db.query(Job)
         .filter(Job.status == JobStatus.queued, Job.relevance_score >= min_score)
-        .limit(max(limit * 5, 50))
-        .all()
+        .order_by(Job.relevance_score.desc(), Job.id.desc())
     )
+
     ranked: list[dict[str, Any]] = []
-    for job in rows:
-        priority, evidence = candidate_priority(job, now=now)
-        if evidence["days_remaining"] is not None and evidence["days_remaining"] < 0:
+    allowed_count = 0
+    offset = 0
+    while offset < scan_ceiling and allowed_count < requested_limit:
+        batch_limit = min(page_size, scan_ceiling - offset)
+        rows = query.offset(offset).limit(batch_limit).all()
+        if not rows:
+            break
+
+        for job in rows:
+            priority, evidence = candidate_priority(job, now=now)
+            if evidence["days_remaining"] is not None and evidence["days_remaining"] < 0:
+                ranked.append({
+                    "job": job,
+                    "priority_score": priority,
+                    "priority_evidence": evidence,
+                    "decision": {
+                        "allowed": False,
+                        "code": "posting_deadline_passed",
+                        "reason": "The posting deadline has already passed.",
+                        "metadata": {},
+                    },
+                })
+                continue
+            decision = evaluate_unattended_job_policy(db, user, job, now=now)
+            decision_payload = decision.to_dict()
+            if decision_payload.get("allowed"):
+                allowed_count += 1
             ranked.append({
                 "job": job,
                 "priority_score": priority,
                 "priority_evidence": evidence,
-                "decision": {
-                    "allowed": False,
-                    "code": "posting_deadline_passed",
-                    "reason": "The posting deadline has already passed.",
-                    "metadata": {},
-                },
+                "decision": decision_payload,
             })
-            continue
-        decision = evaluate_unattended_job_policy(db, user, job, now=now)
-        ranked.append({
-            "job": job,
-            "priority_score": priority,
-            "priority_evidence": evidence,
-            "decision": decision.to_dict(),
-        })
+
+        offset += len(rows)
+        if len(rows) < batch_limit:
+            break
+
     ranked.sort(
         key=lambda item: (
             bool(item["decision"].get("allowed")),
@@ -306,7 +342,7 @@ def rank_scheduler_candidates(
         ),
         reverse=True,
     )
-    return ranked[:limit]
+    return ranked[:requested_limit]
 
 
 def build_scheduler_preview(db, user, *, candidate_limit: int = 20) -> dict[str, Any]:
