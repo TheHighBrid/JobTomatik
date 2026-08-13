@@ -75,6 +75,7 @@ def test_pipeline_persists_job_evaluation_graph_memory_and_agent_run(auth_client
     db_session.refresh(memory)
 
     assert stats["saved"] == 1
+    assert stats["job_ids"] == [job.id]
     assert stats["evaluations_created"] == 1
     assert stats["knowledge_nodes_created"] == 2
     assert stats["knowledge_edges_created"] == 1
@@ -92,6 +93,7 @@ def test_pipeline_persists_job_evaluation_graph_memory_and_agent_run(auth_client
     assert db_session.query(KnowledgeEdge).count() == 1
     assert run.status == "completed"
     assert run.result["saved"] == 1
+    assert run.result["job_ids"] == [job.id]
     assert all(task.status == "completed" for task in run.tasks)
     assert memory.last_used_at is not None
 
@@ -105,6 +107,7 @@ def test_pipeline_persists_job_evaluation_graph_memory_and_agent_run(auth_client
 
     assert duplicate_stats["saved"] == 0
     assert duplicate_stats["duplicates"] == 1
+    assert duplicate_stats["job_ids"] == [job.id]
     assert duplicate_stats["evaluations_created"] == 0
     assert db_session.query(Job).count() == 1
     assert db_session.query(OpportunityEvaluation).count() == 1
@@ -148,8 +151,10 @@ def test_global_job_dedupe_still_creates_user_scoped_intelligence(auth_client, d
     evaluations = db_session.query(OpportunityEvaluation).order_by(OpportunityEvaluation.user_id).all()
 
     assert first_stats["saved"] == 1
+    assert first_stats["job_ids"] == [job.id]
     assert second_stats["saved"] == 0
     assert second_stats["duplicates"] == 1
+    assert second_stats["job_ids"] == [job.id]
     assert second_stats["evaluations_created"] == 1
     assert db_session.query(Job).count() == 1
     assert "discovery_score" not in job.raw_data
@@ -175,6 +180,7 @@ def test_pipeline_blocks_configured_company_before_persistence(auth_client, db_s
 
     assert stats["blocked"] == 1
     assert stats["saved"] == 0
+    assert stats["job_ids"] == []
     assert stats["blocked_reasons"] == {"blocked company: example bank": 1}
     assert db_session.query(Job).count() == 0
     assert db_session.query(OpportunityEvaluation).count() == 0
