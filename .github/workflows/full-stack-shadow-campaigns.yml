@@ -8,11 +8,14 @@ on:
       - "backend/app/models/certification.py"
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/shadow_runs.py"
+      - "backend/app/services/discovery_search.py"
       - "backend/app/services/full_stack_shadow.py"
       - "backend/app/services/operations_policy.py"
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_acceptance.py"
       - "backend/app/services/runtime_identity.py"
+      - "backend/app/services/scheduler_policy.py"
+      - "backend/app/services/shadow_qualification.py"
       - "backend/app/services/unattended_policy.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/tasks/scraping.py"
@@ -26,11 +29,13 @@ on:
       - "backend/tests/test_android_qualification_runtime_context.py"
       - "backend/tests/test_android_shadow_launch_admission.py"
       - "backend/tests/test_android_shadow_preflight_truth.py"
+      - "backend/tests/test_discovery_search.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
+      - "backend/tests/test_scheduler_policy.py"
       - "backend/tests/test_shadow_qualification_contract.py"
       - "backend/tests/test_shadow_worker_exception.py"
       - "backend/tests/test_shadow_worker_cap_exclusion.py"
@@ -51,11 +56,14 @@ on:
       - "backend/app/models/certification.py"
       - "backend/app/models/__init__.py"
       - "backend/app/schemas/shadow_runs.py"
+      - "backend/app/services/discovery_search.py"
       - "backend/app/services/full_stack_shadow.py"
       - "backend/app/services/operations_policy.py"
       - "backend/app/services/operations_settings.py"
       - "backend/app/services/runtime_acceptance.py"
       - "backend/app/services/runtime_identity.py"
+      - "backend/app/services/scheduler_policy.py"
+      - "backend/app/services/shadow_qualification.py"
       - "backend/app/services/unattended_policy.py"
       - "backend/app/tasks/shadow_runs.py"
       - "backend/app/tasks/scraping.py"
@@ -69,11 +77,13 @@ on:
       - "backend/tests/test_android_qualification_runtime_context.py"
       - "backend/tests/test_android_shadow_launch_admission.py"
       - "backend/tests/test_android_shadow_preflight_truth.py"
+      - "backend/tests/test_discovery_search.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
+      - "backend/tests/test_scheduler_policy.py"
       - "backend/tests/test_shadow_qualification_contract.py"
       - "backend/tests/test_shadow_worker_exception.py"
       - "backend/tests/test_shadow_worker_cap_exclusion.py"
@@ -136,11 +146,14 @@ jobs:
             app/api/shadow_runs.py \
             app/config.py \
             app/models/certification.py \
+            app/services/discovery_search.py \
             app/services/full_stack_shadow.py \
             app/services/operations_policy.py \
             app/services/operations_settings.py \
             app/services/runtime_acceptance.py \
             app/services/runtime_identity.py \
+            app/services/scheduler_policy.py \
+            app/services/shadow_qualification.py \
             app/services/unattended_policy.py \
             app/tasks/shadow_runs.py \
             app/tasks/scraping.py \
@@ -151,8 +164,10 @@ jobs:
             tests/test_android_qualification_runtime_context.py \
             tests/test_android_shadow_launch_admission.py \
             tests/test_android_shadow_preflight_truth.py \
+            tests/test_discovery_search.py \
             tests/test_operations_policy.py \
             tests/test_runtime_identity_shadow_gate.py \
+            tests/test_scheduler_policy.py \
             tests/test_shadow_qualification_contract.py \
             tests/test_shadow_worker_exception.py \
             tests/test_shadow_worker_cap_exclusion.py
@@ -165,11 +180,13 @@ jobs:
             tests/test_android_qualification_runtime_context.py \
             tests/test_android_shadow_launch_admission.py \
             tests/test_android_shadow_preflight_truth.py \
+            tests/test_discovery_search.py \
             tests/test_full_stack_shadow.py \
             tests/test_full_stack_shadow_recovery.py \
             tests/test_operations_policy.py \
             tests/test_runtime_identity.py \
             tests/test_runtime_identity_shadow_gate.py \
+            tests/test_scheduler_policy.py \
             tests/test_shadow_qualification_contract.py \
             tests/test_shadow_worker_exception.py \
             tests/test_shadow_worker_cap_exclusion.py
