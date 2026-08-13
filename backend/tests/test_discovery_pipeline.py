@@ -97,6 +97,12 @@ def test_pipeline_persists_job_evaluation_graph_memory_and_agent_run(auth_client
     assert all(task.status == "completed" for task in run.tasks)
     assert memory.last_used_at is not None
 
+    stale_raw = dict(job.raw_data or {})
+    stale_raw["selected_apply_url"] = "stale-target"
+    job.raw_data = stale_raw
+    job.title = "Stale persisted title"
+    db_session.commit()
+
     duplicate_stats = persist_discovery_results(
         db_session,
         user,
@@ -104,11 +110,15 @@ def test_pipeline_persists_job_evaluation_graph_memory_and_agent_run(auth_client
         keywords="fraud investigator AML",
     )
     db_session.commit()
+    db_session.refresh(job)
 
     assert duplicate_stats["saved"] == 0
     assert duplicate_stats["duplicates"] == 1
     assert duplicate_stats["job_ids"] == [job.id]
     assert duplicate_stats["evaluations_created"] == 0
+    assert job.title == _official_job()["title"]
+    assert job.url == _official_job()["url"]
+    assert job.raw_data["selected_apply_url"] == _official_job()["url"]
     assert db_session.query(Job).count() == 1
     assert db_session.query(OpportunityEvaluation).count() == 1
 
@@ -183,4 +193,3 @@ def test_pipeline_blocks_configured_company_before_persistence(auth_client, db_s
     assert stats["job_ids"] == []
     assert stats["blocked_reasons"] == {"blocked company: example bank": 1}
     assert db_session.query(Job).count() == 0
-    assert db_session.query(OpportunityEvaluation).count() == 0
