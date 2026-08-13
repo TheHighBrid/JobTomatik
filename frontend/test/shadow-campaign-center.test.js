@@ -47,7 +47,7 @@ test('Shadow Campaign Center surfaces qualification and settling evidence', () =
 test('Shadow campaign client uses account-scoped API routes and allows bounded qualification time', () => {
   assert.equal(apiSource.includes("api.get('/shadow-runs/preflight'"), true)
   assert.equal(apiSource.includes("api.get('/shadow-runs'"), true)
-  assert.equal(apiSource.includes("api.post('/shadow-runs', data, { timeout: 10 * 60 * 1000 })"), true)
+  assert.equal(apiSource.includes("api.post('/shadow-runs', data, { timeout: 12 * 60 * 1000 })"), true)
   assert.equal(apiSource.includes('/shadow-runs/${sessionId}/stop'), true)
   assert.equal(apiSource.includes('/shadow-runs/${sessionId}/record-evidence'), true)
 })
