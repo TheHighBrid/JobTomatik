@@ -25,6 +25,7 @@ on:
       - "backend/tests/test_android_authenticated_qualification.py"
       - "backend/tests/test_android_qualification_runtime_context.py"
       - "backend/tests/test_android_shadow_launch_admission.py"
+      - "backend/tests/test_android_shadow_preflight_truth.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
       - "backend/tests/test_operations_policy.py"
@@ -67,6 +68,7 @@ on:
       - "backend/tests/test_android_authenticated_qualification.py"
       - "backend/tests/test_android_qualification_runtime_context.py"
       - "backend/tests/test_android_shadow_launch_admission.py"
+      - "backend/tests/test_android_shadow_preflight_truth.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
       - "backend/tests/test_operations_policy.py"
@@ -148,6 +150,7 @@ jobs:
             tests/test_android_authenticated_qualification.py \
             tests/test_android_qualification_runtime_context.py \
             tests/test_android_shadow_launch_admission.py \
+            tests/test_android_shadow_preflight_truth.py \
             tests/test_operations_policy.py \
             tests/test_runtime_identity_shadow_gate.py \
             tests/test_shadow_qualification_contract.py \
@@ -161,6 +164,7 @@ jobs:
             tests/test_android_authenticated_qualification.py \
             tests/test_android_qualification_runtime_context.py \
             tests/test_android_shadow_launch_admission.py \
+            tests/test_android_shadow_preflight_truth.py \
             tests/test_full_stack_shadow.py \
             tests/test_full_stack_shadow_recovery.py \
             tests/test_operations_policy.py \

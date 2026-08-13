@@ -25,6 +25,8 @@ from app.services.full_stack_shadow import (
 from app.services.operations_settings import get_operations_settings
 from app.services.runtime_acceptance import canary_receipt_status
 from app.services.runtime_identity import runtime_identity_manifest
+from app.services.scheduler_policy import build_search_plan
+from app.services.shadow_qualification import campaign_policy_readiness
 from app.tasks.shadow_runs import run_shadow_session_cycle
 
 
@@ -32,6 +34,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/shadow-runs", tags=["certification"])
 
 ANDROID_QUALIFICATION_RECEIPT_MAX_AGE_SECONDS = 15 * 60
+ANDROID_FOUR_HOUR_SECONDS = 4 * 60 * 60
 
 
 def _autopilot_enabled() -> bool:
@@ -67,6 +70,93 @@ def _android_account_qualification_required(target_evidence_type: str) -> bool:
         os.environ.get("JOBTOMATIK_RUNTIME_MODE") == "android_managed"
         and str(target_evidence_type or "") == "shadow_run_4h"
     )
+
+
+def _qualification_reuse_state(user_id: int) -> dict:
+    """Return whether 4h admission can avoid consuming a new canary application.
+
+    A fully valid receipt is reusable immediately. A receipt blocked only because the
+    physical runtime-acceptance receipt is stale is also reusable after the in-process
+    acceptance refresh performed by `_ensure_android_account_qualification`; that
+    refresh does not create another application. Any other blocker means the real
+    qualification canary must run again and consumes one application-cap slot.
+    """
+
+    admission = canary_receipt_status(
+        int(user_id),
+        max_age_seconds=ANDROID_QUALIFICATION_RECEIPT_MAX_AGE_SECONDS,
+    )
+    blockers = {str(item) for item in (admission.get("blockers") or [])}
+    reusable = bool(admission.get("ok")) or blockers == {"runtime_acceptance_ready"}
+    return {
+        "reusable": reusable,
+        "admission": admission,
+        "blockers": sorted(blockers),
+    }
+
+
+def _shadow_start_preflight(
+    db: Session,
+    user: User,
+    *,
+    target_evidence_type: str,
+) -> dict:
+    """Expose every cheap prerequisite before the expensive Android qualification.
+
+    A fresh account/runtime qualification receipt lets the timed campaign use the one
+    remaining application slot required by launch policy. If a new canary is required,
+    preflight reserves two slots: one for the canary plus one still available for the
+    campaign. The canary and ORM insertion guard re-check mutable policy afterward so
+    drift remains fail-closed.
+    """
+
+    payload = full_stack_shadow_preflight(
+        db,
+        user,
+        target_evidence_type=target_evidence_type,
+    )
+    if not _android_account_qualification_required(target_evidence_type):
+        return payload
+
+    reuse = _qualification_reuse_state(int(user.id))
+    required_remaining = 1 if reuse["reusable"] else 2
+    policy = campaign_policy_readiness(
+        db,
+        user,
+        requested_duration_seconds=ANDROID_FOUR_HOUR_SECONDS,
+        required_remaining_applications=required_remaining,
+    )
+    search_plan = build_search_plan(user)
+    checks = payload.setdefault("checks", {})
+    blockers = list(payload.get("blockers") or [])
+
+    for name, passed in dict(policy.get("checks") or {}).items():
+        check_name = f"qualification_{name}"
+        checks[check_name] = bool(passed)
+        if not passed and check_name not in blockers:
+            blockers.append(check_name)
+
+    search_ready = bool(search_plan.get("ready"))
+    checks["qualification_search_plan_ready"] = search_ready
+    if not search_ready:
+        reason_code = str(search_plan.get("reason_code") or "search_plan_not_ready")
+        blocker = f"qualification_{reason_code}"
+        if blocker not in blockers:
+            blockers.append(blocker)
+
+    payload["qualification_preflight"] = {
+        "required": True,
+        "qualification_receipt_reusable": bool(reuse["reusable"]),
+        "qualification_receipt_blockers": list(reuse["blockers"]),
+        "required_remaining_applications": required_remaining,
+        "policy": policy,
+        "search_plan": search_plan,
+    }
+    payload["blockers"] = blockers
+    payload["ok"] = not blockers
+    if blockers:
+        payload["expected_start_acknowledgment"] = None
+    return payload
 
 
 def _run_account_qualification(user_id: int) -> dict:
@@ -231,7 +321,7 @@ def get_shadow_campaign_preflight(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    payload = full_stack_shadow_preflight(
+    payload = _shadow_start_preflight(
         db,
         current_user,
         target_evidence_type=target_evidence_type,
@@ -302,10 +392,10 @@ def start_shadow_campaign(
         )
 
     user_id = int(current_user.id)
-    # Validate the cheap mutable prerequisites and exact acknowledgment before running
-    # the expensive real application-path qualification. ``create_shadow_session``
-    # repeats these checks after qualification so drift remains fail-closed.
-    start_preflight = full_stack_shadow_preflight(
+    # Validate every cheap qualification/admission prerequisite before running the
+    # expensive real application-path canary. ``create_shadow_session`` and the ORM
+    # insertion guard repeat mutable checks afterward so drift remains fail-closed.
+    start_preflight = _shadow_start_preflight(
         db,
         current_user,
         target_evidence_type=payload.target_evidence_type,
