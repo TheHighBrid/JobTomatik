@@ -7,8 +7,13 @@ from typing import Any
 
 from app.services.operations_policy import evaluate_autopilot_policy, is_quiet_hour
 from app.services.operations_settings import get_operations_settings
+from app.services.public_ats_discovery import PublicATSDiscoveryError, normalize_target
 from app.services.scheduler_policy import scheduler_settings
-from app.services.unattended_policy import REQUIRED_SCHEDULER_POLICY_VERSION
+from app.services.unattended_policy import (
+    REQUIRED_SCHEDULER_POLICY_VERSION,
+    SHADOW_DRY_RUN_ALLOWED_MATURITIES,
+    live_platform_maturities,
+)
 
 
 def _bounded_hour(value: Any, default: int) -> int:
@@ -17,6 +22,40 @@ def _bounded_hour(value: Any, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return min(23, max(0, parsed))
+
+
+def _eligible_shadow_ats_targets(user) -> list[dict[str, str]]:
+    """Return explicit account-owned public ATS targets eligible for no-submit shadow work.
+
+    Broad boards can prove discovery, but they are not deterministic application-path
+    evidence. Public ATS discovery intentionally requires explicit account configuration,
+    and qualification may use only adapters whose canonical maturity is already allowed
+    by the existing Phase 11 no-submit exception.
+    """
+
+    maturities = live_platform_maturities()
+    result: list[dict[str, str]] = []
+    preferences = dict(user.job_preferences or {})
+    for raw in preferences.get("ats_targets") or []:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            target = normalize_target(raw)
+        except PublicATSDiscoveryError:
+            continue
+        provider = target["provider"]
+        maturity = maturities.get(provider)
+        if maturity not in SHADOW_DRY_RUN_ALLOWED_MATURITIES:
+            continue
+        result.append(
+            {
+                "provider": provider,
+                "identifier": target["identifier"],
+                "company": target["company"],
+                "maturity": str(maturity),
+            }
+        )
+    return result
 
 
 def campaign_policy_readiness(
@@ -40,6 +79,7 @@ def campaign_policy_readiness(
     operations = get_operations_settings()
     decision = evaluate_autopilot_policy(db, user, now=current)
     metadata = dict(decision.metadata or {})
+    eligible_targets = _eligible_shadow_ats_targets(user)
 
     start_hour = _bounded_hour(
         user_settings.get("quiet_hours_start_utc"), operations.quiet_hours_start_utc
@@ -99,6 +139,7 @@ def campaign_policy_readiness(
             "circuit_breaker_open",
             "platform_circuit_breaker_open",
         },
+        "shadow_eligible_public_ats_target_configured": bool(eligible_targets),
     }
     blockers = [name for name, passed in checks.items() if not passed]
     return {
@@ -115,6 +156,8 @@ def campaign_policy_readiness(
         "quiet_hours_collision_at": quiet_collision_at,
         "scheduler_policy_version": current_policy_version or None,
         "required_scheduler_policy_version": REQUIRED_SCHEDULER_POLICY_VERSION,
+        "eligible_shadow_ats_targets": eligible_targets,
+        "shadow_allowed_maturities": sorted(SHADOW_DRY_RUN_ALLOWED_MATURITIES),
         "autopilot_decision": decision.to_dict(),
         "scheduler": scheduler,
     }
