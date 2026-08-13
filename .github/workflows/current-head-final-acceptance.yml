@@ -97,9 +97,11 @@ jobs:
             tests/test_android_static_frontend_runtime.py \
             tests/test_android_frontend_guard.py
 
-      - name: Prove qualify and Android 4h launch admission contracts
+      - name: Prove authenticated qualification and Android 4h launch admission contracts
         run: |
           python -m pytest -q --tb=short -ra \
+            tests/test_android_authenticated_qualification.py \
+            tests/test_android_qualification_runtime_context.py \
             tests/test_shadow_qualification_contract.py \
             tests/test_android_shadow_launch_admission.py
 
@@ -240,7 +242,8 @@ jobs:
                   "android_static_frontend_dirty_worktree_lock_contract": "passed",
                   "android_cross_revision_frontend_retirement_contract": "passed",
                   "android_unrelated_frontend_process_safety_contract": "passed",
-                  "shadow_qualification_orchestration_contract": "passed",
+                  "authenticated_shadow_qualification_contract": "passed",
+                  "unscoped_android_qualification_cli_retired": "passed",
                   "android_shadow_launch_live_policy_recheck": "passed",
                   "android_style_worker_control_ready": "passed",
                   "applications_queue_redis_db1_round_trip": "passed",

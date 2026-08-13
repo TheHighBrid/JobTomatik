@@ -4,27 +4,31 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _qualification_function(wrapper: str) -> str:
-    return wrapper.split("run_shadow_qualification() {", 1)[1].split("\n}\n", 1)[0]
+def _qualify_case(wrapper: str) -> str:
+    return wrapper.split("  qualify)\n", 1)[1].split("    ;;\n", 1)[0]
 
 
-def test_android_shadow_qualification_runs_from_backend_runtime_root():
+def test_android_direct_qualification_cli_is_retired():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
-    qualification = _qualification_function(wrapper)
+    qualify = _qualify_case(wrapper)
 
-    assert "cd '$PROOT_REPO/backend'" in qualification
-    assert ".venv/bin/python scripts/run_shadow_qualification_canary.py" in qualification
-    assert "cd '$PROOT_REPO';" not in qualification
-    assert "backend/.venv/bin/python backend/scripts/run_shadow_qualification_canary.py" not in qualification
+    assert "JOBTOMATIK_DIRECT_QUALIFICATION_RETIRED" in qualify
+    assert "authenticated Shadow Campaign Center 4-hour start" in qualify
+    assert "run_shadow_qualification" not in wrapper
+    assert "JOBTOMATIK_SHADOW_CANARY_USER_ID" not in wrapper
+    assert "run_shadow_qualification_canary.py" not in wrapper
 
 
-def test_android_shadow_qualification_keeps_managed_runtime_identity_context():
+def test_retired_qualification_cli_performs_no_runtime_or_database_work():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
-    qualification = _qualification_function(wrapper)
+    qualify = _qualify_case(wrapper)
 
-    assert "JOBTOMATIK_RUNTIME_MODE=android_managed" in qualification
-    assert "JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'" in qualification
+    assert "run_runtime_acceptance" not in qualify
+    assert "run_stack_foreground" not in qualify
+    assert "run_frontend_guard" not in qualify
+    assert "proot-distro" not in qualify
+    assert "--user-id" not in qualify

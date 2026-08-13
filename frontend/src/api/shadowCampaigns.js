@@ -10,7 +10,7 @@ export const getShadowCampaign = (sessionId) =>
   api.get(`/shadow-runs/${sessionId}`)
 
 export const startShadowCampaign = (data) =>
-  api.post('/shadow-runs', data)
+  api.post('/shadow-runs', data, { timeout: 12 * 60 * 1000 })
 
 export const stopShadowCampaign = (sessionId, data) =>
   api.post(`/shadow-runs/${sessionId}/stop`, data)

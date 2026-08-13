@@ -11,6 +11,7 @@ on:
       - "backend/app/services/full_stack_shadow.py"
       - "backend/app/services/operations_policy.py"
       - "backend/app/services/operations_settings.py"
+      - "backend/app/services/runtime_acceptance.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/app/services/unattended_policy.py"
       - "backend/app/tasks/shadow_runs.py"
@@ -19,11 +20,17 @@ on:
       - "backend/app/celery_app.py"
       - "backend/app/main.py"
       - "backend/scripts/check_runtime_identity.py"
+      - "backend/scripts/jobtomatik_termux_wrapper.sh"
+      - "backend/scripts/run_shadow_qualification_canary.py"
+      - "backend/tests/test_android_authenticated_qualification.py"
+      - "backend/tests/test_android_qualification_runtime_context.py"
+      - "backend/tests/test_android_shadow_launch_admission.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
+      - "backend/tests/test_shadow_qualification_contract.py"
       - "backend/tests/test_shadow_worker_exception.py"
       - "backend/tests/test_shadow_worker_cap_exclusion.py"
       - "docker-compose.yml"
@@ -46,6 +53,7 @@ on:
       - "backend/app/services/full_stack_shadow.py"
       - "backend/app/services/operations_policy.py"
       - "backend/app/services/operations_settings.py"
+      - "backend/app/services/runtime_acceptance.py"
       - "backend/app/services/runtime_identity.py"
       - "backend/app/services/unattended_policy.py"
       - "backend/app/tasks/shadow_runs.py"
@@ -54,11 +62,17 @@ on:
       - "backend/app/celery_app.py"
       - "backend/app/main.py"
       - "backend/scripts/check_runtime_identity.py"
+      - "backend/scripts/jobtomatik_termux_wrapper.sh"
+      - "backend/scripts/run_shadow_qualification_canary.py"
+      - "backend/tests/test_android_authenticated_qualification.py"
+      - "backend/tests/test_android_qualification_runtime_context.py"
+      - "backend/tests/test_android_shadow_launch_admission.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/tests/test_full_stack_shadow_recovery.py"
       - "backend/tests/test_operations_policy.py"
       - "backend/tests/test_runtime_identity.py"
       - "backend/tests/test_runtime_identity_shadow_gate.py"
+      - "backend/tests/test_shadow_qualification_contract.py"
       - "backend/tests/test_shadow_worker_exception.py"
       - "backend/tests/test_shadow_worker_cap_exclusion.py"
       - "docker-compose.yml"
@@ -115,6 +129,7 @@ jobs:
       - name: Compile Phase 11 backend surfaces
         working-directory: backend
         run: |
+          bash -n scripts/jobtomatik_termux_wrapper.sh
           python -m compileall -q \
             app/api/shadow_runs.py \
             app/config.py \
@@ -122,14 +137,20 @@ jobs:
             app/services/full_stack_shadow.py \
             app/services/operations_policy.py \
             app/services/operations_settings.py \
+            app/services/runtime_acceptance.py \
             app/services/runtime_identity.py \
             app/services/unattended_policy.py \
             app/tasks/shadow_runs.py \
             app/tasks/scraping.py \
             app/tasks/unattended.py \
             scripts/check_runtime_identity.py \
+            scripts/run_shadow_qualification_canary.py \
+            tests/test_android_authenticated_qualification.py \
+            tests/test_android_qualification_runtime_context.py \
+            tests/test_android_shadow_launch_admission.py \
             tests/test_operations_policy.py \
             tests/test_runtime_identity_shadow_gate.py \
+            tests/test_shadow_qualification_contract.py \
             tests/test_shadow_worker_exception.py \
             tests/test_shadow_worker_cap_exclusion.py
 
@@ -137,11 +158,15 @@ jobs:
         working-directory: backend
         run: |
           python -m pytest -q --tb=short -ra \
+            tests/test_android_authenticated_qualification.py \
+            tests/test_android_qualification_runtime_context.py \
+            tests/test_android_shadow_launch_admission.py \
             tests/test_full_stack_shadow.py \
             tests/test_full_stack_shadow_recovery.py \
             tests/test_operations_policy.py \
             tests/test_runtime_identity.py \
             tests/test_runtime_identity_shadow_gate.py \
+            tests/test_shadow_qualification_contract.py \
             tests/test_shadow_worker_exception.py \
             tests/test_shadow_worker_cap_exclusion.py
 
