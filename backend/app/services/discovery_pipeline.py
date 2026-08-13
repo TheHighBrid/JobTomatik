@@ -175,6 +175,42 @@ def _complete_discovery_run(db: Session, run: AgentRun, result: dict[str, Any]) 
     run.completed_at = now
 
 
+def _refresh_existing_job_from_discovery(
+    job: Job,
+    tagged: dict[str, Any],
+    provider_raw: dict[str, Any],
+) -> None:
+    """Refresh provider-owned job truth while preserving the durable lifecycle row.
+
+    Qualification deliberately includes existing duplicate Job ids in the exact
+    discovery cohort. That cohort is only trustworthy if an existing row also carries
+    the fresh provider URL and application metadata observed by the discovery call.
+    Otherwise an old ``selected_apply_url`` can survive deduplication and the worker can
+    execute stale browser input even though qualification just rediscovered the job.
+
+    Keep identity and lifecycle state intact, but replace source-owned descriptive and
+    application-target fields with the current provider snapshot.
+    """
+
+    job.title = tagged["title"]
+    job.company = tagged["company"]
+    job.location = tagged.get("location")
+    job.salary_min = tagged.get("salary_min")
+    job.salary_max = tagged.get("salary_max")
+    job.salary_currency = tagged.get("salary_currency", "CAD")
+    job.job_type = tagged.get("job_type")
+    job.description = tagged.get("description")
+    job.requirements = tagged.get("requirements")
+    job.url = tagged.get("url")
+    job.source = tagged.get("source")
+    job.tags = tagged.get("tags", [])
+    job.skills = tagged.get("skills", [])
+    job.seniority = tagged.get("seniority")
+    job.industry = tagged.get("industry")
+    job.relevance_score = tagged.get("relevance_score", 0.0)
+    job.raw_data = dict(provider_raw)
+
+
 def _upsert_knowledge(
     db: Session,
     user: User,
@@ -439,6 +475,7 @@ def persist_discovery_results(
         )
         if job is not None:
             stats["duplicates"] += 1
+            _refresh_existing_job_from_discovery(job, tagged, provider_raw)
             stats["job_ids"].append(int(job.id))
             existing_evaluation = (
                 db.query(OpportunityEvaluation)
