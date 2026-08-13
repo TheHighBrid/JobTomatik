@@ -193,3 +193,4 @@ def test_pipeline_blocks_configured_company_before_persistence(auth_client, db_s
     assert stats["job_ids"] == []
     assert stats["blocked_reasons"] == {"blocked company: example bank": 1}
     assert db_session.query(Job).count() == 0
+    assert db_session.query(OpportunityEvaluation).count() == 0
