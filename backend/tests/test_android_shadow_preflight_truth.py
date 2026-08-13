@@ -55,6 +55,22 @@ def _ready_policy() -> dict:
     }
 
 
+def _new_canary_required() -> dict:
+    return {"ok": False, "blockers": ["receipt_present"], "receipt": {}}
+
+
+def _fresh_canary_reusable() -> dict:
+    return {"ok": True, "blockers": [], "receipt": {"status": "pass"}}
+
+
+def _install_ready_search(monkeypatch) -> None:
+    monkeypatch.setattr(
+        shadow_api,
+        "build_search_plan",
+        lambda _user: {"ready": True, "reason_code": "search_plan_ready", "search_params": {}},
+    )
+
+
 def test_android_preflight_surfaces_full_window_policy_blocker_before_qualification(
     db_session,
     monkeypatch,
@@ -62,17 +78,14 @@ def test_android_preflight_surfaces_full_window_policy_blocker_before_qualificat
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     user = _user(db_session)
     monkeypatch.setattr(shadow_api, "full_stack_shadow_preflight", lambda *_args, **_kwargs: _base_preflight())
+    monkeypatch.setattr(shadow_api, "canary_receipt_status", lambda *_args, **_kwargs: _new_canary_required())
 
     policy = _ready_policy()
     policy["ok"] = False
     policy["checks"]["quiet_hours_clear_for_requested_window"] = False
     policy["blockers"] = ["quiet_hours_clear_for_requested_window"]
     monkeypatch.setattr(shadow_api, "campaign_policy_readiness", lambda *_args, **_kwargs: policy)
-    monkeypatch.setattr(
-        shadow_api,
-        "build_search_plan",
-        lambda _user: {"ready": True, "reason_code": "search_plan_ready", "search_params": {}},
-    )
+    _install_ready_search(monkeypatch)
 
     result = shadow_api._shadow_start_preflight(
         db_session,
@@ -93,6 +106,7 @@ def test_android_preflight_surfaces_search_plan_blocker_before_qualification(
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     user = _user(db_session)
     monkeypatch.setattr(shadow_api, "full_stack_shadow_preflight", lambda *_args, **_kwargs: _base_preflight())
+    monkeypatch.setattr(shadow_api, "canary_receipt_status", lambda *_args, **_kwargs: _new_canary_required())
     monkeypatch.setattr(shadow_api, "campaign_policy_readiness", lambda *_args, **_kwargs: _ready_policy())
     monkeypatch.setattr(
         shadow_api,
@@ -117,13 +131,14 @@ def test_android_preflight_surfaces_search_plan_blocker_before_qualification(
     assert result["expected_start_acknowledgment"] is None
 
 
-def test_android_preflight_reserves_canary_and_campaign_capacity(
+def test_android_preflight_reserves_canary_and_campaign_capacity_when_canary_is_needed(
     db_session,
     monkeypatch,
 ):
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     user = _user(db_session)
     monkeypatch.setattr(shadow_api, "full_stack_shadow_preflight", lambda *_args, **_kwargs: _base_preflight())
+    monkeypatch.setattr(shadow_api, "canary_receipt_status", lambda *_args, **_kwargs: _new_canary_required())
     observed = {}
 
     def fake_policy(_db, _user, *, requested_duration_seconds, required_remaining_applications):
@@ -132,11 +147,7 @@ def test_android_preflight_reserves_canary_and_campaign_capacity(
         return _ready_policy()
 
     monkeypatch.setattr(shadow_api, "campaign_policy_readiness", fake_policy)
-    monkeypatch.setattr(
-        shadow_api,
-        "build_search_plan",
-        lambda _user: {"ready": True, "reason_code": "search_plan_ready", "search_params": {}},
-    )
+    _install_ready_search(monkeypatch)
 
     result = shadow_api._shadow_start_preflight(
         db_session,
@@ -146,7 +157,75 @@ def test_android_preflight_reserves_canary_and_campaign_capacity(
 
     assert result["ok"] is True
     assert observed == {"duration": 4 * 60 * 60, "remaining": 2}
+    assert result["qualification_preflight"]["qualification_receipt_reusable"] is False
     assert result["qualification_preflight"]["required_remaining_applications"] == 2
+
+
+def test_android_preflight_requires_only_campaign_capacity_when_canary_is_reusable(
+    db_session,
+    monkeypatch,
+):
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    user = _user(db_session)
+    monkeypatch.setattr(shadow_api, "full_stack_shadow_preflight", lambda *_args, **_kwargs: _base_preflight())
+    monkeypatch.setattr(shadow_api, "canary_receipt_status", lambda *_args, **_kwargs: _fresh_canary_reusable())
+    observed = {}
+
+    def fake_policy(_db, _user, *, requested_duration_seconds, required_remaining_applications):
+        observed["duration"] = int(requested_duration_seconds)
+        observed["remaining"] = int(required_remaining_applications)
+        return _ready_policy()
+
+    monkeypatch.setattr(shadow_api, "campaign_policy_readiness", fake_policy)
+    _install_ready_search(monkeypatch)
+
+    result = shadow_api._shadow_start_preflight(
+        db_session,
+        user,
+        target_evidence_type="shadow_run_4h",
+    )
+
+    assert result["ok"] is True
+    assert observed == {"duration": 4 * 60 * 60, "remaining": 1}
+    assert result["qualification_preflight"]["qualification_receipt_reusable"] is True
+    assert result["qualification_preflight"]["required_remaining_applications"] == 1
+
+
+def test_android_preflight_treats_runtime_only_staleness_as_reusable_after_refresh(
+    db_session,
+    monkeypatch,
+):
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    user = _user(db_session)
+    monkeypatch.setattr(shadow_api, "full_stack_shadow_preflight", lambda *_args, **_kwargs: _base_preflight())
+    monkeypatch.setattr(
+        shadow_api,
+        "canary_receipt_status",
+        lambda *_args, **_kwargs: {
+            "ok": False,
+            "blockers": ["runtime_acceptance_ready"],
+            "receipt": {"status": "pass"},
+        },
+    )
+    observed = {}
+
+    def fake_policy(_db, _user, *, requested_duration_seconds, required_remaining_applications):
+        observed["remaining"] = int(required_remaining_applications)
+        return _ready_policy()
+
+    monkeypatch.setattr(shadow_api, "campaign_policy_readiness", fake_policy)
+    _install_ready_search(monkeypatch)
+
+    result = shadow_api._shadow_start_preflight(
+        db_session,
+        user,
+        target_evidence_type="shadow_run_4h",
+    )
+
+    assert result["ok"] is True
+    assert observed["remaining"] == 1
+    assert result["qualification_preflight"]["qualification_receipt_reusable"] is True
+    assert result["qualification_preflight"]["qualification_receipt_blockers"] == ["runtime_acceptance_ready"]
 
 
 def test_non_android_preflight_does_not_run_android_qualification_checks(
@@ -157,6 +236,11 @@ def test_non_android_preflight_does_not_run_android_qualification_checks(
     user = _user(db_session)
     base = _base_preflight()
     monkeypatch.setattr(shadow_api, "full_stack_shadow_preflight", lambda *_args, **_kwargs: base)
+    monkeypatch.setattr(
+        shadow_api,
+        "canary_receipt_status",
+        lambda *_args, **_kwargs: pytest.fail("Android qualification receipt must not be inspected"),
+    )
     monkeypatch.setattr(
         shadow_api,
         "campaign_policy_readiness",
