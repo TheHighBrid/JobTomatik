@@ -180,7 +180,7 @@ def _refresh_existing_job_from_discovery(
     tagged: dict[str, Any],
     provider_raw: dict[str, Any],
 ) -> None:
-    """Refresh provider-owned job truth while preserving the durable lifecycle row.
+    """Refresh provider truth without erasing lifecycle or user-scoped state.
 
     Qualification deliberately includes existing duplicate Job ids in the exact
     discovery cohort. That cohort is only trustworthy if an existing row also carries
@@ -188,8 +188,10 @@ def _refresh_existing_job_from_discovery(
     Otherwise an old ``selected_apply_url`` can survive deduplication and the worker can
     execute stale browser input even though qualification just rediscovered the job.
 
-    Keep identity and lifecycle state intact, but replace source-owned descriptive and
-    application-target fields with the current provider snapshot.
+    Provider fields overwrite their stale counterparts, while JobTomatik lifecycle
+    evidence already persisted in ``raw_data`` survives when it is absent from the
+    provider snapshot. Relevance is intentionally not refreshed here because discovery
+    scoring is user-scoped and the durable Job row is shared across users.
     """
 
     job.title = tagged["title"]
@@ -207,8 +209,9 @@ def _refresh_existing_job_from_discovery(
     job.skills = tagged.get("skills", [])
     job.seniority = tagged.get("seniority")
     job.industry = tagged.get("industry")
-    job.relevance_score = tagged.get("relevance_score", 0.0)
-    job.raw_data = dict(provider_raw)
+    refreshed_raw = dict(job.raw_data or {})
+    refreshed_raw.update(provider_raw)
+    job.raw_data = refreshed_raw
 
 
 def _upsert_knowledge(
