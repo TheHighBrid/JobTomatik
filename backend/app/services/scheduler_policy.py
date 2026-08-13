@@ -57,6 +57,8 @@ SCHEDULER_DEFAULTS: dict[str, Any] = {
     "scheduler_search_limit": 50,
 }
 SCHEDULER_SETTING_FIELDS = frozenset(SCHEDULER_DEFAULTS)
+SCHEDULER_CANDIDATE_SCAN_PAGE_SIZE = 50
+SCHEDULER_CANDIDATE_SCAN_MAX = 500
 
 
 def _list_values(value: Any) -> list[str]:
@@ -287,49 +289,91 @@ def rank_scheduler_candidates(
     limit: int = 20,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
+    """Rank policy candidates without allowing queue order to hide eligible jobs.
+
+    Qualification projections created by the canary remain bound to the exact durable
+    discovery cohort introduced by PR #323. Normal scheduler users instead scan a
+    deterministic bounded sequence of queued jobs until enough policy-allowed candidates
+    are found, preventing an arbitrary first-50 slice from starving a later eligible ATS
+    candidate during the real timed campaign.
+    """
+
     settings = scheduler_settings(user)
     try:
         min_score = max(0.0, min(1.0, float(settings.get("auto_apply_min_score", 0.65))))
     except (TypeError, ValueError):
         min_score = 0.65
 
+    requested_limit = max(1, int(limit))
     candidate_job_ids = _transient_candidate_job_ids(user)
     query = db.query(Job).filter(
         Job.status == JobStatus.queued,
         Job.relevance_score >= min_score,
     )
-    if candidate_job_ids is not None:
-        if not candidate_job_ids:
-            return []
-        # Qualification cohorts are bounded by the scheduler search limit (<=100), so
-        # evaluate the full exact cohort before sorting allowed candidates to the top.
-        rows = query.filter(Job.id.in_(candidate_job_ids)).all()
-    else:
-        rows = query.limit(max(limit * 5, 50)).all()
 
     ranked: list[dict[str, Any]] = []
-    for job in rows:
-        priority, evidence = candidate_priority(job, now=now)
-        if evidence["days_remaining"] is not None and evidence["days_remaining"] < 0:
+    allowed_count = 0
+
+    def evaluate_rows(rows) -> None:
+        nonlocal allowed_count
+        for job in rows:
+            priority, evidence = candidate_priority(job, now=now)
+            if evidence["days_remaining"] is not None and evidence["days_remaining"] < 0:
+                ranked.append({
+                    "job": job,
+                    "priority_score": priority,
+                    "priority_evidence": evidence,
+                    "decision": {
+                        "allowed": False,
+                        "code": "posting_deadline_passed",
+                        "reason": "The posting deadline has already passed.",
+                        "metadata": {},
+                    },
+                })
+                continue
+            decision = evaluate_unattended_job_policy(db, user, job, now=now)
+            payload = decision.to_dict()
+            if payload.get("allowed"):
+                allowed_count += 1
             ranked.append({
                 "job": job,
                 "priority_score": priority,
                 "priority_evidence": evidence,
-                "decision": {
-                    "allowed": False,
-                    "code": "posting_deadline_passed",
-                    "reason": "The posting deadline has already passed.",
-                    "metadata": {},
-                },
+                "decision": payload,
             })
-            continue
-        decision = evaluate_unattended_job_policy(db, user, job, now=now)
-        ranked.append({
-            "job": job,
-            "priority_score": priority,
-            "priority_evidence": evidence,
-            "decision": decision.to_dict(),
-        })
+
+    if candidate_job_ids is not None:
+        if not candidate_job_ids:
+            return []
+        # Preserve PR #323 exactly: qualification evaluates the complete bounded cohort
+        # returned by the immediately preceding real discovery, never the global queue.
+        rows = (
+            query.filter(Job.id.in_(candidate_job_ids))
+            .order_by(Job.relevance_score.desc(), Job.id.desc())
+            .all()
+        )
+        evaluate_rows(rows)
+    else:
+        page_size = max(
+            SCHEDULER_CANDIDATE_SCAN_PAGE_SIZE,
+            min(100, requested_limit * 5),
+        )
+        scan_ceiling = min(
+            SCHEDULER_CANDIDATE_SCAN_MAX,
+            max(250, requested_limit * 25),
+        )
+        ordered = query.order_by(Job.relevance_score.desc(), Job.id.desc())
+        offset = 0
+        while offset < scan_ceiling and allowed_count < requested_limit:
+            batch_limit = min(page_size, scan_ceiling - offset)
+            rows = ordered.offset(offset).limit(batch_limit).all()
+            if not rows:
+                break
+            evaluate_rows(rows)
+            offset += len(rows)
+            if len(rows) < batch_limit:
+                break
+
     ranked.sort(
         key=lambda item: (
             bool(item["decision"].get("allowed")),
@@ -338,7 +382,7 @@ def rank_scheduler_candidates(
         ),
         reverse=True,
     )
-    return ranked[:limit]
+    return ranked[:requested_limit]
 
 
 def build_scheduler_preview(db, user, *, candidate_limit: int = 20) -> dict[str, Any]:
