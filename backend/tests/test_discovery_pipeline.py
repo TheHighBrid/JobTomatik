@@ -99,8 +99,14 @@ def test_pipeline_persists_job_evaluation_graph_memory_and_agent_run(auth_client
 
     stale_raw = dict(job.raw_data or {})
     stale_raw["selected_apply_url"] = "stale-target"
+    stale_raw["supervised_target_metadata"] = {
+        "identity_hash": "durable-target-identity",
+        "verified": True,
+    }
+    stale_raw["lever_official_posting_sha256"] = "durable-posting-sha256"
     job.raw_data = stale_raw
     job.title = "Stale persisted title"
+    job.relevance_score = 0.123456
     db_session.commit()
 
     duplicate_stats = persist_discovery_results(
@@ -119,6 +125,12 @@ def test_pipeline_persists_job_evaluation_graph_memory_and_agent_run(auth_client
     assert job.title == _official_job()["title"]
     assert job.url == _official_job()["url"]
     assert job.raw_data["selected_apply_url"] == _official_job()["url"]
+    assert job.raw_data["supervised_target_metadata"] == {
+        "identity_hash": "durable-target-identity",
+        "verified": True,
+    }
+    assert job.raw_data["lever_official_posting_sha256"] == "durable-posting-sha256"
+    assert job.relevance_score == 0.123456
     assert db_session.query(Job).count() == 1
     assert db_session.query(OpportunityEvaluation).count() == 1
 
@@ -149,6 +161,10 @@ def test_global_job_dedupe_still_creates_user_scoped_intelligence(auth_client, d
         keywords="fraud investigator",
     )
     db_session.commit()
+    shared_job = db_session.query(Job).one()
+    shared_job.relevance_score = 0.234567
+    db_session.commit()
+
     second_stats = persist_discovery_results(
         db_session,
         second_user,
@@ -167,6 +183,7 @@ def test_global_job_dedupe_still_creates_user_scoped_intelligence(auth_client, d
     assert second_stats["job_ids"] == [job.id]
     assert second_stats["evaluations_created"] == 1
     assert db_session.query(Job).count() == 1
+    assert job.relevance_score == 0.234567
     assert "discovery_score" not in job.raw_data
     assert {evaluation.user_id for evaluation in evaluations} == {first_user.id, second_user.id}
     assert all(evaluation.job_id == job.id for evaluation in evaluations)
