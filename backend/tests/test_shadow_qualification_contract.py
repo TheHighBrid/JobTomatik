@@ -76,7 +76,15 @@ def test_qualification_canary_wires_real_policy_scheduler_application_and_worker
             "scheduler_search_location": "Ottawa, ON",
             "scheduler_search_sources": ["lever"],
         },
-        job_preferences={},
+        job_preferences={
+            "ats_targets": [
+                {
+                    "provider": "lever",
+                    "identifier": "qualification-contract",
+                    "company": "Qualification Contract Co",
+                }
+            ]
+        },
         is_active=True,
     )
     db_session.add(user)
@@ -99,17 +107,23 @@ def test_qualification_canary_wires_real_policy_scheduler_application_and_worker
     monkeypatch.setattr(canary, "get_settings", lambda: core)
     monkeypatch.setattr(unattended, "get_settings", lambda: core)
     monkeypatch.setattr(scraping, "settings", core)
+    maturity_map = {
+        "greenhouse": "dry_run",
+        "lever": "dry_run",
+        "ashby": "dry_run",
+        "smartrecruiters": "dry_run",
+        "workday": "dry_run",
+        "generic": None,
+    }
     monkeypatch.setattr(
         unattended_policy,
         "live_platform_maturities",
-        lambda: {
-            "greenhouse": "dry_run",
-            "lever": "dry_run",
-            "ashby": "dry_run",
-            "smartrecruiters": "dry_run",
-            "workday": "dry_run",
-            "generic": None,
-        },
+        lambda: dict(maturity_map),
+    )
+    monkeypatch.setattr(
+        shadow_qualification,
+        "live_platform_maturities",
+        lambda: dict(maturity_map),
     )
 
     monkeypatch.setattr(canary, "current_revision", lambda: REVISION)
@@ -175,6 +189,13 @@ def test_qualification_canary_wires_real_policy_scheduler_application_and_worker
     def fake_discovery_apply_async(*, kwargs, queue):
         assert queue == "scraping"
         assert kwargs["user_id"] == user_id
+        assert kwargs["search_params"]["ats_targets"] == [
+            {
+                "provider": "lever",
+                "identifier": "qualification-contract",
+                "company": "Qualification Contract Co",
+            }
+        ]
         discovery_calls.append(kwargs)
         return DiscoveryResult(kwargs)
 
