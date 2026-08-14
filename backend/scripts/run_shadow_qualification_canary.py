@@ -27,6 +27,8 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from scripts import run_shadow_qualification_canary_base as _base  # noqa: E402
 
+_BASE_RUN_CANARY = _base.run_canary
+
 for _name in dir(_base):
     if _name.startswith("__") or _name in globals():
         continue
@@ -151,7 +153,7 @@ def _sync_base_seams() -> None:
 
 def run_canary(*args, **kwargs):
     _sync_base_seams()
-    return _base.run_canary(*args, **kwargs)
+    return _BASE_RUN_CANARY(*args, **kwargs)
 
 
 CANARY_TIMEOUT_SECONDS = _base.CANARY_TIMEOUT_SECONDS
@@ -159,14 +161,7 @@ CANARY_TIMEOUT_SECONDS = _base.CANARY_TIMEOUT_SECONDS
 
 def main() -> int:
     _sync_base_seams()
-    # Base main resolves its own run_canary global; point it at this wrapper so
-    # CLI and authenticated API execution share the same patched seams.
-    original_run_canary = _base.run_canary
-    try:
-        _base.run_canary = run_canary
-        return _base.main()
-    finally:
-        _base.run_canary = original_run_canary
+    return _base.main()
 
 
 if __name__ == "__main__":
