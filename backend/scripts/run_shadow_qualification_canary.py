@@ -122,16 +122,51 @@ def _wait_for_application_path(
     )
 
 
-# Patch only the two diagnostic seams used by the preserved orchestration.
-_base._application_snapshot = _application_snapshot
-_base._wait_for_application_path = _wait_for_application_path
+_PATCHABLE_BASE_SEAMS = (
+    "get_settings",
+    "SessionLocal",
+    "current_revision",
+    "canary_receipt_path",
+    "runtime_acceptance_status",
+    "runtime_fingerprint",
+    "write_receipt",
+    "build_search_plan",
+    "campaign_policy_readiness",
+    "_run_scheduler_cycle_for_user",
+    "run_job_search",
+)
 
-run_canary = _base.run_canary
+
+def _sync_base_seams() -> None:
+    """Keep established test/operator monkeypatch seams on the public module."""
+
+    for name in _PATCHABLE_BASE_SEAMS:
+        if name in globals():
+            setattr(_base, name, globals()[name])
+    # These two are intentionally resolved on every invocation so a focused
+    # test can replace the public wait/snapshot seam without touching the base.
+    _base._application_snapshot = globals()["_application_snapshot"]
+    _base._wait_for_application_path = globals()["_wait_for_application_path"]
+
+
+def run_canary(*args, **kwargs):
+    _sync_base_seams()
+    return _base.run_canary(*args, **kwargs)
+
+
 CANARY_TIMEOUT_SECONDS = _base.CANARY_TIMEOUT_SECONDS
 
 
 def main() -> int:
-    return _base.main()
+    _sync_base_seams()
+    # Base main resolves its own run_canary global; point it at this wrapper so
+    # CLI and authenticated API execution share the same patched seams.
+    original_run_canary = _base.run_canary
+    try:
+        _base.run_canary = run_canary
+        return _base.main()
+    finally:
+        _base.run_canary = original_run_canary
 
 
 if __name__ == "__main__":
