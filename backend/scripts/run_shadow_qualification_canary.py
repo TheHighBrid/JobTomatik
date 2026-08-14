@@ -114,6 +114,67 @@ def _discovery_job_ids(discovery: dict[str, Any]) -> list[int]:
     return sorted(result)
 
 
+def _qualification_discovery_search_params(
+    search_plan: dict[str, Any],
+    pre_policy: dict[str, Any],
+) -> dict[str, Any]:
+    """Build an ATS-only, job-interest-neutral discovery probe for qualification.
+
+    The normal saved search plan is still required for campaign admission, but it must
+    not decide whether the non-certifying infrastructure canary can reach a real ATS
+    form. A configured public ATS board may have no posting that currently matches the
+    user's location or keyword filters. Qualification therefore queries only the
+    already-eligible account-owned ATS targets and intentionally omits suitability
+    filters. The detached scheduler projection and durable canary policy context keep
+    that relaxation out of timed campaigns and normal unattended execution.
+    """
+
+    targets: list[dict[str, str]] = []
+    providers: list[str] = []
+    seen_targets: set[tuple[str, str]] = set()
+    for raw in pre_policy.get("eligible_shadow_ats_targets") or []:
+        if not isinstance(raw, dict):
+            continue
+        provider = str(raw.get("provider") or "").strip().lower()
+        identifier = str(raw.get("identifier") or "").strip()
+        company = str(raw.get("company") or identifier).strip()
+        key = (provider, identifier)
+        if not provider or not identifier or key in seen_targets:
+            continue
+        seen_targets.add(key)
+        targets.append(
+            {
+                "provider": provider,
+                "identifier": identifier,
+                "company": company or identifier,
+            }
+        )
+        if provider not in providers:
+            providers.append(provider)
+
+    if not targets:
+        raise RuntimeError(
+            "Qualification requires at least one eligible account-owned public ATS target"
+        )
+
+    raw_limit = dict(search_plan.get("search_params") or {}).get("limit", 50)
+    try:
+        limit = max(1, min(100, int(raw_limit)))
+    except (TypeError, ValueError):
+        limit = 50
+
+    return {
+        "keywords": "",
+        "location": "",
+        "salary_min": None,
+        "salary_max": None,
+        "job_type": None,
+        "sources": providers,
+        "ats_targets": targets,
+        "limit": limit,
+    }
+
+
 def _apply_only_scheduler_user(
     user: User,
     *,
@@ -121,12 +182,17 @@ def _apply_only_scheduler_user(
 ) -> SimpleNamespace:
     """Project one persisted user into an apply-only scheduler view.
 
-    Qualification already completed and waited for the real discovery task immediately
-    before the scheduler cycle. Re-running scheduler discovery here would create a
-    second external search whose result is not part of the bounded canary and can race
-    the one-application qualification path. The projection is detached and never
-    mutates or persists the user's automation settings; every application policy gate
-    still receives the real user id and the same policy values.
+    Qualification already completed and waited for the real ATS-only discovery task
+    immediately before the scheduler cycle. Re-running scheduler discovery here would
+    create a second external search whose result is not part of the bounded canary and
+    can race the one-application qualification path. The projection is detached and
+    never mutates or persists the user's automation settings.
+
+    Minimum match is set to zero only on this detached probe so a real ATS form can be
+    exercised even when no current posting matches the account's normal interest score.
+    Job-interest filters are relaxed separately only when the unattended policy proves
+    the durable session is this non-certifying qualification canary. Timed campaigns
+    and normal scheduler users retain their persisted settings.
 
     The transient cohort is the exact set of durable Job ids returned by that blocking
     discovery task. The shared production ranker recognizes this attribute only on the
@@ -136,6 +202,7 @@ def _apply_only_scheduler_user(
 
     automation_settings = dict(user.automation_settings or {})
     automation_settings["auto_search_enabled"] = False
+    automation_settings["auto_apply_min_score"] = 0.0
     return SimpleNamespace(
         id=int(user.id),
         automation_settings=automation_settings,
@@ -338,15 +405,20 @@ def run_canary(*, requested_user_id: int | None, timeout_seconds: int) -> dict[s
             raise RuntimeError(
                 f"Real discovery plan is unavailable: {search_plan.get('reason_code')}"
             )
+        qualification_search_params = _qualification_discovery_search_params(
+            search_plan,
+            pre_policy,
+        )
 
         session = _create_canary_session(db, user, revision)
         discovery_task = run_job_search.apply_async(
             kwargs={
                 "user_id": int(user.id),
                 "search_params": {
-                    **dict(search_plan["search_params"]),
+                    **qualification_search_params,
                     "_origin": "scheduler",
                     "_shadow_session_id": int(session.id),
+                    "_qualification_probe": True,
                 },
             },
             queue="scraping",
@@ -360,14 +432,15 @@ def run_canary(*, requested_user_id: int | None, timeout_seconds: int) -> dict[s
                 pass
         if not isinstance(discovery, dict) or int(discovery.get("total_found") or 0) <= 0:
             raise RuntimeError(
-                "Real discovery produced no candidates: " + json.dumps(discovery, sort_keys=True)[:1200]
+                "Real ATS qualification discovery produced no candidates: "
+                + json.dumps(discovery, sort_keys=True)[:1200]
             )
         if int(discovery.get("shadow_session_id") or 0) != int(session.id):
             raise RuntimeError("Real discovery lost shadow-session correlation")
         discovery_job_ids = _discovery_job_ids(discovery)
         if not discovery_job_ids:
             raise RuntimeError(
-                "Real discovery produced no persisted qualification cohort; "
+                "Real ATS discovery produced no persisted qualification cohort; "
                 "no scheduler application can be attributed to this discovery"
             )
 
@@ -444,6 +517,8 @@ def run_canary(*, requested_user_id: int | None, timeout_seconds: int) -> dict[s
             "runtime_fingerprint_sha256": fingerprint["sha256"],
             "application_path_observed": True,
             "certification_eligible": False,
+            "qualification_discovery_mode": "explicit_public_ats_probe",
+            "qualification_discovery_search_params": qualification_search_params,
             "discovery": discovery,
             "discovery_job_ids": discovery_job_ids,
             "discovery_reused_by_scheduler": True,
