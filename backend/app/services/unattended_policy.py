@@ -12,6 +12,7 @@ from sqlalchemy import func
 
 from app.config import get_settings
 from app.models.application import Application
+from app.models.certification import ShadowRunSession
 from app.models.job import Job
 from app.services.ats_manifest import ats_certification_manifest
 from app.services.ats_maturity import AdapterMaturity, normalize_adapter_maturity
@@ -35,6 +36,7 @@ KNOWN_PLATFORMS = {
 }
 REQUIRED_AUTONOMOUS_MATURITY = AdapterMaturity.CERTIFIED_AUTONOMOUS.value
 REQUIRED_SCHEDULER_POLICY_VERSION = "bounded-autonomy-v1"
+SHADOW_QUALIFICATION_CANARY_TARGET = "shadow_qualification_canary"
 SHADOW_DRY_RUN_ALLOWED_MATURITIES = frozenset(
     {
         AdapterMaturity.DRY_RUN.value,
@@ -202,6 +204,52 @@ def _shadow_platform_enabled(platform: str) -> bool:
     return platform not in disabled and "all" not in disabled
 
 
+def _shadow_qualification_probe(db, *, user_id: int, shadow_session_id: Any) -> bool:
+    """Prove that a shadow context is the durable non-certifying qualification canary.
+
+    Qualification needs to exercise a real ATS/browser path even when the configured
+    public ATS board has no posting that matches the account's normal job-interest
+    filters at that instant. The relaxation below is therefore keyed to durable session
+    evidence, never a task kwarg or transient caller flag. It cannot apply to a timed
+    ``shadow_run_4h`` campaign or to normal unattended execution.
+    """
+
+    try:
+        session_id = int(shadow_session_id)
+    except (TypeError, ValueError):
+        return False
+    if session_id <= 0:
+        return False
+
+    session = (
+        db.query(ShadowRunSession)
+        .filter(
+            ShadowRunSession.id == session_id,
+            ShadowRunSession.user_id == int(user_id),
+        )
+        .first()
+    )
+    if session is None or session.status != "running":
+        return False
+    if session.target_evidence_type != SHADOW_QUALIFICATION_CANARY_TARGET:
+        return False
+    if session.final_submit_allowed is not False:
+        return False
+
+    snapshot = dict(session.configuration_snapshot or {})
+    invariants = dict(snapshot.get("invariants") or {})
+    return bool(
+        snapshot.get("qualification_canary") is True
+        and snapshot.get("certification_eligible") is False
+        and invariants.get("dry_run_required") is True
+        and invariants.get("real_submission_must_remain_disabled") is True
+        and invariants.get("final_submit_allowed") is False
+        and invariants.get("submission_authorized") is False
+        and invariants.get("outreach_authorized") is False
+        and invariants.get("adapter_maturity_mutated") is False
+    )
+
+
 def evaluate_unattended_job_policy(
     db,
     user,
@@ -216,8 +264,14 @@ def evaluate_unattended_job_policy(
     exercise a nonconsequential dry-run form before autonomous promotion: canonical
     maturity may be dry-run or better, the shadow start substitutes for the live-submit
     platform opt-in, and missing salary/language/sponsorship facts may remain unknown.
-    Explicit known filters, caps, quiet hours, breakers, global controls, and emergency
-    platform disables remain authoritative.
+
+    The non-certifying qualification canary is narrower still: once its durable session
+    identity and no-submit invariants are proven, job-interest suitability filters
+    (allow-list, location, salary, seniority, and language) are not used to decide which
+    configured ATS form may serve as the probe. Caps, quiet hours, circuit breakers,
+    global controls, employer exclusions, platform disables, dry-run, and real-submit
+    safety remain authoritative. Timed shadow campaigns retain the normal suitability
+    filters.
     """
     now = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
@@ -249,6 +303,14 @@ def evaluate_unattended_job_policy(
         shadow_session_id is not None
         and shadow_dry_run
         and not real_submission_enabled
+    )
+    shadow_qualification_probe = bool(
+        shadow_policy_candidate
+        and _shadow_qualification_probe(
+            db,
+            user_id=int(user.id),
+            shadow_session_id=shadow_session_id,
+        )
     )
 
     user_decision = evaluate_autopilot_policy(
@@ -331,21 +393,29 @@ def evaluate_unattended_job_policy(
         daily_cap_per_employer=per_employer_cap,
         quiet_hours_start=time(start_hour),
         quiet_hours_end=time(end_hour),
-        employer_allow_list=_optional_values(
-            user_settings.get("autopilot_employer_allow_list")
+        employer_allow_list=(
+            None
+            if shadow_qualification_probe
+            else _optional_values(user_settings.get("autopilot_employer_allow_list"))
         ),
         employer_exclude_list=_values(
             user_settings.get("autopilot_employer_exclude_list")
         ),
-        allowed_locations=_optional_values(
-            user_settings.get("autopilot_allowed_locations")
+        allowed_locations=(
+            None
+            if shadow_qualification_probe
+            else _optional_values(user_settings.get("autopilot_allowed_locations"))
         ),
-        min_salary=min_salary,
-        allowed_seniority=_optional_values(
-            user_settings.get("autopilot_allowed_seniority")
+        min_salary=None if shadow_qualification_probe else min_salary,
+        allowed_seniority=(
+            None
+            if shadow_qualification_probe
+            else _optional_values(user_settings.get("autopilot_allowed_seniority"))
         ),
-        allowed_languages=_optional_values(
-            user_settings.get("autopilot_allowed_languages")
+        allowed_languages=(
+            None
+            if shadow_qualification_probe
+            else _optional_values(user_settings.get("autopilot_allowed_languages"))
         ),
         require_sponsorship_match=not shadow_policy_candidate,
         require_known_job_attributes=not shadow_policy_candidate,
@@ -384,6 +454,8 @@ def evaluate_unattended_job_policy(
         "shadow_dry_run": shadow_dry_run,
         "real_submission_enabled": real_submission_enabled,
         "shadow_policy_candidate": shadow_policy_candidate,
+        "shadow_qualification_probe": shadow_qualification_probe,
+        "shadow_qualification_suitability_filters_bypassed": shadow_qualification_probe,
         "shadow_live_platform_switch_bypassed": shadow_policy_candidate,
         "shadow_unknown_job_attributes_allowed": shadow_policy_candidate,
         "shadow_dry_run_maturity_exception": shadow_exception_applied,
