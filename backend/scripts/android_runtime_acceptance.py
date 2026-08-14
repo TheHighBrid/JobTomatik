@@ -11,6 +11,7 @@ accepted as evidence that the application worker can attach Playwright.
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.config import Settings  # noqa: E402
 from app.services.browser_runtime import probe_external_playwright_cdp  # noqa: E402
 from scripts import android_runtime_acceptance_base as _base  # noqa: E402
 
@@ -63,9 +65,32 @@ def _worker_acceptance(
     )
 
 
+def _configured_browser_cdp_endpoint() -> str:
+    """Resolve the managed Android browser endpoint independent of caller cwd.
+
+    The Termux launcher invokes physical acceptance from the repository root in
+    a fresh PRoot shell, while the managed stack writes its authoritative runtime
+    configuration to ``backend/.env``. Pydantic's default ``env_file='.env'`` is
+    cwd-relative, so relying only on ``get_settings()`` can incorrectly report an
+    unset endpoint even though the API/worker are configured correctly.
+    """
+
+    process_endpoint = (os.environ.get("APPLICATION_BROWSER_CDP_ENDPOINT") or "").strip()
+    if process_endpoint:
+        return process_endpoint
+
+    backend_settings = Settings(_env_file=BACKEND_ROOT / ".env")
+    endpoint = (backend_settings.application_browser_cdp_endpoint or "").strip()
+    if endpoint:
+        return endpoint
+
+    # Preserve the established test/override seam and support callers that do
+    # intentionally provide a cwd-local Settings source.
+    return (get_settings().application_browser_cdp_endpoint or "").strip()
+
+
 def _playwright_browser_acceptance() -> dict[str, Any]:
-    settings = get_settings()
-    endpoint = (settings.application_browser_cdp_endpoint or "").strip()
+    endpoint = _configured_browser_cdp_endpoint()
     if not endpoint:
         raise RuntimeError("Android application browser CDP endpoint is not configured")
     proof = asyncio.run(probe_external_playwright_cdp(endpoint))

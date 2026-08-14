@@ -83,6 +83,25 @@ def test_android_acceptance_rejects_missing_playwright_attachment(monkeypatch):
         acceptance._playwright_browser_acceptance()
 
 
+def test_android_acceptance_loads_cdp_endpoint_from_backend_env(monkeypatch, tmp_path):
+    backend_root = tmp_path / "backend"
+    backend_root.mkdir()
+    (backend_root / ".env").write_text(
+        "APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9222\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(acceptance, "BACKEND_ROOT", backend_root)
+    monkeypatch.delenv("APPLICATION_BROWSER_CDP_ENDPOINT", raising=False)
+    monkeypatch.setattr(
+        acceptance,
+        "get_settings",
+        lambda: SimpleNamespace(application_browser_cdp_endpoint=""),
+    )
+
+    assert acceptance._configured_browser_cdp_endpoint() == "http://127.0.0.1:9222"
+
+
 class _NoQueryDB:
     def expire_all(self):
         return None
