@@ -86,6 +86,17 @@ def _ensure_target_binding(
     session.handoff_metadata = metadata
 
 
+def _verification_proves_application_target(verification) -> bool:
+    """Require browser evidence before converting a resolution-only binding."""
+    return bool(
+        verification.get("target_resolved")
+        and (
+            verification.get("application_form_detected")
+            or verification.get("trusted_ats_adapter")
+        )
+    )
+
+
 def _raise_handoff_conflict(exc: OperationalSafetyViolation):
     from app.services.handoff_session import HandoffSessionConflict
 
@@ -206,16 +217,42 @@ def install_handoff_safety_integration() -> None:
                 current_url = verification.get("current_url") or session.current_url
                 binding = dict((session.handoff_metadata or {}).get("target_binding") or {})
                 if binding.get("target_resolution_only"):
-                    rebind_resolved_handoff_target(
-                        db,
-                        session,
-                        application,
-                        job,
-                        review,
-                        user,
-                        resolved_url=current_url,
-                        current_fingerprint=verification.get("current_fingerprint"),
-                    )
+                    if _verification_proves_application_target(verification):
+                        rebind_resolved_handoff_target(
+                            db,
+                            session,
+                            application,
+                            job,
+                            review,
+                            user,
+                            resolved_url=current_url,
+                            current_fingerprint=verification.get("current_fingerprint"),
+                        )
+                    else:
+                        # Clearing CAPTCHA/login is not target proof. Keep the handoff
+                        # in resolution mode so the worker can prove the application
+                        # form or strict ATS surface after the human boundary.
+                        dry_run = bool((session.handoff_metadata or {}).get("dry_run", True))
+                        execution = evaluate_execution_safety(
+                            db,
+                            user,
+                            url=current_url,
+                            dry_run=dry_run,
+                            requires_handoff=True,
+                        )
+                        if not execution.allowed:
+                            raise OperationalSafetyViolation(
+                                execution.code,
+                                execution.reason,
+                                metadata=execution.metadata,
+                            )
+                        require_handoff_target_binding(
+                            session,
+                            application,
+                            job,
+                            review,
+                            current_url=current_url,
+                        )
                 else:
                     require_handoff_target_binding(
                         session,
