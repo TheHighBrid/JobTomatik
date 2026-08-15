@@ -10,6 +10,7 @@ from app.services.application_target import (
     record_application_target,
 )
 from app.services.ats_base import page_fingerprint
+from app.services.ats_registry import detect_ats_adapter
 from app.services.browser_navigation import external_target_from_browser, now_iso
 
 
@@ -18,6 +19,7 @@ _TASK_PERSISTENCE_INSTALLED = False
 _ORIGINAL_VERIFY = None
 _ORIGINAL_RESUME = None
 _ORIGINAL_HANDOFF_TASK_RUN = None
+_target_evidence_from_browser = None
 
 _ATS_REASON_TO_CHALLENGE = {
     "captcha_detected": HandoffChallengeType.captcha.value,
@@ -75,19 +77,98 @@ def _next_challenge_type(result: Dict[str, Any]) -> str | None:
     return None
 
 
+async def _fallback_target_evidence(
+    page: Any,
+    source_url: str,
+    log: list[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Compatibility proof for imports that run before the correlated runtime binds."""
+    observed = await external_target_from_browser(page, source_url, log)
+    if not observed:
+        return {
+            "status": "none",
+            "application_url": None,
+            "application_form_detected": False,
+            "form_evidence": {},
+            "trusted_ats_adapter": None,
+            "trusted_ats_adapter_version": None,
+        }
+    active_page = await _target_page(page.context, observed, page)
+    form_detected = False
+    form_evidence: Dict[str, Any] = {}
+    try:
+        evidence = await application_form_evidence(active_page)
+        form_detected = bool(evidence.present)
+        form_evidence = evidence.as_dict()
+    except Exception:
+        pass
+    adapter_name = ""
+    adapter_version = ""
+    try:
+        adapter = await detect_ats_adapter(active_page, observed)
+        adapter_name = str(getattr(adapter, "name", "") or "")
+        adapter_version = str(getattr(adapter, "version", "") or "")
+    except Exception:
+        pass
+    trusted_ats = bool(
+        adapter_name and adapter_name.lower() not in {"generic", "unknown"}
+    )
+    if not form_detected and not trusted_ats:
+        return {
+            "status": "none",
+            "application_url": None,
+            "application_form_detected": False,
+            "form_evidence": {},
+            "trusted_ats_adapter": None,
+            "trusted_ats_adapter_version": None,
+        }
+    return {
+        "status": "resolved",
+        "application_url": observed,
+        "application_form_detected": form_detected,
+        "form_evidence": form_evidence,
+        "trusted_ats_adapter": adapter_name or None,
+        "trusted_ats_adapter_version": adapter_version or None,
+    }
+
+
+async def _observed_target_evidence(
+    page: Any,
+    source_url: str,
+    log: list[Dict[str, Any]],
+) -> Dict[str, Any]:
+    resolver = _target_evidence_from_browser
+    if callable(resolver):
+        return await resolver(page, source_url, log)
+    return await _fallback_target_evidence(page, source_url, log)
+
+
 async def _resolve_target_after_human_boundary(
     page: Any,
     source_url: str,
 ) -> Dict[str, Any]:
     log: list[Dict[str, Any]] = []
-    observed = await external_target_from_browser(page, source_url, log)
-    if observed:
-        evidence = await application_form_evidence(page)
+    observed = await _observed_target_evidence(page, source_url, log)
+    if observed.get("status") == "resolved":
         return {
-            "application_url": observed,
-            "resolution_method": "existing_external_target",
-            "application_form_detected": evidence.present,
-            "form_evidence": evidence.as_dict(),
+            "application_url": observed.get("application_url"),
+            "resolution_method": "existing_correlated_application_target",
+            "application_form_detected": bool(observed.get("application_form_detected")),
+            "form_evidence": dict(observed.get("form_evidence") or {}),
+            "trusted_ats_adapter": observed.get("trusted_ats_adapter"),
+            "trusted_ats_adapter_version": observed.get("trusted_ats_adapter_version"),
+            "log": log,
+        }
+    if observed.get("status") == "pending":
+        # Do not open a fresh entry scope here. Doing so would classify an already-open
+        # correlated popup as baseline and permanently hide it when its redirect lands.
+        return {
+            "application_url": None,
+            "application_form_detected": False,
+            "form_evidence": {},
+            "trusted_ats_adapter": None,
+            "trusted_ats_adapter_version": None,
+            "correlated_target_pending": True,
             "log": log,
         }
     resolved = await open_application_entry(page, log)
@@ -114,26 +195,28 @@ def install_application_target_handoff_support() -> None:
         playwright, _, context, page = await browser_handoff._connect_local_cdp(session)
         try:
             source_url = _source_url(session)
-            target_url = await external_target_from_browser(page, source_url)
-            evidence = await application_form_evidence(page)
-            valid = bool(target_url and is_valid_application_target(
-                source_url,
-                target_url,
-                application_form_detected=evidence.present,
-            ))
-            if not target_url and evidence.present:
-                target_url = str(getattr(page, "url", "") or source_url)
-                valid = is_valid_application_target(
+            observed = await _observed_target_evidence(page, source_url, [])
+            target_url = str(observed.get("application_url") or "")
+            form_detected = bool(observed.get("application_form_detected"))
+            trusted_ats = str(observed.get("trusted_ats_adapter") or "")
+            target_proven = bool(form_detected or trusted_ats)
+            valid = bool(
+                observed.get("status") == "resolved"
+                and target_url
+                and target_proven
+                and is_valid_application_target(
                     source_url,
                     target_url,
-                    application_form_detected=True,
+                    application_form_detected=form_detected,
                 )
+            )
             if valid:
                 session.current_url = target_url
                 session.handoff_metadata = {
                     **_metadata(session),
                     "resolved_target_url": target_url,
-                    "application_form_detected": evidence.present,
+                    "application_form_detected": form_detected,
+                    "trusted_ats_adapter": trusted_ats or None,
                 }
                 active_page = await _target_page(context, target_url, page)
             else:
@@ -145,11 +228,13 @@ def install_application_target_handoff_support() -> None:
                 current_url=target_url or page.url,
                 current_fingerprint=fingerprint,
                 evidence={
-                    "verification_method": "external_application_target",
+                    "verification_method": "correlated_application_target",
                     "source_listing_url": source_url,
-                    "application_target_url": target_url,
+                    "application_target_url": target_url or None,
                     "target_resolved": valid,
-                    "application_form_detected": evidence.present,
+                    "application_form_detected": form_detected,
+                    "trusted_ats_adapter": trusted_ats or None,
+                    "correlated_target_pending": observed.get("status") == "pending",
                 },
             )
         finally:
@@ -178,10 +263,16 @@ def install_application_target_handoff_support() -> None:
             doorway = await _resolve_target_after_human_boundary(page, source_url)
             target_url = str(doorway.get("application_url") or "")
             form_detected = bool(doorway.get("application_form_detected"))
-            if not target_url or not is_valid_application_target(
-                source_url,
-                target_url,
-                application_form_detected=form_detected,
+            trusted_ats = str(doorway.get("trusted_ats_adapter") or "")
+            target_proven = bool(form_detected or trusted_ats)
+            if (
+                not target_url
+                or not target_proven
+                or not is_valid_application_target(
+                    source_url,
+                    target_url,
+                    application_form_detected=form_detected,
+                )
             ):
                 return {
                     "success": False,
@@ -195,12 +286,15 @@ def install_application_target_handoff_support() -> None:
                             "action": "application_target_still_unresolved_after_boundary",
                             "url": page.url,
                             "manual_apply_click_requested": False,
+                            "correlated_target_pending": bool(
+                                doorway.get("correlated_target_pending")
+                            ),
                             "ts": now_iso(),
                         },
                     ],
                     "error": (
                         "The security boundary cleared, but JobTomatik still could not "
-                        "open the application form automatically."
+                        "prove the application form or supported ATS target automatically."
                     ),
                     "fields_filled": 0,
                     "requires_manual_review": False,
@@ -216,6 +310,8 @@ def install_application_target_handoff_support() -> None:
                 "stage": "ats_application",
                 "application_form_detected": form_detected,
                 "form_evidence": dict(doorway.get("form_evidence") or {}),
+                "trusted_ats_adapter": trusted_ats or None,
+                "trusted_ats_adapter_version": doorway.get("trusted_ats_adapter_version"),
             }
         finally:
             await browser_handoff._disconnect(playwright)
@@ -239,12 +335,14 @@ def install_application_target_handoff_support() -> None:
         result["application_target_url"] = target_url
         result["application_target_status"] = "resolved"
         result["application_form_detected"] = form_detected
+        result["trusted_ats_adapter"] = trusted_ats or None
         result["target_resolution_only"] = False
         result.setdefault("log", []).insert(0, {
             "action": "application_target_resolved_after_human_boundary",
             "source_listing_url": source_url,
             "application_target_url": target_url,
             "application_form_detected": form_detected,
+            "trusted_ats_adapter": trusted_ats or None,
             "automatic_apply_navigation": True,
             "ts": now_iso(),
         })
@@ -285,10 +383,15 @@ def install_application_target_handoff_task_persistence() -> None:
         target_url = str(result.get("application_target_url") or "")
         source_url = str(result.get("source_listing_url") or "")
         form_detected = bool(result.get("application_form_detected"))
-        if not target_url or not is_valid_application_target(
-            source_url,
-            target_url,
-            application_form_detected=form_detected,
+        trusted_ats = str(result.get("trusted_ats_adapter") or "")
+        if (
+            not target_url
+            or not (form_detected or trusted_ats)
+            or not is_valid_application_target(
+                source_url,
+                target_url,
+                application_form_detected=form_detected,
+            )
         ):
             return result
 
@@ -312,6 +415,7 @@ def install_application_target_handoff_task_persistence() -> None:
                     metadata={
                         "handoff_public_id": handoff_public_id,
                         "application_form_detected": form_detected,
+                        "trusted_ats_adapter": trusted_ats or None,
                     },
                 )
                 db.commit()
