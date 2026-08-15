@@ -36,6 +36,12 @@ validate_worker_canary_receipt = _base.validate_worker_canary_receipt
 _BASE_WORKER_ACCEPTANCE = _base._worker_acceptance
 
 
+def _backend_settings() -> Settings:
+    """Load the exact settings source used by the managed API and worker."""
+
+    return Settings(_env_file=BACKEND_ROOT / ".env")
+
+
 def _worker_identity_tokens(revision: str) -> tuple[str, ...]:
     return (
         "celery",
@@ -66,27 +72,33 @@ def _worker_acceptance(
 
 
 def _configured_browser_cdp_endpoint() -> str:
-    """Resolve the managed Android browser endpoint independent of caller cwd.
+    """Resolve the browser endpoint from the managed backend runtime config.
 
-    The Termux launcher invokes physical acceptance from the repository root in
-    a fresh PRoot shell, while the managed stack writes its authoritative runtime
-    configuration to ``backend/.env``. Pydantic's default ``env_file='.env'`` is
-    cwd-relative, so relying only on ``get_settings()`` can incorrectly report an
-    unset endpoint even though the API/worker are configured correctly.
+    The physical acceptance process may be launched from a repository-root shell
+    that has unrelated environment variables. The API and worker are started from
+    ``backend/.env`` by the Android manager, so that file is authoritative here too.
+    A conflicting inherited process value is rejected instead of allowing a second
+    Chromium instance to satisfy the browser proof.
     """
 
+    backend_endpoint = (_backend_settings().application_browser_cdp_endpoint or "").strip()
     process_endpoint = (os.environ.get("APPLICATION_BROWSER_CDP_ENDPOINT") or "").strip()
-    if process_endpoint:
-        return process_endpoint
 
-    backend_settings = Settings(_env_file=BACKEND_ROOT / ".env")
-    endpoint = (backend_settings.application_browser_cdp_endpoint or "").strip()
-    if endpoint:
-        return endpoint
+    if backend_endpoint:
+        if process_endpoint and process_endpoint != backend_endpoint:
+            raise RuntimeError(
+                "Android application browser CDP endpoint differs from managed backend runtime config"
+            )
+        return backend_endpoint
 
-    # Preserve the established test/override seam and support callers that do
-    # intentionally provide a cwd-local Settings source.
-    return (get_settings().application_browser_cdp_endpoint or "").strip()
+    # Preserve the established test/override seam for non-managed callers, while
+    # failing closed when a process-level endpoint conflicts with that source.
+    fallback_endpoint = (get_settings().application_browser_cdp_endpoint or "").strip()
+    if process_endpoint and fallback_endpoint and process_endpoint != fallback_endpoint:
+        raise RuntimeError(
+            "Android application browser CDP endpoint differs from acceptance settings"
+        )
+    return fallback_endpoint or process_endpoint
 
 
 def _playwright_browser_acceptance() -> dict[str, Any]:
@@ -102,17 +114,20 @@ def _playwright_browser_acceptance() -> dict[str, Any]:
 
 
 def run_acceptance() -> dict[str, Any]:
-    """Run Runtime V2 acceptance and require the actual worker browser path."""
+    """Run Runtime V2 acceptance against one authoritative backend config."""
 
-    # The base implementation still owns frontend/API/worker/Beat/process and
-    # no-submit attestation. Its worker helper is patched only to preserve this
-    # module's deterministic test seam.
+    # The base implementation owns frontend/API/worker/Beat/process and safety
+    # attestation. Force its settings lookup to the same backend/.env used by the
+    # managed services so cwd-relative defaults cannot mask enabled safety flags.
     original_worker = _base._worker_acceptance
+    original_settings = _base.get_settings
     _base._worker_acceptance = _worker_acceptance
+    _base.get_settings = _backend_settings
     try:
         payload = _base.run_acceptance()
     finally:
         _base._worker_acceptance = original_worker
+        _base.get_settings = original_settings
 
     browser = dict(payload.get("browser") or {})
     browser.update(_playwright_browser_acceptance())
@@ -132,13 +147,14 @@ def main() -> int:
         )
         return 0
     except Exception as exc:
+        settings = _backend_settings()
         failure = {
             "version": 1,
             "status": "fail",
             "revision": current_revision(),
             "error": str(exc)[:1800],
             "safety": {
-                "real_submission_disabled": get_settings().allow_real_application_submit is False,
+                "real_submission_disabled": settings.allow_real_application_submit is False,
                 "final_submit_allowed": False,
                 "outreach_authorized": False,
             },
