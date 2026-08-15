@@ -102,7 +102,7 @@ def test_verification_modes_and_fail_safe_environment_are_explicit() -> None:
         assert f"  {mode})" in script
 
     for assignment in (
-        "APP_ENV=test",
+        "APP_ENV=development",
         "ALLOW_REAL_APPLICATION_SUBMIT=false",
         "AUTOPILOT_ENABLED=false",
         "ENABLE_RESUMABLE_HANDOFFS=false",
