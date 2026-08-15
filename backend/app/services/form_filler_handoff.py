@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional
 
-from app.services.application_entry import application_form_evidence, open_application_entry
+from app.services.application_entry import application_form_evidence
+from app.services.application_entry_runtime import open_application_entry
 from app.services.ats_flow import run_ats_application_flow
 from app.services.ats_registry import detect_ats_adapter
 from app.services.browser_navigation import (

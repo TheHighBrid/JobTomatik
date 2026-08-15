@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from app.services.application_entry import open_application_entry
+from app.services.application_entry_runtime import open_application_entry
 from app.services.application_target import is_valid_application_target
 from app.services.browser_navigation import (
     detect_blocking_challenge,
