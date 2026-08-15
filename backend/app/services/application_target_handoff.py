@@ -180,6 +180,21 @@ async def _observed_target_evidence(
     source_url: str,
     log: list[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    direct_url = str(getattr(page, "url", "") or "")
+    try:
+        direct_evidence = await application_form_evidence(page)
+        if direct_url and bool(direct_evidence.present):
+            return {
+                "status": "resolved",
+                "application_url": direct_url,
+                "application_form_detected": True,
+                "form_evidence": direct_evidence.as_dict(),
+                "trusted_ats_adapter": None,
+                "trusted_ats_adapter_version": None,
+            }
+    except Exception:
+        pass
+
     resolver = _target_evidence_from_browser
     if callable(resolver):
         return await resolver(page, source_url, log)
