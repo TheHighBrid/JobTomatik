@@ -40,7 +40,7 @@ SENDGRID_API_KEY=
 FROM_EMAIL=noreply@jobtomatik.local
 RAPIDAPI_KEY=
 UPLOAD_DIR=uploads
-EOF
+ENV
     echo "Created .env with SQLite + random SECRET_KEY"
 fi
 
@@ -50,10 +50,11 @@ mkdir -p uploads
 service redis-server start 2>/dev/null || redis-server --daemonize yes 2>/dev/null || true
 sleep 1
 
-# ── 6. Verify import ────────────────────────────────────────────────────────
+# ── 6. Verify required runtime imports ───────────────────────────────────────
 python - <<'PY'
+import pypdf
 from app.main import app
-print("✓ Backend imports OK")
+print(f"✓ Backend imports OK · pypdf {pypdf.__version__}")
 PY
 
 # ── 7. Start ─────────────────────────────────────────────────────────────────
