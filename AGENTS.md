@@ -6,6 +6,15 @@ JobTomatik is owned and directed by **TheHighBrid**. The repository owner define
 
 AI assistants, coding agents, reviewers, and automation tools are implementation collaborators. They are not product owners and must not silently redefine the project.
 
+## Standing contributor roles
+
+- **TheHighBrid:** repository owner and final product/release authority.
+- **Manus:** Primary Execution Lead for substantial reversible repository engineering. After claiming a concrete lane on issue #252, Manus may investigate, refactor, implement across multiple layers, repair necessary adjacent blockers, add tests, run validation, and prepare PRs without seeking per-file approval. See `MANUS.md`.
+- **Codex/ChatGPT:** integration and independent verification lead, responsible for cross-branch reconciliation, canonical evidence integrity, combined gate review, conflict resolution, and integration recommendations.
+- **Claude / Grok:** no standing execution lane. Either may contribute only when the repository owner separately assigns or offers a bounded lane that the contributor independently accepts.
+
+This role split does not bypass task claims, repository evidence requirements, release gates, or user-gated real-world actions.
+
 ## Non-negotiable product direction
 
 The final JobTomatik goal is a **fully autonomous job-hunt system** capable of:
@@ -53,6 +62,7 @@ unsupported
 - Keep current capability claims factual. Do not claim an adapter or submission path is ready before evidence supports it.
 - Preserve confirmation evidence, idempotency, duplicate protection, recovery controls, caps, circuit breakers, exclusions, and kill switches. These controls support reliable autonomy rather than oppose it.
 - Do not attempt to evade CAPTCHA, MFA, identity verification, or third-party security controls. Where a site explicitly requires a human action, preserve state and request the smallest necessary intervention.
+- Never infer or invent sensitive, legal, demographic, disability, veteran, sponsorship, work-authorization, consent, or identity answers.
 - Ask before making a change that materially alters the project's product direction, business purpose, or final operating model.
 
 ## Multi-agent cooperation
@@ -78,6 +88,8 @@ All contributors must follow these rules:
 - Include an exact handoff receipt with base/head SHAs, files, commands, results, artifacts, invariants, blockers, assumptions, intentionally unchanged files, and the recommended integration action.
 
 The integration lead named on the cooperation board owns cross-branch reconciliation and combined gate review. Passing focused tests does not authorize an agent to merge its own lane or execute a user-gated action.
+
+Manus's broader engineering authority means Manus should normally resolve implementation details and necessary adjacent code changes independently inside a claimed lane. It does **not** grant Manus authority to infer real-world approval, submit an application, send outreach, bypass a third-party security boundary, alter sensitive answers, promote adapter maturity, or rewrite campaign evidence without the applicable owner decision and repository gates.
 
 ## Decision rule
 
