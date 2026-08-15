@@ -19,6 +19,10 @@ from app.services import (
 )
 
 
+LEVER_TEST_POSTING_ID = "7ef2757a-99f9-4000-8bd6-82fc3d2bc844"
+LEVER_TEST_APPLY_URL = f"https://jobs.lever.co/eqbank/{LEVER_TEST_POSTING_ID}/apply"
+
+
 class _Context:
     def __init__(self, pages):
         self.pages = pages
@@ -138,13 +142,10 @@ class _ControlledPage:
 
 @pytest.mark.asyncio
 async def test_lever_apply_ignores_preexisting_jobtomatik_and_linkedin_tabs():
-    job_url = (
-        "https://jobs.lever.co/eqbank/"
-        "7ef2757a-99f9-4000-8bd6-82fc3d2bc844"
-    )
+    job_url = f"https://jobs.lever.co/eqbank/{LEVER_TEST_POSTING_ID}"
     primary = _ControlledPage(
         job_url,
-        href="/eqbank/7ef2757a-99f9-4000-8bd6-82fc3d2bc844/apply",
+        href=f"/eqbank/{LEVER_TEST_POSTING_ID}/apply",
     )
     jobtomatik = _StaticPage("http://localhost:3000/shadow-campaigns")
     linkedin = _StaticPage("https://www.linkedin.com/feed/")
@@ -174,7 +175,7 @@ async def test_lever_apply_ignores_preexisting_jobtomatik_and_linkedin_tabs():
 async def test_popup_emitted_by_current_apply_remains_eligible():
     primary = _ControlledPage(
         "https://www.linkedin.com/jobs/view/123",
-        popup_url="https://jobs.lever.co/eqbank/example/apply",
+        popup_url=LEVER_TEST_APPLY_URL,
     )
     old_jobtomatik = _StaticPage("http://localhost:3000/shadow-campaigns")
     context = _Context([primary, old_jobtomatik])
@@ -189,8 +190,8 @@ async def test_popup_emitted_by_current_apply_remains_eligible():
         settle_timeout_seconds=0.5,
     )
 
-    assert result["application_url"] == "https://jobs.lever.co/eqbank/example/apply"
-    assert primary.goto_calls == ["https://jobs.lever.co/eqbank/example/apply"]
+    assert result["application_url"] == LEVER_TEST_APPLY_URL
+    assert primary.goto_calls == [LEVER_TEST_APPLY_URL]
     assert result["application_form_detected"] is True
     assert any(item["action"] == "external_application_target_observed" for item in log)
     assert all(item.get("url") != old_jobtomatik.url for item in log)
@@ -234,10 +235,7 @@ async def test_employer_continuation_keeps_shared_context_filtered(monkeypatch):
 
     async def fake_continue(page, **_kwargs):
         assert [candidate.url for candidate in page.context.pages] == [primary.url]
-        popup = _StaticPage(
-            "https://jobs.lever.co/example/job-42/apply",
-            opener=primary,
-        )
+        popup = _StaticPage(LEVER_TEST_APPLY_URL, opener=primary)
         popup.context = context
         context.pages.append(popup)
         for listener in list(primary._listeners.get("popup", [])):
@@ -278,10 +276,7 @@ async def test_resumed_handoff_accepts_only_evidence_qualified_correlated_target
     primary = _ControlledPage(source_url)
     old_jobtomatik = _StaticPage("http://localhost:3000/shadow-campaigns")
     old_mail = _StaticPage("https://mail.example.test/inbox")
-    target = _StaticPage(
-        "https://jobs.lever.co/eqbank/example/apply",
-        opener=primary,
-    )
+    target = _StaticPage(LEVER_TEST_APPLY_URL, opener=primary)
     context = _Context([primary, old_jobtomatik, old_mail, target])
     for page in context.pages:
         page.context = context
@@ -306,10 +301,7 @@ async def test_resumed_handoff_accepts_only_evidence_qualified_correlated_target
 async def test_later_auxiliary_opener_tab_cannot_supersede_real_ats_target():
     source_url = "https://www.linkedin.com/jobs/view/123"
     primary = _ControlledPage(source_url)
-    target = _StaticPage(
-        "https://jobs.lever.co/eqbank/example/apply",
-        opener=primary,
-    )
+    target = _StaticPage(LEVER_TEST_APPLY_URL, opener=primary)
     auxiliary = _StaticPage(
         "https://accounts.example.test/help",
         opener=primary,
@@ -369,7 +361,7 @@ async def test_vendor_host_alone_cannot_prove_application_target(auxiliary_url):
 def test_strict_ats_surface_requires_job_or_application_identity():
     strict = application_entry_runtime._strict_ats_surface
 
-    assert strict("https://jobs.lever.co/eqbank/abc-123/apply") == "lever"
+    assert strict(LEVER_TEST_APPLY_URL) == "lever"
     assert strict("https://jobs.lever.co/privacy") is None
 
     assert strict("https://job-boards.greenhouse.io/acme/jobs/123456") == "greenhouse"
@@ -431,7 +423,7 @@ async def test_correlated_http_intermediate_remains_eligible_until_ats_redirect(
 
     async def redirect_target():
         await asyncio.sleep(0.05)
-        target.url = "https://jobs.lever.co/eqbank/example/apply"
+        target.url = LEVER_TEST_APPLY_URL
 
     redirect_task = asyncio.create_task(redirect_target())
     result = await correlated_application_target_evidence(
@@ -543,7 +535,7 @@ async def test_resumed_handoff_logs_existing_context_receipt_after_opener_tab_se
 
     async def settle_target():
         await asyncio.sleep(0)
-        target.url = "https://jobs.lever.co/eqbank/example/apply"
+        target.url = LEVER_TEST_APPLY_URL
 
     settle_task = asyncio.create_task(settle_target())
     log = []
@@ -585,7 +577,7 @@ async def test_resumed_handoff_rejects_unrelated_preexisting_offboard_tabs():
 
 @pytest.mark.asyncio
 async def test_retained_target_page_uses_durable_cdp_identity_after_navigation(monkeypatch):
-    controlled = _StaticPage("https://jobs.lever.co/eqbank/example/apply")
+    controlled = _StaticPage(LEVER_TEST_APPLY_URL)
     unrelated = _StaticPage("https://mail.example.test/inbox")
     context = _Context([controlled, unrelated])
     controlled.context = context
@@ -616,7 +608,7 @@ async def test_retained_target_page_uses_durable_cdp_identity_after_navigation(m
 
 @pytest.mark.asyncio
 async def test_legacy_target_handoff_never_falls_back_to_last_unrelated_tab():
-    controlled = _StaticPage("https://jobs.lever.co/eqbank/example/apply")
+    controlled = _StaticPage(LEVER_TEST_APPLY_URL)
     unrelated = _StaticPage("https://mail.example.test/inbox")
     context = _Context([controlled, unrelated])
     session = SimpleNamespace(
