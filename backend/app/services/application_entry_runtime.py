@@ -43,6 +43,7 @@ _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
+_GREENHOUSE_NUMERIC_ID_RE = re.compile(r"^[0-9]+$")
 _SMARTRECRUITERS_NUMERIC_ID_RE = re.compile(r"^[0-9]+$")
 _WORKDAY_REQUISITION_RE = re.compile(
     r"^(?:R|JR|REQ|JOB|J)[-_]?\d[A-Z0-9._-]*$",
@@ -245,7 +246,11 @@ def _strict_ats_surface(url: str) -> Optional[str]:
             lowered_parts == ["job_app"]
             or lowered_parts[:2] == ["embed", "job_app"]
         )
-        if job_id and (hosted_job_route or hosted_application_route):
+        if (
+            job_id
+            and _GREENHOUSE_NUMERIC_ID_RE.fullmatch(str(job_id))
+            and (hosted_job_route or hosted_application_route)
+        ):
             return "greenhouse"
 
     if host == ASHBY_JOBS_HOST:
