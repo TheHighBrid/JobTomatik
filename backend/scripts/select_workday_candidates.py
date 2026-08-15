@@ -16,12 +16,25 @@ from urllib.parse import urljoin
 import httpx
 
 
+# Keep a deliberately diverse public pool across Workday clusters and employers.
+# Live certification still requires three independent successful boundaries; this
+# larger pool prevents a few tenant-side WAF/HTML responses from collapsing the
+# candidate cohort to one without weakening that threshold.
 DEFAULT_TENANTS: List[Tuple[str, str, str]] = [
     ("workday.wd5.myworkdayjobs.com", "workday", "Workday"),
     ("nvidia.wd5.myworkdayjobs.com", "nvidia", "NVIDIAExternalCareerSite"),
     ("salesforce.wd12.myworkdayjobs.com", "salesforce", "External_Career_Site"),
     ("mastercard.wd1.myworkdayjobs.com", "mastercard", "CorporateCareers"),
     ("blackrock.wd1.myworkdayjobs.com", "blackrock", "BlackRock_Professional"),
+    ("taskus.wd1.myworkdayjobs.com", "taskus", "Careers"),
+    ("bci.wd10.myworkdayjobs.com", "bci", "BCI_Careers"),
+    ("rb.wd5.myworkdayjobs.com", "rb", "FRS"),
+    ("integer.wd1.myworkdayjobs.com", "integer", "External"),
+    ("opportunityalliance.wd1.myworkdayjobs.com", "opportunityalliance", "Careers"),
+    ("uasys.wd5.myworkdayjobs.com", "uasys", "UAMS_All_Careers"),
+    ("nexstar.wd5.myworkdayjobs.com", "nexstar", "nexstar"),
+    ("chatham.wd12.myworkdayjobs.com", "chatham", "ChathamUniversity"),
+    ("adams.wd1.myworkdayjobs.com", "adams", "ASU"),
 ]
 
 
