@@ -39,6 +39,11 @@ async def test_external_android_cdp_attach_is_not_restarted_every_ten_seconds():
 def test_android_acceptance_requires_real_playwright_attachment(monkeypatch):
     monkeypatch.setattr(
         acceptance,
+        "_backend_settings",
+        lambda: SimpleNamespace(application_browser_cdp_endpoint=""),
+    )
+    monkeypatch.setattr(
+        acceptance,
         "get_settings",
         lambda: SimpleNamespace(application_browser_cdp_endpoint="http://127.0.0.1:9222"),
     )
@@ -65,6 +70,11 @@ def test_android_acceptance_requires_real_playwright_attachment(monkeypatch):
 
 
 def test_android_acceptance_rejects_missing_playwright_attachment(monkeypatch):
+    monkeypatch.setattr(
+        acceptance,
+        "_backend_settings",
+        lambda: SimpleNamespace(application_browser_cdp_endpoint=""),
+    )
     monkeypatch.setattr(
         acceptance,
         "get_settings",
@@ -100,6 +110,48 @@ def test_android_acceptance_loads_cdp_endpoint_from_backend_env(monkeypatch, tmp
     )
 
     assert acceptance._configured_browser_cdp_endpoint() == "http://127.0.0.1:9222"
+
+
+def test_android_acceptance_rejects_process_cdp_mismatch(monkeypatch, tmp_path):
+    backend_root = tmp_path / "backend"
+    backend_root.mkdir()
+    (backend_root / ".env").write_text(
+        "APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9222\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(acceptance, "BACKEND_ROOT", backend_root)
+    monkeypatch.setenv("APPLICATION_BROWSER_CDP_ENDPOINT", "http://127.0.0.1:9333")
+
+    with pytest.raises(RuntimeError, match="differs from managed backend runtime config"):
+        acceptance._configured_browser_cdp_endpoint()
+
+
+def test_android_acceptance_base_uses_backend_runtime_settings(monkeypatch):
+    authoritative = SimpleNamespace(
+        application_browser_cdp_endpoint="http://127.0.0.1:9222",
+        allow_real_application_submit=True,
+        allow_real_followup_send=False,
+    )
+    observed = {}
+
+    monkeypatch.setattr(acceptance, "_backend_settings", lambda: authoritative)
+    monkeypatch.setattr(
+        acceptance,
+        "_playwright_browser_acceptance",
+        lambda: {"playwright_attach_ready": True, "browser_owned_by_jobtomatik": False},
+    )
+
+    def fake_base_run_acceptance():
+        observed["settings"] = acceptance._base.get_settings()
+        return {"browser": {}}
+
+    monkeypatch.setattr(acceptance._base, "run_acceptance", fake_base_run_acceptance)
+
+    acceptance.run_acceptance()
+
+    assert observed["settings"] is authoritative
+    assert acceptance._base.get_settings is not acceptance._backend_settings
 
 
 class _NoQueryDB:
