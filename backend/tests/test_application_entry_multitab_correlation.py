@@ -413,6 +413,74 @@ async def test_loading_correlated_popup_is_preserved_instead_of_rebaselined():
 
 
 @pytest.mark.asyncio
+async def test_correlated_http_intermediate_remains_eligible_until_ats_redirect():
+    source_url = "https://www.linkedin.com/jobs/view/123"
+    primary = _ControlledPage(source_url)
+    target = _StaticPage(
+        "https://accounts.example.test/login",
+        opener=primary,
+    )
+    context = _Context([primary, target])
+    for page in context.pages:
+        page.context = context
+
+    async def redirect_target():
+        await asyncio.sleep(0.05)
+        target.url = "https://jobs.lever.co/eqbank/example/apply"
+
+    redirect_task = asyncio.create_task(redirect_target())
+    result = await correlated_application_target_evidence(
+        primary,
+        source_url,
+        [],
+        settle_timeout_seconds=0.3,
+    )
+    await redirect_task
+
+    assert result["status"] == "resolved"
+    assert result["application_url"] == target.url
+
+
+@pytest.mark.asyncio
+async def test_retained_navigation_accepts_inline_form_on_controlled_source(monkeypatch):
+    source_url = "https://www.linkedin.com/jobs/view/123"
+    page = SimpleNamespace(url=source_url)
+
+    class _Evidence:
+        present = True
+
+        def as_dict(self):
+            return {"present": True, "applicantControls": 4}
+
+    async def fake_form_evidence(_page):
+        return _Evidence()
+
+    async def should_not_run(*_args, **_kwargs):
+        raise AssertionError("correlated resolver should not run for direct form proof")
+
+    monkeypatch.setattr(
+        application_target_handoff,
+        "application_form_evidence",
+        fake_form_evidence,
+    )
+    monkeypatch.setattr(
+        application_target_handoff,
+        "_target_evidence_from_browser",
+        should_not_run,
+    )
+
+    result = await application_target_handoff._observed_target_evidence(
+        page,
+        source_url,
+        [],
+    )
+
+    assert result["status"] == "resolved"
+    assert result["application_url"] == source_url
+    assert result["application_form_detected"] is True
+
+
+@pytest.mark.asyncio
 async def test_resumed_handoff_logs_existing_context_receipt_after_opener_tab_settles():
     source_url = "https://www.linkedin.com/jobs/view/123"
     primary = _ControlledPage(source_url)
