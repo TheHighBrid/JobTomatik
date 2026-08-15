@@ -40,7 +40,7 @@ SENDGRID_API_KEY=
 FROM_EMAIL=noreply@jobtomatik.local
 RAPIDAPI_KEY=
 UPLOAD_DIR=uploads
-ENV
+EOF
     echo "Created .env with SQLite + random SECRET_KEY"
 fi
 
