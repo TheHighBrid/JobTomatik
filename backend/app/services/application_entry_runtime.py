@@ -8,12 +8,26 @@ never become application targets.
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional
+from urllib.parse import urlparse
 
-from app.services.application_entry import open_application_entry as _base_open_application_entry
-from app.services.browser_navigation import (
-    external_target_from_browser as _base_external_target_from_browser,
+from app.services.application_entry import (
+    application_form_evidence,
+    open_application_entry as _base_open_application_entry,
+)
+from app.services.ats_registry import detect_ats_adapter
+from app.services.browser_navigation import is_job_board_url, now_iso
+
+
+_KNOWN_ATS_HOST_HINTS = (
+    "lever.co",
+    "greenhouse.io",
+    "myworkdayjobs.com",
+    "workday.com",
+    "ashbyhq.com",
+    "smartrecruiters.com",
 )
 
 
@@ -161,35 +175,181 @@ async def _opener_correlated_ids(page: Any) -> set[int]:
     return correlated
 
 
+def _is_http_url(url: str) -> bool:
+    parsed = urlparse(url or "")
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _known_ats_url(url: str) -> bool:
+    host = (urlparse(url or "").hostname or "").lower()
+    return any(host == hint or host.endswith("." + hint) for hint in _KNOWN_ATS_HOST_HINTS)
+
+
+async def _candidate_application_evidence(
+    candidate: Any,
+    source_url: str,
+) -> Optional[Dict[str, Any]]:
+    target_url = str(getattr(candidate, "url", "") or "")
+    if (
+        not _is_http_url(target_url)
+        or target_url == source_url
+        or is_job_board_url(target_url)
+    ):
+        return None
+
+    form_evidence: Dict[str, Any] = {}
+    form_detected = False
+    try:
+        evidence = await application_form_evidence(candidate)
+        form_detected = bool(evidence.present)
+        form_evidence = evidence.as_dict()
+    except Exception:
+        pass
+
+    adapter_name = ""
+    adapter_version = ""
+    try:
+        adapter = await detect_ats_adapter(candidate, target_url)
+        adapter_name = str(getattr(adapter, "name", "") or "")
+        adapter_version = str(getattr(adapter, "version", "") or "")
+    except Exception:
+        pass
+
+    trusted_ats = bool(
+        adapter_name and adapter_name.lower() not in {"generic", "unknown"}
+    ) or _known_ats_url(target_url)
+    if not form_detected and not trusted_ats:
+        return None
+
+    return {
+        "status": "resolved",
+        "application_url": target_url,
+        "application_form_detected": form_detected,
+        "form_evidence": form_evidence,
+        "trusted_ats_adapter": adapter_name or None,
+        "trusted_ats_adapter_version": adapter_version or None,
+        "proof": "application_form" if form_detected else "supported_ats",
+    }
+
+
+async def _correlated_candidates(page: Any) -> List[Any]:
+    """Return the controlled page plus only tabs causally owned by it."""
+    if isinstance(page, _CorrelatedPage):
+        try:
+            return list(page.context.pages)
+        except Exception:
+            return [page]
+
+    actual_page = _actual_page(page)
+    opener_ids = await _opener_correlated_ids(actual_page)
+    result: List[Any] = [actual_page]
+    try:
+        for candidate in list(actual_page.context.pages):
+            if candidate is actual_page:
+                continue
+            if id(candidate) in opener_ids:
+                result.append(candidate)
+    except Exception:
+        pass
+    return result
+
+
+async def correlated_application_target_evidence(
+    page: Any,
+    source_url: str,
+    log: Optional[List[Dict[str, Any]]] = None,
+    *,
+    settle_timeout_seconds: float = 5.0,
+) -> Dict[str, Any]:
+    """Resolve a causally correlated target only when application evidence exists.
+
+    Opener ownership is necessary but intentionally not sufficient: OAuth/help/privacy
+    child tabs are correlated too. A recovered candidate must additionally expose an
+    application form or a supported ATS identity. Loading opener-correlated pages are
+    kept eligible for a bounded settle window instead of being re-baselined away.
+    """
+    candidates = await _correlated_candidates(page)
+
+    # First inspect already-loaded candidates without letting a blank child delay a
+    # proven application target that is already available.
+    pending: List[Any] = []
+    for candidate in reversed(candidates):
+        candidate_url = str(getattr(candidate, "url", "") or "")
+        if _is_http_url(candidate_url):
+            proven = await _candidate_application_evidence(candidate, source_url)
+            if proven:
+                if log is not None:
+                    log.append({
+                        "action": "correlated_application_target_proven",
+                        "url": proven["application_url"],
+                        "source_url": source_url,
+                        "proof": proven["proof"],
+                        "ts": now_iso(),
+                    })
+                return proven
+        elif candidate is not _actual_page(page):
+            pending.append(candidate)
+
+    timeout = max(0.0, float(settle_timeout_seconds or 0.0))
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while pending and loop.time() < deadline:
+        await asyncio.sleep(0.1)
+        still_pending: List[Any] = []
+        for candidate in pending:
+            candidate_url = str(getattr(candidate, "url", "") or "")
+            if not _is_http_url(candidate_url):
+                still_pending.append(candidate)
+                continue
+            proven = await _candidate_application_evidence(candidate, source_url)
+            if proven:
+                if log is not None:
+                    log.append({
+                        "action": "correlated_application_target_proven_after_settle",
+                        "url": proven["application_url"],
+                        "source_url": source_url,
+                        "proof": proven["proof"],
+                        "ts": now_iso(),
+                    })
+                return proven
+        pending = still_pending
+
+    if pending:
+        if log is not None:
+            log.append({
+                "action": "correlated_application_target_still_loading",
+                "source_url": source_url,
+                "pending_correlated_pages": len(pending),
+                "fallback_rebaseline_allowed": False,
+                "ts": now_iso(),
+            })
+        return {
+            "status": "pending",
+            "application_url": None,
+            "application_form_detected": False,
+            "form_evidence": {},
+            "trusted_ats_adapter": None,
+            "trusted_ats_adapter_version": None,
+        }
+
+    return {
+        "status": "none",
+        "application_url": None,
+        "application_form_detected": False,
+        "form_evidence": {},
+        "trusted_ats_adapter": None,
+        "trusted_ats_adapter_version": None,
+    }
+
+
 async def correlated_external_target_from_browser(
     page: Any,
     source_url: str,
     log: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[str]:
-    """Resolve only the controlled page or an existing tab opened by that page.
-
-    This is used when a retained browser is reattached after a human security
-    boundary. A popup event may have occurred before the new process attached, so
-    opener ownership is the durable correlation signal. Unrelated pre-existing tabs
-    remain invisible.
-    """
-    if isinstance(page, _CorrelatedPage):
-        return await _base_external_target_from_browser(page, source_url, log)
-
-    actual_page = _actual_page(page)
-    eligible_ids = await _opener_correlated_ids(actual_page)
-    correlated_page = _CorrelatedPage(actual_page, set(), eligible_ids)
-    if log is not None:
-        log.append({
-            "action": "application_target_existing_context_correlated",
-            "eligible_opener_tab_count": len(eligible_ids),
-            "unrelated_preexisting_tabs_eligible": False,
-        })
-    return await _base_external_target_from_browser(
-        correlated_page,
-        source_url,
-        log,
-    )
+    """Return only an evidence-qualified target owned by the controlled page."""
+    result = await correlated_application_target_evidence(page, source_url, log)
+    return str(result.get("application_url") or "") or None
 
 
 async def open_application_entry(
@@ -259,10 +419,14 @@ if _application_target_handoff is not None:
     _application_target_handoff.external_target_from_browser = (
         correlated_external_target_from_browser
     )
+    _application_target_handoff._target_evidence_from_browser = (
+        correlated_application_target_evidence
+    )
 
 
 __all__ = [
     "continue_from_employer_landing",
+    "correlated_application_target_evidence",
     "correlated_external_target_from_browser",
     "correlated_page_scope",
     "open_application_entry",
