@@ -339,6 +339,58 @@ async def test_opener_owned_auxiliary_page_without_application_evidence_is_rejec
     assert observed is None
 
 
+@pytest.mark.parametrize(
+    "auxiliary_url",
+    [
+        "https://jobs.lever.co/privacy",
+        "https://boards.greenhouse.io/privacy",
+        "https://jobs.ashbyhq.com/privacy",
+        "https://jobs.smartrecruiters.com/privacy",
+        "https://example.wd5.myworkdayjobs.com/en-US/CandidateHome",
+    ],
+)
+@pytest.mark.asyncio
+async def test_vendor_host_alone_cannot_prove_application_target(auxiliary_url):
+    source_url = "https://www.linkedin.com/jobs/view/123"
+    primary = _ControlledPage(source_url)
+    auxiliary = _StaticPage(auxiliary_url, opener=primary)
+    context = _Context([primary, auxiliary])
+    for page in context.pages:
+        page.context = context
+
+    observed = await correlated_external_target_from_browser(primary, source_url, [])
+
+    assert observed is None
+
+
+def test_strict_ats_surface_requires_job_or_application_identity():
+    strict = application_entry_runtime._strict_ats_surface
+
+    assert strict("https://jobs.lever.co/eqbank/abc-123/apply") == "lever"
+    assert strict("https://jobs.lever.co/privacy") is None
+
+    assert strict("https://job-boards.greenhouse.io/acme/jobs/123456") == "greenhouse"
+    assert strict("https://boards.greenhouse.io/privacy") is None
+
+    assert (
+        strict("https://jobs.ashbyhq.com/acme/123e4567-e89b-12d3-a456-426614174000/application")
+        == "ashby"
+    )
+    assert strict("https://jobs.ashbyhq.com/privacy") is None
+
+    assert (
+        strict("https://jobs.smartrecruiters.com/acme/12345-senior-analyst")
+        == "smartrecruiters"
+    )
+    assert strict("https://jobs.smartrecruiters.com/privacy") is None
+
+    assert (
+        strict("https://acme.wd5.myworkdayjobs.com/en-US/careers/job/Toronto/JR12345/apply")
+        == "workday"
+    )
+    assert strict("https://acme.wd5.myworkdayjobs.com/en-US/CandidateHome") is None
+
+
 @pytest.mark.asyncio
 async def test_loading_correlated_popup_is_preserved_instead_of_rebaselined():
     source_url = "https://www.linkedin.com/jobs/view/123"
