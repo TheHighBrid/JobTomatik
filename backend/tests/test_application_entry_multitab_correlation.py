@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.services import application_entry_runtime
 from app.services.application_entry_runtime import (
     continue_from_employer_landing,
+    correlated_application_target_evidence,
     correlated_external_target_from_browser,
     open_application_entry,
 )
@@ -269,7 +272,7 @@ async def test_employer_continuation_keeps_shared_context_filtered(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_resumed_handoff_accepts_only_controlled_or_opener_correlated_target():
+async def test_resumed_handoff_accepts_only_evidence_qualified_correlated_target():
     source_url = "https://www.linkedin.com/jobs/view/123"
     primary = _ControlledPage(source_url)
     old_jobtomatik = _StaticPage("http://localhost:3000/shadow-campaigns")
@@ -291,13 +294,69 @@ async def test_resumed_handoff_accepts_only_controlled_or_opener_correlated_targ
 
     assert observed == target.url
     assert all(item.get("url") not in {old_jobtomatik.url, old_mail.url} for item in log)
-    correlation = next(
-        item
+    assert any(
+        item.get("action") == "correlated_application_target_proven"
+        and item.get("url") == target.url
         for item in log
-        if item["action"] == "application_target_existing_context_correlated"
     )
-    assert correlation["eligible_opener_tab_count"] == 1
-    assert correlation["unrelated_preexisting_tabs_eligible"] is False
+
+
+@pytest.mark.asyncio
+async def test_later_auxiliary_opener_tab_cannot_supersede_real_ats_target():
+    source_url = "https://www.linkedin.com/jobs/view/123"
+    primary = _ControlledPage(source_url)
+    target = _StaticPage(
+        "https://jobs.lever.co/eqbank/example/apply",
+        opener=primary,
+    )
+    auxiliary = _StaticPage(
+        "https://accounts.example.test/help",
+        opener=primary,
+    )
+    context = _Context([primary, target, auxiliary])
+    for page in context.pages:
+        page.context = context
+
+    observed = await correlated_external_target_from_browser(primary, source_url, [])
+
+    assert observed == target.url
+
+
+@pytest.mark.asyncio
+async def test_opener_owned_auxiliary_page_without_application_evidence_is_rejected():
+    source_url = "https://www.linkedin.com/jobs/view/123"
+    primary = _ControlledPage(source_url)
+    auxiliary = _StaticPage(
+        "https://accounts.example.test/help",
+        opener=primary,
+    )
+    context = _Context([primary, auxiliary])
+    for page in context.pages:
+        page.context = context
+
+    observed = await correlated_external_target_from_browser(primary, source_url, [])
+
+    assert observed is None
+
+
+@pytest.mark.asyncio
+async def test_loading_correlated_popup_is_preserved_instead_of_rebaselined():
+    source_url = "https://www.linkedin.com/jobs/view/123"
+    primary = _ControlledPage(source_url)
+    pending = _StaticPage("about:blank", opener=primary)
+    context = _Context([primary, pending])
+    for page in context.pages:
+        page.context = context
+
+    result = await correlated_application_target_evidence(
+        primary,
+        source_url,
+        [],
+        settle_timeout_seconds=0,
+    )
+
+    assert result["status"] == "pending"
+    assert result["application_url"] is None
 
 
 @pytest.mark.asyncio
@@ -319,6 +378,60 @@ async def test_resumed_handoff_rejects_unrelated_preexisting_offboard_tabs():
     assert observed is None
 
 
+@pytest.mark.asyncio
+async def test_retained_target_page_uses_durable_cdp_identity_after_navigation(monkeypatch):
+    controlled = _StaticPage("https://jobs.lever.co/eqbank/example/apply")
+    unrelated = _StaticPage("https://mail.example.test/inbox")
+    context = _Context([controlled, unrelated])
+    controlled.context = context
+    unrelated.context = context
+    session = SimpleNamespace(
+        challenge_type="captcha",
+        current_url="https://accounts.example.test/login",
+        handoff_metadata={
+            "stage": "application_target_security_boundary",
+            "target_resolution_only": True,
+            "controlled_page_target_id": "target-controlled",
+        },
+    )
+
+    async def fake_target_id(_context, page):
+        return "target-controlled" if page is controlled else "target-unrelated"
+
+    monkeypatch.setattr(application_target_handoff, "_page_target_id", fake_target_id)
+
+    selected = await application_target_handoff._retained_target_page(
+        context,
+        session,
+        unrelated,
+    )
+
+    assert selected is controlled
+
+
+@pytest.mark.asyncio
+async def test_legacy_target_handoff_never_falls_back_to_last_unrelated_tab():
+    controlled = _StaticPage("https://jobs.lever.co/eqbank/example/apply")
+    unrelated = _StaticPage("https://mail.example.test/inbox")
+    context = _Context([controlled, unrelated])
+    session = SimpleNamespace(
+        challenge_type="captcha",
+        current_url="https://accounts.example.test/login",
+        handoff_metadata={
+            "stage": "application_target_security_boundary",
+            "target_resolution_only": True,
+        },
+    )
+
+    selected = await application_target_handoff._retained_target_page(
+        context,
+        session,
+        unrelated,
+    )
+
+    assert selected is None
+
+
 def test_all_worker_entry_paths_use_correlated_runtime_entry():
     assert form_filler_handoff.open_application_entry is open_application_entry
     assert application_target_resolver.open_application_entry is open_application_entry
@@ -326,6 +439,10 @@ def test_all_worker_entry_paths_use_correlated_runtime_entry():
     assert (
         application_target_handoff.external_target_from_browser
         is correlated_external_target_from_browser
+    )
+    assert (
+        application_target_handoff._target_evidence_from_browser
+        is correlated_application_target_evidence
     )
     assert (
         form_filler_handoff.continue_from_employer_landing
