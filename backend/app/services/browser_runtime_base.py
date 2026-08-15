@@ -240,12 +240,21 @@ async def _select_context_page(
     viewport: Optional[Dict[str, int]],
     resize_viewport: bool,
 ) -> tuple[Any, Any]:
+    """Select a controlled page without guessing from shared tab order."""
     contexts = list(browser.contexts)
     if not contexts:
         raise BrowserRuntimeError("Retained Chromium exposed no default browser context.")
     context = contexts[0]
     pages = list(context.pages)
-    page = pages[-1] if pages else await context.new_page()
+    if not pages:
+        page = await context.new_page()
+    elif len(pages) == 1:
+        page = pages[0]
+    else:
+        raise BrowserRuntimeError(
+            "Retained Chromium exposed multiple pages without an explicit target; "
+            "runtime attachment is fail-closed."
+        )
     if resize_viewport:
         await page.set_viewport_size(viewport or {"width": 1280, "height": 900})
     return context, page

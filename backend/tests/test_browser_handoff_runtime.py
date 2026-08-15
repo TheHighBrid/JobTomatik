@@ -3,6 +3,7 @@ import os
 import pytest
 
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
+from app.services import browser_handoff
 from app.services.browser_handoff import (
     _connect_local_cdp,
     _disconnect,
@@ -12,6 +13,36 @@ from app.services.browser_handoff import (
 )
 from app.services.browser_runtime import launch_retainable_browser
 from app.services.handoff_session import encrypt_handoff_secret
+
+
+class _UrlPage:
+    def __init__(self, url):
+        self.url = url
+
+
+def test_retained_handoff_selects_only_exact_approved_url():
+    controlled = _UrlPage("https://apply.example.test/form")
+    unrelated = _UrlPage("https://help.example.test/privacy")
+
+    assert browser_handoff._select_retained_page(
+        [unrelated, controlled],
+        "https://apply.example.test/form",
+    ) is controlled
+
+
+def test_retained_handoff_rejects_unrelated_pages_without_exact_url():
+    with pytest.raises(browser_handoff.BrowserHandoffUnavailable, match="approved handoff URL"):
+        browser_handoff._select_retained_page(
+            [_UrlPage("https://help.example.test/privacy"), _UrlPage("https://account.example.test")],
+            "https://apply.example.test/form",
+        )
+
+
+def test_retained_handoff_rejects_ambiguous_pages_without_exact_url():
+    with pytest.raises(browser_handoff.BrowserHandoffUnavailable, match="multiple pages"):
+        browser_handoff._select_retained_page(
+            [_UrlPage("https://apply.example.test/form"), _UrlPage("https://help.example.test")],
+        )
 
 
 @pytest.mark.asyncio
