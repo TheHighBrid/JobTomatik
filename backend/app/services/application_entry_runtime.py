@@ -336,6 +336,7 @@ async def correlated_application_target_evidence(
     # First inspect already-loaded candidates without letting a blank child delay a
     # proven application target that is already available.
     pending: List[Any] = []
+    actual_page = _actual_page(page)
     for candidate in reversed(candidates):
         candidate_url = str(getattr(candidate, "url", "") or "")
         if _is_http_url(candidate_url):
@@ -357,7 +358,9 @@ async def correlated_application_target_evidence(
                         source_url=source_url,
                     )
                 return proven
-        elif candidate is not _actual_page(page):
+            if candidate is not actual_page:
+                pending.append(candidate)
+        elif candidate is not actual_page:
             pending.append(candidate)
 
     timeout = max(0.0, float(settle_timeout_seconds or 0.0))
@@ -389,6 +392,7 @@ async def correlated_application_target_evidence(
                         source_url=source_url,
                     )
                 return proven
+            still_pending.append(candidate)
         pending = still_pending
 
     if pending:
