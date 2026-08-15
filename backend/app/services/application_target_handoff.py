@@ -10,7 +10,6 @@ from app.services.application_target import (
     record_application_target,
 )
 from app.services.ats_base import page_fingerprint
-from app.services.ats_registry import detect_ats_adapter
 from app.services.browser_navigation import external_target_from_browser, now_iso
 
 
@@ -92,11 +91,11 @@ async def _retained_target_page(
     session: ManualHandoffSession,
     fallback: Any,
 ) -> Any | None:
-    """Select only the tab bound to this target-resolution handoff.
+    """Select only the tab bound to this retained application-target lifecycle.
 
     A Chromium target id survives same-tab cross-origin navigation, unlike the stored
-    URL. Legacy target handoffs without a target id may use an exact URL match, but
-    they must never fall back to an arbitrary final context page.
+    URL. Legacy target-resolution handoffs without an id may use an exact URL match,
+    but they must never fall back to an arbitrary final context page.
     """
     pages = list(getattr(context, "pages", []) or [])
     metadata = _metadata(session)
@@ -131,7 +130,11 @@ async def _fallback_target_evidence(
     source_url: str,
     log: list[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Compatibility proof for imports that run before the correlated runtime binds."""
+    """Fail-closed compatibility proof before the correlated runtime binds.
+
+    The runtime normally supplies strict ATS URL parsing. This fallback therefore
+    accepts only direct application-form evidence and never trusts a vendor hostname.
+    """
     observed = await external_target_from_browser(page, source_url, log)
     if not observed:
         return {
@@ -151,18 +154,7 @@ async def _fallback_target_evidence(
         form_evidence = evidence.as_dict()
     except Exception:
         pass
-    adapter_name = ""
-    adapter_version = ""
-    try:
-        adapter = await detect_ats_adapter(active_page, observed)
-        adapter_name = str(getattr(adapter, "name", "") or "")
-        adapter_version = str(getattr(adapter, "version", "") or "")
-    except Exception:
-        pass
-    trusted_ats = bool(
-        adapter_name and adapter_name.lower() not in {"generic", "unknown"}
-    )
-    if not form_detected and not trusted_ats:
+    if not form_detected:
         return {
             "status": "none",
             "application_url": None,
@@ -174,10 +166,10 @@ async def _fallback_target_evidence(
     return {
         "status": "resolved",
         "application_url": observed,
-        "application_form_detected": form_detected,
+        "application_form_detected": True,
         "form_evidence": form_evidence,
-        "trusted_ats_adapter": adapter_name or None,
-        "trusted_ats_adapter_version": adapter_version or None,
+        "trusted_ats_adapter": None,
+        "trusted_ats_adapter_version": None,
     }
 
 
@@ -237,20 +229,73 @@ def install_application_target_handoff_support() -> None:
     _ORIGINAL_CONNECT = browser_handoff._connect_local_cdp
 
     async def target_aware_connect(session: ManualHandoffSession):
-        connected = await _ORIGINAL_CONNECT(session)
-        if not _is_target_navigation_session(session):
-            return connected
-        playwright, browser, context, fallback_page = connected
-        selected = await _retained_target_page(context, session, fallback_page)
+        metadata = _metadata(session)
+        durable_target = bool(metadata.get("controlled_page_target_id"))
+        if not _is_target_navigation_session(session) and not durable_target:
+            return await _ORIGINAL_CONNECT(session)
+
+        # Target-resolution sessions cannot use the base connector's pages[-1]
+        # fallback because the native Android Chromium context contains user tabs.
+        if session.browser_provider != "local_cdp":
+            raise browser_handoff.BrowserHandoffUnavailable(
+                f"Browser provider {session.browser_provider!r} is not available on this node."
+            )
+        browser_handoff._require_local_affinity(session)
+        endpoint = browser_handoff.decrypt_handoff_secret(session.encrypted_browser_endpoint)
+        if not endpoint:
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The encrypted browser endpoint is missing or unreadable."
+            )
+
+        from playwright.async_api import async_playwright
+
+        manager = async_playwright()
+        playwright = await manager.start()
+        try:
+            browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
+        except Exception:
+            await playwright.stop()
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained browser process is no longer reachable."
+            )
+
+        contexts = list(browser.contexts)
+        if not contexts:
+            await playwright.stop()
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained browser has no active context."
+            )
+        context = contexts[0]
+        pages = list(context.pages)
+        if not pages:
+            await playwright.stop()
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained application-target browser has no active page."
+            )
+
+        selected = await _retained_target_page(context, session, None)
         if selected is None:
-            await browser_handoff._disconnect(playwright)
+            await playwright.stop()
             raise browser_handoff.BrowserHandoffUnavailable(
                 "The retained application-target tab can no longer be identified safely."
             )
+
+        # Apply kill switches and binding checks to the exact selected tab, not to an
+        # unrelated fallback that happened to be last in the shared context.
+        try:
+            browser_handoff.require_browser_entry_allowed(selected.url)
+            binding = dict(metadata.get("target_binding") or {})
+            if binding:
+                browser_handoff.require_bound_handoff_url(session, selected.url)
+        except browser_handoff.OperationalSafetyViolation as exc:
+            await playwright.stop()
+            raise browser_handoff.BrowserHandoffUnavailable(
+                f"[{exc.code}] {exc}"
+            ) from exc
         return playwright, browser, context, selected
 
-    # Bind the exact-tab selector before invoking any captured verify/resume function.
-    # Those original functions resolve _connect_local_cdp from their module at runtime.
+    # Captured verify/resume functions resolve this module global at runtime, so every
+    # target-aware path now reconnects to the durable tab before policy or actions.
     browser_handoff._connect_local_cdp = target_aware_connect
 
     async def target_aware_verify(session: ManualHandoffSession):
@@ -278,14 +323,18 @@ def install_application_target_handoff_support() -> None:
                 )
             )
             if valid:
-                session.current_url = target_url
-                session.handoff_metadata = {
+                active_page = await _target_page(context, target_url, page)
+                resolved_target_id = await _page_target_id(context, active_page)
+                metadata = {
                     **_metadata(session),
                     "resolved_target_url": target_url,
                     "application_form_detected": form_detected,
                     "trusted_ats_adapter": trusted_ats or None,
                 }
-                active_page = await _target_page(context, target_url, page)
+                if resolved_target_id:
+                    metadata["controlled_page_target_id"] = resolved_target_id
+                session.current_url = target_url
+                session.handoff_metadata = metadata
             else:
                 active_page = page
             fingerprint = await page_fingerprint(active_page)
@@ -324,7 +373,7 @@ def install_application_target_handoff_support() -> None:
                 dry_run=dry_run,
             )
 
-        playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
+        playwright, _, context, page = await browser_handoff._connect_local_cdp(session)
         source_url = _source_url(session)
         try:
             doorway = await _resolve_target_after_human_boundary(page, source_url)
@@ -369,8 +418,10 @@ def install_application_target_handoff_support() -> None:
                     "ready_to_submit": False,
                     "target_resolution_only": True,
                 }
-            session.current_url = target_url
-            session.handoff_metadata = {
+
+            active_page = await _target_page(context, target_url, page)
+            resolved_target_id = await _page_target_id(context, active_page)
+            metadata = {
                 **_metadata(session),
                 "resolved_target_url": target_url,
                 "target_resolution_only": False,
@@ -380,6 +431,12 @@ def install_application_target_handoff_support() -> None:
                 "trusted_ats_adapter": trusted_ats or None,
                 "trusted_ats_adapter_version": doorway.get("trusted_ats_adapter_version"),
             }
+            if resolved_target_id:
+                # Rebind durable identity from the listing/login opener to the proven
+                # ATS popup before the second reconnect performed by the base resume.
+                metadata["controlled_page_target_id"] = resolved_target_id
+            session.current_url = target_url
+            session.handoff_metadata = metadata
         finally:
             await browser_handoff._disconnect(playwright)
 
