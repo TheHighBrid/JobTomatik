@@ -1,7 +1,7 @@
 # Minimal backend dependencies for running the API on Android via Ubuntu/proot or
 # another constrained local server. This intentionally excludes browser/image
-# automation packages such as Playwright and Pillow; auth/login/register do not
-# need them.
+# automation packages such as Playwright and Pillow while retaining dependencies
+# required by local API workflows such as source-backed résumé material generation.
 fastapi==0.141.1
 uvicorn==0.52.0
 sqlalchemy==2.0.51
@@ -21,3 +21,4 @@ pydantic==2.13.4
 pydantic-settings==2.14.2
 aiofiles==25.1.0
 email-validator==2.3.0
+pypdf==6.15.0
