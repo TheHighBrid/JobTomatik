@@ -219,6 +219,101 @@ async def _resolve_target_after_human_boundary(
     return resolved
 
 
+def _persist_proven_target_binding(
+    session: ManualHandoffSession,
+    *,
+    target_url: str,
+    current_fingerprint: str,
+    controlled_page_target_id: str,
+    proof_metadata: Dict[str, Any],
+) -> None:
+    """Persist an exact Day 6 target binding before generic ATS automation runs.
+
+    The Celery task commits the READY->RESUMING transition before it enters this
+    browser service, so a short independent transaction can safely replace the
+    permissive listing-only binding after strict application proof is observed. The
+    caller's ORM instance is then synchronized with that exact persisted binding.
+    """
+    from app.database import SessionLocal
+    from app.models.application import ManualReviewTask
+    from app.models.job import Job
+    from app.models.user import User
+    from app.services.operational_safety import (
+        OperationalSafetyViolation,
+        rebind_resolved_handoff_target,
+    )
+    from app.services import browser_handoff
+
+    session_id = getattr(session, "id", None)
+    if not session_id:
+        raise browser_handoff.BrowserHandoffUnavailable(
+            "The retained handoff has no persisted session identity for exact-target rebinding."
+        )
+
+    db = SessionLocal()
+    try:
+        persisted = db.query(ManualHandoffSession).filter(
+            ManualHandoffSession.id == session_id
+        ).with_for_update().first()
+        if not persisted:
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained handoff disappeared before its exact target could be rebound."
+            )
+        application = db.query(Application).filter(
+            Application.id == persisted.application_id
+        ).first()
+        review = db.query(ManualReviewTask).filter(
+            ManualReviewTask.id == persisted.manual_review_id
+        ).first()
+        job = (
+            db.query(Job).filter(Job.id == application.job_id).first()
+            if application
+            else None
+        )
+        user = (
+            db.query(User).filter(User.id == application.user_id).first()
+            if application
+            else None
+        )
+        if not application or not review or not job or not user:
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained handoff records are incomplete during exact-target rebinding."
+            )
+
+        try:
+            rebind_resolved_handoff_target(
+                db,
+                persisted,
+                application,
+                job,
+                review,
+                user,
+                resolved_url=target_url,
+                current_fingerprint=current_fingerprint,
+            )
+        except OperationalSafetyViolation as exc:
+            raise browser_handoff.BrowserHandoffUnavailable(
+                f"[{exc.code}] {exc}"
+            ) from exc
+
+        metadata = dict(persisted.handoff_metadata or {})
+        metadata.update(proof_metadata)
+        metadata["resolved_target_url"] = target_url
+        metadata["target_resolution_only"] = False
+        metadata["stage"] = "ats_application"
+        if controlled_page_target_id:
+            metadata["controlled_page_target_id"] = controlled_page_target_id
+        persisted.handoff_metadata = metadata
+        db.commit()
+        db.refresh(persisted)
+
+        session.current_url = persisted.current_url
+        session.current_fingerprint = persisted.current_fingerprint
+        session.handoff_metadata = dict(persisted.handoff_metadata or {})
+    finally:
+        db.close()
+
+
 def install_application_target_handoff_support() -> None:
     global _INSTALLED, _ORIGINAL_VERIFY, _ORIGINAL_RESUME, _ORIGINAL_CONNECT
     if _INSTALLED:
@@ -423,25 +518,26 @@ def install_application_target_handoff_support() -> None:
 
             active_page = await _target_page(context, target_url, page)
             resolved_target_id = await _page_target_id(context, active_page)
-            metadata = {
-                **_metadata(session),
-                "resolved_target_url": target_url,
-                "target_resolution_only": False,
-                "stage": "ats_application",
+            resolved_fingerprint = await page_fingerprint(active_page)
+            proof_metadata = {
                 "application_form_detected": form_detected,
                 "form_evidence": dict(doorway.get("form_evidence") or {}),
                 "trusted_ats_adapter": trusted_ats or None,
                 "trusted_ats_adapter_version": doorway.get("trusted_ats_adapter_version"),
             }
-            if resolved_target_id:
-                # Rebind durable identity from the listing/login opener to the proven
-                # ATS popup before the second reconnect performed by the base resume.
-                metadata["controlled_page_target_id"] = resolved_target_id
-            session.current_url = target_url
-            session.handoff_metadata = metadata
+            _persist_proven_target_binding(
+                session,
+                target_url=target_url,
+                current_fingerprint=resolved_fingerprint,
+                controlled_page_target_id=resolved_target_id,
+                proof_metadata=proof_metadata,
+            )
         finally:
             await browser_handoff._disconnect(playwright)
 
+        # The persisted binding is now exact and non-resolution-only. The second
+        # reconnect performed by the base resume must pass that binding before any
+        # field fill or ATS step can execute.
         result = await _ORIGINAL_RESUME(
             session,
             user_profile=user_profile,
@@ -470,6 +566,7 @@ def install_application_target_handoff_support() -> None:
             "application_form_detected": form_detected,
             "trusted_ats_adapter": trusted_ats or None,
             "automatic_apply_navigation": True,
+            "exact_target_binding_persisted_before_fill": True,
             "ts": now_iso(),
         })
         return result
