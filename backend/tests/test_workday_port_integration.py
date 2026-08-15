@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import pytest
@@ -93,6 +94,46 @@ async def test_workday_apply_popup_is_retained_as_manual_login_boundary(browser_
 
     detected = await detect_ats_adapter(browser_page, WORKDAY_URL)
     assert detected.name == "workday"
+
+
+@pytest.mark.asyncio
+async def test_workday_apply_ignores_unrelated_new_tab_after_controlled_popup(browser_page):
+    await browser_page.set_content(
+        """
+        <a id="apply">Apply</a>
+        <script>
+          document.querySelector('#apply').onclick = () => {
+            const popup = window.open('about:blank', '_blank');
+            popup.document.write(`
+              <main>
+                <button data-automation-id="bottom-navigation-next-button">Continue</button>
+                <label for="password">Password</label>
+                <input id="password" type="password" data-automation-id="password">
+              </main>
+            `);
+            popup.document.close();
+          };
+        </script>
+        """
+    )
+
+    adapter = WorkdayAdapter()
+    log = []
+    controlled_popup = asyncio.create_task(browser_page.context.wait_for_event("page"))
+    prepare_task = asyncio.create_task(adapter.prepare(browser_page, log))
+    popup = await controlled_popup
+    unrelated = await browser_page.context.new_page()
+    await unrelated.set_content("<main>Unrelated shared-browser tab</main>")
+    await prepare_task
+
+    surface = await adapter.resolve_surface(browser_page)
+
+    assert surface is popup
+    assert surface is not unrelated
+    captured = next(item for item in log if item.get("action") == "workday_application_popup_captured")
+    assert captured["popup_count"] == 1
+    assert captured["ignored_unrelated_new_pages"] == 1
+    assert captured["popup_correlation"] == "controlled_page_event"
 
 
 @pytest.mark.asyncio
