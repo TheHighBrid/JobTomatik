@@ -18,6 +18,7 @@ _INSTALLED = False
 _TASK_PERSISTENCE_INSTALLED = False
 _ORIGINAL_VERIFY = None
 _ORIGINAL_RESUME = None
+_ORIGINAL_CONNECT = None
 _ORIGINAL_HANDOFF_TASK_RUN = None
 _target_evidence_from_browser = None
 
@@ -66,6 +67,54 @@ async def _target_page(context: Any, target_url: str, fallback: Any) -> Any:
     for candidate in reversed(list(context.pages)):
         if str(getattr(candidate, "url", "") or "") == target_url:
             return candidate
+    return fallback
+
+
+async def _page_target_id(context: Any, page: Any) -> str:
+    """Read Chromium's durable top-level target id for a connected page."""
+    cdp_session = None
+    try:
+        cdp_session = await context.new_cdp_session(page)
+        target_info = await cdp_session.send("Target.getTargetInfo")
+        return str((target_info.get("targetInfo") or {}).get("targetId") or "")
+    except Exception:
+        return ""
+    finally:
+        if cdp_session is not None:
+            try:
+                await cdp_session.detach()
+            except Exception:
+                pass
+
+
+async def _retained_target_page(
+    context: Any,
+    session: ManualHandoffSession,
+    fallback: Any,
+) -> Any | None:
+    """Select only the tab bound to this target-resolution handoff.
+
+    A Chromium target id survives same-tab cross-origin navigation, unlike the stored
+    URL. Legacy target handoffs without a target id may use an exact URL match, but
+    they must never fall back to an arbitrary final context page.
+    """
+    pages = list(getattr(context, "pages", []) or [])
+    metadata = _metadata(session)
+    expected_target_id = str(metadata.get("controlled_page_target_id") or "")
+    if expected_target_id:
+        for candidate in pages:
+            if await _page_target_id(context, candidate) == expected_target_id:
+                return candidate
+        return None
+
+    expected_url = str(session.current_url or "")
+    if expected_url:
+        for candidate in pages:
+            if str(getattr(candidate, "url", "") or "") == expected_url:
+                return candidate
+
+    if _is_target_navigation_session(session):
+        return None
     return fallback
 
 
@@ -177,7 +226,7 @@ async def _resolve_target_after_human_boundary(
 
 
 def install_application_target_handoff_support() -> None:
-    global _INSTALLED, _ORIGINAL_VERIFY, _ORIGINAL_RESUME
+    global _INSTALLED, _ORIGINAL_VERIFY, _ORIGINAL_RESUME, _ORIGINAL_CONNECT
     if _INSTALLED:
         return
 
@@ -185,6 +234,24 @@ def install_application_target_handoff_support() -> None:
 
     _ORIGINAL_VERIFY = browser_handoff.verify_browser_handoff_completion
     _ORIGINAL_RESUME = browser_handoff.resume_handoff_application
+    _ORIGINAL_CONNECT = browser_handoff._connect_local_cdp
+
+    async def target_aware_connect(session: ManualHandoffSession):
+        connected = await _ORIGINAL_CONNECT(session)
+        if not _is_target_navigation_session(session):
+            return connected
+        playwright, browser, context, fallback_page = connected
+        selected = await _retained_target_page(context, session, fallback_page)
+        if selected is None:
+            await browser_handoff._disconnect(playwright)
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained application-target tab can no longer be identified safely."
+            )
+        return playwright, browser, context, selected
+
+    # Bind the exact-tab selector before invoking any captured verify/resume function.
+    # Those original functions resolve _connect_local_cdp from their module at runtime.
+    browser_handoff._connect_local_cdp = target_aware_connect
 
     async def target_aware_verify(session: ManualHandoffSession):
         if not _is_target_navigation_session(session):
