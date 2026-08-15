@@ -229,20 +229,34 @@ async def _prepare_with_popup_capture(
     before_pages = list(context.pages) if context is not None else []
     before_url = str(getattr(page, "url", "") or "") if page is not None else ""
     before_log_count = len(log)
+    controlled_popups: list[Any] = []
 
-    await _ORIGINAL_PREPARE(self, surface, log)
+    def capture_controlled_popup(candidate: Any) -> None:
+        controlled_popups.append(candidate)
 
-    if page is None:
-        return
+    if page is not None:
+        page.on("popup", capture_controlled_popup)
     try:
-        await page.wait_for_timeout(700)
-    except Exception:
-        pass
+        await _ORIGINAL_PREPARE(self, surface, log)
+
+        if page is None:
+            return
+        try:
+            await page.wait_for_timeout(700)
+        except Exception:
+            pass
+    finally:
+        if page is not None:
+            page.remove_listener("popup", capture_controlled_popup)
 
     if context is not None:
         new_pages = [candidate for candidate in context.pages if candidate not in before_pages]
-        if new_pages:
-            active = new_pages[-1]
+        correlated_popups = [
+            candidate for candidate in controlled_popups
+            if candidate in new_pages and candidate in context.pages
+        ]
+        if correlated_popups:
+            active = correlated_popups[-1]
             try:
                 await active.wait_for_load_state("domcontentloaded", timeout=12000)
             except Exception:
@@ -253,7 +267,11 @@ async def _prepare_with_popup_capture(
                 "action": "workday_application_popup_captured",
                 "source_url": _safe_path_url(before_url),
                 "active_url": _safe_path_url(str(getattr(active, "url", "") or "")),
-                "popup_count": len(new_pages),
+                "popup_count": len(correlated_popups),
+                "ignored_unrelated_new_pages": len(
+                    [candidate for candidate in new_pages if candidate not in correlated_popups]
+                ),
+                "popup_correlation": "controlled_page_event",
                 "bounded_apply_transition": True,
                 "credentials_entered": False,
                 "account_created": False,
