@@ -24,6 +24,26 @@ _RESUMABLE_TARGET_REASONS = {
 }
 
 
+async def _controlled_page_target_id(page: Any) -> str:
+    """Return the Chromium target id for the exact retained top-level tab."""
+    context = getattr(page, "context", None)
+    if context is None:
+        return ""
+    cdp_session = None
+    try:
+        cdp_session = await context.new_cdp_session(page)
+        target_info = await cdp_session.send("Target.getTargetInfo")
+        return str((target_info.get("targetInfo") or {}).get("targetId") or "")
+    except Exception:
+        return ""
+    finally:
+        if cdp_session is not None:
+            try:
+                await cdp_session.detach()
+            except Exception:
+                pass
+
+
 async def resolve_application_target_with_browser(source_url: str) -> Dict[str, Any]:
     """Resolve a listing into a form or a certified hosted ATS entry point.
 
@@ -181,14 +201,18 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                     "review_items": [challenge],
                     "retryable": False,
                 })
-                snapshot = await runtime.capture_snapshot(metadata={
+                controlled_target_id = await _controlled_page_target_id(page)
+                snapshot_metadata = {
                     "dry_run": True,
                     "stage": "application_target_security_boundary",
                     "source_listing_url": source_url,
                     "adapter": "listing_resolver",
-                    "adapter_version": "2.2.0",
+                    "adapter_version": "2.3.0",
                     "reason_code": reason_code,
-                })
+                }
+                if controlled_target_id:
+                    snapshot_metadata["controlled_page_target_id"] = controlled_target_id
+                snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
                 result["handoff_snapshot"] = snapshot
                 retained = True
                 log.append({
@@ -196,6 +220,7 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                     "reason_code": reason_code,
                     "browser_session_id": snapshot["browser_session_id"],
                     "current_url": snapshot["current_url"],
+                    "controlled_page_target_id_recorded": bool(controlled_target_id),
                     "ts": now_iso(),
                 })
                 return result
