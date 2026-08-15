@@ -254,6 +254,26 @@ async def _correlated_candidates(page: Any) -> List[Any]:
     return result
 
 
+def _append_existing_context_correlation(
+    log: Optional[List[Dict[str, Any]]],
+    *,
+    candidate: Any,
+    existing_opener_ids: set[int],
+    application_url: str,
+    source_url: str,
+) -> None:
+    if log is None or id(_actual_page(candidate)) not in existing_opener_ids:
+        return
+    log.append({
+        "action": "application_target_existing_context_correlated",
+        "url": application_url,
+        "source_url": source_url,
+        "eligible_opener_tab_count": len(existing_opener_ids),
+        "unrelated_preexisting_tabs_eligible": False,
+        "ts": now_iso(),
+    })
+
+
 async def correlated_application_target_evidence(
     page: Any,
     source_url: str,
@@ -291,15 +311,13 @@ async def correlated_application_target_evidence(
                         "proof": proven["proof"],
                         "ts": now_iso(),
                     })
-                    if id(_actual_page(candidate)) in existing_opener_ids:
-                        log.append({
-                            "action": "application_target_existing_context_correlated",
-                            "url": proven["application_url"],
-                            "source_url": source_url,
-                            "eligible_opener_tab_count": len(existing_opener_ids),
-                            "unrelated_preexisting_tabs_eligible": False,
-                            "ts": now_iso(),
-                        })
+                    _append_existing_context_correlation(
+                        log,
+                        candidate=candidate,
+                        existing_opener_ids=existing_opener_ids,
+                        application_url=proven["application_url"],
+                        source_url=source_url,
+                    )
                 return proven
         elif candidate is not _actual_page(page):
             pending.append(candidate)
@@ -325,6 +343,13 @@ async def correlated_application_target_evidence(
                         "proof": proven["proof"],
                         "ts": now_iso(),
                     })
+                    _append_existing_context_correlation(
+                        log,
+                        candidate=candidate,
+                        existing_opener_ids=existing_opener_ids,
+                        application_url=proven["application_url"],
+                        source_url=source_url,
+                    )
                 return proven
         pending = still_pending
 

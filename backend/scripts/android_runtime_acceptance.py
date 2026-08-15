@@ -14,6 +14,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,7 @@ for _name in dir(_base):
 REQUIRED_WORKER_QUEUES = "applications,celery,followup,scraping"
 validate_worker_canary_receipt = _base.validate_worker_canary_receipt
 _BASE_WORKER_ACCEPTANCE = _base._worker_acceptance
+_BASE_SETTINGS_LOCK = RLock()
 
 
 class _BackendRuntimeSettings(Settings):
@@ -105,6 +107,11 @@ def _configured_browser_cdp_endpoint() -> str:
             )
         return backend_endpoint
 
+    if os.environ.get("JOBTOMATIK_RUNTIME_MODE") == "android_managed":
+        raise RuntimeError(
+            "Android managed backend runtime CDP endpoint is not configured"
+        )
+
     # Preserve the established non-managed test/override seam. A process-level
     # endpoint remains usable only when no managed backend endpoint exists.
     fallback_endpoint = (get_settings().application_browser_cdp_endpoint or "").strip()
@@ -133,15 +140,16 @@ def run_acceptance() -> dict[str, Any]:
     # The base implementation owns frontend/API/worker/Beat/process and safety
     # attestation. Bind its settings lookup to the managed backend file so
     # cwd-relative or inherited settings cannot mask the running runtime.
-    original_worker = _base._worker_acceptance
-    original_settings = _base.get_settings
-    _base._worker_acceptance = _worker_acceptance
-    _base.get_settings = _backend_settings
-    try:
-        payload = _base.run_acceptance()
-    finally:
-        _base._worker_acceptance = original_worker
-        _base.get_settings = original_settings
+    with _BASE_SETTINGS_LOCK:
+        original_worker = _base._worker_acceptance
+        original_settings = _base.get_settings
+        _base._worker_acceptance = _worker_acceptance
+        _base.get_settings = _backend_settings
+        try:
+            payload = _base.run_acceptance()
+        finally:
+            _base._worker_acceptance = original_worker
+            _base.get_settings = original_settings
 
     browser = dict(payload.get("browser") or {})
     browser.update(_playwright_browser_acceptance())
