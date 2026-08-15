@@ -10,7 +10,11 @@ from app.services.application_target import (
     record_application_target,
 )
 from app.services.ats_base import page_fingerprint
-from app.services.browser_navigation import external_target_from_browser, now_iso
+from app.services.browser_navigation import (
+    external_target_from_browser,
+    is_job_board_url,
+    now_iso,
+)
 
 
 _INSTALLED = False
@@ -183,7 +187,12 @@ async def _observed_target_evidence(
     direct_url = str(getattr(page, "url", "") or "")
     try:
         direct_evidence = await application_form_evidence(page)
-        if direct_url and bool(direct_evidence.present):
+        if (
+            direct_url
+            and direct_url == source_url
+            and is_job_board_url(direct_url)
+            and bool(direct_evidence.present)
+        ):
             return {
                 "status": "resolved",
                 "application_url": direct_url,
@@ -525,7 +534,9 @@ def install_application_target_handoff_support() -> None:
                         "prove the application form or supported ATS target automatically."
                     ),
                     "fields_filled": 0,
-                    "requires_manual_review": False,
+                    "requires_manual_review": bool(
+                        doorway.get("correlated_target_pending")
+                    ),
                     "review_items": [],
                     "ready_to_submit": False,
                     "target_resolution_only": True,
