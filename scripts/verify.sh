@@ -33,6 +33,10 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   PYTHON_BIN=python
 fi
 
+# Verification must be independent of an interactive shell's deployment mode.
+# Runtime deployments choose their own APP_ENV values; test gates always use `test`.
+unset APP_ENVIRONMENT
+export APP_ENV=test
 export DATABASE_URL="${DATABASE_URL:-sqlite:///./jobtomatik-verification.db}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
 export SECRET_KEY="${SECRET_KEY:-jobtomatik-development-secret}"

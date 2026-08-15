@@ -102,12 +102,14 @@ def test_verification_modes_and_fail_safe_environment_are_explicit() -> None:
         assert f"  {mode})" in script
 
     for assignment in (
+        "APP_ENV=test",
         "ALLOW_REAL_APPLICATION_SUBMIT=false",
         "AUTOPILOT_ENABLED=false",
         "ENABLE_RESUMABLE_HANDOFFS=false",
     ):
         assert f"export {assignment}" in script
 
+    assert "unset APP_ENVIRONMENT" in script
     assert "GREENHOUSE_SUPERVISED_PILOT_ENABLED=false" in script
     assert "LEVER_SUPERVISED_PILOT_ENABLED=false" in script
     assert "verification-pytest-output.txt" in script
