@@ -345,6 +345,8 @@ async def test_opener_owned_auxiliary_page_without_application_evidence_is_rejec
     [
         "https://jobs.lever.co/privacy",
         "https://boards.greenhouse.io/privacy",
+        "https://app.greenhouse.io/users/sign_in?gh_jid=123",
+        "https://boards.greenhouse.io/privacy?gh_jid=123",
         "https://jobs.ashbyhq.com/privacy",
         "https://jobs.smartrecruiters.com/privacy",
         "https://example.wd5.myworkdayjobs.com/en-US/CandidateHome",
@@ -371,7 +373,10 @@ def test_strict_ats_surface_requires_job_or_application_identity():
     assert strict("https://jobs.lever.co/privacy") is None
 
     assert strict("https://job-boards.greenhouse.io/acme/jobs/123456") == "greenhouse"
+    assert strict("https://boards.greenhouse.io/embed/job_app?token=123456") == "greenhouse"
     assert strict("https://boards.greenhouse.io/privacy") is None
+    assert strict("https://app.greenhouse.io/users/sign_in?gh_jid=123") is None
+    assert strict("https://boards.greenhouse.io/privacy?gh_jid=123") is None
 
     assert (
         strict("https://jobs.ashbyhq.com/acme/123e4567-e89b-12d3-a456-426614174000/application")
@@ -478,6 +483,52 @@ async def test_retained_navigation_accepts_inline_form_on_controlled_source(monk
     assert result["status"] == "resolved"
     assert result["application_url"] == source_url
     assert result["application_form_detected"] is True
+
+
+@pytest.mark.asyncio
+async def test_retained_navigation_rejects_auxiliary_form_as_direct_proof(monkeypatch):
+    source_url = "https://www.linkedin.com/jobs/view/123"
+    page = SimpleNamespace(url="https://accounts.example.test/login")
+
+    class _Evidence:
+        present = True
+
+        def as_dict(self):
+            return {"present": True, "emailControls": 1, "submitControls": 1}
+
+    async def fake_form_evidence(_page):
+        return _Evidence()
+
+    async def no_correlated_target(_page, _source_url, _log):
+        return {
+            "status": "none",
+            "application_url": None,
+            "application_form_detected": False,
+            "form_evidence": {},
+            "trusted_ats_adapter": None,
+            "trusted_ats_adapter_version": None,
+        }
+
+    monkeypatch.setattr(
+        application_target_handoff,
+        "application_form_evidence",
+        fake_form_evidence,
+    )
+    monkeypatch.setattr(
+        application_target_handoff,
+        "_target_evidence_from_browser",
+        no_correlated_target,
+    )
+
+    result = await application_target_handoff._observed_target_evidence(
+        page,
+        source_url,
+        [],
+    )
+
+    assert result["status"] == "none"
+    assert result["application_url"] is None
+    assert result["application_form_detected"] is False
 
 
 @pytest.mark.asyncio
