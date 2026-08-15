@@ -269,6 +269,11 @@ async def correlated_application_target_evidence(
     kept eligible for a bounded settle window instead of being re-baselined away.
     """
     candidates = await _correlated_candidates(page)
+    existing_opener_ids = (
+        await _opener_correlated_ids(page)
+        if not isinstance(page, _CorrelatedPage)
+        else set()
+    )
 
     # First inspect already-loaded candidates without letting a blank child delay a
     # proven application target that is already available.
@@ -286,6 +291,15 @@ async def correlated_application_target_evidence(
                         "proof": proven["proof"],
                         "ts": now_iso(),
                     })
+                    if id(_actual_page(candidate)) in existing_opener_ids:
+                        log.append({
+                            "action": "application_target_existing_context_correlated",
+                            "url": proven["application_url"],
+                            "source_url": source_url,
+                            "eligible_opener_tab_count": len(existing_opener_ids),
+                            "unrelated_preexisting_tabs_eligible": False,
+                            "ts": now_iso(),
+                        })
                 return proven
         elif candidate is not _actual_page(page):
             pending.append(candidate)

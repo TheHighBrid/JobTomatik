@@ -102,6 +102,69 @@ def test_android_acceptance_loads_cdp_endpoint_from_backend_env(monkeypatch, tmp
     assert acceptance._configured_browser_cdp_endpoint() == "http://127.0.0.1:9222"
 
 
+def test_android_acceptance_rejects_process_cdp_mismatch(monkeypatch, tmp_path):
+    backend_root = tmp_path / "backend"
+    backend_root.mkdir()
+    (backend_root / ".env").write_text(
+        "APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9222\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(acceptance, "BACKEND_ROOT", backend_root)
+    monkeypatch.setenv("APPLICATION_BROWSER_CDP_ENDPOINT", "http://127.0.0.1:9333")
+
+    with pytest.raises(RuntimeError, match="differs from managed backend runtime config"):
+        acceptance._configured_browser_cdp_endpoint()
+
+
+def test_android_acceptance_base_uses_backend_runtime_settings(monkeypatch):
+    authoritative = SimpleNamespace(
+        application_browser_cdp_endpoint="http://127.0.0.1:9222",
+        allow_real_application_submit=True,
+        allow_real_followup_send=False,
+    )
+    observed = {}
+
+    monkeypatch.setattr(acceptance, "_backend_settings", lambda: authoritative)
+    monkeypatch.setattr(
+        acceptance,
+        "_playwright_browser_acceptance",
+        lambda: {"playwright_attach_ready": True, "browser_owned_by_jobtomatik": False},
+    )
+
+    def fake_base_run_acceptance():
+        observed["settings"] = acceptance._base.get_settings()
+        return {"browser": {}}
+
+    monkeypatch.setattr(acceptance._base, "run_acceptance", fake_base_run_acceptance)
+
+    acceptance.run_acceptance()
+
+    assert observed["settings"] is authoritative
+    assert acceptance._base.get_settings is not acceptance._backend_settings
+
+
+def test_android_acceptance_failure_receipt_uses_backend_runtime_settings(monkeypatch, tmp_path):
+    authoritative = SimpleNamespace(
+        allow_real_application_submit=False,
+        allow_real_followup_send=False,
+    )
+    observed = {}
+
+    monkeypatch.setattr(acceptance, "_backend_settings", lambda: authoritative)
+    monkeypatch.setattr(
+        acceptance,
+        "get_settings",
+        lambda: SimpleNamespace(allow_real_application_submit=True),
+    )
+    monkeypatch.setattr(acceptance, "run_acceptance", lambda: (_ for _ in ()).throw(RuntimeError("CDP failed")))
+    monkeypatch.setattr(acceptance, "runtime_acceptance_path", lambda: tmp_path / "acceptance.json")
+    monkeypatch.setattr(acceptance, "write_receipt", lambda _path, payload: observed.setdefault("payload", payload))
+
+    assert acceptance.main() == 1
+    assert observed["payload"]["safety"]["real_submission_disabled"] is True
+
+
 class _NoQueryDB:
     def expire_all(self):
         return None

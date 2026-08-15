@@ -20,6 +20,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from pydantic_settings import PydanticBaseSettingsSource  # noqa: E402
+
 from app.config import Settings  # noqa: E402
 from app.services.browser_runtime import probe_external_playwright_cdp  # noqa: E402
 from scripts import android_runtime_acceptance_base as _base  # noqa: E402
@@ -34,6 +36,27 @@ for _name in dir(_base):
 REQUIRED_WORKER_QUEUES = "applications,celery,followup,scraping"
 validate_worker_canary_receipt = _base.validate_worker_canary_receipt
 _BASE_WORKER_ACCEPTANCE = _base._worker_acceptance
+
+
+class _BackendRuntimeSettings(Settings):
+    """Settings sourced from the managed backend file, never caller environment."""
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[Settings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return init_settings, dotenv_settings, file_secret_settings
+
+
+def _backend_settings() -> Settings:
+    """Load the exact settings file used by the managed Android services."""
+
+    return _BackendRuntimeSettings(_env_file=BACKEND_ROOT / ".env")
 
 
 def _worker_identity_tokens(revision: str) -> tuple[str, ...]:
@@ -66,27 +89,30 @@ def _worker_acceptance(
 
 
 def _configured_browser_cdp_endpoint() -> str:
-    """Resolve the managed Android browser endpoint independent of caller cwd.
+    """Resolve the browser endpoint from the managed backend runtime config.
 
-    The Termux launcher invokes physical acceptance from the repository root in
-    a fresh PRoot shell, while the managed stack writes its authoritative runtime
-    configuration to ``backend/.env``. Pydantic's default ``env_file='.env'`` is
-    cwd-relative, so relying only on ``get_settings()`` can incorrectly report an
-    unset endpoint even though the API/worker are configured correctly.
+    The physical acceptance command can inherit unrelated shell variables, while
+    the managed API and worker use ``backend/.env``. A conflicting inherited
+    endpoint is rejected before it can satisfy the browser proof.
     """
 
+    backend_endpoint = (_backend_settings().application_browser_cdp_endpoint or "").strip()
     process_endpoint = (os.environ.get("APPLICATION_BROWSER_CDP_ENDPOINT") or "").strip()
-    if process_endpoint:
-        return process_endpoint
+    if backend_endpoint:
+        if process_endpoint and process_endpoint != backend_endpoint:
+            raise RuntimeError(
+                "Android application browser CDP endpoint differs from managed backend runtime config"
+            )
+        return backend_endpoint
 
-    backend_settings = Settings(_env_file=BACKEND_ROOT / ".env")
-    endpoint = (backend_settings.application_browser_cdp_endpoint or "").strip()
-    if endpoint:
-        return endpoint
-
-    # Preserve the established test/override seam and support callers that do
-    # intentionally provide a cwd-local Settings source.
-    return (get_settings().application_browser_cdp_endpoint or "").strip()
+    # Preserve the established non-managed test/override seam. A process-level
+    # endpoint remains usable only when no managed backend endpoint exists.
+    fallback_endpoint = (get_settings().application_browser_cdp_endpoint or "").strip()
+    if process_endpoint and fallback_endpoint and process_endpoint != fallback_endpoint:
+        raise RuntimeError(
+            "Android application browser CDP endpoint differs from acceptance settings"
+        )
+    return fallback_endpoint or process_endpoint
 
 
 def _playwright_browser_acceptance() -> dict[str, Any]:
@@ -102,17 +128,20 @@ def _playwright_browser_acceptance() -> dict[str, Any]:
 
 
 def run_acceptance() -> dict[str, Any]:
-    """Run Runtime V2 acceptance and require the actual worker browser path."""
+    """Run Runtime V2 acceptance against one authoritative backend config."""
 
-    # The base implementation still owns frontend/API/worker/Beat/process and
-    # no-submit attestation. Its worker helper is patched only to preserve this
-    # module's deterministic test seam.
+    # The base implementation owns frontend/API/worker/Beat/process and safety
+    # attestation. Bind its settings lookup to the managed backend file so
+    # cwd-relative or inherited settings cannot mask the running runtime.
     original_worker = _base._worker_acceptance
+    original_settings = _base.get_settings
     _base._worker_acceptance = _worker_acceptance
+    _base.get_settings = _backend_settings
     try:
         payload = _base.run_acceptance()
     finally:
         _base._worker_acceptance = original_worker
+        _base.get_settings = original_settings
 
     browser = dict(payload.get("browser") or {})
     browser.update(_playwright_browser_acceptance())
@@ -132,13 +161,14 @@ def main() -> int:
         )
         return 0
     except Exception as exc:
+        settings = _backend_settings()
         failure = {
             "version": 1,
             "status": "fail",
             "revision": current_revision(),
             "error": str(exc)[:1800],
             "safety": {
-                "real_submission_disabled": get_settings().allow_real_application_submit is False,
+                "real_submission_disabled": settings.allow_real_application_submit is False,
                 "final_submit_allowed": False,
                 "outreach_authorized": False,
             },
