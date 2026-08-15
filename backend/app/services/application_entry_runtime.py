@@ -17,18 +17,20 @@ from app.services.application_entry import (
     application_form_evidence,
     open_application_entry as _base_open_application_entry,
 )
-from app.services.ats_registry import detect_ats_adapter
-from app.services.browser_navigation import is_job_board_url, now_iso
-
-
-_KNOWN_ATS_HOST_HINTS = (
-    "lever.co",
-    "greenhouse.io",
-    "myworkdayjobs.com",
-    "workday.com",
-    "ashbyhq.com",
-    "smartrecruiters.com",
+from app.services.ats_ashby import ASHBY_JOBS_HOST, parse_ashby_job_url
+from app.services.ats_greenhouse import is_greenhouse_host, parse_greenhouse_job_url
+from app.services.ats_lever import (
+    LEVER_EU_JOBS_HOST,
+    LEVER_GLOBAL_JOBS_HOST,
+    parse_lever_job_url,
 )
+from app.services.ats_registry import detect_ats_adapter
+from app.services.ats_smartrecruiters import (
+    SMARTRECRUITERS_JOBS_HOST,
+    parse_smartrecruiters_job_url,
+)
+from app.services.ats_workday import parse_workday_target
+from app.services.browser_navigation import is_job_board_url, now_iso
 
 
 class _CorrelatedContext:
@@ -180,9 +182,41 @@ def _is_http_url(url: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
-def _known_ats_url(url: str) -> bool:
-    host = (urlparse(url or "").hostname or "").lower()
-    return any(host == hint or host.endswith("." + hint) for hint in _KNOWN_ATS_HOST_HINTS)
+def _strict_ats_surface(url: str) -> Optional[str]:
+    """Return an ATS name only for a URL that identifies a real job/app surface.
+
+    Adapter host matching is intentionally broader because it also supports embedded
+    discovery. Recovery from a retained shared browser needs stronger evidence: a
+    vendor help, privacy, account, or generic landing page must never become the
+    application target merely because it lives on an ATS-owned domain.
+    """
+    parsed = urlparse(url or "")
+    host = (parsed.hostname or "").lower()
+
+    if host in {LEVER_GLOBAL_JOBS_HOST, LEVER_EU_JOBS_HOST}:
+        site, posting_id, _region = parse_lever_job_url(url)
+        if site and posting_id:
+            return "lever"
+
+    if is_greenhouse_host(host):
+        _board, job_id = parse_greenhouse_job_url(url)
+        if job_id:
+            return "greenhouse"
+
+    if host == ASHBY_JOBS_HOST:
+        board, posting_id = parse_ashby_job_url(url)
+        if board and posting_id:
+            return "ashby"
+
+    if host == SMARTRECRUITERS_JOBS_HOST:
+        company, posting_id, kind = parse_smartrecruiters_job_url(url)
+        if company and posting_id and kind in {"hosted_job", "oneclick_application"}:
+            return "smartrecruiters"
+
+    if parse_workday_target(url):
+        return "workday"
+
+    return None
 
 
 async def _candidate_application_evidence(
@@ -206,18 +240,22 @@ async def _candidate_application_evidence(
     except Exception:
         pass
 
+    strict_ats_name = _strict_ats_surface(target_url)
     adapter_name = ""
     adapter_version = ""
-    try:
-        adapter = await detect_ats_adapter(candidate, target_url)
-        adapter_name = str(getattr(adapter, "name", "") or "")
-        adapter_version = str(getattr(adapter, "version", "") or "")
-    except Exception:
-        pass
+    if strict_ats_name:
+        try:
+            adapter = await detect_ats_adapter(candidate, target_url)
+            adapter_name = str(getattr(adapter, "name", "") or "")
+            adapter_version = str(getattr(adapter, "version", "") or "")
+        except Exception:
+            pass
 
     trusted_ats = bool(
-        adapter_name and adapter_name.lower() not in {"generic", "unknown"}
-    ) or _known_ats_url(target_url)
+        strict_ats_name
+        and adapter_name
+        and adapter_name.lower() == strict_ats_name
+    )
     if not form_detected and not trusted_ats:
         return None
 
@@ -226,9 +264,9 @@ async def _candidate_application_evidence(
         "application_url": target_url,
         "application_form_detected": form_detected,
         "form_evidence": form_evidence,
-        "trusted_ats_adapter": adapter_name or None,
-        "trusted_ats_adapter_version": adapter_version or None,
-        "proof": "application_form" if form_detected else "supported_ats",
+        "trusted_ats_adapter": adapter_name or None if trusted_ats else None,
+        "trusted_ats_adapter_version": adapter_version or None if trusted_ats else None,
+        "proof": "application_form" if form_detected else "strict_ats_surface",
     }
 
 
@@ -265,8 +303,8 @@ async def correlated_application_target_evidence(
 
     Opener ownership is necessary but intentionally not sufficient: OAuth/help/privacy
     child tabs are correlated too. A recovered candidate must additionally expose an
-    application form or a supported ATS identity. Loading opener-correlated pages are
-    kept eligible for a bounded settle window instead of being re-baselined away.
+    application form or a strict ATS job/application URL. Loading opener-correlated
+    pages remain eligible for a bounded settle window instead of being re-baselined.
     """
     candidates = await _correlated_candidates(page)
 
