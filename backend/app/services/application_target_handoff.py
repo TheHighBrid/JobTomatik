@@ -234,7 +234,6 @@ def _persist_proven_target_binding(
     permissive listing-only binding after strict application proof is observed. The
     caller's ORM instance is then synchronized with that exact persisted binding.
     """
-    from app.database import SessionLocal
     from app.models.application import ManualReviewTask
     from app.models.job import Job
     from app.models.user import User
@@ -243,6 +242,7 @@ def _persist_proven_target_binding(
         rebind_resolved_handoff_target,
     )
     from app.services import browser_handoff
+    from app.tasks import handoffs as handoff_tasks
 
     session_id = getattr(session, "id", None)
     if not session_id:
@@ -250,7 +250,7 @@ def _persist_proven_target_binding(
             "The retained handoff has no persisted session identity for exact-target rebinding."
         )
 
-    db = SessionLocal()
+    db = handoff_tasks.SessionLocal()
     try:
         persisted = db.query(ManualHandoffSession).filter(
             ManualHandoffSession.id == session_id
