@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Android-aware browser runtime facade.
 
 The previously certified implementation is retained byte-for-byte in
@@ -10,15 +8,30 @@ handshake. The old retry loop restarted that handshake every ten seconds and
 could therefore never succeed on a slow physical device.
 """
 
+from __future__ import annotations
+
 import asyncio
+from pathlib import Path
 from typing import Any, Dict, Optional
+from uuid import uuid4
 
 from app.config import get_settings
 from app.services import browser_runtime_base as _base
+from app.services.browser_runtime_base import (
+    BrowserRuntimeError,
+    ExternalBrowserProcess,
+    RetainableBrowserRuntime,
+    _normalize_external_cdp_endpoint,
+    _select_context_page,
+    _wait_for_external_cdp_endpoint,
+    current_browser_node_id,
+    handoff_storage_root,
+)
 
 # Re-export the established runtime surface, including internal helpers used by
-# focused tests. Explicit definitions below replace only the Android external
-# CDP path.
+# focused tests. The facade's own dependencies are imported explicitly so static
+# analysis and IDE navigation do not have to infer names injected by this loop.
+# Explicit definitions below replace only the Android external CDP path.
 for _name in dir(_base):
     if _name.startswith("__") or _name in globals():
         continue
