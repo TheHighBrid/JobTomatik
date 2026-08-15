@@ -9,6 +9,7 @@ never become application targets.
 from __future__ import annotations
 
 import asyncio
+import re
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional
 from urllib.parse import urlparse
@@ -38,6 +39,15 @@ _GREENHOUSE_STRICT_HOSTS = {
     "job-boards.greenhouse.io",
     "boards.eu.greenhouse.io",
 }
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+_SMARTRECRUITERS_NUMERIC_ID_RE = re.compile(r"^[0-9]+$")
+_WORKDAY_REQUISITION_RE = re.compile(
+    r"^(?:R|JR|REQ|JOB|J)[-_]?\d[A-Z0-9._-]*$",
+    re.IGNORECASE,
+)
 
 
 class _CorrelatedContext:
@@ -189,6 +199,18 @@ def _is_http_url(url: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+def _strict_smartrecruiters_posting_id(posting_id: str, kind: str) -> bool:
+    value = str(posting_id or "")
+    if kind == "oneclick_application":
+        return bool(_UUID_RE.fullmatch(value))
+    if kind == "hosted_job":
+        return bool(
+            _SMARTRECRUITERS_NUMERIC_ID_RE.fullmatch(value)
+            or _UUID_RE.fullmatch(value)
+        )
+    return False
+
+
 def _strict_ats_surface(url: str) -> Optional[str]:
     """Return an ATS name only for a URL that identifies a real job/app surface.
 
@@ -199,24 +221,29 @@ def _strict_ats_surface(url: str) -> Optional[str]:
     """
     parsed = urlparse(url or "")
     host = (parsed.hostname or "").lower()
+    parts = [part for part in parsed.path.split("/") if part]
 
     if host in {LEVER_GLOBAL_JOBS_HOST, LEVER_EU_JOBS_HOST}:
         site, posting_id, _region = parse_lever_job_url(url)
-        if site and posting_id:
+        canonical_route = (
+            len(parts) in {2, 3}
+            and (len(parts) == 2 or parts[2].casefold() == "apply")
+        )
+        if site and posting_id and canonical_route and _UUID_RE.fullmatch(posting_id):
             return "lever"
 
     if host in _GREENHOUSE_STRICT_HOSTS:
         _board, job_id = parse_greenhouse_job_url(url)
-        parts = [part.lower() for part in parsed.path.split("/") if part]
+        lowered_parts = [part.lower() for part in parts]
         hosted_job_route = (
-            len(parts) >= 3
-            and parts[1] == "jobs"
-            and bool(parts[0])
-            and bool(parts[2])
+            len(lowered_parts) >= 3
+            and lowered_parts[1] == "jobs"
+            and bool(lowered_parts[0])
+            and bool(lowered_parts[2])
         )
         hosted_application_route = (
-            parts == ["job_app"]
-            or parts[:2] == ["embed", "job_app"]
+            lowered_parts == ["job_app"]
+            or lowered_parts[:2] == ["embed", "job_app"]
         )
         if job_id and (hosted_job_route or hosted_application_route):
             return "greenhouse"
@@ -228,10 +255,19 @@ def _strict_ats_surface(url: str) -> Optional[str]:
 
     if host == SMARTRECRUITERS_JOBS_HOST:
         company, posting_id, kind = parse_smartrecruiters_job_url(url)
-        if company and posting_id and kind in {"hosted_job", "oneclick_application"}:
+        if (
+            company
+            and posting_id
+            and kind
+            and _strict_smartrecruiters_posting_id(posting_id, kind)
+        ):
             return "smartrecruiters"
 
-    if parse_workday_target(url):
+    workday_target = parse_workday_target(url)
+    if (
+        workday_target
+        and _WORKDAY_REQUISITION_RE.fullmatch(str(workday_target.job_id or ""))
+    ):
         return "workday"
 
     return None
