@@ -35,6 +35,7 @@ def _metadata(session: ManualHandoffSession) -> Dict[str, Any]:
 
 def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
     metadata = _metadata(session)
+    challenge_type = str(getattr(session, "challenge_type", "") or "")
     if (
         metadata.get("target_resolution_only") is False
         and metadata.get("stage") == "ats_application"
@@ -42,7 +43,7 @@ def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
     ):
         return False
     return (
-        session.challenge_type == HandoffChallengeType.navigation.value
+        challenge_type == HandoffChallengeType.navigation.value
         or bool(metadata.get("target_resolution_only"))
         or str(metadata.get("stage") or "").startswith("application_target_")
     )
@@ -50,9 +51,10 @@ def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
 
 def _is_target_security_session(session: ManualHandoffSession) -> bool:
     metadata = _metadata(session)
+    challenge_type = str(getattr(session, "challenge_type", "") or "")
     return (
         _is_target_navigation_session(session)
-        and session.challenge_type != HandoffChallengeType.navigation.value
+        and challenge_type != HandoffChallengeType.navigation.value
         and str(metadata.get("stage") or "").startswith("application_target_")
     )
 
