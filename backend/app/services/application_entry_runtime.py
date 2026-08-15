@@ -18,7 +18,7 @@ from app.services.application_entry import (
     open_application_entry as _base_open_application_entry,
 )
 from app.services.ats_ashby import ASHBY_JOBS_HOST, parse_ashby_job_url
-from app.services.ats_greenhouse import is_greenhouse_host, parse_greenhouse_job_url
+from app.services.ats_greenhouse import parse_greenhouse_job_url
 from app.services.ats_lever import (
     LEVER_EU_JOBS_HOST,
     LEVER_GLOBAL_JOBS_HOST,
@@ -31,6 +31,13 @@ from app.services.ats_smartrecruiters import (
 )
 from app.services.ats_workday import parse_workday_target
 from app.services.browser_navigation import is_job_board_url, now_iso
+
+
+_GREENHOUSE_STRICT_HOSTS = {
+    "boards.greenhouse.io",
+    "job-boards.greenhouse.io",
+    "boards.eu.greenhouse.io",
+}
 
 
 class _CorrelatedContext:
@@ -198,9 +205,20 @@ def _strict_ats_surface(url: str) -> Optional[str]:
         if site and posting_id:
             return "lever"
 
-    if is_greenhouse_host(host):
+    if host in _GREENHOUSE_STRICT_HOSTS:
         _board, job_id = parse_greenhouse_job_url(url)
-        if job_id:
+        parts = [part.lower() for part in parsed.path.split("/") if part]
+        hosted_job_route = (
+            len(parts) >= 3
+            and parts[1] == "jobs"
+            and bool(parts[0])
+            and bool(parts[2])
+        )
+        hosted_application_route = (
+            parts == ["job_app"]
+            or parts[:2] == ["embed", "job_app"]
+        )
+        if job_id and (hosted_job_route or hosted_application_route):
             return "greenhouse"
 
     if host == ASHBY_JOBS_HOST:
