@@ -150,6 +150,18 @@ def test_android_managed_runtime_requires_phase12_attestation_for_api_worker_and
     assert "ANDROID_RUNTIME_ATTESTATION: READY" in manager
 
 
+def test_android_managed_runtime_processes_do_not_inherit_safety_settings():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    for function_name in ("start_api", "start_worker", "start_beat"):
+        section = manager.split(f"{function_name}() {{", 1)[1].split("\n}\n", 1)[0]
+        assert "nohup env -i" in section
+        assert 'PATH="$PATH"' in section
+        assert "JOBTOMATIK_RUNTIME_ROLE=" in section
+
+
 def test_android_managed_runtime_supervises_shadow_recovery_beat():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"

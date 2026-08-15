@@ -501,7 +501,9 @@ start_api() {
   stop_pid_file "$API_PID_FILE"
   require_runtime_attestation api
   : > "$API_LOG"
-  nohup env \
+  nohup env -i \
+    PATH="$PATH" \
+    HOME="${HOME:-/tmp}" \
     JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
     JOBTOMATIK_RUNTIME_ROLE=api \
@@ -534,7 +536,9 @@ start_worker() {
   stop_pid_file "$CELERY_PID_FILE"
   require_runtime_attestation worker
   : > "$CELERY_LOG"
-  nohup env \
+  nohup env -i \
+    PATH="$PATH" \
+    HOME="${HOME:-/tmp}" \
     JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
     JOBTOMATIK_RUNTIME_ROLE=worker \
@@ -570,7 +574,9 @@ start_beat() {
   beat_schedule_contract_ready
   write_runtime_attestation_receipt beat "$BEAT_IDENTITY_FILE"
   : > "$BEAT_LOG"
-  nohup env \
+  nohup env -i \
+    PATH="$PATH" \
+    HOME="${HOME:-/tmp}" \
     REDIS_URL="$ANDROID_REDIS_URL" \
     JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
