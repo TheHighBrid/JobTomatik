@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+import asyncio
 
 import pytest
 
@@ -409,6 +409,39 @@ async def test_loading_correlated_popup_is_preserved_instead_of_rebaselined():
 
     assert result["status"] == "pending"
     assert result["application_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_resumed_handoff_logs_existing_context_receipt_after_opener_tab_settles():
+    source_url = "https://www.linkedin.com/jobs/view/123"
+    primary = _ControlledPage(source_url)
+    old_mail = _StaticPage("https://mail.example.test/inbox")
+    target = _StaticPage("about:blank", opener=primary)
+    context = _Context([primary, old_mail, target])
+    for page in context.pages:
+        page.context = context
+
+    async def settle_target():
+        await asyncio.sleep(0)
+        target.url = "https://jobs.lever.co/eqbank/example/apply"
+
+    settle_task = asyncio.create_task(settle_target())
+    log = []
+    observed = await correlated_external_target_from_browser(
+        primary,
+        source_url,
+        log,
+    )
+    await settle_task
+
+    assert observed == target.url
+    correlation = next(
+        item
+        for item in log
+        if item["action"] == "application_target_existing_context_correlated"
+    )
+    assert correlation["eligible_opener_tab_count"] == 1
+    assert correlation["unrelated_preexisting_tabs_eligible"] is False
 
 
 @pytest.mark.asyncio
