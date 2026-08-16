@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -70,24 +71,27 @@ def campaign_policy_readiness(
     required_remaining_applications: int = 1,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Explain whether a no-submit shadow run can exercise the requested window.
+    """Explain whether policy can support the requested evidence window.
 
-    Shadow qualification intentionally uses a permissive test policy profile. Production
-    caps, employer throttles, quiet hours, and circuit-breaker history are observability
-    data here, not admission blockers. Emergency kill switches, no-submit safety,
-    scheduler configuration, and an eligible public ATS target remain authoritative.
-    Production execution continues to use the bounded policy profile unchanged.
+    On the physical Android ``android_managed`` runtime, Phase 11 is a no-submit test
+    environment: production caps, employer throttles, quiet hours, and circuit-breaker
+    history are diagnostic only and do not block qualification. Outside that runtime the
+    helper retains the bounded production-policy semantics used by unit tests and normal
+    operations. Emergency controls, scheduler configuration, and eligible ATS targets
+    remain authoritative in both profiles.
     """
 
     current = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
     scheduler = dict(scheduler_settings(user) or {})
     operations = get_operations_settings()
+    shadow_test_runtime = os.environ.get("JOBTOMATIK_RUNTIME_MODE") == "android_managed"
+    policy_profile = SHADOW_TEST_POLICY_PROFILE if shadow_test_runtime else "production"
     decision = evaluate_autopilot_policy(
         db,
         user,
         now=current,
-        policy_profile=SHADOW_TEST_POLICY_PROFILE,
+        policy_profile=policy_profile,
     )
     metadata = dict(decision.metadata or {})
     eligible_targets = _eligible_shadow_ats_targets(user)
@@ -98,8 +102,6 @@ def campaign_policy_readiness(
     end_hour = _bounded_hour(
         user_settings.get("quiet_hours_end_utc"), operations.quiet_hours_end_utc
     )
-    # Keep the production quiet-hours collision visible for diagnostics, but do not let
-    # it block a no-submit test campaign. Testing must be able to run at any hour.
     requested_window = max(0, int(requested_duration_seconds)) + (45 * 60)
     production_quiet_collision_at = None
     for offset_minutes in range(0, requested_window // 60 + 2):
@@ -131,10 +133,27 @@ def campaign_policy_readiness(
         "scheduler_auto_apply_enabled": bool(scheduler.get("auto_apply_enabled")),
         "scheduler_dry_run_enabled": bool(scheduler.get("dry_run_mode", True)),
         "autopilot_policy_currently_allowed": bool(decision.allowed),
-        "quiet_hours_clear_for_requested_window": True,
-        "daily_capacity_headroom": True,
-        "weekly_capacity_headroom": True,
-        "circuit_breaker_clear": True,
+        "quiet_hours_clear_for_requested_window": (
+            True if shadow_test_runtime else production_quiet_collision_at is None
+        ),
+        "daily_capacity_headroom": (
+            True
+            if shadow_test_runtime or not daily_capacity_evaluated
+            else remaining_daily >= required_remaining
+        ),
+        "weekly_capacity_headroom": (
+            True
+            if shadow_test_runtime or not weekly_capacity_evaluated
+            else remaining_weekly >= required_remaining
+        ),
+        "circuit_breaker_clear": (
+            True
+            if shadow_test_runtime
+            else decision.code not in {
+                "circuit_breaker_open",
+                "platform_circuit_breaker_open",
+            }
+        ),
         "shadow_eligible_public_ats_target_configured": bool(eligible_targets),
     }
     blockers = [name for name, passed in checks.items() if not passed]
@@ -142,8 +161,8 @@ def campaign_policy_readiness(
         "ok": not blockers,
         "checks": checks,
         "blockers": blockers,
-        "policy_profile": SHADOW_TEST_POLICY_PROFILE,
-        "production_limits_enforced": False,
+        "policy_profile": policy_profile,
+        "production_limits_enforced": not shadow_test_runtime,
         "required_remaining_applications": required_remaining,
         "remaining_daily": remaining_daily,
         "remaining_weekly": remaining_weekly,
@@ -151,7 +170,9 @@ def campaign_policy_readiness(
         "weekly_capacity_evaluated": weekly_capacity_evaluated,
         "quiet_hours_start_utc": start_hour,
         "quiet_hours_end_utc": end_hour,
-        "quiet_hours_collision_at": None,
+        "quiet_hours_collision_at": (
+            None if shadow_test_runtime else production_quiet_collision_at
+        ),
         "production_quiet_hours_collision_at": production_quiet_collision_at,
         "scheduler_policy_version": current_policy_version or None,
         "required_scheduler_policy_version": REQUIRED_SCHEDULER_POLICY_VERSION,
