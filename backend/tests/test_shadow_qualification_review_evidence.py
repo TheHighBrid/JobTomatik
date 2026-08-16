@@ -109,3 +109,24 @@ def test_canary_does_not_promote_non_browser_review_log_to_browser_evidence(db_s
     assert snapshot["browser_or_form_path_observed"] is False
     assert snapshot["legitimate_human_boundary"] is False
     assert snapshot["safe_terminal"] is False
+
+
+def test_canary_cli_main_delegates_to_original_base_without_recursion(monkeypatch):
+    calls = []
+
+    def fake_original_run_canary(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"status": "pass"}
+
+    def fake_base_main():
+        result = canary._base.run_canary("cli-marker", user_id=4)
+        assert result == {"status": "pass"}
+        return 0
+
+    original_base_symbol = canary._base.run_canary
+    monkeypatch.setattr(canary, "_BASE_RUN_CANARY", fake_original_run_canary)
+    monkeypatch.setattr(canary._base, "main", fake_base_main)
+
+    assert canary.main() == 0
+    assert calls == [(('cli-marker',), {"user_id": 4})]
+    assert canary._base.run_canary is original_base_symbol
