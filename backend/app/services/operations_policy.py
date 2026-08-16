@@ -16,6 +16,10 @@ from app.models.job import Job
 from app.services.operations_settings import get_operations_settings
 
 
+SHADOW_TEST_POLICY_PROFILE = "shadow_test"
+SHADOW_TEST_UNBOUNDED = 2_147_483_647
+
+
 @dataclass(frozen=True)
 class AutomationDecision:
     allowed: bool
@@ -290,19 +294,25 @@ def evaluate_autopilot_policy(
     now: datetime | None = None,
     *,
     exclude_application_id: int | None = None,
+    policy_profile: str = "production",
 ) -> AutomationDecision:
     operations = get_operations_settings()
     now = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
+    normalized_profile = str(policy_profile or "production").strip().lower()
+    shadow_test = normalized_profile == SHADOW_TEST_POLICY_PROFILE
 
     if operations.global_kill_switch:
         return AutomationDecision(
             False,
             "global_kill_switch_active",
             "All automated execution is stopped by the emergency kill switch.",
-            {"operator_reason_code": "emergency_stop"},
+            {
+                "operator_reason_code": "emergency_stop",
+                "policy_profile": normalized_profile,
+            },
         )
-    if not operations.autopilot_enabled:
+    if not operations.autopilot_enabled and not shadow_test:
         return AutomationDecision(
             False,
             "global_autopilot_disabled",
@@ -315,7 +325,7 @@ def evaluate_autopilot_policy(
     end_hour = _bounded_hour(
         user_settings.get("quiet_hours_end_utc"), operations.quiet_hours_end_utc
     )
-    if is_quiet_hour(now, start_hour, end_hour):
+    if not shadow_test and is_quiet_hour(now, start_hour, end_hour):
         return AutomationDecision(
             False,
             "quiet_hours",
@@ -337,6 +347,32 @@ def evaluate_autopilot_policy(
         now,
         exclude_application_id=exclude_application_id,
     )
+
+    if shadow_test:
+        return AutomationDecision(
+            True,
+            "shadow_test_policy_allowed",
+            "No-submit shadow testing bypasses production throttles while emergency controls remain enforced.",
+            {
+                "policy_profile": SHADOW_TEST_POLICY_PROFILE,
+                "production_autopilot_enabled": bool(operations.autopilot_enabled),
+                "daily_count": daily_count,
+                "daily_cap": SHADOW_TEST_UNBOUNDED,
+                "weekly_count": weekly_count,
+                "weekly_cap": SHADOW_TEST_UNBOUNDED,
+                "remaining_daily": SHADOW_TEST_UNBOUNDED,
+                "remaining_weekly": SHADOW_TEST_UNBOUNDED,
+                "production_daily_cap": effective_daily,
+                "production_weekly_cap": effective_weekly,
+                "quiet_hours_start_utc": start_hour,
+                "quiet_hours_end_utc": end_hour,
+                "quiet_hours_enforced": False,
+                "circuit_breaker_enforced": False,
+                "production_caps_enforced": False,
+                "excluded_application_id": exclude_application_id,
+            },
+        )
+
     remaining_daily = max(0, effective_daily - daily_count)
     remaining_weekly = max(0, effective_weekly - weekly_count)
     if remaining_daily == 0 or remaining_weekly == 0:
@@ -364,6 +400,7 @@ def evaluate_autopilot_policy(
         "autopilot_allowed",
         "Autonomous scheduling is within the configured operating limits.",
         {
+            "policy_profile": "production",
             "daily_count": daily_count,
             "daily_cap": effective_daily,
             "weekly_count": weekly_count,
@@ -408,5 +445,6 @@ def operations_readiness_manifest() -> Dict[str, Any]:
             "platform_failure_clusters_are_isolated": True,
             "disabled_platforms_are_skipped": True,
             "job_not_marked_applied_until_submission_evidence": True,
+            "shadow_test_business_limits_require_explicit_profile": True,
         },
     }
