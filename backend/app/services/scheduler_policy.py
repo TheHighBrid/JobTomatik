@@ -292,10 +292,10 @@ def rank_scheduler_candidates(
     """Rank policy candidates without allowing queue order to hide eligible jobs.
 
     Qualification projections created by the canary remain bound to the exact durable
-    discovery cohort introduced by PR #323. Normal scheduler users instead scan a
-    deterministic bounded sequence of queued jobs until enough policy-allowed candidates
-    are found, preventing an arbitrary first-50 slice from starving a later eligible ATS
-    candidate during the real timed campaign.
+    discovery cohort introduced by PR #323. A qualification retry may revisit a job
+    whose earlier non-certifying shadow attempt left the durable Job row in ``approved``;
+    that test residue must not make the exact newly discovered cohort invisible. Normal
+    scheduler users still see only queued jobs and keep production dedupe semantics.
     """
 
     settings = scheduler_settings(user)
@@ -306,8 +306,11 @@ def rank_scheduler_candidates(
 
     requested_limit = max(1, int(limit))
     candidate_job_ids = _transient_candidate_job_ids(user)
+    eligible_statuses = [JobStatus.queued]
+    if candidate_job_ids is not None:
+        eligible_statuses.append(JobStatus.approved)
     query = db.query(Job).filter(
-        Job.status == JobStatus.queued,
+        Job.status.in_(eligible_statuses),
         Job.relevance_score >= min_score,
     )
 
@@ -345,8 +348,8 @@ def rank_scheduler_candidates(
     if candidate_job_ids is not None:
         if not candidate_job_ids:
             return []
-        # Preserve PR #323 exactly: qualification evaluates the complete bounded cohort
-        # returned by the immediately preceding real discovery, never the global queue.
+        # Preserve exact discovery binding while allowing prior non-certifying shadow
+        # status residue to be retried inside the explicitly supplied cohort.
         rows = (
             query.filter(Job.id.in_(candidate_job_ids))
             .order_by(Job.relevance_score.desc(), Job.id.desc())
