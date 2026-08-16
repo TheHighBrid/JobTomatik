@@ -215,6 +215,26 @@ def _run_scheduler_cycle_for_user(
             "policy_profile": SHADOW_TEST_POLICY_PROFILE,
         }
 
+    # Shadow policy is permissive only for a real account/projection carrying the same
+    # persisted policy surface as an ORM User. A malformed internal principal must fail
+    # closed rather than accidentally inheriting unrestricted test behavior.
+    if shadow_test_mode and not hasattr(user, "automation_settings"):
+        return {
+            "user_id": user.id,
+            "skipped": True,
+            "reason": "shadow_safety_invariant_blocked",
+            "searched": False,
+            "applications_queued": 0,
+            "application_ids_queued": [],
+            "blocked_job_reasons": {"shadow_safety_invariant_blocked": 1},
+            "real_submission_enabled": False,
+            "dry_run": True,
+            "user_dry_run_mode": user_dry_run_mode,
+            "shadow_session_id": shadow_session_id,
+            "shadow_application_limit": shadow_application_limit,
+            "policy_profile": SHADOW_TEST_POLICY_PROFILE,
+        }
+
     if not search_enabled and not apply_enabled:
         return {
             "user_id": user.id,
