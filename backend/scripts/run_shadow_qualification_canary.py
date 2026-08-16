@@ -11,7 +11,9 @@ contract:
   surface that terminal failure immediately instead of waiting the full timeout;
 - when the worker reaches a real browser/form path and then creates a durable manual
   review, accept browser actions preserved in that same application's review details
-  as browser-path evidence even if ``Application.automation_log`` was not persisted.
+  as browser-path evidence even if ``Application.automation_log`` was not persisted;
+- explicitly select the no-submit ``shadow_test`` policy profile so an operator-launched
+  PRoot shell does not depend on inheriting the managed API process environment.
 
 The delegated base still performs the real qualification contract:
 ``run_job_search.apply_async`` -> ``_run_scheduler_cycle_for_user`` with
@@ -33,6 +35,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.services.operations_policy import SHADOW_TEST_POLICY_PROFILE  # noqa: E402
 from scripts import run_shadow_qualification_canary_base as _base  # noqa: E402
 
 for _name in dir(_base):
@@ -42,6 +45,14 @@ for _name in dir(_base):
 
 _BASE_APPLICATION_SNAPSHOT = _base._application_snapshot
 _BASE_RUN_CANARY = _base.run_canary
+_BASE_CAMPAIGN_POLICY_READINESS = _base.campaign_policy_readiness
+
+
+def campaign_policy_readiness(*args, **kwargs):
+    """Run canary admission under the explicit no-submit shadow-test profile."""
+
+    kwargs.setdefault("policy_profile", SHADOW_TEST_POLICY_PROFILE)
+    return _BASE_CAMPAIGN_POLICY_READINESS(*args, **kwargs)
 
 
 def _manual_review_browser_actions(db, application_id: int) -> list[str]:
