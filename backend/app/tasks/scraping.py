@@ -18,7 +18,10 @@ from app.services.scheduler_policy import (
     rank_scheduler_candidates,
     scheduler_settings,
 )
-from app.services.operations_policy import evaluate_autopilot_policy
+from app.services.operations_policy import (
+    SHADOW_TEST_POLICY_PROFILE,
+    evaluate_autopilot_policy,
+)
 from app.services.operations_settings import get_operations_settings
 from app.services.unattended_policy import shadow_dry_run_policy_context
 
@@ -159,22 +162,20 @@ def _run_scheduler_cycle_for_user(
     shadow_session_id: int | None = None,
     shadow_application_limit: int | None = None,
 ) -> dict[str, Any]:
-    """Run one policy-bounded scheduler cycle for exactly one account.
+    """Run one scheduler cycle for exactly one account.
 
-    Discovery may continue after an application cap is reached, but quiet hours,
-    kill switches, and circuit breakers still pause the cycle. Application creation
-    requires the complete user policy plus the live unattended job policy. The
-    submission worker independently re-evaluates that job policy before browser work.
-
-    ``shadow_session_id`` may activate only the narrow Phase 11 maturity exception.
-    It never grants submission authority. A shadow cycle must independently prove the
-    user's dry-run switch is on and global real submission is off before discovery,
-    candidate ranking, application creation, or worker dispatch proceeds.
+    Production execution keeps the full bounded-autonomy policy. A correlated no-submit
+    shadow cycle instead selects the explicit ``shadow_test`` policy profile so old test
+    artifacts, production caps, quiet hours, and circuit-breaker history cannot prevent
+    functional qualification. The shadow path still fails closed if real submission is
+    enabled, preserves the emergency kill switch, and independently rechecks policy in
+    the applications worker before browser work.
 
     ``shadow_application_limit`` is accepted only for a correlated shadow session and
-    can reduce that one scheduler cycle to at most one application. It exists solely
-    so the non-certifying qualification canary can reuse this exact production path
-    without consuming the user's full daily limit or mutating persisted settings.
+    can reduce that one scheduler cycle to at most one application. The qualification
+    canary uses it to prove one complete real queue/worker/browser path without creating
+    a burst. Timed shadow campaigns may exceed production daily/weekly totals across
+    cycles while remaining non-consequential.
     """
     from app.models.application import (
         Application,
@@ -188,15 +189,16 @@ def _run_scheduler_cycle_for_user(
     if shadow_application_limit is not None and shadow_session_id is None:
         raise ValueError("shadow_application_limit requires a correlated shadow_session_id")
 
+    shadow_test_mode = shadow_session_id is not None
     auto_settings = scheduler_settings(user)
     search_enabled = bool(auto_settings.get("auto_search_enabled", False))
     apply_enabled = bool(auto_settings.get("auto_apply_enabled", False))
     user_dry_run_mode = bool(auto_settings.get("dry_run_mode", True))
-    dry_run = user_dry_run_mode or not settings.allow_real_application_submit
+    dry_run = True if shadow_test_mode else (
+        user_dry_run_mode or not settings.allow_real_application_submit
+    )
 
-    if shadow_session_id is not None and (
-        not user_dry_run_mode or settings.allow_real_application_submit is not False
-    ):
+    if shadow_test_mode and settings.allow_real_application_submit is not False:
         return {
             "user_id": user.id,
             "skipped": True,
@@ -206,10 +208,11 @@ def _run_scheduler_cycle_for_user(
             "application_ids_queued": [],
             "blocked_job_reasons": {"shadow_safety_invariant_blocked": 1},
             "real_submission_enabled": bool(settings.allow_real_application_submit),
-            "dry_run": user_dry_run_mode,
+            "dry_run": True,
             "user_dry_run_mode": user_dry_run_mode,
             "shadow_session_id": shadow_session_id,
             "shadow_application_limit": shadow_application_limit,
+            "policy_profile": SHADOW_TEST_POLICY_PROFILE,
         }
 
     if not search_enabled and not apply_enabled:
@@ -225,9 +228,18 @@ def _run_scheduler_cycle_for_user(
             "dry_run": dry_run,
             "shadow_session_id": shadow_session_id,
             "shadow_application_limit": shadow_application_limit,
+            "policy_profile": (
+                SHADOW_TEST_POLICY_PROFILE if shadow_test_mode else "production"
+            ),
         }
 
-    decision = evaluate_autopilot_policy(db, user)
+    decision = evaluate_autopilot_policy(
+        db,
+        user,
+        policy_profile=(
+            SHADOW_TEST_POLICY_PROFILE if shadow_test_mode else "production"
+        ),
+    )
     discovery_allowed = discovery_allowed_by_user_policy(decision)
     if not decision.allowed and not discovery_allowed:
         return {
@@ -243,6 +255,9 @@ def _run_scheduler_cycle_for_user(
             "dry_run": dry_run,
             "shadow_session_id": shadow_session_id,
             "shadow_application_limit": shadow_application_limit,
+            "policy_profile": (
+                SHADOW_TEST_POLICY_PROFILE if shadow_test_mode else "production"
+            ),
         }
 
     result: dict[str, Any] = {
@@ -250,6 +265,10 @@ def _run_scheduler_cycle_for_user(
         "skipped": False,
         "reason": "scheduler_cycle_completed",
         "policy_decision": decision.to_dict(),
+        "policy_profile": (
+            SHADOW_TEST_POLICY_PROFILE if shadow_test_mode else "production"
+        ),
+        "production_limits_enforced": not shadow_test_mode,
         "discovery_policy_allowed": discovery_allowed,
         "searched": False,
         "search_blocker": None,
@@ -292,8 +311,14 @@ def _run_scheduler_cycle_for_user(
 
     remaining_daily = int(decision.metadata.get("remaining_daily", 0))
     remaining_weekly = int(decision.metadata.get("remaining_weekly", 0))
-    requested_limit = int(auto_settings.get("auto_apply_daily_limit", remaining_daily or 1))
-    run_limit = max(0, min(requested_limit, remaining_daily, remaining_weekly))
+    requested_limit = max(1, int(auto_settings.get("auto_apply_daily_limit", 1)))
+    if shadow_test_mode:
+        # In shadow testing the persisted daily limit is only a per-cycle batch size.
+        # It is not a daily/weekly admission ceiling. This allows sustained testing
+        # without creating an unbounded single-cycle burst on Android.
+        run_limit = requested_limit
+    else:
+        run_limit = max(0, min(requested_limit, remaining_daily, remaining_weekly))
     if shadow_application_limit is not None:
         bounded_shadow_limit = max(0, min(1, int(shadow_application_limit)))
         run_limit = min(run_limit, bounded_shadow_limit)
@@ -302,7 +327,7 @@ def _run_scheduler_cycle_for_user(
         result["reason"] = "application_cap_reached"
         return result
 
-    if shadow_session_id is not None:
+    if shadow_test_mode:
         with shadow_dry_run_policy_context(
             shadow_session_id=int(shadow_session_id),
             dry_run=True,
@@ -318,6 +343,36 @@ def _run_scheduler_cycle_for_user(
             user,
             limit=max(run_limit * 4, run_limit),
         )
+
+    def existing_application_in_current_scope(job_id: int) -> bool:
+        existing_apps = (
+            db.query(Application)
+            .filter(Application.user_id == user.id, Application.job_id == int(job_id))
+            .all()
+        )
+        if not existing_apps:
+            return False
+        if not shadow_test_mode:
+            return True
+        application_ids = [int(item.id) for item in existing_apps]
+        events = (
+            db.query(ApplicationEvent)
+            .filter(
+                ApplicationEvent.application_id.in_(application_ids),
+                ApplicationEvent.event_type == "application_created",
+            )
+            .all()
+        )
+        for event in events:
+            payload = dict(event.payload or {})
+            try:
+                event_shadow_session_id = int(payload.get("shadow_session_id"))
+            except (TypeError, ValueError):
+                continue
+            if event_shadow_session_id == int(shadow_session_id):
+                return True
+        return False
+
     approved_jobs: list[Job] = []
     approved_employers: set[str] = set()
     for item in ranked:
@@ -330,17 +385,12 @@ def _run_scheduler_cycle_for_user(
             )
             continue
         employer_key = str(job.company or "").strip().lower()
-        if employer_key in approved_employers:
+        if not shadow_test_mode and employer_key in approved_employers:
             result["blocked_job_reasons"]["same_run_employer_cap"] = (
                 result["blocked_job_reasons"].get("same_run_employer_cap", 0) + 1
             )
             continue
-        existing = (
-            db.query(Application)
-            .filter(Application.user_id == user.id, Application.job_id == job.id)
-            .first()
-        )
-        if existing:
+        if existing_application_in_current_scope(int(job.id)):
             result["blocked_job_reasons"]["existing_application"] = (
                 result["blocked_job_reasons"].get("existing_application", 0) + 1
             )
@@ -351,15 +401,18 @@ def _run_scheduler_cycle_for_user(
             break
 
     countdown = 120
-    source = "full_stack_shadow_scheduler" if shadow_session_id is not None else "bounded_scheduler"
+    source = "full_stack_shadow_scheduler" if shadow_test_mode else "bounded_scheduler"
     for job in approved_jobs:
         job.status = JobStatus.approved
+        submission_idempotency_key = f"application:{user.id}:job:{job.id}"
+        if shadow_test_mode:
+            submission_idempotency_key += f":shadow:{int(shadow_session_id)}"
         app_obj = Application(
             user_id=user.id,
             job_id=job.id,
             status=ApplicationStatus.pending,
             automation_state=ApplicationAutomationState.preparing.value,
-            submission_idempotency_key=f"application:{user.id}:job:{job.id}",
+            submission_idempotency_key=submission_idempotency_key,
         )
         db.add(app_obj)
         db.flush()
@@ -375,12 +428,15 @@ def _run_scheduler_cycle_for_user(
                     "dry_run": dry_run,
                     "shadow_session_id": shadow_session_id,
                     "shadow_application_limit": shadow_application_limit,
+                    "policy_profile": (
+                        SHADOW_TEST_POLICY_PROFILE if shadow_test_mode else "production"
+                    ),
                 },
             )
         )
         generate_cover_letter_task.delay(app_obj.id)
         worker_kwargs = {"dry_run": dry_run}
-        if shadow_session_id is not None:
+        if shadow_test_mode:
             worker_kwargs["shadow_session_id"] = int(shadow_session_id)
         submit_unattended_application_task.apply_async(
             args=[app_obj.id],
