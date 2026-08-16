@@ -41,6 +41,7 @@ for _name in dir(_base):
     globals()[_name] = getattr(_base, _name)
 
 _BASE_APPLICATION_SNAPSHOT = _base._application_snapshot
+_BASE_RUN_CANARY = _base.run_canary
 
 
 def _manual_review_browser_actions(db, application_id: int) -> list[str]:
@@ -194,7 +195,11 @@ def _sync_base_seams() -> None:
 
 def run_canary(*args, **kwargs):
     _sync_base_seams()
-    return _base.run_canary(*args, **kwargs)
+    # Call the immutable original base implementation. During CLI execution
+    # ``main`` temporarily points ``_base.run_canary`` at this wrapper so the
+    # base argument parser uses the public facade. Looking up the mutable base
+    # symbol here would therefore recurse back into this function forever.
+    return _BASE_RUN_CANARY(*args, **kwargs)
 
 
 CANARY_TIMEOUT_SECONDS = _base.CANARY_TIMEOUT_SECONDS
