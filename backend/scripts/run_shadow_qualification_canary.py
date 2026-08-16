@@ -13,6 +13,11 @@ contract:
   review, accept browser actions preserved in that same application's review details
   as browser-path evidence even if ``Application.automation_log`` was not persisted.
 
+The delegated base still performs the real qualification contract:
+``run_job_search.apply_async`` -> ``_run_scheduler_cycle_for_user`` with
+``shadow_application_limit=1`` -> durable Application -> applications queue ->
+real worker/browser path. No mock candidate or certification shortcut exists.
+
 Only the base canary's existing browser-action allowlist is trusted. Pre-browser review
 records therefore remain non-qualifying, and all submission/no-submit safeguards remain
 unchanged.
