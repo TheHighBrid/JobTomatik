@@ -70,28 +70,37 @@ def campaign_policy_readiness(
     requested_duration_seconds: int,
     required_remaining_applications: int = 1,
     now: datetime | None = None,
+    policy_profile: str | None = None,
 ) -> dict[str, Any]:
     """Explain whether policy can support the requested evidence window.
 
-    On the physical Android ``android_managed`` runtime, Phase 11 is a no-submit test
-    environment: production caps, employer throttles, quiet hours, and circuit-breaker
-    history are diagnostic only and do not block qualification. Outside that runtime the
-    helper retains the bounded production-policy semantics used by unit tests and normal
-    operations. Emergency controls, scheduler configuration, and eligible ATS targets
-    remain authoritative in both profiles.
+    The physical Android Phase 11 runtime is a no-submit test environment: production
+    caps, employer throttles, quiet hours, and circuit-breaker history are diagnostic
+    only and do not block qualification. The canonical canary can request that profile
+    explicitly because an operator-launched PRoot shell must not rely on inheriting the
+    managed API process environment. Without an explicit profile, Android-managed API
+    calls infer it from ``JOBTOMATIK_RUNTIME_MODE``; all other callers retain production
+    policy semantics. Emergency controls, scheduler configuration, and eligible ATS
+    targets remain authoritative in both profiles.
     """
 
     current = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
     scheduler = dict(scheduler_settings(user) or {})
     operations = get_operations_settings()
-    shadow_test_runtime = os.environ.get("JOBTOMATIK_RUNTIME_MODE") == "android_managed"
-    policy_profile = SHADOW_TEST_POLICY_PROFILE if shadow_test_runtime else "production"
+    normalized_profile = str(policy_profile or "").strip().lower()
+    if not normalized_profile:
+        normalized_profile = (
+            SHADOW_TEST_POLICY_PROFILE
+            if os.environ.get("JOBTOMATIK_RUNTIME_MODE") == "android_managed"
+            else "production"
+        )
+    shadow_test_runtime = normalized_profile == SHADOW_TEST_POLICY_PROFILE
     decision = evaluate_autopilot_policy(
         db,
         user,
         now=current,
-        policy_profile=policy_profile,
+        policy_profile=normalized_profile,
     )
     metadata = dict(decision.metadata or {})
     eligible_targets = _eligible_shadow_ats_targets(user)
@@ -161,7 +170,7 @@ def campaign_policy_readiness(
         "ok": not blockers,
         "checks": checks,
         "blockers": blockers,
-        "policy_profile": policy_profile,
+        "policy_profile": normalized_profile,
         "production_limits_enforced": not shadow_test_runtime,
         "required_remaining_applications": required_remaining,
         "remaining_daily": remaining_daily,
