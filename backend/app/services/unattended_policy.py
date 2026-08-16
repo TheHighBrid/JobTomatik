@@ -17,6 +17,7 @@ from app.models.job import Job
 from app.services.ats_manifest import ats_certification_manifest
 from app.services.ats_maturity import AdapterMaturity, normalize_adapter_maturity
 from app.services.operations_policy import (
+    SHADOW_TEST_POLICY_PROFILE,
     AutomationDecision,
     disabled_platforms,
     evaluate_autopilot_policy,
@@ -259,35 +260,18 @@ def evaluate_unattended_job_policy(
     """Gate a scheduled job before record creation and again before browser work.
 
     Ordinary unattended execution retains the full live contract, including explicit
-    platform opt-in, complete consequential job facts, and ``certified_autonomous``
-    maturity. A durable Phase 11 shadow call tree may relax only what is necessary to
-    exercise a nonconsequential dry-run form before autonomous promotion: canonical
-    maturity may be dry-run or better, the shadow start substitutes for the live-submit
-    platform opt-in, and missing salary/language/sponsorship facts may remain unknown.
+    platform opt-in, complete consequential job facts, production caps, quiet hours,
+    circuit breakers, employer limits, and ``certified_autonomous`` maturity.
 
-    The non-certifying qualification canary is narrower still: once its durable session
-    identity and no-submit invariants are proven, job-interest suitability filters
-    (allow-list, location, salary, seniority, and language) are not used to decide which
-    configured ATS form may serve as the probe. Caps, quiet hours, circuit breakers,
-    global controls, employer exclusions, platform disables, dry-run, and real-submit
-    safety remain authoritative. Timed shadow campaigns retain the normal suitability
-    filters.
+    A no-submit Phase 11 shadow call tree uses a deliberately permissive test policy.
+    Business throttles and preference filters must not prevent the system from exercising
+    discovery, scheduler, queue, worker, browser, and form paths during development.
+    Emergency kill switches, explicit platform disables, adapter dry-run maturity,
+    verified job identity, and the global prohibition on real submission remain hard
+    safety boundaries. Production execution is unchanged.
     """
     now = now or datetime.utcnow()
     user_settings = dict(user.automation_settings or {})
-
-    current_policy_version = str(user_settings.get("scheduler_policy_version") or "")
-    if current_policy_version != REQUIRED_SCHEDULER_POLICY_VERSION:
-        return AutomationDecision(
-            False,
-            "scheduler_policy_upgrade_required",
-            "Explicit Phase 8 bounded scheduler policy activation is required.",
-            {
-                "current_scheduler_policy_version": current_policy_version or None,
-                "required_scheduler_policy_version": REQUIRED_SCHEDULER_POLICY_VERSION,
-                "job_id": str(job.id or job.external_id or ""),
-            },
-        )
 
     operations = get_operations_settings()
     core = get_settings()
@@ -313,6 +297,22 @@ def evaluate_unattended_job_policy(
         )
     )
 
+    current_policy_version = str(user_settings.get("scheduler_policy_version") or "")
+    if (
+        current_policy_version != REQUIRED_SCHEDULER_POLICY_VERSION
+        and not shadow_policy_candidate
+    ):
+        return AutomationDecision(
+            False,
+            "scheduler_policy_upgrade_required",
+            "Explicit Phase 8 bounded scheduler policy activation is required.",
+            {
+                "current_scheduler_policy_version": current_policy_version or None,
+                "required_scheduler_policy_version": REQUIRED_SCHEDULER_POLICY_VERSION,
+                "job_id": str(job.id or job.external_id or ""),
+            },
+        )
+
     user_decision = evaluate_autopilot_policy(
         db,
         user,
@@ -321,6 +321,9 @@ def evaluate_unattended_job_policy(
             int(shadow_application_id)
             if shadow_policy_candidate and shadow_application_id is not None
             else None
+        ),
+        policy_profile=(
+            SHADOW_TEST_POLICY_PROFILE if shadow_policy_candidate else "production"
         ),
     )
     if not user_decision.allowed:
@@ -378,7 +381,9 @@ def evaluate_unattended_job_policy(
     )
 
     config = PolicyConfig(
-        global_autonomy_enabled=operations.autopilot_enabled,
+        global_autonomy_enabled=(
+            True if shadow_policy_candidate else operations.autopilot_enabled
+        ),
         platform_enabled={
             ctx.adapter_platform: (
                 _shadow_platform_enabled(ctx.adapter_platform)
@@ -388,38 +393,50 @@ def evaluate_unattended_job_policy(
         },
         platform_maturity={ctx.adapter_platform: canonical_maturity},
         required_platform_maturity=REQUIRED_AUTONOMOUS_MATURITY,
-        daily_cap_global=int(user_decision.metadata.get("daily_cap", 0)),
-        weekly_cap_global=int(user_decision.metadata.get("weekly_cap", 0)),
-        daily_cap_per_employer=per_employer_cap,
-        quiet_hours_start=time(start_hour),
-        quiet_hours_end=time(end_hour),
+        daily_cap_global=(
+            0
+            if shadow_policy_candidate
+            else int(user_decision.metadata.get("daily_cap", 0))
+        ),
+        weekly_cap_global=(
+            0
+            if shadow_policy_candidate
+            else int(user_decision.metadata.get("weekly_cap", 0))
+        ),
+        daily_cap_per_employer=(0 if shadow_policy_candidate else per_employer_cap),
+        quiet_hours_start=(None if shadow_policy_candidate else time(start_hour)),
+        quiet_hours_end=(None if shadow_policy_candidate else time(end_hour)),
         employer_allow_list=(
             None
-            if shadow_qualification_probe
+            if shadow_policy_candidate
             else _optional_values(user_settings.get("autopilot_employer_allow_list"))
         ),
-        employer_exclude_list=_values(
-            user_settings.get("autopilot_employer_exclude_list")
+        employer_exclude_list=(
+            set()
+            if shadow_policy_candidate
+            else _values(user_settings.get("autopilot_employer_exclude_list"))
         ),
         allowed_locations=(
             None
-            if shadow_qualification_probe
+            if shadow_policy_candidate
             else _optional_values(user_settings.get("autopilot_allowed_locations"))
         ),
-        min_salary=None if shadow_qualification_probe else min_salary,
+        min_salary=None if shadow_policy_candidate else min_salary,
         allowed_seniority=(
             None
-            if shadow_qualification_probe
+            if shadow_policy_candidate
             else _optional_values(user_settings.get("autopilot_allowed_seniority"))
         ),
         allowed_languages=(
             None
-            if shadow_qualification_probe
+            if shadow_policy_candidate
             else _optional_values(user_settings.get("autopilot_allowed_languages"))
         ),
         require_sponsorship_match=not shadow_policy_candidate,
         require_known_job_attributes=not shadow_policy_candidate,
-        circuit_breaker_failure_threshold=operations.failure_threshold,
+        circuit_breaker_failure_threshold=(
+            2_147_483_647 if shadow_policy_candidate else operations.failure_threshold
+        ),
     )
     counters = OperationCounters(
         submissions_today_global=daily_count,
@@ -455,7 +472,15 @@ def evaluate_unattended_job_policy(
         "real_submission_enabled": real_submission_enabled,
         "shadow_policy_candidate": shadow_policy_candidate,
         "shadow_qualification_probe": shadow_qualification_probe,
-        "shadow_qualification_suitability_filters_bypassed": shadow_qualification_probe,
+        "shadow_test_policy_profile": (
+            SHADOW_TEST_POLICY_PROFILE if shadow_policy_candidate else None
+        ),
+        "shadow_business_limits_bypassed": shadow_policy_candidate,
+        "shadow_suitability_filters_bypassed": shadow_policy_candidate,
+        "shadow_scheduler_policy_version_bypassed": bool(
+            shadow_policy_candidate
+            and current_policy_version != REQUIRED_SCHEDULER_POLICY_VERSION
+        ),
         "shadow_live_platform_switch_bypassed": shadow_policy_candidate,
         "shadow_unknown_job_attributes_allowed": shadow_policy_candidate,
         "shadow_dry_run_maturity_exception": shadow_exception_applied,
@@ -464,7 +489,7 @@ def evaluate_unattended_job_policy(
         return AutomationDecision(
             True,
             "shadow_dry_run_maturity_exception",
-            "All policy checks passed under the Phase 11 no-submit dry-run maturity exception.",
+            "All safety checks passed under the permissive no-submit shadow test profile.",
             metadata,
         )
     return AutomationDecision(
