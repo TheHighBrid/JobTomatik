@@ -102,7 +102,7 @@ def test_qualification_discovery_uses_only_eligible_public_ats_targets():
     }
 
 
-def test_qualification_probe_relaxes_suitability_but_timed_shadow_does_not(
+def test_no_submit_shadow_testing_relaxes_suitability_for_canary_and_timed_campaign(
     db_session,
     monkeypatch,
 ):
@@ -198,6 +198,7 @@ def test_qualification_probe_relaxes_suitability_but_timed_shadow_does_not(
     assert qualification_decision.allowed is True
     assert qualification_decision.code == "shadow_dry_run_maturity_exception"
     assert qualification_decision.metadata["shadow_qualification_probe"] is True
+    assert qualification_decision.metadata["shadow_suitability_filters_bypassed"] is True
     assert (
         qualification_decision.metadata[
             "shadow_qualification_suitability_filters_bypassed"
@@ -224,8 +225,10 @@ def test_qualification_probe_relaxes_suitability_but_timed_shadow_does_not(
             job,
         )
 
-    assert timed_decision.allowed is False
+    assert timed_decision.allowed is True
+    assert timed_decision.code == "shadow_dry_run_maturity_exception"
     assert timed_decision.metadata["shadow_qualification_probe"] is False
+    assert timed_decision.metadata["shadow_suitability_filters_bypassed"] is True
     assert (
         timed_decision.metadata[
             "shadow_qualification_suitability_filters_bypassed"
