@@ -9,6 +9,7 @@ never become application targets.
 from __future__ import annotations
 
 import asyncio
+import re
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional
 from urllib.parse import urlparse
@@ -17,17 +18,36 @@ from app.services.application_entry import (
     application_form_evidence,
     open_application_entry as _base_open_application_entry,
 )
+from app.services.ats_ashby import ASHBY_JOBS_HOST, parse_ashby_job_url
+from app.services.ats_greenhouse import parse_greenhouse_job_url
+from app.services.ats_lever import (
+    LEVER_EU_JOBS_HOST,
+    LEVER_GLOBAL_JOBS_HOST,
+    parse_lever_job_url,
+)
 from app.services.ats_registry import detect_ats_adapter
+from app.services.ats_smartrecruiters import (
+    SMARTRECRUITERS_JOBS_HOST,
+    parse_smartrecruiters_job_url,
+)
+from app.services.ats_workday import parse_workday_target
 from app.services.browser_navigation import is_job_board_url, now_iso
 
 
-_KNOWN_ATS_HOST_HINTS = (
-    "lever.co",
-    "greenhouse.io",
-    "myworkdayjobs.com",
-    "workday.com",
-    "ashbyhq.com",
-    "smartrecruiters.com",
+_GREENHOUSE_STRICT_HOSTS = {
+    "boards.greenhouse.io",
+    "job-boards.greenhouse.io",
+    "boards.eu.greenhouse.io",
+}
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+_GREENHOUSE_NUMERIC_ID_RE = re.compile(r"^[0-9]+$")
+_SMARTRECRUITERS_NUMERIC_ID_RE = re.compile(r"^[0-9]+$")
+_WORKDAY_REQUISITION_RE = re.compile(
+    r"^(?:R|JR|REQ|JOB|J)[-_]?\d[A-Z0-9._-]*$",
+    re.IGNORECASE,
 )
 
 
@@ -180,9 +200,82 @@ def _is_http_url(url: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
-def _known_ats_url(url: str) -> bool:
-    host = (urlparse(url or "").hostname or "").lower()
-    return any(host == hint or host.endswith("." + hint) for hint in _KNOWN_ATS_HOST_HINTS)
+def _strict_smartrecruiters_posting_id(posting_id: str, kind: str) -> bool:
+    value = str(posting_id or "")
+    if kind == "oneclick_application":
+        return bool(_UUID_RE.fullmatch(value))
+    if kind == "hosted_job":
+        return bool(
+            _SMARTRECRUITERS_NUMERIC_ID_RE.fullmatch(value)
+            or _UUID_RE.fullmatch(value)
+        )
+    return False
+
+
+def _strict_ats_surface(url: str) -> Optional[str]:
+    """Return an ATS name only for a URL that identifies a real job/app surface.
+
+    Adapter host matching is intentionally broader because it also supports embedded
+    discovery. Recovery from a retained shared browser needs stronger evidence: a
+    vendor help, privacy, account, or generic landing page must never become the
+    application target merely because it lives on an ATS-owned domain.
+    """
+    parsed = urlparse(url or "")
+    host = (parsed.hostname or "").lower()
+    parts = [part for part in parsed.path.split("/") if part]
+
+    if host in {LEVER_GLOBAL_JOBS_HOST, LEVER_EU_JOBS_HOST}:
+        site, posting_id, _region = parse_lever_job_url(url)
+        canonical_route = (
+            len(parts) in {2, 3}
+            and (len(parts) == 2 or parts[2].casefold() == "apply")
+        )
+        if site and posting_id and canonical_route and _UUID_RE.fullmatch(posting_id):
+            return "lever"
+
+    if host in _GREENHOUSE_STRICT_HOSTS:
+        _board, job_id = parse_greenhouse_job_url(url)
+        lowered_parts = [part.lower() for part in parts]
+        hosted_job_route = (
+            len(lowered_parts) >= 3
+            and lowered_parts[1] == "jobs"
+            and bool(lowered_parts[0])
+            and bool(lowered_parts[2])
+        )
+        hosted_application_route = (
+            lowered_parts == ["job_app"]
+            or lowered_parts[:2] == ["embed", "job_app"]
+        )
+        if (
+            job_id
+            and _GREENHOUSE_NUMERIC_ID_RE.fullmatch(str(job_id))
+            and (hosted_job_route or hosted_application_route)
+        ):
+            return "greenhouse"
+
+    if host == ASHBY_JOBS_HOST:
+        board, posting_id = parse_ashby_job_url(url)
+        if board and posting_id:
+            return "ashby"
+
+    if host == SMARTRECRUITERS_JOBS_HOST:
+        company, posting_id, kind = parse_smartrecruiters_job_url(url)
+        if (
+            company
+            and posting_id
+            and kind
+            and _strict_smartrecruiters_posting_id(posting_id, kind)
+        ):
+            return "smartrecruiters"
+
+    workday_target = parse_workday_target(url)
+    if (
+        workday_target
+        and _WORKDAY_REQUISITION_RE.fullmatch(str(workday_target.job_id or ""))
+    ):
+        return "workday"
+
+    return None
 
 
 async def _candidate_application_evidence(
@@ -206,18 +299,22 @@ async def _candidate_application_evidence(
     except Exception:
         pass
 
+    strict_ats_name = _strict_ats_surface(target_url)
     adapter_name = ""
     adapter_version = ""
-    try:
-        adapter = await detect_ats_adapter(candidate, target_url)
-        adapter_name = str(getattr(adapter, "name", "") or "")
-        adapter_version = str(getattr(adapter, "version", "") or "")
-    except Exception:
-        pass
+    if strict_ats_name:
+        try:
+            adapter = await detect_ats_adapter(candidate, target_url)
+            adapter_name = str(getattr(adapter, "name", "") or "")
+            adapter_version = str(getattr(adapter, "version", "") or "")
+        except Exception:
+            pass
 
     trusted_ats = bool(
-        adapter_name and adapter_name.lower() not in {"generic", "unknown"}
-    ) or _known_ats_url(target_url)
+        strict_ats_name
+        and adapter_name
+        and adapter_name.lower() == strict_ats_name
+    )
     if not form_detected and not trusted_ats:
         return None
 
@@ -226,9 +323,9 @@ async def _candidate_application_evidence(
         "application_url": target_url,
         "application_form_detected": form_detected,
         "form_evidence": form_evidence,
-        "trusted_ats_adapter": adapter_name or None,
-        "trusted_ats_adapter_version": adapter_version or None,
-        "proof": "application_form" if form_detected else "supported_ats",
+        "trusted_ats_adapter": adapter_name or None if trusted_ats else None,
+        "trusted_ats_adapter_version": adapter_version or None if trusted_ats else None,
+        "proof": "application_form" if form_detected else "strict_ats_surface",
     }
 
 
@@ -285,8 +382,8 @@ async def correlated_application_target_evidence(
 
     Opener ownership is necessary but intentionally not sufficient: OAuth/help/privacy
     child tabs are correlated too. A recovered candidate must additionally expose an
-    application form or a supported ATS identity. Loading opener-correlated pages are
-    kept eligible for a bounded settle window instead of being re-baselined away.
+    application form or a strict ATS job/application URL. Loading opener-correlated
+    pages remain eligible for a bounded settle window instead of being re-baselined.
     """
     candidates = await _correlated_candidates(page)
     existing_opener_ids = (
@@ -298,6 +395,7 @@ async def correlated_application_target_evidence(
     # First inspect already-loaded candidates without letting a blank child delay a
     # proven application target that is already available.
     pending: List[Any] = []
+    actual_page = _actual_page(page)
     for candidate in reversed(candidates):
         candidate_url = str(getattr(candidate, "url", "") or "")
         if _is_http_url(candidate_url):
@@ -319,7 +417,9 @@ async def correlated_application_target_evidence(
                         source_url=source_url,
                     )
                 return proven
-        elif candidate is not _actual_page(page):
+            if candidate is not actual_page:
+                pending.append(candidate)
+        elif candidate is not actual_page:
             pending.append(candidate)
 
     timeout = max(0.0, float(settle_timeout_seconds or 0.0))
@@ -351,6 +451,7 @@ async def correlated_application_target_evidence(
                         source_url=source_url,
                     )
                 return proven
+            still_pending.append(candidate)
         pending = still_pending
 
     if pending:

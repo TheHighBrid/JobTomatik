@@ -10,14 +10,20 @@ from app.services.application_target import (
     record_application_target,
 )
 from app.services.ats_base import page_fingerprint
-from app.services.browser_navigation import external_target_from_browser, now_iso
+from app.services.browser_navigation import (
+    external_target_from_browser,
+    is_job_board_url,
+    now_iso,
+)
 
 
 _INSTALLED = False
 _TASK_PERSISTENCE_INSTALLED = False
 _ORIGINAL_VERIFY = None
 _ORIGINAL_RESUME = None
+_ORIGINAL_CONNECT = None
 _ORIGINAL_HANDOFF_TASK_RUN = None
+_target_evidence_from_browser = None
 
 _ATS_REASON_TO_CHALLENGE = {
     "captcha_detected": HandoffChallengeType.captcha.value,
@@ -33,6 +39,7 @@ def _metadata(session: ManualHandoffSession) -> Dict[str, Any]:
 
 def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
     metadata = _metadata(session)
+    challenge_type = str(getattr(session, "challenge_type", "") or "")
     if (
         metadata.get("target_resolution_only") is False
         and metadata.get("stage") == "ats_application"
@@ -40,7 +47,7 @@ def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
     ):
         return False
     return (
-        session.challenge_type == HandoffChallengeType.navigation.value
+        challenge_type == HandoffChallengeType.navigation.value
         or bool(metadata.get("target_resolution_only"))
         or str(metadata.get("stage") or "").startswith("application_target_")
     )
@@ -48,9 +55,10 @@ def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
 
 def _is_target_security_session(session: ManualHandoffSession) -> bool:
     metadata = _metadata(session)
+    challenge_type = str(getattr(session, "challenge_type", "") or "")
     return (
         _is_target_navigation_session(session)
-        and session.challenge_type != HandoffChallengeType.navigation.value
+        and challenge_type != HandoffChallengeType.navigation.value
         and str(metadata.get("stage") or "").startswith("application_target_")
     )
 
@@ -67,6 +75,54 @@ async def _target_page(context: Any, target_url: str, fallback: Any) -> Any:
     return fallback
 
 
+async def _page_target_id(context: Any, page: Any) -> str:
+    """Read Chromium's durable top-level target id for a connected page."""
+    cdp_session = None
+    try:
+        cdp_session = await context.new_cdp_session(page)
+        target_info = await cdp_session.send("Target.getTargetInfo")
+        return str((target_info.get("targetInfo") or {}).get("targetId") or "")
+    except Exception:
+        return ""
+    finally:
+        if cdp_session is not None:
+            try:
+                await cdp_session.detach()
+            except Exception:
+                pass
+
+
+async def _retained_target_page(
+    context: Any,
+    session: ManualHandoffSession,
+    fallback: Any,
+) -> Any | None:
+    """Select only the tab bound to this retained application-target lifecycle.
+
+    A Chromium target id survives same-tab cross-origin navigation, unlike the stored
+    URL. Legacy target-resolution handoffs without an id may use an exact URL match,
+    but they must never fall back to an arbitrary final context page.
+    """
+    pages = list(getattr(context, "pages", []) or [])
+    metadata = _metadata(session)
+    expected_target_id = str(metadata.get("controlled_page_target_id") or "")
+    if expected_target_id:
+        for candidate in pages:
+            if await _page_target_id(context, candidate) == expected_target_id:
+                return candidate
+        return None
+
+    expected_url = str(session.current_url or "")
+    if expected_url:
+        for candidate in pages:
+            if str(getattr(candidate, "url", "") or "") == expected_url:
+                return candidate
+
+    if _is_target_navigation_session(session):
+        return None
+    return fallback
+
+
 def _next_challenge_type(result: Dict[str, Any]) -> str | None:
     for item in result.get("review_items") or []:
         challenge = _ATS_REASON_TO_CHALLENGE.get(str(item.get("reason_code") or ""))
@@ -75,19 +131,111 @@ def _next_challenge_type(result: Dict[str, Any]) -> str | None:
     return None
 
 
+async def _fallback_target_evidence(
+    page: Any,
+    source_url: str,
+    log: list[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Fail-closed compatibility proof before the correlated runtime binds.
+
+    The runtime normally supplies strict ATS URL parsing. This fallback therefore
+    accepts only direct application-form evidence and never trusts a vendor hostname.
+    """
+    observed = await external_target_from_browser(page, source_url, log)
+    if not observed:
+        return {
+            "status": "none",
+            "application_url": None,
+            "application_form_detected": False,
+            "form_evidence": {},
+            "trusted_ats_adapter": None,
+            "trusted_ats_adapter_version": None,
+        }
+    active_page = await _target_page(page.context, observed, page)
+    form_detected = False
+    form_evidence: Dict[str, Any] = {}
+    try:
+        evidence = await application_form_evidence(active_page)
+        form_detected = bool(evidence.present)
+        form_evidence = evidence.as_dict()
+    except Exception:
+        pass
+    if not form_detected:
+        return {
+            "status": "none",
+            "application_url": None,
+            "application_form_detected": False,
+            "form_evidence": {},
+            "trusted_ats_adapter": None,
+            "trusted_ats_adapter_version": None,
+        }
+    return {
+        "status": "resolved",
+        "application_url": observed,
+        "application_form_detected": True,
+        "form_evidence": form_evidence,
+        "trusted_ats_adapter": None,
+        "trusted_ats_adapter_version": None,
+    }
+
+
+async def _observed_target_evidence(
+    page: Any,
+    source_url: str,
+    log: list[Dict[str, Any]],
+) -> Dict[str, Any]:
+    direct_url = str(getattr(page, "url", "") or "")
+    try:
+        direct_evidence = await application_form_evidence(page)
+        if (
+            direct_url
+            and direct_url == source_url
+            and is_job_board_url(direct_url)
+            and bool(direct_evidence.present)
+        ):
+            return {
+                "status": "resolved",
+                "application_url": direct_url,
+                "application_form_detected": True,
+                "form_evidence": direct_evidence.as_dict(),
+                "trusted_ats_adapter": None,
+                "trusted_ats_adapter_version": None,
+            }
+    except Exception:
+        pass
+
+    resolver = _target_evidence_from_browser
+    if callable(resolver):
+        return await resolver(page, source_url, log)
+    return await _fallback_target_evidence(page, source_url, log)
+
+
 async def _resolve_target_after_human_boundary(
     page: Any,
     source_url: str,
 ) -> Dict[str, Any]:
     log: list[Dict[str, Any]] = []
-    observed = await external_target_from_browser(page, source_url, log)
-    if observed:
-        evidence = await application_form_evidence(page)
+    observed = await _observed_target_evidence(page, source_url, log)
+    if observed.get("status") == "resolved":
         return {
-            "application_url": observed,
-            "resolution_method": "existing_external_target",
-            "application_form_detected": evidence.present,
-            "form_evidence": evidence.as_dict(),
+            "application_url": observed.get("application_url"),
+            "resolution_method": "existing_correlated_application_target",
+            "application_form_detected": bool(observed.get("application_form_detected")),
+            "form_evidence": dict(observed.get("form_evidence") or {}),
+            "trusted_ats_adapter": observed.get("trusted_ats_adapter"),
+            "trusted_ats_adapter_version": observed.get("trusted_ats_adapter_version"),
+            "log": log,
+        }
+    if observed.get("status") == "pending":
+        # Do not open a fresh entry scope here. Doing so would classify an already-open
+        # correlated popup as baseline and permanently hide it when its redirect lands.
+        return {
+            "application_url": None,
+            "application_form_detected": False,
+            "form_evidence": {},
+            "trusted_ats_adapter": None,
+            "trusted_ats_adapter_version": None,
+            "correlated_target_pending": True,
             "log": log,
         }
     resolved = await open_application_entry(page, log)
@@ -95,8 +243,103 @@ async def _resolve_target_after_human_boundary(
     return resolved
 
 
+def _persist_proven_target_binding(
+    session: ManualHandoffSession,
+    *,
+    target_url: str,
+    current_fingerprint: str,
+    controlled_page_target_id: str,
+    proof_metadata: Dict[str, Any],
+) -> None:
+    """Persist an exact Day 6 target binding before generic ATS automation runs.
+
+    The Celery task commits the READY->RESUMING transition before it enters this
+    browser service, so a short independent transaction can safely replace the
+    permissive listing-only binding after strict application proof is observed. The
+    caller's ORM instance is then synchronized with that exact persisted binding.
+    """
+    from app.models.application import ManualReviewTask
+    from app.models.job import Job
+    from app.models.user import User
+    from app.services.operational_safety import (
+        OperationalSafetyViolation,
+        rebind_resolved_handoff_target,
+    )
+    from app.services import browser_handoff
+    from app.tasks import handoffs as handoff_tasks
+
+    session_id = getattr(session, "id", None)
+    if not session_id:
+        raise browser_handoff.BrowserHandoffUnavailable(
+            "The retained handoff has no persisted session identity for exact-target rebinding."
+        )
+
+    db = handoff_tasks.SessionLocal()
+    try:
+        persisted = db.query(ManualHandoffSession).filter(
+            ManualHandoffSession.id == session_id
+        ).with_for_update().first()
+        if not persisted:
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained handoff disappeared before its exact target could be rebound."
+            )
+        application = db.query(Application).filter(
+            Application.id == persisted.application_id
+        ).first()
+        review = db.query(ManualReviewTask).filter(
+            ManualReviewTask.id == persisted.manual_review_id
+        ).first()
+        job = (
+            db.query(Job).filter(Job.id == application.job_id).first()
+            if application
+            else None
+        )
+        user = (
+            db.query(User).filter(User.id == application.user_id).first()
+            if application
+            else None
+        )
+        if not application or not review or not job or not user:
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained handoff records are incomplete during exact-target rebinding."
+            )
+
+        try:
+            rebind_resolved_handoff_target(
+                db,
+                persisted,
+                application,
+                job,
+                review,
+                user,
+                resolved_url=target_url,
+                current_fingerprint=current_fingerprint,
+            )
+        except OperationalSafetyViolation as exc:
+            raise browser_handoff.BrowserHandoffUnavailable(
+                f"[{exc.code}] {exc}"
+            ) from exc
+
+        metadata = dict(persisted.handoff_metadata or {})
+        metadata.update(proof_metadata)
+        metadata["resolved_target_url"] = target_url
+        metadata["target_resolution_only"] = False
+        metadata["stage"] = "ats_application"
+        if controlled_page_target_id:
+            metadata["controlled_page_target_id"] = controlled_page_target_id
+        persisted.handoff_metadata = metadata
+        db.commit()
+        db.refresh(persisted)
+
+        session.current_url = persisted.current_url
+        session.current_fingerprint = persisted.current_fingerprint
+        session.handoff_metadata = dict(persisted.handoff_metadata or {})
+    finally:
+        db.close()
+
+
 def install_application_target_handoff_support() -> None:
-    global _INSTALLED, _ORIGINAL_VERIFY, _ORIGINAL_RESUME
+    global _INSTALLED, _ORIGINAL_VERIFY, _ORIGINAL_RESUME, _ORIGINAL_CONNECT
     if _INSTALLED:
         return
 
@@ -104,6 +347,77 @@ def install_application_target_handoff_support() -> None:
 
     _ORIGINAL_VERIFY = browser_handoff.verify_browser_handoff_completion
     _ORIGINAL_RESUME = browser_handoff.resume_handoff_application
+    _ORIGINAL_CONNECT = browser_handoff._connect_local_cdp
+
+    async def target_aware_connect(session: ManualHandoffSession):
+        metadata = _metadata(session)
+        durable_target = bool(metadata.get("controlled_page_target_id"))
+        if not _is_target_navigation_session(session) and not durable_target:
+            return await _ORIGINAL_CONNECT(session)
+
+        # Target-resolution sessions cannot use the base connector's pages[-1]
+        # fallback because the native Android Chromium context contains user tabs.
+        if session.browser_provider != "local_cdp":
+            raise browser_handoff.BrowserHandoffUnavailable(
+                f"Browser provider {session.browser_provider!r} is not available on this node."
+            )
+        browser_handoff._require_local_affinity(session)
+        endpoint = browser_handoff.decrypt_handoff_secret(session.encrypted_browser_endpoint)
+        if not endpoint:
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The encrypted browser endpoint is missing or unreadable."
+            )
+
+        from playwright.async_api import async_playwright
+
+        manager = async_playwright()
+        playwright = await manager.start()
+        try:
+            browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
+        except Exception:
+            await playwright.stop()
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained browser process is no longer reachable."
+            )
+
+        contexts = list(browser.contexts)
+        if not contexts:
+            await playwright.stop()
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained browser has no active context."
+            )
+        context = contexts[0]
+        pages = list(context.pages)
+        if not pages:
+            await playwright.stop()
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained application-target browser has no active page."
+            )
+
+        selected = await _retained_target_page(context, session, None)
+        if selected is None:
+            await playwright.stop()
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained application-target tab can no longer be identified safely."
+            )
+
+        # Apply kill switches and binding checks to the exact selected tab, not to an
+        # unrelated fallback that happened to be last in the shared context.
+        try:
+            browser_handoff.require_browser_entry_allowed(selected.url)
+            binding = dict(metadata.get("target_binding") or {})
+            if binding:
+                browser_handoff.require_bound_handoff_url(session, selected.url)
+        except browser_handoff.OperationalSafetyViolation as exc:
+            await playwright.stop()
+            raise browser_handoff.BrowserHandoffUnavailable(
+                f"[{exc.code}] {exc}"
+            ) from exc
+        return playwright, browser, context, selected
+
+    # Captured verify/resume functions resolve this module global at runtime, so every
+    # target-aware path now reconnects to the durable tab before policy or actions.
+    browser_handoff._connect_local_cdp = target_aware_connect
 
     async def target_aware_verify(session: ManualHandoffSession):
         if not _is_target_navigation_session(session):
@@ -114,28 +428,34 @@ def install_application_target_handoff_support() -> None:
         playwright, _, context, page = await browser_handoff._connect_local_cdp(session)
         try:
             source_url = _source_url(session)
-            target_url = await external_target_from_browser(page, source_url)
-            evidence = await application_form_evidence(page)
-            valid = bool(target_url and is_valid_application_target(
-                source_url,
-                target_url,
-                application_form_detected=evidence.present,
-            ))
-            if not target_url and evidence.present:
-                target_url = str(getattr(page, "url", "") or source_url)
-                valid = is_valid_application_target(
+            observed = await _observed_target_evidence(page, source_url, [])
+            target_url = str(observed.get("application_url") or "")
+            form_detected = bool(observed.get("application_form_detected"))
+            trusted_ats = str(observed.get("trusted_ats_adapter") or "")
+            target_proven = bool(form_detected or trusted_ats)
+            valid = bool(
+                observed.get("status") == "resolved"
+                and target_url
+                and target_proven
+                and is_valid_application_target(
                     source_url,
                     target_url,
-                    application_form_detected=True,
+                    application_form_detected=form_detected,
                 )
+            )
             if valid:
-                session.current_url = target_url
-                session.handoff_metadata = {
+                active_page = await _target_page(context, target_url, page)
+                resolved_target_id = await _page_target_id(context, active_page)
+                metadata = {
                     **_metadata(session),
                     "resolved_target_url": target_url,
-                    "application_form_detected": evidence.present,
+                    "application_form_detected": form_detected,
+                    "trusted_ats_adapter": trusted_ats or None,
                 }
-                active_page = await _target_page(context, target_url, page)
+                if resolved_target_id:
+                    metadata["controlled_page_target_id"] = resolved_target_id
+                session.current_url = target_url
+                session.handoff_metadata = metadata
             else:
                 active_page = page
             fingerprint = await page_fingerprint(active_page)
@@ -145,11 +465,13 @@ def install_application_target_handoff_support() -> None:
                 current_url=target_url or page.url,
                 current_fingerprint=fingerprint,
                 evidence={
-                    "verification_method": "external_application_target",
+                    "verification_method": "correlated_application_target",
                     "source_listing_url": source_url,
-                    "application_target_url": target_url,
+                    "application_target_url": target_url or None,
                     "target_resolved": valid,
-                    "application_form_detected": evidence.present,
+                    "application_form_detected": form_detected,
+                    "trusted_ats_adapter": trusted_ats or None,
+                    "correlated_target_pending": observed.get("status") == "pending",
                 },
             )
         finally:
@@ -172,16 +494,22 @@ def install_application_target_handoff_support() -> None:
                 dry_run=dry_run,
             )
 
-        playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
+        playwright, _, context, page = await browser_handoff._connect_local_cdp(session)
         source_url = _source_url(session)
         try:
             doorway = await _resolve_target_after_human_boundary(page, source_url)
             target_url = str(doorway.get("application_url") or "")
             form_detected = bool(doorway.get("application_form_detected"))
-            if not target_url or not is_valid_application_target(
-                source_url,
-                target_url,
-                application_form_detected=form_detected,
+            trusted_ats = str(doorway.get("trusted_ats_adapter") or "")
+            target_proven = bool(form_detected or trusted_ats)
+            if (
+                not target_url
+                or not target_proven
+                or not is_valid_application_target(
+                    source_url,
+                    target_url,
+                    application_form_detected=form_detected,
+                )
             ):
                 return {
                     "success": False,
@@ -195,31 +523,47 @@ def install_application_target_handoff_support() -> None:
                             "action": "application_target_still_unresolved_after_boundary",
                             "url": page.url,
                             "manual_apply_click_requested": False,
+                            "correlated_target_pending": bool(
+                                doorway.get("correlated_target_pending")
+                            ),
                             "ts": now_iso(),
                         },
                     ],
                     "error": (
                         "The security boundary cleared, but JobTomatik still could not "
-                        "open the application form automatically."
+                        "prove the application form or supported ATS target automatically."
                     ),
                     "fields_filled": 0,
-                    "requires_manual_review": False,
+                    "requires_manual_review": bool(
+                        doorway.get("correlated_target_pending")
+                    ),
                     "review_items": [],
                     "ready_to_submit": False,
                     "target_resolution_only": True,
                 }
-            session.current_url = target_url
-            session.handoff_metadata = {
-                **_metadata(session),
-                "resolved_target_url": target_url,
-                "target_resolution_only": False,
-                "stage": "ats_application",
+
+            active_page = await _target_page(context, target_url, page)
+            resolved_target_id = await _page_target_id(context, active_page)
+            resolved_fingerprint = await page_fingerprint(active_page)
+            proof_metadata = {
                 "application_form_detected": form_detected,
                 "form_evidence": dict(doorway.get("form_evidence") or {}),
+                "trusted_ats_adapter": trusted_ats or None,
+                "trusted_ats_adapter_version": doorway.get("trusted_ats_adapter_version"),
             }
+            _persist_proven_target_binding(
+                session,
+                target_url=target_url,
+                current_fingerprint=resolved_fingerprint,
+                controlled_page_target_id=resolved_target_id,
+                proof_metadata=proof_metadata,
+            )
         finally:
             await browser_handoff._disconnect(playwright)
 
+        # The persisted binding is now exact and non-resolution-only. The second
+        # reconnect performed by the base resume must pass that binding before any
+        # field fill or ATS step can execute.
         result = await _ORIGINAL_RESUME(
             session,
             user_profile=user_profile,
@@ -239,13 +583,16 @@ def install_application_target_handoff_support() -> None:
         result["application_target_url"] = target_url
         result["application_target_status"] = "resolved"
         result["application_form_detected"] = form_detected
+        result["trusted_ats_adapter"] = trusted_ats or None
         result["target_resolution_only"] = False
         result.setdefault("log", []).insert(0, {
             "action": "application_target_resolved_after_human_boundary",
             "source_listing_url": source_url,
             "application_target_url": target_url,
             "application_form_detected": form_detected,
+            "trusted_ats_adapter": trusted_ats or None,
             "automatic_apply_navigation": True,
+            "exact_target_binding_persisted_before_fill": True,
             "ts": now_iso(),
         })
         return result
@@ -285,10 +632,15 @@ def install_application_target_handoff_task_persistence() -> None:
         target_url = str(result.get("application_target_url") or "")
         source_url = str(result.get("source_listing_url") or "")
         form_detected = bool(result.get("application_form_detected"))
-        if not target_url or not is_valid_application_target(
-            source_url,
-            target_url,
-            application_form_detected=form_detected,
+        trusted_ats = str(result.get("trusted_ats_adapter") or "")
+        if (
+            not target_url
+            or not (form_detected or trusted_ats)
+            or not is_valid_application_target(
+                source_url,
+                target_url,
+                application_form_detected=form_detected,
+            )
         ):
             return result
 
@@ -312,6 +664,7 @@ def install_application_target_handoff_task_persistence() -> None:
                     metadata={
                         "handoff_public_id": handoff_public_id,
                         "application_form_detected": form_detected,
+                        "trusted_ats_adapter": trusted_ats or None,
                     },
                 )
                 db.commit()
