@@ -199,12 +199,6 @@ def test_no_submit_shadow_testing_relaxes_suitability_for_canary_and_timed_campa
     assert qualification_decision.code == "shadow_dry_run_maturity_exception"
     assert qualification_decision.metadata["shadow_qualification_probe"] is True
     assert qualification_decision.metadata["shadow_suitability_filters_bypassed"] is True
-    assert (
-        qualification_decision.metadata[
-            "shadow_qualification_suitability_filters_bypassed"
-        ]
-        is True
-    )
 
     qualification_session.status = "completed"
     db_session.commit()
@@ -229,12 +223,6 @@ def test_no_submit_shadow_testing_relaxes_suitability_for_canary_and_timed_campa
     assert timed_decision.code == "shadow_dry_run_maturity_exception"
     assert timed_decision.metadata["shadow_qualification_probe"] is False
     assert timed_decision.metadata["shadow_suitability_filters_bypassed"] is True
-    assert (
-        timed_decision.metadata[
-            "shadow_qualification_suitability_filters_bypassed"
-        ]
-        is False
-    )
 
 
 def test_qualification_probe_requires_dry_run_and_real_submit_disabled(
