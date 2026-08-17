@@ -103,6 +103,7 @@ jobs:
             tests/test_android_authenticated_qualification.py \
             tests/test_android_qualification_runtime_context.py \
             tests/test_shadow_qualification_contract.py \
+            tests/test_shadow_test_policy_profile.py \
             tests/test_android_shadow_launch_admission.py \
             tests/test_android_shadow_preflight_truth.py \
             tests/test_discovery_search.py \
@@ -247,6 +248,9 @@ jobs:
                   "android_unrelated_frontend_process_safety_contract": "passed",
                   "authenticated_shadow_qualification_contract": "passed",
                   "qualification_exact_discovery_cohort_binding": "passed",
+                  "shadow_test_policy_profile": "passed",
+                  "shadow_test_prior_employer_cap_isolation": "passed",
+                  "shadow_test_prior_attempt_dedupe_isolation": "passed",
                   "shadow_eligible_public_ats_admission": "passed",
                   "explicit_public_ats_discovery_priority": "passed",
                   "deterministic_scheduler_candidate_scan": "passed",
