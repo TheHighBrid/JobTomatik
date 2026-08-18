@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from app.models.application import (
@@ -8,13 +9,14 @@ from app.models.application import (
     ApplicationEvent,
     ApplicationStatus,
 )
+from app.models.certification import ShadowRunCycle, ShadowRunSession
 from app.models.job import Job, JobSource, JobStatus
 from app.models.user import User
 from app.services import operations_policy, scheduler_policy, unattended_policy
 from app.services.operations_policy import SHADOW_TEST_POLICY_PROFILE
 from app.services.operations_settings import OperationsSettings
 from app.services.scheduler_policy import SCHEDULER_POLICY_VERSION
-from app.tasks import applications, scraping, unattended
+from app.tasks import applications, scraping, shadow_runs, unattended
 
 
 def _operations() -> OperationsSettings:
@@ -110,6 +112,32 @@ def _patch_policy_dependencies(monkeypatch) -> None:
         "settings",
         SimpleNamespace(allow_real_application_submit=False),
     )
+
+
+def _patch_shadow_dispatches(monkeypatch) -> list[dict]:
+    monkeypatch.setattr(
+        applications.generate_cover_letter_task,
+        "delay",
+        lambda application_id: SimpleNamespace(id=f"cover-{application_id}"),
+    )
+    dispatches: list[dict] = []
+
+    def capture_dispatch(*, args, kwargs, countdown):
+        dispatches.append(
+            {
+                "args": list(args),
+                "kwargs": dict(kwargs),
+                "countdown": countdown,
+            }
+        )
+        return SimpleNamespace(id=f"worker-{args[0]}")
+
+    monkeypatch.setattr(
+        unattended.submit_unattended_application_task,
+        "apply_async",
+        capture_dispatch,
+    )
+    return dispatches
 
 
 def test_shadow_test_profile_bypasses_global_daily_and_weekly_caps(
@@ -247,28 +275,7 @@ def test_shadow_retry_can_reuse_prior_shadow_approved_posting_without_collision(
         _qualification_candidate_job_ids=(int(job.id),),
     )
 
-    monkeypatch.setattr(
-        applications.generate_cover_letter_task,
-        "delay",
-        lambda application_id: SimpleNamespace(id=f"cover-{application_id}"),
-    )
-    dispatches: list[dict] = []
-
-    def capture_dispatch(*, args, kwargs, countdown):
-        dispatches.append(
-            {
-                "args": list(args),
-                "kwargs": dict(kwargs),
-                "countdown": countdown,
-            }
-        )
-        return SimpleNamespace(id=f"worker-{args[0]}")
-
-    monkeypatch.setattr(
-        unattended.submit_unattended_application_task,
-        "apply_async",
-        capture_dispatch,
-    )
+    dispatches = _patch_shadow_dispatches(monkeypatch)
 
     result = scraping._run_scheduler_cycle_for_user(
         db_session,
@@ -298,3 +305,239 @@ def test_shadow_retry_can_reuse_prior_shadow_approved_posting_without_collision(
         f"application:{user.id}:job:{job.id}:shadow:222"
     )
     assert int(current.id) != int(prior.id)
+
+
+def test_timed_shadow_cohort_reuses_prior_shadow_approved_posting(
+    db_session,
+    monkeypatch,
+):
+    _patch_policy_dependencies(monkeypatch)
+    user = _user(
+        db_session,
+        email="timed-shadow-reuse@example.test",
+        employer_limit=1,
+    )
+    job = _lever_job(
+        external_id="timed-reusable-posting",
+        status=JobStatus.approved,
+    )
+    db_session.add(job)
+    db_session.flush()
+
+    prior = Application(
+        user_id=user.id,
+        job_id=job.id,
+        status=ApplicationStatus.pending,
+        automation_state=ApplicationAutomationState.ready_to_apply.value,
+        submission_idempotency_key=f"application:{user.id}:job:{job.id}:shadow:901",
+    )
+    db_session.add(prior)
+    db_session.flush()
+    db_session.add(
+        ApplicationEvent(
+            application_id=prior.id,
+            event_type="application_created",
+            from_state=None,
+            to_state=ApplicationAutomationState.preparing.value,
+            payload={
+                "job_id": job.id,
+                "source": "full_stack_shadow_scheduler",
+                "dry_run": True,
+                "shadow_session_id": 901,
+            },
+        )
+    )
+
+    started = datetime(2026, 8, 18, 11, 0, tzinfo=timezone.utc)
+    session = ShadowRunSession(
+        user_id=user.id,
+        candidate_revision="a" * 40,
+        target_evidence_type="shadow_run_8h",
+        requested_duration_seconds=8 * 60 * 60,
+        cycle_interval_seconds=15 * 60,
+        status="running",
+        started_at=started,
+        expected_end_at=started + timedelta(hours=8),
+        settle_deadline_at=started + timedelta(hours=8, minutes=45),
+        last_heartbeat_at=started,
+        final_submit_allowed=False,
+        stop_requested=False,
+        configuration_snapshot={},
+        baseline_snapshot={},
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    prepared = shadow_runs._prepare_shadow_candidate_cohort(db_session, session)
+    assert prepared is not None
+    assert int(job.id) in tuple(prepared._qualification_candidate_job_ids)
+
+    dispatches = _patch_shadow_dispatches(monkeypatch)
+    result = scraping._run_scheduler_cycle_for_user(
+        db_session,
+        prepared,
+        shadow_session_id=int(session.id),
+        shadow_application_limit=1,
+    )
+    shadow_runs._clear_shadow_candidate_cohort(prepared)
+
+    assert result["applications_queued"] == 1
+    assert len(dispatches) == 1
+    created = (
+        db_session.query(Application)
+        .filter(Application.id == result["application_ids_queued"][0])
+        .one()
+    )
+    assert created.job_id == job.id
+    assert created.submission_idempotency_key.endswith(f":shadow:{session.id}")
+
+
+def test_long_shadow_campaign_fails_early_when_application_path_never_appears(
+    db_session,
+    monkeypatch,
+):
+    user = _user(db_session, email="shadow-watchdog@example.test")
+    started = datetime(2026, 8, 18, 12, 0, tzinfo=timezone.utc)
+    session = ShadowRunSession(
+        user_id=user.id,
+        candidate_revision="b" * 40,
+        target_evidence_type="shadow_run_8h",
+        requested_duration_seconds=8 * 60 * 60,
+        cycle_interval_seconds=15 * 60,
+        status="running",
+        started_at=started,
+        expected_end_at=started + timedelta(hours=8),
+        settle_deadline_at=started + timedelta(hours=8, minutes=45),
+        last_heartbeat_at=started + timedelta(hours=1),
+        cycles_completed=4,
+        cycles_failed=0,
+        final_submit_allowed=False,
+        stop_requested=False,
+        configuration_snapshot={},
+        baseline_snapshot={},
+    )
+    db_session.add(session)
+    db_session.flush()
+    for cycle_number in range(1, 5):
+        db_session.add(
+            ShadowRunCycle(
+                session_id=session.id,
+                cycle_number=cycle_number,
+                status="completed",
+                started_at=started + timedelta(minutes=15 * (cycle_number - 1)),
+                completed_at=started + timedelta(minutes=15 * (cycle_number - 1) + 1),
+                scheduler_result={
+                    "reason": "scheduler_cycle_completed",
+                    "searched": True,
+                    "applications_queued": 0,
+                    "application_ids_queued": [],
+                    "real_submission_enabled": False,
+                    "dry_run": True,
+                    "shadow_session_id": session.id,
+                },
+            )
+        )
+    db_session.commit()
+
+    current = started + timedelta(hours=1, minutes=1)
+    monkeypatch.setattr(shadow_runs, "_utc_now", lambda: current)
+
+    captured: dict = {}
+
+    def fake_finalize(db, target, *, requested_status, failure_reason, now):
+        captured["requested_status"] = requested_status
+        captured["failure_reason"] = failure_reason
+        target.status = requested_status
+        target.failure_reason = failure_reason
+        return {
+            "qualification_eligible": False,
+            "failure_reason": failure_reason,
+        }
+
+    monkeypatch.setattr(shadow_runs, "finalize_shadow_session", fake_finalize)
+
+    result = shadow_runs._apply_early_application_path_watchdog(
+        db_session,
+        {"status": "running", "schedule_next": True},
+        int(session.id),
+    )
+
+    assert result["status"] == "failed"
+    assert result["schedule_next"] is False
+    assert result["error"] == "shadow_application_path_not_observed_after_1h"
+    assert captured == {
+        "requested_status": "failed",
+        "failure_reason": "shadow_application_path_not_observed_after_1h",
+    }
+
+
+def test_long_shadow_watchdog_stays_open_once_application_path_is_observed(
+    db_session,
+    monkeypatch,
+):
+    user = _user(db_session, email="shadow-watchdog-path@example.test")
+    started = datetime(2026, 8, 18, 13, 0, tzinfo=timezone.utc)
+    session = ShadowRunSession(
+        user_id=user.id,
+        candidate_revision="c" * 40,
+        target_evidence_type="shadow_run_8h",
+        requested_duration_seconds=8 * 60 * 60,
+        cycle_interval_seconds=15 * 60,
+        status="running",
+        started_at=started,
+        expected_end_at=started + timedelta(hours=8),
+        settle_deadline_at=started + timedelta(hours=8, minutes=45),
+        last_heartbeat_at=started + timedelta(hours=1),
+        cycles_completed=4,
+        cycles_failed=0,
+        final_submit_allowed=False,
+        stop_requested=False,
+        configuration_snapshot={},
+        baseline_snapshot={},
+    )
+    db_session.add(session)
+    db_session.flush()
+    db_session.add(
+        ShadowRunCycle(
+            session_id=session.id,
+            cycle_number=1,
+            status="completed",
+            started_at=started,
+            completed_at=started + timedelta(minutes=1),
+            scheduler_result={
+                "applications_queued": 1,
+                "application_ids_queued": [12345],
+            },
+        )
+    )
+    for cycle_number in range(2, 5):
+        db_session.add(
+            ShadowRunCycle(
+                session_id=session.id,
+                cycle_number=cycle_number,
+                status="completed",
+                started_at=started + timedelta(minutes=15 * (cycle_number - 1)),
+                completed_at=started + timedelta(minutes=15 * (cycle_number - 1) + 1),
+                scheduler_result={
+                    "applications_queued": 0,
+                    "application_ids_queued": [],
+                },
+            )
+        )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        shadow_runs,
+        "_utc_now",
+        lambda: started + timedelta(hours=1, minutes=1),
+    )
+
+    result = shadow_runs._apply_early_application_path_watchdog(
+        db_session,
+        {"status": "running", "schedule_next": True},
+        int(session.id),
+    )
+
+    assert result == {"status": "running", "schedule_next": True}
+    assert session.applications_created == 1
