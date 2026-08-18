@@ -5,11 +5,15 @@ from datetime import datetime, timezone
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
-from app.models.certification import ShadowRunSession
+from app.models.application import Application, ApplicationEvent
+from app.models.certification import ShadowRunCycle, ShadowRunSession
+from app.models.job import Job, JobStatus
+from app.models.user import User
 from app.services.certification_scale import ensure_aware
 from app.services.full_stack_shadow import (
     ACTIVE_SESSION_STATES,
     execute_shadow_cycle,
+    finalize_shadow_session,
     mark_shadow_dispatch_failure,
 )
 from app.services.operations_settings import get_operations_settings
@@ -17,6 +21,11 @@ from app.services.runtime_identity import runtime_identity_manifest
 
 
 logger = logging.getLogger(__name__)
+
+APPLICATION_PATH_WATCHDOG_GRACE_SECONDS = 60 * 60
+APPLICATION_PATH_WATCHDOG_MIN_COMPLETED_CYCLES = 4
+SHADOW_REUSABLE_APPROVED_LIMIT = 100
+SHADOW_QUEUED_CANDIDATE_LIMIT = 400
 
 
 def _utc_now() -> datetime:
@@ -60,6 +69,171 @@ def _fail_session_for_identity(session_id: int, identity: dict) -> dict:
     }
 
 
+def _prepare_shadow_candidate_cohort(db, session: ShadowRunSession) -> User | None:
+    """Attach a transient, no-submit candidate cohort for one timed shadow cycle.
+
+    Normal scheduler ranking intentionally sees only queued jobs. Timed shadow evidence
+    needs a different test-only behavior: a posting already exercised by an earlier
+    shadow session may be reused without treating that historical no-submit attempt as a
+    production duplicate. Only jobs carrying the durable full-stack-shadow application
+    event are eligible for this reuse. Production-approved jobs are never added.
+
+    The existing transient candidate projection is deliberately process-local and is
+    removed immediately after the cycle. This keeps persisted user policy unchanged.
+    """
+
+    user = (
+        db.query(User)
+        .filter(User.id == int(session.user_id), User.is_active == True)
+        .first()
+    )
+    if user is None:
+        return None
+
+    queued_ids = [
+        int(row[0])
+        for row in (
+            db.query(Job.id)
+            .filter(Job.status == JobStatus.queued)
+            .order_by(Job.relevance_score.desc(), Job.id.desc())
+            .limit(SHADOW_QUEUED_CANDIDATE_LIMIT)
+            .all()
+        )
+    ]
+
+    reusable_job_ids: list[int] = []
+    seen_reusable: set[int] = set()
+    event_rows = (
+        db.query(Application.job_id, ApplicationEvent.payload)
+        .join(ApplicationEvent, ApplicationEvent.application_id == Application.id)
+        .filter(
+            Application.user_id == int(session.user_id),
+            ApplicationEvent.event_type == "application_created",
+        )
+        .order_by(ApplicationEvent.id.desc())
+        .limit(2000)
+        .all()
+    )
+    for job_id, payload in event_rows:
+        data = dict(payload or {})
+        if str(data.get("source") or "") != "full_stack_shadow_scheduler":
+            continue
+        try:
+            prior_session_id = int(data.get("shadow_session_id"))
+        except (TypeError, ValueError):
+            continue
+        if prior_session_id == int(session.id):
+            continue
+        parsed_job_id = int(job_id)
+        if parsed_job_id in seen_reusable:
+            continue
+        seen_reusable.add(parsed_job_id)
+        reusable_job_ids.append(parsed_job_id)
+        if len(reusable_job_ids) >= SHADOW_REUSABLE_APPROVED_LIMIT:
+            break
+
+    approved_shadow_ids: list[int] = []
+    if reusable_job_ids:
+        approved_shadow_ids = [
+            int(row[0])
+            for row in (
+                db.query(Job.id)
+                .filter(
+                    Job.id.in_(reusable_job_ids),
+                    Job.status == JobStatus.approved,
+                )
+                .order_by(Job.relevance_score.desc(), Job.id.desc())
+                .all()
+            )
+        ]
+
+    cohort: list[int] = []
+    seen: set[int] = set()
+    for job_id in [*approved_shadow_ids, *queued_ids]:
+        if job_id in seen:
+            continue
+        seen.add(job_id)
+        cohort.append(job_id)
+
+    setattr(user, "_qualification_candidate_job_ids", tuple(cohort))
+    return user
+
+
+def _clear_shadow_candidate_cohort(user: User | None) -> None:
+    if user is not None and hasattr(user, "_qualification_candidate_job_ids"):
+        delattr(user, "_qualification_candidate_job_ids")
+
+
+def _shadow_application_reference_count(db, session_id: int) -> int:
+    cycles = (
+        db.query(ShadowRunCycle)
+        .filter(ShadowRunCycle.session_id == int(session_id))
+        .order_by(ShadowRunCycle.cycle_number.asc(), ShadowRunCycle.id.asc())
+        .all()
+    )
+    application_ids: set[int] = set()
+    for cycle in cycles:
+        result = dict(cycle.scheduler_result or {})
+        for raw in result.get("application_ids_queued") or []:
+            try:
+                application_ids.add(int(raw))
+            except (TypeError, ValueError):
+                continue
+    return len(application_ids)
+
+
+def _apply_early_application_path_watchdog(db, result: dict, session_id: int) -> dict:
+    """Fail a doomed long campaign after one healthy hour instead of at hour 8/24."""
+
+    if result.get("status") != "running" or not result.get("schedule_next"):
+        return result
+
+    session = (
+        db.query(ShadowRunSession)
+        .filter(ShadowRunSession.id == int(session_id))
+        .first()
+    )
+    if session is None or session.status not in ACTIVE_SESSION_STATES:
+        return result
+
+    current = _utc_now()
+    started = ensure_aware(session.started_at) or current
+    elapsed_seconds = max(0.0, (current - started).total_seconds())
+    completed_cycles = int(session.cycles_completed or 0)
+    if (
+        elapsed_seconds < APPLICATION_PATH_WATCHDOG_GRACE_SECONDS
+        or completed_cycles < APPLICATION_PATH_WATCHDOG_MIN_COMPLETED_CYCLES
+    ):
+        return result
+
+    application_references = _shadow_application_reference_count(db, int(session.id))
+    session.applications_created = application_references
+    if application_references > 0:
+        return result
+
+    reason = "shadow_application_path_not_observed_after_1h"
+    report = finalize_shadow_session(
+        db,
+        session,
+        requested_status="failed",
+        failure_reason=reason,
+        now=current,
+    )
+    return {
+        "status": "failed",
+        "session_id": int(session.id),
+        "schedule_next": False,
+        "error": reason,
+        "early_quality_gate": "application_path_observed",
+        "cycles_completed": completed_cycles,
+        "cycles_failed": int(session.cycles_failed or 0),
+        "application_references": 0,
+        "report": report,
+        "submission_authorized": False,
+        "outreach_authorized": False,
+    }
+
+
 @celery_app.task(
     name="app.tasks.shadow_runs.run_shadow_session_cycle",
     queue="scraping",
@@ -78,8 +252,18 @@ def run_shadow_session_cycle(session_id: int):
         return _fail_session_for_identity(int(session_id), identity)
 
     db = SessionLocal()
+    prepared_user: User | None = None
     try:
+        session = (
+            db.query(ShadowRunSession)
+            .filter(ShadowRunSession.id == int(session_id))
+            .first()
+        )
+        if session is not None and session.status in ACTIVE_SESSION_STATES:
+            prepared_user = _prepare_shadow_candidate_cohort(db, session)
+
         result = execute_shadow_cycle(db, session_id=int(session_id))
+        result = _apply_early_application_path_watchdog(db, result, int(session_id))
         db.commit()
     except Exception:
         logger.exception("Shadow campaign cycle failed for session %s", session_id)
@@ -101,6 +285,7 @@ def run_shadow_session_cycle(session_id: int):
             "schedule_next": False,
         }
     finally:
+        _clear_shadow_candidate_cohort(prepared_user)
         db.close()
 
     result["runtime_identity"] = identity
