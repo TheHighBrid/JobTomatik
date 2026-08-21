@@ -30,6 +30,38 @@ class BrowserHandoffUnavailable(BrowserHandoffError):
     pass
 
 
+def _select_retained_page(pages: list[Any], expected_url: str = "") -> Any:
+    """Select only an unambiguous retained page; never guess by tab order."""
+    if not pages:
+        raise BrowserHandoffUnavailable("The retained browser has no active page.")
+
+    normalized_expected = str(expected_url or "")
+    if normalized_expected:
+        matches = [
+            candidate
+            for candidate in pages
+            if str(getattr(candidate, "url", "") or "") == normalized_expected
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise BrowserHandoffUnavailable(
+                "The retained browser exposed multiple pages at the approved URL; "
+                "recovery is ambiguous."
+            )
+        raise BrowserHandoffUnavailable(
+            "The retained browser no longer exposes the approved handoff URL; "
+            "recovery is fail-closed."
+        )
+
+    if len(pages) == 1:
+        return pages[0]
+    raise BrowserHandoffUnavailable(
+        "The retained browser exposed multiple pages without an exact approved URL; "
+        "recovery is fail-closed."
+    )
+
+
 @dataclass
 class BrowserVerification:
     challenge_cleared: bool
@@ -110,13 +142,8 @@ async def _connect_local_cdp(session: ManualHandoffSession):
         raise BrowserHandoffUnavailable("The retained browser has no active context.")
     context = contexts[0]
     pages = list(context.pages)
-    if not pages:
-        page = await context.new_page()
-    else:
-        page = next(
-            (candidate for candidate in pages if session.current_url and candidate.url == session.current_url),
-            pages[-1],
-        )
+    expected_url = str(session.current_url or binding.get("expected_url") or "")
+    page = _select_retained_page(pages, expected_url)
     if binding:
         try:
             require_bound_handoff_url(session, page.url)

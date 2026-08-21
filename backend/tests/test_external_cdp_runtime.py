@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.services import browser_runtime
+from app.services.browser_runtime_base import BrowserRuntimeError
 
 
 class FakeResponse:
@@ -46,6 +47,43 @@ class FakeChromium:
 class FakePlaywright:
     def __init__(self):
         self.chromium = FakeChromium()
+
+
+class _UrlPage:
+    def __init__(self, url):
+        self.url = url
+
+
+@pytest.mark.asyncio
+async def test_external_cdp_attachment_rejects_ambiguous_multi_page_context():
+    browser = type(
+        "Browser",
+        (),
+        {"contexts": [type("Context", (), {"pages": [_UrlPage("https://one.test"), _UrlPage("https://two.test")]})()]},
+    )()
+
+    with pytest.raises(BrowserRuntimeError, match="multiple pages"):
+        await browser_runtime._select_context_page(
+            browser,
+            viewport=None,
+            resize_viewport=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_external_cdp_attachment_keeps_single_controlled_page():
+    page = _UrlPage("https://controlled.test")
+    context = type("Context", (), {"pages": [page]})()
+    browser = type("Browser", (), {"contexts": [context]})()
+
+    selected_context, selected_page = await browser_runtime._select_context_page(
+        browser,
+        viewport=None,
+        resize_viewport=False,
+    )
+
+    assert selected_context is context
+    assert selected_page is page
 
 
 @pytest.mark.asyncio
