@@ -24,6 +24,8 @@ const COMMON_BLOCKER_LABELS = Object.freeze({
   target_identity_mismatch: 'The current ATS target no longer matches the approved identity.',
   official_posting_metadata_unavailable: 'Official posting metadata is unavailable.',
   official_posting_inactive: 'The official posting is no longer active.',
+  application_target_closed_or_expired: 'The exact application posting is closed or expired.',
+  application_target_liveness_unverified: 'The exact application posting could not be re-verified. Try again when the target is reachable.',
 })
 
 const PLATFORM_BLOCKER_LABELS = Object.freeze({
