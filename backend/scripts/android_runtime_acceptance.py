@@ -7,9 +7,14 @@ The stable Runtime V2 acceptance implementation remains in
 ``android_runtime_acceptance_base``. This public entrypoint adds the browser
 proof that was previously missing: a raw ``/json/version`` response is not
 accepted as evidence that the application worker can attach Playwright.
+
+The base acceptance intentionally remains a no-submit shadow contract. This
+entrypoint may project one explicitly enabled supervised ATS pilot through that
+structural proof while preserving the real runtime safety state in the receipt.
 """
 
 import asyncio
+from copy import copy
 import json
 import os
 import sys
@@ -35,6 +40,9 @@ for _name in dir(_base):
 # Keep these contracts explicit in the authoritative source because tests and
 # operational review intentionally inspect this file.
 REQUIRED_WORKER_QUEUES = "applications,celery,followup,scraping"
+SHADOW_ACCEPTANCE_PROFILE = "shadow_no_submit"
+SUPERVISED_PROFILE_PREFIX = "supervised_"
+SUPPORTED_SUPERVISED_PLATFORMS = ("greenhouse", "lever")
 validate_worker_canary_receipt = _base.validate_worker_canary_receipt
 _BASE_WORKER_ACCEPTANCE = _base._worker_acceptance
 _BASE_SETTINGS_LOCK = RLock()
@@ -134,22 +142,110 @@ def _playwright_browser_acceptance() -> dict[str, Any]:
     return proof
 
 
-def run_acceptance() -> dict[str, Any]:
+def _enabled_supervised_platforms(settings: Settings) -> list[str]:
+    return [
+        platform
+        for platform in SUPPORTED_SUPERVISED_PLATFORMS
+        if bool(getattr(settings, f"{platform}_supervised_pilot_enabled", False))
+    ]
+
+
+def _configured_acceptance_profile(settings: Settings) -> str:
+    """Choose the runtime acceptance profile from authoritative managed settings."""
+
+    if settings.allow_real_followup_send:
+        raise RuntimeError(
+            "Android runtime acceptance requires recruiter/follow-up sending to remain disabled"
+        )
+    if not settings.allow_real_application_submit:
+        return SHADOW_ACCEPTANCE_PROFILE
+
+    enabled_platforms = _enabled_supervised_platforms(settings)
+    if len(enabled_platforms) != 1:
+        raise RuntimeError(
+            "Supervised Android runtime requires exactly one ATS pilot switch when real submission is enabled"
+        )
+    return f"{SUPERVISED_PROFILE_PREFIX}{enabled_platforms[0]}"
+
+
+def _base_settings_for_profile(
+    settings: Settings,
+    profile: str,
+) -> tuple[Settings, dict[str, Any] | None]:
+    """Return base-proof settings plus any truthful safety receipt override.
+
+    The stable base implementation is deliberately a no-submit shadow proof. For
+    an explicitly scoped supervised pilot we project only the global submit flag
+    to false while the base proves runtime identity, artifact identity, worker
+    ownership, Redis DB1 routing, Beat identity, and process identity. The public
+    receipt is then restored to the real settings and remains non-authorizing:
+    a one-time exact-payload approval is still required before any final click.
+    """
+
+    if profile == SHADOW_ACCEPTANCE_PROFILE:
+        return settings, None
+
+    if not profile.startswith(SUPERVISED_PROFILE_PREFIX):
+        raise RuntimeError(f"Unsupported Android runtime acceptance profile: {profile}")
+
+    platform = profile.removeprefix(SUPERVISED_PROFILE_PREFIX)
+    if platform not in SUPPORTED_SUPERVISED_PLATFORMS:
+        raise RuntimeError(f"Unsupported supervised Android ATS profile: {platform}")
+    if settings.allow_real_application_submit is not True:
+        raise RuntimeError("Supervised Android runtime requires real application submission enabled")
+    if settings.allow_real_followup_send is not False:
+        raise RuntimeError(
+            "Supervised Android runtime requires recruiter/follow-up sending disabled"
+        )
+
+    enabled_platforms = _enabled_supervised_platforms(settings)
+    if enabled_platforms != [platform]:
+        raise RuntimeError(
+            "Supervised Android runtime profile must match the only enabled ATS pilot switch"
+        )
+
+    projected = copy(settings)
+    projected.allow_real_application_submit = False
+    return projected, {
+        "real_submission_disabled": False,
+        "supervised_submission_window": True,
+        "supervised_platform": platform,
+        "one_time_approval_required": True,
+        "final_submit_allowed": False,
+        "outreach_authorized": False,
+    }
+
+
+def run_acceptance(profile: str = SHADOW_ACCEPTANCE_PROFILE) -> dict[str, Any]:
     """Run Runtime V2 acceptance against one authoritative backend config."""
 
-    # The base implementation owns frontend/API/worker/Beat/process and safety
-    # attestation. Bind its settings lookup to the managed backend file so
-    # cwd-relative or inherited settings cannot mask the running runtime.
+    authoritative_settings = _backend_settings()
+    base_settings, safety_override = _base_settings_for_profile(
+        authoritative_settings,
+        profile,
+    )
+
+    def configured_base_settings() -> Settings:
+        return base_settings
+
+    # The base implementation owns frontend/API/worker/Beat/process and shadow
+    # safety attestation. Bind its settings lookup to the managed backend file, or
+    # the tightly scoped projection above, so inherited settings cannot mask the
+    # running runtime.
     with _BASE_SETTINGS_LOCK:
         original_worker = _base._worker_acceptance
         original_settings = _base.get_settings
         _base._worker_acceptance = _worker_acceptance
-        _base.get_settings = _backend_settings
+        _base.get_settings = configured_base_settings
         try:
             payload = _base.run_acceptance()
         finally:
             _base._worker_acceptance = original_worker
             _base.get_settings = original_settings
+
+    if safety_override is not None:
+        payload["safety"] = safety_override
+    payload["acceptance_profile"] = profile
 
     browser = dict(payload.get("browser") or {})
     browser.update(_playwright_browser_acceptance())
@@ -159,24 +255,38 @@ def run_acceptance() -> dict[str, Any]:
 
 
 def main() -> int:
+    configured_profile = (
+        os.environ.get("JOBTOMATIK_ANDROID_ACCEPTANCE_PROFILE") or ""
+    ).strip()
     try:
-        payload = run_acceptance()
+        settings = _backend_settings()
+        if not configured_profile:
+            configured_profile = _configured_acceptance_profile(settings)
+        payload = run_acceptance(configured_profile)
         receipt = write_receipt(runtime_acceptance_path(), payload)
         print(json.dumps(receipt, indent=2, sort_keys=True))
         print(
             "ANDROID_RUNTIME_ACCEPTANCE=PASS "
-            f"revision={receipt['revision']} fingerprint={receipt['runtime_fingerprint_sha256']}"
+            f"profile={configured_profile} revision={receipt['revision']} "
+            f"fingerprint={receipt['runtime_fingerprint_sha256']}"
         )
         return 0
     except Exception as exc:
         settings = _backend_settings()
+        enabled_platforms = _enabled_supervised_platforms(settings)
         failure = {
             "version": 1,
             "status": "fail",
             "revision": current_revision(),
+            "acceptance_profile": configured_profile or "auto",
             "error": str(exc)[:1800],
             "safety": {
                 "real_submission_disabled": settings.allow_real_application_submit is False,
+                "supervised_submission_window": bool(
+                    settings.allow_real_application_submit and len(enabled_platforms) == 1
+                ),
+                "supervised_platform": enabled_platforms[0] if len(enabled_platforms) == 1 else None,
+                "one_time_approval_required": True,
                 "final_submit_allowed": False,
                 "outreach_authorized": False,
             },
