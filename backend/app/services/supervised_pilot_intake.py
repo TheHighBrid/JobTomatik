@@ -159,6 +159,24 @@ def import_supervised_pilot_candidate(
         )
         db.add(job)
         db.flush()
+    else:
+        # An exact job may already exist from discovery. The user has now made an
+        # explicit Phase B selection, so retain the discovery row but stamp the
+        # selection provenance that supervised preflight relies on. Never erase
+        # unrelated discovery metadata.
+        existing_raw_data = dict(job.raw_data or {})
+        job.raw_data = {
+            **existing_raw_data,
+            "application_method": existing_raw_data.get("application_method")
+            or "external_url",
+            "selected_apply_url": normalized_url,
+            "selection_policy": SELECTION_POLICY,
+            "selection_source": INTAKE_SOURCE,
+            "source_reference": source_reference_value
+            if source_reference_value is not None
+            else existing_raw_data.get("source_reference"),
+        }
+        db.add(job)
 
     application = (
         db.query(Application)

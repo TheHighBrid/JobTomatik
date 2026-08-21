@@ -14,7 +14,9 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
+from urllib.parse import parse_qs, urlsplit
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -48,6 +50,8 @@ from app.services.supervised_target_identity import (
 settings = get_settings()
 # Compatibility alias for existing imports. Operational decisions use the registry.
 SUPPORTED_PLATFORM = GREENHOUSE_PLATFORM_KEY
+MANUAL_GREENHOUSE_PHASE_B_SOURCE = "manual_greenhouse_phase_b"
+TARGET_LIVENESS_TIMEOUT_SECONDS = 5.0
 
 
 class SupervisedSubmissionApprovalError(ValueError):
@@ -112,6 +116,121 @@ def _resolved_target_metadata(
     if supplied is not None:
         return dict(supplied)
     return persisted_supervised_target_metadata(job)
+
+
+def _greenhouse_job_id(value: str) -> Optional[str]:
+    try:
+        parsed = urlsplit(str(value or "").strip())
+    except ValueError:
+        return None
+
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    for query_key in ("gh_jid", "job_id"):
+        for item in query.get(query_key, []):
+            candidate = str(item or "").strip()
+            if candidate:
+                return candidate
+
+    parts = [part for part in parsed.path.split("/") if part]
+    for index, part in enumerate(parts):
+        if part.lower() == "jobs" and index + 1 < len(parts):
+            candidate = str(parts[index + 1] or "").strip()
+            if candidate:
+                return candidate
+    return None
+
+
+def _greenhouse_target_liveness(application_url: str) -> Dict[str, Any]:
+    """Fail closed when an exact manually selected Greenhouse posting is stale.
+
+    Greenhouse currently redirects closed job URLs back to the company board with
+    ``?error=true``. We also treat a changed or missing numeric job identity after
+    redirects as closed. Transport failures remain a separate unverified blocker so
+    a temporary network problem cannot be misreported as an expired vacancy.
+    """
+
+    original_url = str(application_url or "").strip()
+    result: Dict[str, Any] = {
+        "checked": True,
+        "live": False,
+        "status_code": None,
+        "final_url": None,
+        "blocker": "application_target_liveness_unverified",
+    }
+    if not original_url:
+        return result
+
+    try:
+        response = httpx.get(
+            original_url,
+            follow_redirects=True,
+            timeout=TARGET_LIVENESS_TIMEOUT_SECONDS,
+            headers={
+                "User-Agent": "JobTomatik/1.0 supervised-target-liveness",
+                "Accept": "text/html,application/xhtml+xml",
+            },
+        )
+    except (httpx.HTTPError, ValueError):
+        return result
+
+    final_url = str(response.url)
+    result["status_code"] = int(response.status_code)
+    result["final_url"] = final_url
+
+    if response.status_code in {404, 410}:
+        result["blocker"] = "application_target_closed_or_expired"
+        return result
+    if response.status_code >= 400:
+        return result
+
+    try:
+        final_parts = urlsplit(final_url)
+    except ValueError:
+        return result
+    final_host = (final_parts.hostname or "").lower().rstrip(".")
+    if not final_host or not (
+        final_host == "greenhouse.io" or final_host.endswith(".greenhouse.io")
+    ):
+        return result
+
+    final_query = parse_qs(final_parts.query, keep_blank_values=True)
+    error_values = {
+        str(value or "").strip().lower()
+        for value in final_query.get("error", [])
+    }
+    if error_values.intersection({"1", "true", "yes"}):
+        result["blocker"] = "application_target_closed_or_expired"
+        return result
+
+    original_job_id = _greenhouse_job_id(original_url)
+    final_job_id = _greenhouse_job_id(final_url)
+    if original_job_id:
+        if final_job_id != original_job_id:
+            result["blocker"] = "application_target_closed_or_expired"
+            return result
+    else:
+        final_path = final_parts.path.lower().rstrip("/")
+        embedded_token = any(
+            str(item or "").strip()
+            for item in final_query.get("token", [])
+        )
+        if not final_job_id and not (
+            final_path.endswith("/embed/job_app") and embedded_token
+        ):
+            return result
+
+    result["live"] = True
+    result["blocker"] = None
+    return result
+
+
+def _should_probe_target_liveness(job: Job, platform: str) -> bool:
+    raw_data = dict(job.raw_data or {})
+    return bool(
+        settings.is_production
+        and platform == GREENHOUSE_PLATFORM_KEY
+        and raw_data.get("selection_source") == MANUAL_GREENHOUSE_PHASE_B_SOURCE
+    )
 
 
 def build_submission_snapshot(
@@ -226,6 +345,13 @@ def build_supervised_preflight(
     live_enabled = bool(settings.allow_real_application_submit)
     policy = _platform_policy(snapshot["platform"])
     pilot_enabled = policy.pilot_enabled(settings) if policy else False
+    target_liveness: Dict[str, Any] = {
+        "checked": False,
+        "live": None,
+        "status_code": None,
+        "final_url": None,
+        "blocker": None,
+    }
 
     blockers: list[str] = []
     if not live_enabled:
@@ -241,6 +367,11 @@ def build_supervised_preflight(
             blockers.append("exact_target_identity_unverified")
         if not snapshot["target_identity_hash"]:
             blockers.append("exact_target_identity_hash_missing")
+    if _should_probe_target_liveness(job, snapshot["platform"]):
+        target_liveness = _greenhouse_target_liveness(snapshot["application_url"])
+        liveness_blocker = str(target_liveness.get("blocker") or "").strip()
+        if liveness_blocker:
+            blockers.append(liveness_blocker)
     if state != ApplicationAutomationState.ready_to_apply.value:
         blockers.append("application_not_ready_to_apply")
     if open_reviews:
@@ -280,6 +411,7 @@ def build_supervised_preflight(
         "target_identity": snapshot["target_identity"],
         "target_identity_hash": snapshot["target_identity_hash"],
         "target_identity_verified": snapshot["target_identity_verified"],
+        "target_liveness": target_liveness,
     }
 
 
@@ -402,6 +534,7 @@ def issue_supervised_approval(
             "adapter_version": policy.adapter_version,
             "target_identity_hash": preflight["target_identity_hash"],
             "target_identity": dict(preflight["target_identity"] or {}),
+            "target_liveness": dict(preflight.get("target_liveness") or {}),
         },
     )
     db.add(approval)
@@ -421,6 +554,7 @@ def issue_supervised_approval(
                 "expires_at": approval.expires_at.isoformat(),
                 "combined_payload_hash": approval.combined_payload_hash,
                 "target_identity_hash": preflight["target_identity_hash"],
+                "target_liveness": dict(preflight.get("target_liveness") or {}),
             },
         )
     )
@@ -547,6 +681,9 @@ def validate_supervised_approval(
         approval.approval_metadata = {
             **approval_metadata,
             "consumed_for_attempt": (application.submission_attempt_count or 0) + 1,
+            "target_liveness_at_consume": dict(
+                preflight.get("target_liveness") or {}
+            ),
         }
         db.add(
             ApplicationEvent(
@@ -559,6 +696,7 @@ def validate_supervised_approval(
                     "attempt": (application.submission_attempt_count or 0) + 1,
                     "combined_payload_hash": approval.combined_payload_hash,
                     "target_identity_hash": preflight["target_identity_hash"],
+                    "target_liveness": dict(preflight.get("target_liveness") or {}),
                 },
             )
         )

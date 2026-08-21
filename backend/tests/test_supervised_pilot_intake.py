@@ -57,6 +57,7 @@ def test_authenticated_intake_creates_preparation_only_candidate(auth_client, db
     assert job.source == JobSource.manual
     assert job.status == JobStatus.queued
     assert job.raw_data["selection_policy"] == "user_selected_exact_application"
+    assert job.raw_data["selection_source"] == "manual_greenhouse_phase_b"
     assert job.raw_data["selected_apply_url"] == CANDIDATE["application_url"]
     assert event.payload["submission_queued"] is False
     assert event.payload["approval_issued"] is False
@@ -93,7 +94,10 @@ def test_intake_reuses_an_already_discovered_exact_job_url(auth_client, db_sessi
         url=CANDIDATE["application_url"],
         source=JobSource.linkedin,
         status=JobStatus.queued,
-        raw_data={"application_method": "external_url"},
+        raw_data={
+            "application_method": "external_url",
+            "discovery_source": "linkedin",
+        },
     )
     db_session.add(existing_job)
     db_session.commit()
@@ -104,6 +108,13 @@ def test_intake_reuses_an_already_discovered_exact_job_url(auth_client, db_sessi
     assert response.json()["created_job"] is False
     assert response.json()["job_id"] == existing_job.id
     assert db_session.query(Job).count() == 1
+    db_session.refresh(existing_job)
+    assert existing_job.source == JobSource.linkedin
+    assert existing_job.raw_data["discovery_source"] == "linkedin"
+    assert existing_job.raw_data["selection_source"] == "manual_greenhouse_phase_b"
+    assert existing_job.raw_data["selection_policy"] == "user_selected_exact_application"
+    assert existing_job.raw_data["selected_apply_url"] == CANDIDATE["application_url"]
+    assert existing_job.raw_data["source_reference"] == CANDIDATE["source_reference"]
     application = db_session.query(Application).one()
     assert application.job_id == existing_job.id
     assert application.automation_state == ApplicationAutomationState.preparing.value
