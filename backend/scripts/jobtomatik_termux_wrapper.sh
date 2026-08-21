@@ -53,6 +53,51 @@ run_runtime_acceptance() {
     "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/android_runtime_acceptance.py"
 }
 
+run_browser_playwright_probe() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO/backend'; export JOBTOMATIK_RUNTIME_MODE=android_managed; .venv/bin/python - <<'PY'
+import asyncio
+
+from app.services.browser_runtime import probe_external_playwright_cdp
+
+
+async def main() -> None:
+    proof = await probe_external_playwright_cdp('http://127.0.0.1:9222')
+    if proof.get('playwright_attach_ready') is not True:
+        raise SystemExit(1)
+    if proof.get('browser_owned_by_jobtomatik') is not False:
+        raise SystemExit(1)
+    print('ANDROID_BROWSER_PLAYWRIGHT_CDP_READY')
+
+
+asyncio.run(main())
+PY"
+}
+
+ensure_browser_playwright_ready() {
+  "$BROWSER_COMMAND" start
+
+  local initial_probe
+  if initial_probe="$(run_browser_playwright_probe 2>&1)"; then
+    [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe"
+    return 0
+  fi
+
+  echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=restart_once"
+  "$BROWSER_COMMAND" restart
+
+  local recovery_probe
+  if recovery_probe="$(run_browser_playwright_probe 2>&1)"; then
+    [[ -n "$recovery_probe" ]] && printf '%s\n' "$recovery_probe"
+    echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_RECOVERED"
+    return 0
+  fi
+
+  echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_RECOVERY_FAILED" >&2
+  [[ -n "$recovery_probe" ]] && printf '%s\n' "$recovery_probe" >&2
+  return 1
+}
+
 supervisor_identity_matches() {
   local pid="$1"
   jobtomatik_pid_has_all_tokens "$pid" "proot" "manage_android_stack.sh"
@@ -164,7 +209,11 @@ activate_stack() {
   local action="$1"
   sanitize_runtime_pid_files
   ensure_static_frontend_artifact
-  "$BROWSER_COMMAND" start
+  # Native Chromium can remain HTTP-CDP reachable while its DevTools websocket is
+  # no longer attachable by Playwright. Prove the exact worker browser path before
+  # the PRoot runtime starts, recycle the dedicated browser at most once, and keep
+  # the persistent authenticated profile across that recycle.
+  ensure_browser_playwright_ready
   # The PRoot manager owns API, worker, Beat and the attested static frontend. Native
   # Chromium remains outside PRoot and is crossed only through the localhost CDP
   # protocol boundary.
@@ -178,8 +227,9 @@ case "$ACTION" in
     ;;
   restart)
     stop_stack_supervisor
-    # Preserve the authenticated native browser. The authoritative PRoot manager
-    # refreshes only localhost:3000 JobTomatik tabs after the new runtime is ready.
+    # Preserve the authenticated native browser unless its real Playwright probe
+    # proves that the retained CDP session is stale. The recovery path keeps the
+    # same persistent browser profile and performs at most one native recycle.
     activate_stack restart
     ;;
   status)
