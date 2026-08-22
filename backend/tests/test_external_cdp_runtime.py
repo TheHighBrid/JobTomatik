@@ -12,6 +12,16 @@ REFRESH_SCRIPT = BACKEND_ROOT / "scripts/refresh_android_jobtomatik_tabs.py"
 CHECK_SCRIPT = BACKEND_ROOT / "scripts/check_android_browser_cdp.py"
 
 
+class FakeResponse:
+    status_code = 200
+
+    def json(self):
+        return {
+            "Browser": "Chrome/149",
+            "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/browser/test",
+        }
+
+
 class FakePage:
     def __init__(self, url="https://www.linkedin.com/feed/"):
         self.url = url
@@ -109,6 +119,7 @@ async def test_attach_retainable_browser_reuses_external_cdp_without_owning_proc
 ):
     monkeypatch.setenv("HANDOFF_STORAGE_DIR", str(tmp_path))
     monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", _noop_wait)
+    monkeypatch.setattr(browser_runtime.httpx, "get", lambda *args, **kwargs: FakeResponse())
     playwright = FakePlaywright()
 
     runtime = await browser_runtime.attach_retainable_browser(
