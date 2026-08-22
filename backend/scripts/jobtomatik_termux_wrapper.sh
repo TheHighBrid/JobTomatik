@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ACTION="${1:-start}"
-PROOT_DISTRO="${JOBTOMATIK_PROOT_DISTRO:-ubuntu}"
+PROOT_DISTRO="${JOBTOMATIK_PROOOT_DISTRO:-${JOBTOMATIK_PROOT_DISTRO:-ubuntu}}"
 PROOT_REPO="${JOBTOMATIK_PROOT_REPO:-/root/JobTomatik}"
 BROWSER_COMMAND="${JOBTOMATIK_BROWSER_COMMAND:-jobtomatik-browser}"
 RUNTIME_DIR="${JOBTOMATIK_ANDROID_RUNTIME_DIR:-$HOME/.jobtomatik-runtime}"
@@ -10,6 +10,7 @@ STACK_PID_FILE="$RUNTIME_DIR/proot-stack.pid"
 STACK_LOG="$RUNTIME_DIR/proot-stack.log"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 PROCESS_IDENTITY_HELPER="${JOBTOMATIK_PROCESS_IDENTITY_HELPER:-$SCRIPT_DIR/jobtomatik_process_identity.sh}"
+DEPLOYMENT_RESTART_MARKER="${JOBTOMATIK_DEPLOYMENT_RESTART_MARKER:-$SCRIPT_DIR/.jobtomatik-deployment-restart.pending}"
 FRONTEND_RUNTIME_MODE="static_artifact"
 
 if [[ ! -r "$PROCESS_IDENTITY_HELPER" ]]; then
@@ -39,6 +40,11 @@ sanitize_runtime_pid_files() {
 }
 
 ensure_static_frontend_artifact() {
+  # The certification runtime no longer executes Node, Vite, Lightning CSS, Rolldown,
+  # Tailwind Oxide, or any other frontend native addon on the Android device. GitHub
+  # Actions builds immutable static bytes for the exact revision. The installer accepts
+  # only an artifact whose workflow head SHA, package-lock hash, archive digest, and
+  # internal dist-tree hash all match this checkout.
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/install_android_static_frontend_artifact.py"
 }
@@ -70,10 +76,17 @@ PY"
 }
 
 ensure_browser_playwright_ready() {
+  local recovery_mode="${1:-preserve}"
   local initial_probe
   if initial_probe="$(run_browser_playwright_probe 2>&1)"; then
     [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe"
     return 0
+  fi
+
+  if [[ "$recovery_mode" != "recover_once" ]]; then
+    echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=preserve_browser_fail" >&2
+    [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe" >&2
+    return 1
   fi
 
   echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=recover_once"
@@ -89,6 +102,15 @@ ensure_browser_playwright_ready() {
   echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_RECOVERY_FAILED" >&2
   [[ -n "$recovery_probe" ]] && printf '%s\n' "$recovery_probe" >&2
   return 1
+}
+
+consume_deployment_browser_recovery_mode() {
+  if [[ -f "$DEPLOYMENT_RESTART_MARKER" ]]; then
+    rm -f "$DEPLOYMENT_RESTART_MARKER"
+    printf '%s\n' "recover_once"
+    return 0
+  fi
+  printf '%s\n' "preserve"
 }
 
 supervisor_identity_matches() {
@@ -126,9 +148,14 @@ start_stack_detached() {
     fi
   fi
 
+  # Retire only a narrowly identified JobTomatik static frontend or legacy Vite
+  # process. The guard refuses to signal an unrelated process occupying port 3000.
   run_frontend_guard reset
 
   : > "$STACK_LOG"
+  # Source the manager in the same long-lived shell that becomes the supervisor.
+  # This preserves the Android worker/Beat parenting fix while the frontend itself is
+  # now a plain Python static server over a SHA-bound CI artifact.
   nohup proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && exec bash -c 'source \"\$0\" \"\$1\" && exec sleep infinity' backend/scripts/manage_android_stack.sh '$action'" \
     > "$STACK_LOG" 2>&1 </dev/null &
@@ -164,6 +191,9 @@ start_stack_detached() {
 }
 
 stop_stack_supervisor() {
+  # PID files survive crashes, while Android can recycle their numeric PIDs. Remove
+  # any PID file that no longer points at the exact JobTomatik process before the
+  # legacy manager stop path is allowed to signal anything.
   sanitize_runtime_pid_files || return 1
   run_stack_foreground stop || true
   if [[ -f "$STACK_PID_FILE" ]]; then
@@ -192,39 +222,41 @@ update_main() {
 
 activate_stack() {
   local action="$1"
+  local browser_recovery_mode="${2:-preserve}"
   sanitize_runtime_pid_files
   ensure_static_frontend_artifact
-
-  # `jobtomatik start` is idempotent. Never recycle the external authenticated
-  # Chromium while the managed stack is already live and healthy because that could
-  # interrupt an in-flight application session. The authoritative acceptance check
-  # remains safe and non-destructive for this already-running path.
-  if [[ "$action" == "start" ]] && supervisor_alive; then
-    if run_stack_foreground status && run_frontend_guard status; then
-      echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
-      run_runtime_acceptance
-      return 0
-    fi
-  fi
-
   "$BROWSER_COMMAND" start
   # HTTP CDP alone is insufficient. Prove the exact Playwright attach path used by
-  # the managed worker. If it is stale, the native launcher performs one bounded,
-  # blocking recovery that waits for the old endpoint to disappear before restart.
-  ensure_browser_playwright_ready
+  # the managed worker. Ordinary starts/restarts preserve the authenticated browser
+  # and fail closed; only a freshly installed deployment token can allow one recycle.
+  ensure_browser_playwright_ready "$browser_recovery_mode"
+  # The PRoot manager owns API, worker, Beat and the attested static frontend. Native
+  # Chromium remains outside PRoot and is crossed only through the localhost CDP
+  # protocol boundary.
   start_stack_detached "$action"
   run_runtime_acceptance
 }
 
 case "$ACTION" in
   start)
-    activate_stack start
+    # `jobtomatik start` is idempotent. Never recycle the external authenticated
+    # Chromium while the managed stack is already live and healthy because that could
+    # interrupt an in-flight application session.
+    if supervisor_alive && run_stack_foreground status && run_frontend_guard status; then
+      echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
+      run_runtime_acceptance
+    else
+      browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"
+      activate_stack start "$browser_recovery_mode"
+    fi
     ;;
   restart)
     stop_stack_supervisor
-    # The authenticated native browser is preserved unless the real Playwright
-    # probe proves its CDP session stale. Recovery keeps the same persistent profile.
-    activate_stack restart
+    # Preserve the authenticated native browser on every ordinary restart. A marker
+    # written by the freshly installed launcher is the only authority for one bounded
+    # stale-CDP recovery during the deployment transition.
+    browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"
+    activate_stack restart "$browser_recovery_mode"
     ;;
   status)
     "$BROWSER_COMMAND" status || true
@@ -238,6 +270,9 @@ case "$ACTION" in
     run_runtime_acceptance
     ;;
   qualify)
+    # Direct database qualification is intentionally retired. It cannot establish the
+    # authenticated campaign owner and previously guessed from active-user cardinality.
+    # The real Android 4h start now runs qualification automatically for get_current_user.
     echo "JOBTOMATIK_DIRECT_QUALIFICATION_RETIRED"
     echo "Qualification is account-scoped and runs automatically from the authenticated Shadow Campaign Center 4-hour start."
     exit 2
@@ -249,6 +284,12 @@ case "$ACTION" in
   update)
     update_main
     install_native_commands
+    # Never call activate_stack restart from this pre-update shell: Bash parsed this
+    # launcher before the git pull, so its functions can belong to the previous
+    # revision even though install_native_commands has already replaced the file on
+    # disk. Re-exec the freshly installed launcher so restart uses the pulled code.
+    # The installer also arms a one-use deployment marker so only this transition may
+    # recycle an HTTP-alive but Playwright-dead native Chromium session.
     echo "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING"
     exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart
     ;;
