@@ -8,10 +8,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from playwright.async_api import async_playwright
-
 from app.config import get_settings
-from app.services.browser_runtime import launch_application_browser
+from app.services.browser_runtime import probe_external_playwright_cdp
 
 
 async def main() -> int:
@@ -23,15 +21,13 @@ async def main() -> int:
             "http://127.0.0.1:9222 in backend/.env."
         )
 
-    async with async_playwright() as playwright:
-        runtime = await launch_application_browser(playwright)
-        try:
-            print("ANDROID_BROWSER_CDP_CONNECTED")
-            print(f"Endpoint: {runtime.cdp_endpoint}")
-            print(f"Current URL: {runtime.page.url}")
-            print(f"Browser owned by JobTomatik: {runtime.owns_process}")
-        finally:
-            runtime.terminate(remove_profile=False)
+    proof = await probe_external_playwright_cdp(endpoint)
+    print("ANDROID_BROWSER_CDP_CONNECTED")
+    print(f"Endpoint: {proof['cdp_endpoint']}")
+    print(f"Contexts: {proof['context_count']}")
+    print(f"Pages: {proof['page_count']}")
+    print(f"Multiple pages present: {proof['multiple_pages_present']}")
+    print(f"Browser owned by JobTomatik: {proof['browser_owned_by_jobtomatik']}")
     return 0
 
 
