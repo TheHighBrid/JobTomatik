@@ -16,16 +16,40 @@ IDENTITY_PATH = "/__jobtomatik_frontend_identity"
 
 
 class StaticFrontendHandler(SimpleHTTPRequestHandler):
-    server_version = "JobTomatikStaticFrontend/1"
+    server_version = "JobTomatikStaticFrontend/2"
 
-    def __init__(self, *args, directory: str, manifest: dict, **kwargs):
+    def __init__(
+        self,
+        *args,
+        directory: str,
+        manifest: dict,
+        index_payload: bytes,
+        **kwargs,
+    ):
         self.jobtomatik_manifest = manifest
+        self.jobtomatik_index_payload = index_payload
         super().__init__(*args, directory=directory, **kwargs)
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"STATIC_FRONTEND {self.address_string()} {fmt % args}", flush=True)
 
-    def _identity(self) -> None:
+    def _write_payload(
+        self,
+        payload: bytes,
+        *,
+        content_type: str,
+        cache_control: str,
+        head_only: bool = False,
+    ) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", cache_control)
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(payload)
+
+    def _identity(self, *, head_only: bool = False) -> None:
         payload = json.dumps(
             {
                 "ok": True,
@@ -38,50 +62,62 @@ class StaticFrontendHandler(SimpleHTTPRequestHandler):
             },
             sort_keys=True,
         ).encode("utf-8")
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(payload)
+        self._write_payload(
+            payload,
+            content_type="application/json",
+            cache_control="no-store",
+            head_only=head_only,
+        )
+
+    def _spa_shell(self, *, head_only: bool = False) -> None:
+        self._write_payload(
+            self.jobtomatik_index_payload,
+            content_type="text/html; charset=utf-8",
+            cache_control="no-store",
+            head_only=head_only,
+        )
+
+    @staticmethod
+    def _is_spa_route(path: str) -> bool:
+        parsed = urlparse(path)
+        requested = unquote(parsed.path)
+        if requested == "/":
+            return True
+        if requested.startswith("/assets/"):
+            return False
+        return not bool(Path(requested).suffix)
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == IDENTITY_PATH:
             self._identity()
             return
+        if self._is_spa_route(self.path):
+            self._spa_shell()
+            return
         super().do_GET()
 
     def do_HEAD(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == IDENTITY_PATH:
-            self._identity()
+            self._identity(head_only=True)
+            return
+        if self._is_spa_route(self.path):
+            self._spa_shell(head_only=True)
             return
         super().do_HEAD()
 
     def end_headers(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path == "/" or parsed.path.endswith(".html"):
-            self.send_header("Cache-Control", "no-store")
-        elif parsed.path.startswith("/assets/"):
+        if parsed.path.startswith("/assets/"):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()
 
     def translate_path(self, path: str) -> str:
-        """Provide BrowserRouter SPA fallback while preserving actual assets/files."""
+        """Preserve exact-file serving for immutable build assets."""
 
-        translated = Path(super().translate_path(path))
-        if translated.exists():
-            return str(translated)
-
-        parsed = urlparse(path)
-        requested = unquote(parsed.path)
-        # Requests that look like a concrete file must remain a real 404. Route-like
-        # paths without a suffix fall back to index.html for React BrowserRouter.
-        if Path(requested).suffix:
-            return str(translated)
-        return str(Path(self.directory) / "index.html")
+        return super().translate_path(path)
 
     def guess_type(self, path: str) -> str:
         guessed, _ = mimetypes.guess_type(path)
@@ -101,6 +137,14 @@ def load_manifest(path: Path, root: Path, expected_revision: str) -> dict:
     return manifest
 
 
+def load_index_payload(root: Path) -> bytes:
+    index_path = root / "index.html"
+    payload = index_path.read_bytes()
+    if not payload:
+        raise RuntimeError(f"Frontend index shell is empty: {index_path}")
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", required=True, type=Path)
@@ -113,12 +157,14 @@ def main() -> int:
     root = args.root.resolve()
     manifest_path = args.manifest.resolve()
     manifest = load_manifest(manifest_path, root, args.revision)
+    index_payload = load_index_payload(root)
 
     def handler(*handler_args, **handler_kwargs):
         return StaticFrontendHandler(
             *handler_args,
             directory=str(root),
             manifest=manifest,
+            index_payload=index_payload,
             **handler_kwargs,
         )
 
