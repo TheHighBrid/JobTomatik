@@ -149,145 +149,146 @@ async def fill_and_submit_application_with_handoff(
         from playwright.async_api import async_playwright
 
         async with async_playwright() as playwright:
-            runtime = await launch_application_browser(playwright)
-            page = runtime.page
-            log.append({"action": "navigate", "url": job_url, "ts": now_iso()})
             try:
-                await page.goto(job_url, wait_until="domcontentloaded", timeout=30000)
+                runtime = await launch_application_browser(playwright)
+                page = runtime.page
+                log.append({"action": "navigate", "url": job_url, "ts": now_iso()})
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=10000)
+                    await page.goto(job_url, wait_until="domcontentloaded", timeout=30000)
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=10000)
+                    except PlaywrightTimeoutError:
+                        log.append({"action": "network_idle_timeout", "ts": now_iso()})
                 except PlaywrightTimeoutError:
-                    log.append({"action": "network_idle_timeout", "ts": now_iso()})
-            except PlaywrightTimeoutError:
-                log.append({"action": "navigation_timeout", "ts": now_iso()})
+                    log.append({"action": "navigation_timeout", "ts": now_iso()})
 
-            entry = await open_application_entry(page, log)
-            entry_url = str(entry.get("application_url") or "")
-            entry_form_detected = bool(entry.get("application_form_detected"))
+                entry = await open_application_entry(page, log)
+                entry_url = str(entry.get("application_url") or "")
+                entry_form_detected = bool(entry.get("application_form_detected"))
 
-            current_entry_url = str(getattr(page, "url", "") or entry_url or job_url)
-            if (
-                not entry_form_detected
-                and current_entry_url
-                and not is_job_board_url(current_entry_url)
-            ):
-                continued = await continue_from_employer_landing(
-                    page,
-                    source_url=job_url,
-                    log=log,
-                )
-                if continued:
-                    entry = continued
-                    entry_url = str(entry.get("application_url") or "")
-                    entry_form_detected = bool(entry.get("application_form_detected"))
-
-            if entry_url:
-                result["application_url"] = entry_url
-                result["application_entry_method"] = entry.get("resolution_method")
-                result["application_form_detected"] = entry_form_detected
-
-            adapter = await detect_ats_adapter(page, page.url)
-            result["ats_adapter"] = adapter.name
-            result["ats_adapter_version"] = adapter.version
-            log.append({
-                "action": "ats_adapter_detected",
-                "adapter": adapter.name,
-                "version": adapter.version,
-                "ts": now_iso(),
-            })
-
-            form_evidence = await application_form_evidence(page)
-            result["form_evidence"] = form_evidence.as_dict()
-            if adapter.name == "generic" and not form_evidence.present:
-                challenge = await detect_blocking_challenge(page)
-                if challenge:
-                    _apply_challenge_result(result, challenge)
-                else:
-                    result["error"] = (
-                        "The Apply doorway did not expose an application form. No CAPTCHA, "
-                        "login, MFA, or anti-bot boundary was observed, so the browser was "
-                        "not handed off."
+                current_entry_url = str(getattr(page, "url", "") or entry_url or job_url)
+                if (
+                    not entry_form_detected
+                    and current_entry_url
+                    and not is_job_board_url(current_entry_url)
+                ):
+                    continued = await continue_from_employer_landing(
+                        page,
+                        source_url=job_url,
+                        log=log,
                     )
-                    log.append({
-                        "action": "application_form_not_reached",
-                        "url": page.url,
-                        "adapter": adapter.name,
-                        "manual_handoff_created": False,
-                        "ts": now_iso(),
-                    })
-                    return result
+                    if continued:
+                        entry = continued
+                        entry_url = str(entry.get("application_url") or "")
+                        entry_form_detected = bool(entry.get("application_form_detected"))
 
-            async def fill_step(surface: Any, step_number: int) -> Dict[str, Any]:
-                return await _fill_step_fields(
-                    surface,
-                    profile=user_profile,
-                    cover_letter=cover_letter,
-                    resume_path=resume_path,
-                    log=log,
-                    step_number=step_number,
-                )
+                if entry_url:
+                    result["application_url"] = entry_url
+                    result["application_entry_method"] = entry.get("resolution_method")
+                    result["application_form_detected"] = entry_form_detected
 
-            async def pre_submit_check(current_page: Any, _current_adapter: Any) -> Dict[str, Any]:
-                detected = await detect_ats_adapter(current_page, current_page.url)
-                return await verify_supervised_browser_target(
-                    current_url=current_page.url,
-                    adapter_name=detected.name,
-                    adapter_version=detected.version,
-                    expected_metadata=supervised_target,
-                    refresh_official_metadata=True,
-                )
-
-            if not result.get("requires_manual_review"):
-                flow = await run_ats_application_flow(
-                    page,
-                    adapter,
-                    fill_step=fill_step,
-                    dry_run=dry_run,
-                    log=log,
-                    pre_submit_check=(
-                        pre_submit_check
-                        if supervised_target and not dry_run
-                        else None
-                    ),
-                )
-                _promote_deferred_captcha_boundary(flow, log)
-                result.update(flow.as_dict())
-                result["ats_adapter"] = flow.adapter_name
-                result["ats_adapter_version"] = flow.adapter_version
-                if flow.success and not dry_run:
-                    result["submitted_at"] = now_iso()
-
-            if _resumable_boundary(result):
-                snapshot = await runtime.capture_snapshot(metadata={
-                    "dry_run": dry_run,
-                    "adapter": result.get("ats_adapter"),
-                    "adapter_version": result.get("ats_adapter_version"),
-                    "fields_filled": int(result.get("fields_filled") or 0),
-                    "steps_completed": int(result.get("steps_completed") or 0),
-                    "handoff_stage": "post_fill_security_boundary",
-                    "supervised_target": dict(supervised_target or {}),
-                })
-                result["handoff_snapshot"] = snapshot
-                retained = True
+                adapter = await detect_ats_adapter(page, page.url)
+                result["ats_adapter"] = adapter.name
+                result["ats_adapter_version"] = adapter.version
                 log.append({
-                    "action": "browser_handoff_retained",
-                    "provider": snapshot["browser_provider"],
-                    "browser_session_id": snapshot["browser_session_id"],
-                    "current_fingerprint": snapshot["current_fingerprint"],
-                    "fields_filled": int(result.get("fields_filled") or 0),
-                    "supervised_target_locked": bool(supervised_target),
+                    "action": "ats_adapter_detected",
+                    "adapter": adapter.name,
+                    "version": adapter.version,
                     "ts": now_iso(),
                 })
+
+                form_evidence = await application_form_evidence(page)
+                result["form_evidence"] = form_evidence.as_dict()
+                if adapter.name == "generic" and not form_evidence.present:
+                    challenge = await detect_blocking_challenge(page)
+                    if challenge:
+                        _apply_challenge_result(result, challenge)
+                    else:
+                        result["error"] = (
+                            "The Apply doorway did not expose an application form. No CAPTCHA, "
+                            "login, MFA, or anti-bot boundary was observed, so the browser was "
+                            "not handed off."
+                        )
+                        log.append({
+                            "action": "application_form_not_reached",
+                            "url": page.url,
+                            "adapter": adapter.name,
+                            "manual_handoff_created": False,
+                            "ts": now_iso(),
+                        })
+                        return result
+
+                async def fill_step(surface: Any, step_number: int) -> Dict[str, Any]:
+                    return await _fill_step_fields(
+                        surface,
+                        profile=user_profile,
+                        cover_letter=cover_letter,
+                        resume_path=resume_path,
+                        log=log,
+                        step_number=step_number,
+                    )
+
+                async def pre_submit_check(current_page: Any, _current_adapter: Any) -> Dict[str, Any]:
+                    detected = await detect_ats_adapter(current_page, current_page.url)
+                    return await verify_supervised_browser_target(
+                        current_url=current_page.url,
+                        adapter_name=detected.name,
+                        adapter_version=detected.version,
+                        expected_metadata=supervised_target,
+                        refresh_official_metadata=True,
+                    )
+
+                if not result.get("requires_manual_review"):
+                    flow = await run_ats_application_flow(
+                        page,
+                        adapter,
+                        fill_step=fill_step,
+                        dry_run=dry_run,
+                        log=log,
+                        pre_submit_check=(
+                            pre_submit_check
+                            if supervised_target and not dry_run
+                            else None
+                        ),
+                    )
+                    _promote_deferred_captcha_boundary(flow, log)
+                    result.update(flow.as_dict())
+                    result["ats_adapter"] = flow.adapter_name
+                    result["ats_adapter_version"] = flow.adapter_version
+                    if flow.success and not dry_run:
+                        result["submitted_at"] = now_iso()
+
+                if _resumable_boundary(result):
+                    snapshot = await runtime.capture_snapshot(metadata={
+                        "dry_run": dry_run,
+                        "adapter": result.get("ats_adapter"),
+                        "adapter_version": result.get("ats_adapter_version"),
+                        "fields_filled": int(result.get("fields_filled") or 0),
+                        "steps_completed": int(result.get("steps_completed") or 0),
+                        "handoff_stage": "post_fill_security_boundary",
+                        "supervised_target": dict(supervised_target or {}),
+                    })
+                    result["handoff_snapshot"] = snapshot
+                    retained = True
+                    log.append({
+                        "action": "browser_handoff_retained",
+                        "provider": snapshot["browser_provider"],
+                        "browser_session_id": snapshot["browser_session_id"],
+                        "current_fingerprint": snapshot["current_fingerprint"],
+                        "fields_filled": int(result.get("fields_filled") or 0),
+                        "supervised_target_locked": bool(supervised_target),
+                        "ts": now_iso(),
+                    })
+            finally:
+                if runtime is not None:
+                    await release_application_browser(
+                        runtime,
+                        retain_controlled_page=retained,
+                    )
     except ImportError:
         result["error"] = "Playwright not installed"
     except Exception as exc:
         result["error"] = str(exc)
         log.append({"action": "error", "detail": str(exc)[:300], "ts": now_iso()})
-    finally:
-        if runtime is not None:
-            await release_application_browser(
-                runtime,
-                retain_controlled_page=retained,
-            )
 
     return result
