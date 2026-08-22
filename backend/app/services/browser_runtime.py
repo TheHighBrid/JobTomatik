@@ -7,7 +7,9 @@ This facade changes only the external Android CDP attachment contract:
 - health/inventory probes may observe any number of tabs without guessing which
   tab an application owns;
 - application execution creates a fresh controlled tab inside the single
-  authenticated browser context instead of commandeering an arbitrary retained tab.
+  authenticated browser context instead of commandeering an arbitrary retained tab;
+- completed application work releases only that JobTomatik-owned controlled tab,
+  while explicit security handoffs retain it for human continuation.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ for _name in dir(_base):
 
 EXTERNAL_CDP_CONNECT_TIMEOUT_SECONDS = 60
 EXTERNAL_CDP_ATTACH_ATTEMPT_TIMEOUT_SECONDS = 45
+_CONTROLLED_PAGE_OWNERSHIP_ATTR = "_jobtomatik_controlled_page_owned"
 
 
 async def _connect_external_playwright_over_cdp(playwright: Any, endpoint: str) -> Any:
@@ -152,7 +155,7 @@ async def attach_retainable_browser(
     session_id = str(uuid4())
     session_dir = handoff_storage_root() / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
-    return RetainableBrowserRuntime(
+    runtime = RetainableBrowserRuntime(
         process=ExternalBrowserProcess(endpoint),
         cdp_endpoint=endpoint,
         browser_session_id=session_id,
@@ -165,6 +168,44 @@ async def attach_retainable_browser(
         page=page,
         session_dir=session_dir,
     )
+    setattr(runtime, _CONTROLLED_PAGE_OWNERSHIP_ATTR, bool(create_controlled_page))
+    return runtime
+
+
+async def release_application_browser(
+    runtime: RetainableBrowserRuntime,
+    *,
+    retain_controlled_page: bool = False,
+) -> None:
+    """Release one application runtime without disturbing unrelated browser tabs.
+
+    Local JobTomatik-owned Chromium keeps its historical terminate behavior. For
+    externally owned Android Chromium, only a page explicitly created by
+    ``launch_application_browser`` may be closed. Existing user/LinkedIn/UI tabs are
+    never selected for cleanup. A security-boundary handoff deliberately retains
+    the controlled page so the human can continue from the exact observed state.
+    """
+
+    if retain_controlled_page:
+        return
+
+    if (
+        not runtime.owns_process
+        and bool(getattr(runtime, _CONTROLLED_PAGE_OWNERSHIP_ATTR, False))
+    ):
+        page = runtime.page
+        try:
+            is_closed = getattr(page, "is_closed", None)
+            if not callable(is_closed) or not bool(is_closed()):
+                await page.close(run_before_unload=False)
+        except Exception:
+            # Cleanup must never turn a completed/failed application result into a
+            # second failure. The browser itself remains externally owned and alive.
+            pass
+        finally:
+            setattr(runtime, _CONTROLLED_PAGE_OWNERSHIP_ATTR, False)
+
+    runtime.terminate(remove_profile=False)
 
 
 async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:
