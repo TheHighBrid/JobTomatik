@@ -10,6 +10,7 @@ DEST_DIR="$TERMUX_PREFIX/bin"
 BROWSER_DEST="$DEST_DIR/jobtomatik-browser"
 STACK_DEST="$DEST_DIR/jobtomatik"
 IDENTITY_DEST="$DEST_DIR/jobtomatik_process_identity.sh"
+DEPLOYMENT_RESTART_MARKER="${JOBTOMATIK_DEPLOYMENT_RESTART_MARKER:-$DEST_DIR/.jobtomatik-deployment-restart.pending}"
 
 for source_file in "$BROWSER_SOURCE" "$STACK_SOURCE" "$IDENTITY_SOURCE"; do
   if [[ ! -f "$source_file" ]]; then
@@ -37,8 +38,16 @@ install_atomically "$IDENTITY_SOURCE" "$IDENTITY_DEST"
 install_atomically "$BROWSER_SOURCE" "$BROWSER_DEST"
 install_atomically "$STACK_SOURCE" "$STACK_DEST"
 
+# The current launcher may have been parsed before a git update replaced these files.
+# Mark the completed native deployment so the freshly installed wrapper can distinguish
+# its one deployment restart from ordinary user/runtime restarts. The new wrapper
+# consumes this marker before any optional stale-CDP recovery, making recovery bounded
+# to one browser recycle per completed native launcher installation.
+touch "$DEPLOYMENT_RESTART_MARKER"
+
 echo "ANDROID_BROWSER_LAUNCHER_INSTALLED"
 echo "Native prefix: $TERMUX_PREFIX"
 echo "Browser command: $BROWSER_DEST"
 echo "Stack command: $STACK_DEST"
 echo "Process identity helper: $IDENTITY_DEST"
+echo "Deployment recovery marker: $DEPLOYMENT_RESTART_MARKER"
