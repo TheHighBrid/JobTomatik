@@ -23,6 +23,7 @@ on:
       - "backend/app/services/supervised_submission_integration.py"
       - "backend/app/services/supervised_target_identity.py"
       - "backend/tests/test_greenhouse_approval_schema_binding.py"
+      - "backend/tests/test_supervised_target_liveness.py"
       - "backend/tests/test_lever_supervised_preflight.py"
       - "backend/tests/test_lever_worker_handoff_safety.py"
       - "backend/tests/test_lever_worker_revalidation.py"
@@ -53,6 +54,7 @@ on:
       - "backend/app/services/supervised_submission_integration.py"
       - "backend/app/services/supervised_target_identity.py"
       - "backend/tests/test_greenhouse_approval_schema_binding.py"
+      - "backend/tests/test_supervised_target_liveness.py"
       - "backend/tests/test_lever_supervised_preflight.py"
       - "backend/tests/test_lever_worker_handoff_safety.py"
       - "backend/tests/test_lever_worker_revalidation.py"
@@ -118,6 +120,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_greenhouse_approval_schema_binding.py \
+            tests/test_supervised_target_liveness.py \
             tests/test_lever_supervised_preflight.py \
             tests/test_lever_worker_handoff_safety.py \
             tests/test_lever_worker_revalidation.py \
