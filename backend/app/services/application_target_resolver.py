@@ -11,7 +11,10 @@ from app.services.browser_navigation import (
     is_job_board_url,
     now_iso,
 )
-from app.services.browser_runtime import launch_application_browser
+from app.services.browser_runtime import (
+    launch_application_browser,
+    release_application_browser,
+)
 from app.services.employer_application_entry import continue_from_employer_landing
 from app.services.listing_availability import detect_closed_listing
 
@@ -258,7 +261,10 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
             "ts": now_iso(),
         })
     finally:
-        if runtime is not None and not retained:
-            runtime.terminate(remove_profile=False)
+        if runtime is not None:
+            await release_application_browser(
+                runtime,
+                retain_controlled_page=retained,
+            )
 
     return result
