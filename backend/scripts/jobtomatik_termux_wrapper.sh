@@ -194,6 +194,19 @@ activate_stack() {
   local action="$1"
   sanitize_runtime_pid_files
   ensure_static_frontend_artifact
+
+  # `jobtomatik start` is idempotent. Never recycle the external authenticated
+  # Chromium while the managed stack is already live and healthy because that could
+  # interrupt an in-flight application session. The authoritative acceptance check
+  # remains safe and non-destructive for this already-running path.
+  if [[ "$action" == "start" ]] && supervisor_alive; then
+    if run_stack_foreground status && run_frontend_guard status; then
+      echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
+      run_runtime_acceptance
+      return 0
+    fi
+  fi
+
   "$BROWSER_COMMAND" start
   # HTTP CDP alone is insufficient. Prove the exact Playwright attach path used by
   # the managed worker. If it is stale, the native launcher performs one bounded,
