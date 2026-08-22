@@ -88,6 +88,24 @@ async def connect_external_playwright_browser(
     return endpoint, browser
 
 
+def external_browser_inventory(browser: Any) -> Dict[str, Any]:
+    """Describe connected browser state without selecting an application tab."""
+
+    contexts = list(browser.contexts)
+    if not contexts:
+        raise BrowserRuntimeError(
+            "Android/native Chromium accepted Playwright CDP but exposed no browser context."
+        )
+    pages = [page for context in contexts for page in list(context.pages)]
+    current_url = str(pages[0].url or "") if len(pages) == 1 else ""
+    return {
+        "context_count": len(contexts),
+        "page_count": len(pages),
+        "current_url": current_url,
+        "multiple_pages_present": len(pages) > 1,
+    }
+
+
 def _single_external_context(browser: Any) -> Any:
     contexts = list(browser.contexts)
     if not contexts:
@@ -164,20 +182,11 @@ async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:
             playwright,
             cdp_endpoint=endpoint,
         )
-        contexts = list(browser.contexts)
-        if not contexts:
-            raise BrowserRuntimeError(
-                "Android/native Chromium accepted Playwright CDP but exposed no browser context."
-            )
-        pages = [page for context in contexts for page in list(context.pages)]
-        current_url = str(pages[0].url or "") if len(pages) == 1 else ""
+        inventory = external_browser_inventory(browser)
         return {
             "playwright_attach_ready": True,
             "cdp_endpoint": normalized_endpoint,
-            "context_count": len(contexts),
-            "page_count": len(pages),
-            "current_url": current_url,
-            "multiple_pages_present": len(pages) > 1,
+            **inventory,
             "browser_owned_by_jobtomatik": False,
         }
 
