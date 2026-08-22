@@ -16,6 +16,7 @@ from app.services.browser_navigation import (
     now_iso,
 )
 from app.services.browser_runtime import (
+    controlled_page_target_id,
     launch_application_browser,
     release_application_browser,
 )
@@ -259,7 +260,8 @@ async def fill_and_submit_application_with_handoff(
                         result["submitted_at"] = now_iso()
 
                 if _resumable_boundary(result):
-                    snapshot = await runtime.capture_snapshot(metadata={
+                    controlled_target_id = await controlled_page_target_id(runtime.page)
+                    snapshot_metadata = {
                         "dry_run": dry_run,
                         "adapter": result.get("ats_adapter"),
                         "adapter_version": result.get("ats_adapter_version"),
@@ -267,7 +269,10 @@ async def fill_and_submit_application_with_handoff(
                         "steps_completed": int(result.get("steps_completed") or 0),
                         "handoff_stage": "post_fill_security_boundary",
                         "supervised_target": dict(supervised_target or {}),
-                    })
+                    }
+                    if controlled_target_id:
+                        snapshot_metadata["controlled_page_target_id"] = controlled_target_id
+                    snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
                     result["handoff_snapshot"] = snapshot
                     retained = True
                     log.append({
@@ -277,6 +282,7 @@ async def fill_and_submit_application_with_handoff(
                         "current_fingerprint": snapshot["current_fingerprint"],
                         "fields_filled": int(result.get("fields_filled") or 0),
                         "supervised_target_locked": bool(supervised_target),
+                        "controlled_page_target_id_recorded": bool(controlled_target_id),
                         "ts": now_iso(),
                     })
             finally:
