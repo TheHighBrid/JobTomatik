@@ -10,6 +10,7 @@ STACK_PID_FILE="$RUNTIME_DIR/proot-stack.pid"
 STACK_LOG="$RUNTIME_DIR/proot-stack.log"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 PROCESS_IDENTITY_HELPER="${JOBTOMATIK_PROCESS_IDENTITY_HELPER:-$SCRIPT_DIR/jobtomatik_process_identity.sh}"
+DEPLOYMENT_RESTART_MARKER="${JOBTOMATIK_DEPLOYMENT_RESTART_MARKER:-$SCRIPT_DIR/.jobtomatik-deployment-restart.pending}"
 FRONTEND_RUNTIME_MODE="static_artifact"
 
 if [[ ! -r "$PROCESS_IDENTITY_HELPER" ]]; then
@@ -51,6 +52,65 @@ ensure_static_frontend_artifact() {
 run_runtime_acceptance() {
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/android_runtime_acceptance.py"
+}
+
+run_browser_playwright_probe() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO/backend'; export JOBTOMATIK_RUNTIME_MODE=android_managed; .venv/bin/python - <<'PY'
+import asyncio
+
+from app.services.browser_runtime import probe_external_playwright_cdp
+
+
+async def main() -> None:
+    proof = await probe_external_playwright_cdp('http://127.0.0.1:9222')
+    if proof.get('playwright_attach_ready') is not True:
+        raise SystemExit(1)
+    if proof.get('browser_owned_by_jobtomatik') is not False:
+        raise SystemExit(1)
+    print('ANDROID_BROWSER_PLAYWRIGHT_CDP_READY')
+
+
+asyncio.run(main())
+PY"
+}
+
+ensure_browser_playwright_ready() {
+  local recovery_mode="${1:-preserve}"
+  local initial_probe
+  if initial_probe="$(run_browser_playwright_probe 2>&1)"; then
+    [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe"
+    return 0
+  fi
+
+  if [[ "$recovery_mode" != "recover_once" ]]; then
+    echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=preserve_browser_fail" >&2
+    [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe" >&2
+    return 1
+  fi
+
+  echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=recover_once"
+  "$BROWSER_COMMAND" recover
+
+  local recovery_probe
+  if recovery_probe="$(run_browser_playwright_probe 2>&1)"; then
+    [[ -n "$recovery_probe" ]] && printf '%s\n' "$recovery_probe"
+    echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_RECOVERED"
+    return 0
+  fi
+
+  echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_RECOVERY_FAILED" >&2
+  [[ -n "$recovery_probe" ]] && printf '%s\n' "$recovery_probe" >&2
+  return 1
+}
+
+consume_deployment_browser_recovery_mode() {
+  if [[ -f "$DEPLOYMENT_RESTART_MARKER" ]]; then
+    rm -f "$DEPLOYMENT_RESTART_MARKER"
+    printf '%s\n' "recover_once"
+    return 0
+  fi
+  printf '%s\n' "preserve"
 }
 
 supervisor_identity_matches() {
@@ -162,9 +222,14 @@ update_main() {
 
 activate_stack() {
   local action="$1"
+  local browser_recovery_mode="${2:-preserve}"
   sanitize_runtime_pid_files
   ensure_static_frontend_artifact
   "$BROWSER_COMMAND" start
+  # HTTP CDP alone is insufficient. Prove the exact Playwright attach path used by
+  # the managed worker. Ordinary starts/restarts preserve the authenticated browser
+  # and fail closed; only a freshly installed deployment token can allow one recycle.
+  ensure_browser_playwright_ready "$browser_recovery_mode"
   # The PRoot manager owns API, worker, Beat and the attested static frontend. Native
   # Chromium remains outside PRoot and is crossed only through the localhost CDP
   # protocol boundary.
@@ -174,13 +239,24 @@ activate_stack() {
 
 case "$ACTION" in
   start)
-    activate_stack start
+    # `jobtomatik start` is idempotent. Never recycle the external authenticated
+    # Chromium while the managed stack is already live and healthy because that could
+    # interrupt an in-flight application session.
+    if supervisor_alive && run_stack_foreground status && run_frontend_guard status; then
+      echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
+      run_runtime_acceptance
+    else
+      browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"
+      activate_stack start "$browser_recovery_mode"
+    fi
     ;;
   restart)
     stop_stack_supervisor
-    # Preserve the authenticated native browser. The authoritative PRoot manager
-    # refreshes only localhost:3000 JobTomatik tabs after the new runtime is ready.
-    activate_stack restart
+    # Preserve the authenticated native browser on every ordinary restart. A marker
+    # written by the freshly installed launcher is the only authority for one bounded
+    # stale-CDP recovery during the deployment transition.
+    browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"
+    activate_stack restart "$browser_recovery_mode"
     ;;
   status)
     "$BROWSER_COMMAND" status || true
@@ -212,6 +288,8 @@ case "$ACTION" in
     # launcher before the git pull, so its functions can belong to the previous
     # revision even though install_native_commands has already replaced the file on
     # disk. Re-exec the freshly installed launcher so restart uses the pulled code.
+    # The installer also arms a one-use deployment marker so only this transition may
+    # recycle an HTTP-alive but Playwright-dead native Chromium session.
     echo "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING"
     exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart
     ;;

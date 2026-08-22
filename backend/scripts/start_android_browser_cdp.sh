@@ -25,7 +25,7 @@ source "$PROCESS_IDENTITY_HELPER"
 
 ACTION="${1:-start}"
 case "$ACTION" in
-  start|stop|restart|status|foreground|supervise)
+  start|stop|restart|recover|status|foreground|supervise)
     shift || true
     ;;
   http://*|https://*)
@@ -34,7 +34,7 @@ case "$ACTION" in
     shift || true
     ;;
   *)
-    echo "Usage: $0 [start|stop|restart|status|foreground] [url]" >&2
+    echo "Usage: $0 [start|stop|restart|recover|status|foreground] [url]" >&2
     exit 2
     ;;
 esac
@@ -101,6 +101,26 @@ supervisor_identity_matches() {
   jobtomatik_pid_has_all_tokens "$pid" "$SCRIPT_PATH" "supervise"
 }
 
+wait_for_shutdown() {
+  local supervisor_pid="${1:-}"
+  local index
+  for ((index = 0; index < 80; index += 1)); do
+    local supervisor_gone=true
+    # PID files can be stale and Android/Linux can recycle the numeric PID. Only wait
+    # on the PID while it still proves the exact JobTomatik browser-supervisor identity.
+    if [[ -n "$supervisor_pid" ]] \
+      && kill -0 "$supervisor_pid" 2>/dev/null \
+      && supervisor_identity_matches "$supervisor_pid"; then
+      supervisor_gone=false
+    fi
+    if [[ "$supervisor_gone" == true ]] && ! is_healthy; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  return 1
+}
+
 signal_supervisor_if_managed() {
   local pid="$1"
   if ! kill -0 "$pid" 2>/dev/null; then
@@ -134,6 +154,7 @@ case "$ACTION" in
 
   stop)
     touch "$STOP_FILE"
+    supervisor_pid=""
     if [[ -f "$SUPERVISOR_PID_FILE" ]]; then
       supervisor_pid="$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null || true)"
       if [[ -n "$supervisor_pid" ]]; then
@@ -141,6 +162,10 @@ case "$ACTION" in
       fi
     fi
     stop_browser_processes
+    if ! wait_for_shutdown "$supervisor_pid"; then
+      echo "ANDROID_BROWSER_CDP_STOP_TIMEOUT" >&2
+      exit 1
+    fi
     rm -f "$SUPERVISOR_PID_FILE"
     if command -v termux-wake-unlock >/dev/null 2>&1; then
       termux-wake-unlock >/dev/null 2>&1 || true
@@ -148,8 +173,8 @@ case "$ACTION" in
     echo "ANDROID_BROWSER_CDP_STOPPED"
     ;;
 
-  restart)
-    "$SCRIPT_PATH" stop || true
+  restart|recover)
+    "$SCRIPT_PATH" stop
     rm -f "$STOP_FILE"
     exec "$SCRIPT_PATH" start "$START_URL"
     ;;
