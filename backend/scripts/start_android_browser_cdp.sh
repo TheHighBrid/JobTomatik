@@ -96,12 +96,21 @@ wait_for_health() {
   return 1
 }
 
+supervisor_identity_matches() {
+  local pid="$1"
+  jobtomatik_pid_has_all_tokens "$pid" "$SCRIPT_PATH" "supervise"
+}
+
 wait_for_shutdown() {
   local supervisor_pid="${1:-}"
   local index
   for ((index = 0; index < 80; index += 1)); do
     local supervisor_gone=true
-    if [[ -n "$supervisor_pid" ]] && kill -0 "$supervisor_pid" 2>/dev/null; then
+    # PID files can be stale and Android/Linux can recycle the numeric PID. Only wait
+    # on the PID while it still proves the exact JobTomatik browser-supervisor identity.
+    if [[ -n "$supervisor_pid" ]] \
+      && kill -0 "$supervisor_pid" 2>/dev/null \
+      && supervisor_identity_matches "$supervisor_pid"; then
       supervisor_gone=false
     fi
     if [[ "$supervisor_gone" == true ]] && ! is_healthy; then
@@ -110,11 +119,6 @@ wait_for_shutdown() {
     sleep 0.25
   done
   return 1
-}
-
-supervisor_identity_matches() {
-  local pid="$1"
-  jobtomatik_pid_has_all_tokens "$pid" "$SCRIPT_PATH" "supervise"
 }
 
 signal_supervisor_if_managed() {
