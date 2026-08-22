@@ -78,6 +78,29 @@ def _enable_production_pilot(monkeypatch):
     )
 
 
+def _stable_verified_form_schema(monkeypatch):
+    """Keep liveness regressions focused on URL state, not schema transport."""
+
+    monkeypatch.setattr(
+        approval_service,
+        "_greenhouse_form_schema_status",
+        lambda _url: {
+            "checked": True,
+            "verified": True,
+            "status_code": 200,
+            "board_token": "example",
+            "job_id": "123456",
+            "schema_hash": "a" * 64,
+            "fingerprint_version": approval_service.FORM_SCHEMA_FINGERPRINT_VERSION,
+            "question_count": 1,
+            "required_question_count": 1,
+            "required_uploads": ["Resume"],
+            "unsupported_fields": [],
+            "blocker": None,
+        },
+    )
+
+
 def test_greenhouse_target_liveness_accepts_same_exact_job(monkeypatch):
     monkeypatch.setattr(
         approval_service.httpx,
@@ -163,6 +186,7 @@ def test_supervised_preflight_blocks_closed_selected_greenhouse_target(
 ):
     application, user, job = _selected_application(db_session, tmp_path)
     _enable_production_pilot(monkeypatch)
+    _stable_verified_form_schema(monkeypatch)
     monkeypatch.setattr(
         approval_service.httpx,
         "get",
@@ -189,6 +213,7 @@ def test_approval_validation_rechecks_target_liveness_before_consume(
 ):
     application, user, job = _selected_application(db_session, tmp_path)
     _enable_production_pilot(monkeypatch)
+    _stable_verified_form_schema(monkeypatch)
     target_state = {"url": LIVE_URL}
     monkeypatch.setattr(
         approval_service.httpx,

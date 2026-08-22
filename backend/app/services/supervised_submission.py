@@ -34,6 +34,7 @@ from app.models.submission_approval import (
 )
 from app.models.user import User
 from app.services.answer_policy import load_runtime_policies
+from app.services.ats_greenhouse import inspect_greenhouse_schema, parse_greenhouse_job_url
 from app.services.operations_policy import platform_key_for_url
 from app.services.supervised_platforms import (
     GREENHOUSE_PLATFORM_KEY,
@@ -52,6 +53,8 @@ settings = get_settings()
 SUPPORTED_PLATFORM = GREENHOUSE_PLATFORM_KEY
 MANUAL_GREENHOUSE_PHASE_B_SOURCE = "manual_greenhouse_phase_b"
 TARGET_LIVENESS_TIMEOUT_SECONDS = 5.0
+FORM_SCHEMA_TIMEOUT_SECONDS = 5.0
+FORM_SCHEMA_FINGERPRINT_VERSION = 1
 
 
 class SupervisedSubmissionApprovalError(ValueError):
@@ -224,6 +227,115 @@ def _greenhouse_target_liveness(application_url: str) -> Dict[str, Any]:
     return result
 
 
+def _canonicalize_form_schema_value(value: Any) -> Any:
+    """Normalize public Greenhouse schema data for order-insensitive hashing."""
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): _canonicalize_form_schema_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        normalized = [_canonicalize_form_schema_value(item) for item in value]
+        return sorted(normalized, key=_canonical_json)
+    return value
+
+
+def _greenhouse_schema_fingerprint(schema: Mapping[str, Any], job_id: str) -> str:
+    """Hash the live application-question surface, including selectable options."""
+
+    payload = {
+        "version": FORM_SCHEMA_FINGERPRINT_VERSION,
+        "job_id": str(job_id or "").strip(),
+        "questions": _canonicalize_form_schema_value(schema.get("questions") or []),
+        "location_questions": _canonicalize_form_schema_value(
+            schema.get("location_questions") or []
+        ),
+        "demographic_questions": _canonicalize_form_schema_value(
+            schema.get("demographic_questions") or []
+        ),
+        "data_compliance": _canonicalize_form_schema_value(
+            schema.get("data_compliance") or schema.get("compliance") or []
+        ),
+    }
+    return _hash_value(payload)
+
+
+def _greenhouse_form_schema_status(application_url: str) -> Dict[str, Any]:
+    """Fetch and fingerprint the official live Greenhouse question schema.
+
+    Only public form structure is retained. Answers are never stored here. Unknown
+    field types or transport/parsing failures block supervised approval rather than
+    allowing a stale dry-run payload to reach the live worker.
+    """
+
+    result: Dict[str, Any] = {
+        "checked": True,
+        "verified": False,
+        "status_code": None,
+        "board_token": None,
+        "job_id": None,
+        "schema_hash": None,
+        "fingerprint_version": FORM_SCHEMA_FINGERPRINT_VERSION,
+        "question_count": None,
+        "required_question_count": None,
+        "required_uploads": [],
+        "unsupported_fields": [],
+        "blocker": "application_form_schema_unverified",
+    }
+    board_token, job_id = parse_greenhouse_job_url(application_url)
+    result["board_token"] = board_token
+    result["job_id"] = job_id
+    if not board_token or not job_id:
+        return result
+
+    schema_url = (
+        f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs/{job_id}"
+    )
+    try:
+        response = httpx.get(
+            schema_url,
+            params={"questions": "true"},
+            timeout=FORM_SCHEMA_TIMEOUT_SECONDS,
+            follow_redirects=True,
+            headers={
+                "User-Agent": "JobTomatik/1.0 supervised-form-schema",
+                "Accept": "application/json",
+            },
+        )
+    except (httpx.HTTPError, ValueError):
+        return result
+
+    result["status_code"] = int(response.status_code)
+    if response.status_code >= 400:
+        return result
+
+    try:
+        schema = response.json()
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return result
+    if not isinstance(schema, Mapping):
+        return result
+
+    inspection = inspect_greenhouse_schema(dict(schema))
+    questions = list(inspection.get("questions") or [])
+    unsupported = list(inspection.get("unsupported_fields") or [])
+    result["question_count"] = int(inspection.get("question_count") or 0)
+    result["required_question_count"] = sum(
+        1 for question in questions if question.get("required") is True
+    )
+    result["required_uploads"] = list(inspection.get("required_uploads") or [])
+    result["unsupported_fields"] = unsupported
+    if not inspection.get("schema_certified") or unsupported:
+        result["blocker"] = "application_form_schema_unsupported"
+        return result
+
+    result["schema_hash"] = _greenhouse_schema_fingerprint(schema, job_id)
+    result["verified"] = True
+    result["blocker"] = None
+    return result
+
+
 def _should_probe_target_liveness(job: Job, platform: str) -> bool:
     raw_data = dict(job.raw_data or {})
     return bool(
@@ -231,6 +343,10 @@ def _should_probe_target_liveness(job: Job, platform: str) -> bool:
         and platform == GREENHOUSE_PLATFORM_KEY
         and raw_data.get("selection_source") == MANUAL_GREENHOUSE_PHASE_B_SOURCE
     )
+
+
+def _should_probe_form_schema(job: Job, platform: str) -> bool:
+    return _should_probe_target_liveness(job, platform)
 
 
 def build_submission_snapshot(
@@ -352,6 +468,20 @@ def build_supervised_preflight(
         "final_url": None,
         "blocker": None,
     }
+    form_schema: Dict[str, Any] = {
+        "checked": False,
+        "verified": None,
+        "status_code": None,
+        "board_token": None,
+        "job_id": None,
+        "schema_hash": None,
+        "fingerprint_version": FORM_SCHEMA_FINGERPRINT_VERSION,
+        "question_count": None,
+        "required_question_count": None,
+        "required_uploads": [],
+        "unsupported_fields": [],
+        "blocker": None,
+    }
 
     blockers: list[str] = []
     if not live_enabled:
@@ -372,6 +502,11 @@ def build_supervised_preflight(
         liveness_blocker = str(target_liveness.get("blocker") or "").strip()
         if liveness_blocker:
             blockers.append(liveness_blocker)
+    if _should_probe_form_schema(job, snapshot["platform"]):
+        form_schema = _greenhouse_form_schema_status(snapshot["application_url"])
+        schema_blocker = str(form_schema.get("blocker") or "").strip()
+        if schema_blocker:
+            blockers.append(schema_blocker)
     if state != ApplicationAutomationState.ready_to_apply.value:
         blockers.append("application_not_ready_to_apply")
     if open_reviews:
@@ -382,6 +517,15 @@ def build_supervised_preflight(
         blockers.append("missing_submission_idempotency_key")
     if not snapshot["resume_hash"]:
         blockers.append("resume_missing_or_unreadable")
+
+    combined_payload_hash = snapshot["combined_payload_hash"]
+    form_schema_hash = str(form_schema.get("schema_hash") or "").strip() or None
+    if form_schema_hash:
+        combined_payload_hash = _hash_value({
+            "base_combined_payload_hash": combined_payload_hash,
+            "form_schema_fingerprint_version": form_schema.get("fingerprint_version"),
+            "form_schema_hash": form_schema_hash,
+        })
 
     blockers = list(dict.fromkeys(blockers))
     return {
@@ -404,7 +548,7 @@ def build_supervised_preflight(
         "resume_hash": snapshot["resume_hash"],
         "cover_letter_hash": snapshot["cover_letter_hash"],
         "answer_payload_hash": snapshot["answer_payload_hash"],
-        "combined_payload_hash": snapshot["combined_payload_hash"],
+        "combined_payload_hash": combined_payload_hash,
         "policy_count": snapshot["policy_count"],
         "cover_letter_present": snapshot["cover_letter_present"],
         "resume_filename": snapshot["resume_filename"],
@@ -412,6 +556,8 @@ def build_supervised_preflight(
         "target_identity_hash": snapshot["target_identity_hash"],
         "target_identity_verified": snapshot["target_identity_verified"],
         "target_liveness": target_liveness,
+        "form_schema_hash": form_schema_hash,
+        "form_schema": form_schema,
     }
 
 
@@ -535,6 +681,8 @@ def issue_supervised_approval(
             "target_identity_hash": preflight["target_identity_hash"],
             "target_identity": dict(preflight["target_identity"] or {}),
             "target_liveness": dict(preflight.get("target_liveness") or {}),
+            "form_schema_hash": preflight.get("form_schema_hash"),
+            "form_schema": dict(preflight.get("form_schema") or {}),
         },
     )
     db.add(approval)
@@ -555,6 +703,7 @@ def issue_supervised_approval(
                 "combined_payload_hash": approval.combined_payload_hash,
                 "target_identity_hash": preflight["target_identity_hash"],
                 "target_liveness": dict(preflight.get("target_liveness") or {}),
+                "form_schema_hash": preflight.get("form_schema_hash"),
             },
         )
     )
@@ -649,6 +798,8 @@ def validate_supervised_approval(
         != preflight["target_identity_hash"]
     ):
         mismatches.append("target_identity_hash")
+    if approval_metadata.get("form_schema_hash") != preflight.get("form_schema_hash"):
+        mismatches.append("form_schema_hash")
     mismatches = list(dict.fromkeys(mismatches))
 
     if mismatches:
@@ -684,6 +835,7 @@ def validate_supervised_approval(
             "target_liveness_at_consume": dict(
                 preflight.get("target_liveness") or {}
             ),
+            "form_schema_at_consume": dict(preflight.get("form_schema") or {}),
         }
         db.add(
             ApplicationEvent(
@@ -697,6 +849,7 @@ def validate_supervised_approval(
                     "combined_payload_hash": approval.combined_payload_hash,
                     "target_identity_hash": preflight["target_identity_hash"],
                     "target_liveness": dict(preflight.get("target_liveness") or {}),
+                    "form_schema_hash": preflight.get("form_schema_hash"),
                 },
             )
         )

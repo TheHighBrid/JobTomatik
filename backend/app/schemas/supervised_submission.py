@@ -69,6 +69,9 @@ class SupervisedPreflightOut(BaseModel):
     target_identity: Dict[str, Any] = Field(default_factory=dict)
     target_identity_hash: Optional[str] = None
     target_identity_verified: bool = False
+    target_liveness: Dict[str, Any] = Field(default_factory=dict)
+    form_schema_hash: Optional[str] = None
+    form_schema: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SupervisedSubmitQueued(BaseModel):
