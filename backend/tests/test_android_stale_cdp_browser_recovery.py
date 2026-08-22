@@ -62,12 +62,26 @@ def test_native_browser_recovery_waits_for_old_process_and_cdp_endpoint_to_stop(
     assert 'exec "$SCRIPT_PATH" start "$START_URL"' in recovery_case
 
 
-def test_browser_recovery_happens_before_runtime_acceptance_not_in_status_path():
+def test_already_running_start_checks_stack_before_any_browser_recovery():
+    source = WRAPPER.read_text(encoding="utf-8")
+    activate = _function_body(source, "activate_stack")
+
+    live_check = 'if [[ "$action" == "start" ]] && supervisor_alive; then'
+    assert live_check in activate
+    assert activate.index(live_check) < activate.index('"$BROWSER_COMMAND" start')
+    ready_branch = activate.split(live_check, 1)[1].split("  fi", 1)[0]
+    assert "run_stack_foreground status" in ready_branch
+    assert "run_frontend_guard status" in ready_branch
+    assert "run_runtime_acceptance" in ready_branch
+    assert '"$BROWSER_COMMAND" recover' not in ready_branch
+
+
+def test_browser_recovery_happens_before_new_stack_acceptance_not_in_status_path():
     source = WRAPPER.read_text(encoding="utf-8")
     activate = _function_body(source, "activate_stack")
     status_case = source.split("  status)\n", 1)[1].split("    ;;", 1)[0]
 
-    assert activate.index("ensure_browser_playwright_ready") < activate.index(
+    assert activate.index("ensure_browser_playwright_ready") < activate.rindex(
         "run_runtime_acceptance"
     )
     assert "ensure_browser_playwright_ready" not in status_case
