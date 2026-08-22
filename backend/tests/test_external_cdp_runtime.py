@@ -26,9 +26,16 @@ class FakePage:
     def __init__(self, url="https://www.linkedin.com/feed/"):
         self.url = url
         self.viewport = None
+        self.closed = False
 
     async def set_viewport_size(self, viewport):
         self.viewport = viewport
+
+    def is_closed(self):
+        return self.closed
+
+    async def close(self, run_before_unload=False):
+        self.closed = True
 
 
 class FakeContext:
@@ -165,6 +172,57 @@ async def test_application_attachment_creates_new_controlled_page_when_browser_h
     assert first.url == "https://www.linkedin.com/feed/"
     assert second.url == "http://localhost:3000/applications/220"
     assert len(context.pages) == 3
+
+
+@pytest.mark.asyncio
+async def test_release_application_browser_closes_only_owned_controlled_page(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("HANDOFF_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", _noop_wait)
+    first = FakePage("https://www.linkedin.com/feed/")
+    second = FakePage("http://localhost:3000/applications/220")
+    context = FakeContext([first, second])
+    browser = FakeBrowser([context])
+    runtime = await browser_runtime.attach_retainable_browser(
+        FakePlaywright(browser),
+        cdp_endpoint="http://127.0.0.1:9222",
+        create_controlled_page=True,
+    )
+    controlled = runtime.page
+
+    await browser_runtime.release_application_browser(runtime)
+
+    assert controlled.closed is True
+    assert first.closed is False
+    assert second.closed is False
+    assert runtime.process.poll() is None
+
+
+@pytest.mark.asyncio
+async def test_release_application_browser_retains_controlled_page_for_handoff(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("HANDOFF_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", _noop_wait)
+    context = FakeContext([FakePage("https://www.linkedin.com/feed/")])
+    browser = FakeBrowser([context])
+    runtime = await browser_runtime.attach_retainable_browser(
+        FakePlaywright(browser),
+        cdp_endpoint="http://127.0.0.1:9222",
+        create_controlled_page=True,
+    )
+    controlled = runtime.page
+
+    await browser_runtime.release_application_browser(
+        runtime,
+        retain_controlled_page=True,
+    )
+
+    assert controlled.closed is False
+    assert runtime.process.poll() is None
 
 
 @pytest.mark.asyncio
