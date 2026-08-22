@@ -6,10 +6,9 @@ and stale task state in memory. The managed Android updater uses native Chromium
 CDP, so it can safely refresh only JobTomatik localhost tabs without touching LinkedIn,
 employer ATS pages, or the authenticated browser profile.
 
-An explicitly saved backend URL remains authoritative unless it points to a loopback
-backend that is not deployment-attested to the same exact revision as the managed
-Android API. That stale-local case is recovered to the managed endpoint automatically
-so an old manual or stale Uvicorn process cannot silently block exact-runtime evidence.
+This script inventories every retained browser tab. It therefore connects to the
+external browser without selecting a single application page. Multiple tabs are normal
+and must never make runtime maintenance fail.
 """
 
 from __future__ import annotations
@@ -27,7 +26,8 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from playwright.async_api import async_playwright
 
-from app.services.browser_runtime import launch_application_browser
+from app.config import get_settings
+from app.services.browser_runtime import connect_external_playwright_browser
 
 
 MANAGED_API_URL = "http://127.0.0.1:8010"
@@ -140,24 +140,28 @@ async def normalize_frontend_page(page, *, recover_saved_api: bool = False) -> N
 async def main() -> int:
     refreshed = 0
     recovered_saved_api = 0
+    endpoint = (get_settings().application_browser_cdp_endpoint or "").strip()
+    if not endpoint:
+        raise RuntimeError("APPLICATION_BROWSER_CDP_ENDPOINT is not configured")
+
     async with async_playwright() as playwright:
-        runtime = await launch_application_browser(playwright)
-        try:
-            for context in list(runtime.browser.contexts):
-                for page in list(context.pages):
-                    if not is_jobtomatik_frontend_url(page.url):
-                        continue
-                    try:
-                        saved = await saved_api_url(page)
-                        recover = should_recover_saved_api(saved)
-                        await normalize_frontend_page(page, recover_saved_api=recover)
-                        refreshed += 1
-                        recovered_saved_api += int(recover)
-                    except Exception as exc:
-                        print(f"ANDROID_FRONTEND_TAB_REFRESH_FAILED url={page.url} error={str(exc)[:160]}")
-                        return 1
-        finally:
-            runtime.terminate(remove_profile=False)
+        _normalized_endpoint, browser = await connect_external_playwright_browser(
+            playwright,
+            cdp_endpoint=endpoint,
+        )
+        for context in list(browser.contexts):
+            for page in list(context.pages):
+                if not is_jobtomatik_frontend_url(page.url):
+                    continue
+                try:
+                    saved = await saved_api_url(page)
+                    recover = should_recover_saved_api(saved)
+                    await normalize_frontend_page(page, recover_saved_api=recover)
+                    refreshed += 1
+                    recovered_saved_api += int(recover)
+                except Exception as exc:
+                    print(f"ANDROID_FRONTEND_TAB_REFRESH_FAILED url={page.url} error={str(exc)[:160]}")
+                    return 1
 
     print(f"ANDROID_FRONTEND_TABS_REFRESHED={refreshed}")
     print(f"ANDROID_FRONTEND_API_DEFAULT={MANAGED_API_URL}")
