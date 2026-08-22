@@ -205,15 +205,20 @@ async def release_application_browser(
     ``launch_application_browser`` may be closed. Existing user/LinkedIn/UI tabs are
     never selected for cleanup. A security-boundary handoff deliberately retains
     the controlled page so the human can continue from the exact observed state.
+
+    Lightweight test/integration runtimes that predate explicit ``owns_process``
+    metadata retain their historical terminate-only behavior rather than failing
+    during cleanup after otherwise successful application work.
     """
 
     if retain_controlled_page:
         return
 
-    if (
-        not runtime.owns_process
-        and bool(getattr(runtime, _CONTROLLED_PAGE_OWNERSHIP_ATTR, False))
-    ):
+    externally_owned = getattr(runtime, "owns_process", None) is False
+    controlled_page_owned = bool(
+        getattr(runtime, _CONTROLLED_PAGE_OWNERSHIP_ATTR, False)
+    )
+    if externally_owned and controlled_page_owned:
         page = runtime.page
         try:
             is_closed = getattr(page, "is_closed", None)
