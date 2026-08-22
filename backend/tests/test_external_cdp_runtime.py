@@ -181,6 +181,7 @@ async def test_release_application_browser_closes_only_owned_controlled_page(
 ):
     monkeypatch.setenv("HANDOFF_STORAGE_DIR", str(tmp_path))
     monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", _noop_wait)
+    monkeypatch.setattr(browser_runtime.httpx, "get", lambda *args, **kwargs: FakeResponse())
     first = FakePage("https://www.linkedin.com/feed/")
     second = FakePage("http://localhost:3000/applications/220")
     context = FakeContext([first, second])
@@ -207,6 +208,7 @@ async def test_release_application_browser_retains_controlled_page_for_handoff(
 ):
     monkeypatch.setenv("HANDOFF_STORAGE_DIR", str(tmp_path))
     monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", _noop_wait)
+    monkeypatch.setattr(browser_runtime.httpx, "get", lambda *args, **kwargs: FakeResponse())
     context = FakeContext([FakePage("https://www.linkedin.com/feed/")])
     browser = FakeBrowser([context])
     runtime = await browser_runtime.attach_retainable_browser(
