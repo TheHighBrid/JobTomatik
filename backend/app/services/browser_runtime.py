@@ -172,6 +172,27 @@ async def attach_retainable_browser(
     return runtime
 
 
+async def controlled_page_target_id(page: Any) -> str:
+    """Return Chromium's durable top-level target id for one controlled page."""
+
+    context = getattr(page, "context", None)
+    if context is None:
+        return ""
+    cdp_session = None
+    try:
+        cdp_session = await context.new_cdp_session(page)
+        target_info = await cdp_session.send("Target.getTargetInfo")
+        return str((target_info.get("targetInfo") or {}).get("targetId") or "")
+    except Exception:
+        return ""
+    finally:
+        if cdp_session is not None:
+            try:
+                await cdp_session.detach()
+            except Exception:
+                pass
+
+
 async def release_application_browser(
     runtime: RetainableBrowserRuntime,
     *,
