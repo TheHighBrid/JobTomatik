@@ -38,16 +38,35 @@ class FakePage:
         self.closed = True
 
 
+class FakeCDPSession:
+    def __init__(self, target_id):
+        self.target_id = target_id
+        self.detached = False
+
+    async def send(self, method):
+        assert method == "Target.getTargetInfo"
+        return {"targetInfo": {"targetId": self.target_id}}
+
+    async def detach(self):
+        self.detached = True
+
+
 class FakeContext:
     def __init__(self, pages=None):
         self.pages = list(pages or [FakePage()])
         self.created_pages = []
+        self.cdp_sessions = []
 
     async def new_page(self):
         page = FakePage("about:blank")
         self.pages.append(page)
         self.created_pages.append(page)
         return page
+
+    async def new_cdp_session(self, page):
+        session = FakeCDPSession(f"target-{self.pages.index(page)}")
+        self.cdp_sessions.append(session)
+        return session
 
 
 class FakeBrowser:
@@ -172,6 +191,21 @@ async def test_application_attachment_creates_new_controlled_page_when_browser_h
     assert first.url == "https://www.linkedin.com/feed/"
     assert second.url == "http://localhost:3000/applications/220"
     assert len(context.pages) == 3
+
+
+@pytest.mark.asyncio
+async def test_controlled_page_target_id_uses_durable_chromium_target_identity():
+    first = FakePage("https://www.linkedin.com/feed/")
+    controlled = FakePage("https://boards.greenhouse.io/example")
+    context = FakeContext([first, controlled])
+    first.context = context
+    controlled.context = context
+
+    target_id = await browser_runtime.controlled_page_target_id(controlled)
+
+    assert target_id == "target-1"
+    assert context.cdp_sessions
+    assert context.cdp_sessions[0].detached is True
 
 
 @pytest.mark.asyncio
