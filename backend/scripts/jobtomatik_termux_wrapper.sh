@@ -39,11 +39,6 @@ sanitize_runtime_pid_files() {
 }
 
 ensure_static_frontend_artifact() {
-  # The certification runtime no longer executes Node, Vite, Lightning CSS, Rolldown,
-  # Tailwind Oxide, or any other frontend native addon on the Android device. GitHub
-  # Actions builds immutable static bytes for the exact revision. The installer accepts
-  # only an artifact whose workflow head SHA, package-lock hash, archive digest, and
-  # internal dist-tree hash all match this checkout.
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/install_android_static_frontend_artifact.py"
 }
@@ -75,16 +70,14 @@ PY"
 }
 
 ensure_browser_playwright_ready() {
-  "$BROWSER_COMMAND" start
-
   local initial_probe
   if initial_probe="$(run_browser_playwright_probe 2>&1)"; then
     [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe"
     return 0
   fi
 
-  echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=restart_once"
-  "$BROWSER_COMMAND" restart
+  echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=recover_once"
+  "$BROWSER_COMMAND" recover
 
   local recovery_probe
   if recovery_probe="$(run_browser_playwright_probe 2>&1)"; then
@@ -133,14 +126,9 @@ start_stack_detached() {
     fi
   fi
 
-  # Retire only a narrowly identified JobTomatik static frontend or legacy Vite
-  # process. The guard refuses to signal an unrelated process occupying port 3000.
   run_frontend_guard reset
 
   : > "$STACK_LOG"
-  # Source the manager in the same long-lived shell that becomes the supervisor.
-  # This preserves the Android worker/Beat parenting fix while the frontend itself is
-  # now a plain Python static server over a SHA-bound CI artifact.
   nohup proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && exec bash -c 'source \"\$0\" \"\$1\" && exec sleep infinity' backend/scripts/manage_android_stack.sh '$action'" \
     > "$STACK_LOG" 2>&1 </dev/null &
@@ -176,9 +164,6 @@ start_stack_detached() {
 }
 
 stop_stack_supervisor() {
-  # PID files survive crashes, while Android can recycle their numeric PIDs. Remove
-  # any PID file that no longer points at the exact JobTomatik process before the
-  # legacy manager stop path is allowed to signal anything.
   sanitize_runtime_pid_files || return 1
   run_stack_foreground stop || true
   if [[ -f "$STACK_PID_FILE" ]]; then
@@ -209,14 +194,11 @@ activate_stack() {
   local action="$1"
   sanitize_runtime_pid_files
   ensure_static_frontend_artifact
-  # Native Chromium can remain HTTP-CDP reachable while its DevTools websocket is
-  # no longer attachable by Playwright. Prove the exact worker browser path before
-  # the PRoot runtime starts, recycle the dedicated browser at most once, and keep
-  # the persistent authenticated profile across that recycle.
+  "$BROWSER_COMMAND" start
+  # HTTP CDP alone is insufficient. Prove the exact Playwright attach path used by
+  # the managed worker. If it is stale, the native launcher performs one bounded,
+  # blocking recovery that waits for the old endpoint to disappear before restart.
   ensure_browser_playwright_ready
-  # The PRoot manager owns API, worker, Beat and the attested static frontend. Native
-  # Chromium remains outside PRoot and is crossed only through the localhost CDP
-  # protocol boundary.
   start_stack_detached "$action"
   run_runtime_acceptance
 }
@@ -227,9 +209,8 @@ case "$ACTION" in
     ;;
   restart)
     stop_stack_supervisor
-    # Preserve the authenticated native browser unless its real Playwright probe
-    # proves that the retained CDP session is stale. The recovery path keeps the
-    # same persistent browser profile and performs at most one native recycle.
+    # The authenticated native browser is preserved unless the real Playwright
+    # probe proves its CDP session stale. Recovery keeps the same persistent profile.
     activate_stack restart
     ;;
   status)
@@ -244,9 +225,6 @@ case "$ACTION" in
     run_runtime_acceptance
     ;;
   qualify)
-    # Direct database qualification is intentionally retired. It cannot establish the
-    # authenticated campaign owner and previously guessed from active-user cardinality.
-    # The real Android 4h start now runs qualification automatically for get_current_user.
     echo "JOBTOMATIK_DIRECT_QUALIFICATION_RETIRED"
     echo "Qualification is account-scoped and runs automatically from the authenticated Shadow Campaign Center 4-hour start."
     exit 2
@@ -258,10 +236,6 @@ case "$ACTION" in
   update)
     update_main
     install_native_commands
-    # Never call activate_stack restart from this pre-update shell: Bash parsed this
-    # launcher before the git pull, so its functions can belong to the previous
-    # revision even though install_native_commands has already replaced the file on
-    # disk. Re-exec the freshly installed launcher so restart uses the pulled code.
     echo "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING"
     exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart
     ;;
