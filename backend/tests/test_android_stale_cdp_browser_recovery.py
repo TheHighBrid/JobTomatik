@@ -1,4 +1,7 @@
+import os
 from pathlib import Path
+import subprocess
+import time
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +16,48 @@ def _function_body(source: str, name: str) -> str:
     tail = source[start + len(marker) :]
     end = tail.index("\n}\n")
     return tail[:end]
+
+
+def _alive(process: subprocess.Popen) -> bool:
+    return process.poll() is None
+
+
+def _terminate(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=3)
+
+
+def _spawn_fake_owned_browser(*, profile: Path, port: int) -> subprocess.Popen:
+    return subprocess.Popen(
+        [
+            "bash",
+            "-c",
+            "trap 'exit 0' TERM INT HUP; while :; do sleep 1; done",
+            "jobtomatik-test-browser",
+            f"--remote-debugging-address=127.0.0.1",
+            f"--remote-debugging-port={port}",
+            f"--user-data-dir={profile}",
+        ]
+    )
+
+
+def _browser_env(*, runtime_dir: Path, profile: Path, port: int) -> dict[str, str]:
+    env = os.environ.copy()
+    env.update(
+        {
+            "JOBTOMATIK_ANDROID_RUNTIME_DIR": str(runtime_dir),
+            "JOBTOMATIK_ANDROID_BROWSER_PROFILE": str(profile),
+            "JOBTOMATIK_ANDROID_BROWSER_BIN": "/bin/true",
+            "JOBTOMATIK_ANDROID_BROWSER_PORT": str(port),
+        }
+    )
+    return env
 
 
 def test_android_wrapper_proves_real_playwright_before_proot_stack_start():
@@ -81,11 +126,115 @@ def test_native_browser_recovery_waits_only_on_verified_supervisor_identity():
 
     assert "kill -0" in shutdown
     assert "supervisor_identity_matches" in shutdown
+    assert "managed_browser_pids" in shutdown
     assert "! is_healthy" in shutdown
     assert 'wait_for_shutdown "$supervisor_pid"' in stop_case
+    assert "ANDROID_BROWSER_CDP_STOP_ESCALATING signal=KILL" in stop_case
     assert "ANDROID_BROWSER_CDP_STOP_TIMEOUT" in stop_case
     assert '"$SCRIPT_PATH" stop' in recovery_case
     assert 'exec "$SCRIPT_PATH" start "$START_URL"' in recovery_case
+
+
+def test_browser_ownership_uses_exact_profile_and_port_not_executable_basename():
+    source = BROWSER.read_text(encoding="utf-8")
+    identity = _function_body(source, "browser_identity_matches")
+    discovery = _function_body(source, "managed_browser_pids")
+    stop_processes = _function_body(source, "stop_browser_processes")
+
+    assert '"--remote-debugging-port=$CDP_PORT"' in identity
+    assert '"--user-data-dir=$PROFILE_DIR"' in identity
+    assert 'pgrep -f "remote-debugging-port=${CDP_PORT}"' in discovery
+    assert "chromium-browser.*remote-debugging-port" not in source
+    assert "signal_browser_if_managed" in stop_processes
+
+
+def test_supervisor_records_exact_browser_pid_and_waits_for_that_process():
+    source = BROWSER.read_text(encoding="utf-8")
+    supervise_case = source.split("  supervise)\n", 1)[1].split("    ;;", 1)[0]
+
+    assert 'browser_command >> "$BROWSER_LOG" 2>&1 &' in supervise_case
+    assert "browser_pid=$!" in supervise_case
+    assert 'echo "$browser_pid" > "$BROWSER_PID_FILE"' in supervise_case
+    assert 'wait "$browser_pid"' in supervise_case
+    assert 'rm -f "$BROWSER_PID_FILE"' in supervise_case
+
+
+def test_stop_terminates_owned_browser_even_when_executable_name_is_not_chromium_browser(
+    tmp_path,
+):
+    runtime_dir = tmp_path / "runtime"
+    profile = tmp_path / "profile"
+    runtime_dir.mkdir()
+    profile.mkdir()
+    port = 59321
+    browser = _spawn_fake_owned_browser(profile=profile, port=port)
+    try:
+        time.sleep(0.1)
+        assert _alive(browser)
+        (runtime_dir / "chromium-browser.pid").write_text(str(browser.pid), encoding="utf-8")
+        completed = subprocess.run(
+            ["bash", str(BROWSER), "stop"],
+            check=True,
+            env=_browser_env(runtime_dir=runtime_dir, profile=profile, port=port),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert "ANDROID_BROWSER_CDP_STOPPED" in completed.stdout
+        browser.wait(timeout=3)
+        assert not _alive(browser)
+    finally:
+        _terminate(browser)
+
+
+def test_stop_discovers_and_terminates_legacy_owned_browser_without_pid_file(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    profile = tmp_path / "profile"
+    runtime_dir.mkdir()
+    profile.mkdir()
+    port = 59322
+    browser = _spawn_fake_owned_browser(profile=profile, port=port)
+    try:
+        time.sleep(0.1)
+        assert _alive(browser)
+        completed = subprocess.run(
+            ["bash", str(BROWSER), "stop"],
+            check=True,
+            env=_browser_env(runtime_dir=runtime_dir, profile=profile, port=port),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert "ANDROID_BROWSER_CDP_STOPPED" in completed.stdout
+        browser.wait(timeout=3)
+        assert not _alive(browser)
+    finally:
+        _terminate(browser)
+
+
+def test_stop_rejects_reused_browser_pid_and_does_not_signal_innocent_process(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    profile = tmp_path / "profile"
+    runtime_dir.mkdir()
+    profile.mkdir()
+    port = 59323
+    innocent = subprocess.Popen(["sleep", "30"])
+    try:
+        (runtime_dir / "chromium-browser.pid").write_text(
+            str(innocent.pid), encoding="utf-8"
+        )
+        completed = subprocess.run(
+            ["bash", str(BROWSER), "stop"],
+            check=True,
+            env=_browser_env(runtime_dir=runtime_dir, profile=profile, port=port),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert "ANDROID_BROWSER_CDP_STOPPED" in completed.stdout
+        assert _alive(innocent)
+    finally:
+        _terminate(innocent)
 
 
 def test_already_running_start_never_enters_browser_recovery_path():
