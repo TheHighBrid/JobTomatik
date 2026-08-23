@@ -7,6 +7,7 @@ from app.services.ats_maturity import (
 )
 from app.services.autonomy_release_contract import (
     AUTONOMY_SIGNATURE_METHOD,
+    MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
     MIN_RELIABILITY_ATTEMPTS,
     REQUIRED_SHADOW_CHECKS,
     compute_autonomy_manifest_digest,
@@ -28,8 +29,11 @@ def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40)
             "policy_digest": "sha256:" + "3" * 64,
         },
         "reliability_window": {
+            "evidence_type": "supervised_real_submission",
             "attempts": MIN_RELIABILITY_ATTEMPTS,
             "confirmed_successes": MIN_RELIABILITY_ATTEMPTS,
+            "distinct_confirmed_submissions": MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+            "independently_reviewed_successes": MIN_RELIABILITY_ATTEMPTS,
             "success_rate": 1.0,
             "false_positive_submitted_records": 0,
             "duplicate_submissions": 0,
@@ -170,6 +174,19 @@ def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_si
         TEST_SIGNING_KEY,
     )
     release["certification_manifest"] = incomplete_shadow
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.DRY_RUN
+
+    unreviewed = _autonomy_manifest()
+    unreviewed["reliability_window"]["independently_reviewed_successes"] -= 1
+    unreviewed["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(unreviewed)
+    unreviewed["attestation"]["signature"] = compute_autonomy_manifest_signature(
+        unreviewed,
+        TEST_SIGNING_KEY,
+    )
+    release["certification_manifest"] = unreviewed
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
