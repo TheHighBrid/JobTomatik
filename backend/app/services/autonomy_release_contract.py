@@ -13,7 +13,10 @@ AUTONOMY_RELEASE_SCHEMA_VERSION = "autonomy_release_v1"
 AUTONOMY_RELEASE_CONTRACT_VERSION = "day27_v1"
 AUTONOMY_SIGNATURE_METHOD = "hmac-sha256"
 MIN_SIGNING_KEY_BYTES = 32
-MIN_RELIABILITY_ATTEMPTS = 20
+# The roadmap's supervised gate is ten distinct confirmed submissions. Sustained
+# autonomy evidence starts from that established sample and must additionally pass
+# the 4h, 8h, and 24h unattended shadow gates below.
+MIN_RELIABILITY_ATTEMPTS = 10
 MIN_SUCCESS_RATE = 0.98
 MAX_AUTOMATIC_RETRIES_PER_ATTEMPT = 1
 REQUIRED_RECOVERY_DRILLS = (
@@ -29,6 +32,20 @@ REQUIRED_POLICY_CONTROLS = (
     "employer_exclusions",
     "platform_limits",
     "kill_switch",
+)
+REQUIRED_SHADOW_CHECKS = (
+    "four_hour_unattended_passed",
+    "eight_hour_unattended_passed",
+    "twenty_four_hour_unattended_passed",
+    "source_outage_breaker_verified",
+    "browser_crash_recovery_verified",
+    "stale_posting_rejected",
+    "ambiguous_question_held",
+    "zero_policy_escapes",
+    "zero_unexplained_records",
+    "zero_duplicate_tasks",
+    "zero_false_status_records",
+    "no_runaway_retries",
 )
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -97,6 +114,7 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
         ],
         "required_recovery_drills": list(REQUIRED_RECOVERY_DRILLS),
         "required_policy_controls": list(REQUIRED_POLICY_CONTROLS),
+        "required_shadow_checks": list(REQUIRED_SHADOW_CHECKS),
         "required_source_bindings": [
             "adapter_name",
             "adapter_version",
@@ -110,6 +128,7 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
         "minimum_signing_key_bytes": MIN_SIGNING_KEY_BYTES,
         "trusted_runtime_signing_key_required": True,
         "approval_must_bind_exact_release_commit": True,
+        "day39_promotion_blocked_until_shadow_checks_pass": True,
         "runtime_eligibility_requires_certified_autonomous": True,
     }
 
@@ -129,10 +148,10 @@ def validate_autonomy_release_manifest(
 ) -> Dict[str, Any]:
     """Validate one candidate autonomous certification manifest.
 
-    Validation is intentionally fail-closed. Passing release booleans or prose labels
-    cannot promote an adapter unless the immutable certification record satisfies this
-    contract, is bound to the exact adapter version and release commit, and carries a
-    valid cryptographic attestation under the separately configured runtime signing key.
+    Passing release booleans or prose labels cannot promote an adapter unless the
+    immutable certification record satisfies the full contract, is bound to the exact
+    adapter version and release commit, includes the roadmap shadow-run evidence, and
+    carries a valid attestation under the separately configured runtime signing key.
     """
     checks: Dict[str, bool] = {}
     missing: list[str] = []
@@ -197,7 +216,6 @@ def validate_autonomy_release_manifest(
     )
     _record_check(checks, missing, "minimum_reliability_attempts", attempts_valid)
     _record_check(checks, missing, "confirmed_success_count_valid", successes_valid)
-
     computed_rate = (
         float(successes) / float(attempts)
         if successes_valid and isinstance(attempts, int) and attempts > 0
@@ -273,6 +291,17 @@ def validate_autonomy_release_manifest(
     _record_check(checks, missing, "policy_ready", policy.get("ready") is True)
     for control in REQUIRED_POLICY_CONTROLS:
         _record_check(checks, missing, f"policy_{control}", policy.get(control) is True)
+
+    shadow = manifest.get("shadow_runs")
+    if not isinstance(shadow, Mapping):
+        shadow = {}
+    for shadow_check in REQUIRED_SHADOW_CHECKS:
+        _record_check(
+            checks,
+            missing,
+            f"shadow_{shadow_check}",
+            shadow.get(shadow_check) is True,
+        )
 
     approval = manifest.get("approval")
     if not isinstance(approval, Mapping):
