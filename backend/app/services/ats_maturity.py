@@ -12,6 +12,11 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, Iterable, Mapping, Tuple
 
+from app.services.autonomy_release_contract import (
+    AUTONOMY_RELEASE_CONTRACT_VERSION,
+    validate_autonomy_release_manifest,
+)
+
 
 class AdapterMaturity(str, Enum):
     """Operational maturity levels defined by roadmap issue #13."""
@@ -86,6 +91,31 @@ def _release_status(
     return not missing, missing
 
 
+def _autonomy_release_status(
+    manifest: Mapping[str, Any],
+) -> tuple[bool, list[str], Dict[str, Any]]:
+    """Require both release booleans and the immutable Day 27 certification record."""
+    base_ready, missing = _release_status(
+        manifest,
+        "autonomy_release",
+        AUTONOMY_RELEASE_GATES,
+    )
+    section = manifest.get("autonomy_release")
+    if not isinstance(section, Mapping):
+        section = {}
+
+    contract = validate_autonomy_release_manifest(
+        section.get("certification_manifest"),
+        adapter_name=str(manifest.get("name") or ""),
+        adapter_version=str(manifest.get("version") or ""),
+    )
+    contract_missing = [
+        f"certification_manifest.{name}" for name in contract.get("missing") or []
+    ]
+    combined = [*missing, *contract_missing]
+    return bool(base_ready and contract.get("passed") and not combined), combined, contract
+
+
 def _has_current_live_dry_run_evidence(manifest: Mapping[str, Any]) -> bool:
     live = manifest.get("live_certification")
     if not isinstance(live, Mapping):
@@ -138,19 +168,15 @@ def derive_adapter_maturity(manifest: Mapping[str, Any]) -> AdapterMaturity:
     Submission-capable promotion requires explicit release-gate records.
     Descriptive labels, green workflows, fixtures, and zero-submit exercises are
     evidence inputs, but autonomous promotion occurs only when the autonomy
-    release record is complete. This is a progression mechanism toward the
-    project's autonomous operating goal.
+    release record is complete and cryptographically bound to immutable source,
+    fixture, evidence, and policy digests.
     """
 
     name = str(manifest.get("name") or "").strip().lower()
     if not name or name == "generic":
         return AdapterMaturity.UNSUPPORTED
 
-    autonomy_ready, _ = _release_status(
-        manifest,
-        "autonomy_release",
-        AUTONOMY_RELEASE_GATES,
-    )
+    autonomy_ready, _, _ = _autonomy_release_status(manifest)
     if autonomy_ready:
         return AdapterMaturity.CERTIFIED_AUTONOMOUS
 
@@ -181,11 +207,7 @@ def annotate_adapter_manifest(manifest: Mapping[str, Any]) -> Dict[str, Any]:
         "human_reviewed_release",
         HUMAN_REVIEWED_RELEASE_GATES,
     )
-    autonomy_ready, missing_autonomy = _release_status(
-        value,
-        "autonomy_release",
-        AUTONOMY_RELEASE_GATES,
-    )
+    autonomy_ready, missing_autonomy, autonomy_contract = _autonomy_release_status(value)
 
     human_allowed = maturity in {
         AdapterMaturity.HUMAN_REVIEWED_SUBMIT,
@@ -195,6 +217,7 @@ def annotate_adapter_manifest(manifest: Mapping[str, Any]) -> Dict[str, Any]:
 
     value["maturity"] = maturity.value
     value["maturity_model"] = "roadmap_issue_13_v1"
+    value["autonomy_release_contract_version"] = AUTONOMY_RELEASE_CONTRACT_VERSION
     value["certification_level_semantics"] = "descriptive_evidence_label_only"
     value["human_reviewed_submission_allowed"] = human_allowed
     value["autonomous_submission_allowed"] = autonomy_allowed
@@ -206,6 +229,7 @@ def annotate_adapter_manifest(manifest: Mapping[str, Any]) -> Dict[str, Any]:
         "certified_autonomous": {
             "passed": autonomy_ready,
             "missing": missing_autonomy,
+            "certification_manifest": autonomy_contract,
         },
     }
     return value
