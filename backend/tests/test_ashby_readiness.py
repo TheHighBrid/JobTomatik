@@ -164,3 +164,4 @@ def test_dossier_fails_closed_when_locked_input_is_not_safe(tmp_path):
     assert "no_verified_live_form_upload" in blockers
     assert "credentialed_form_definition_validation_error" in blockers
     assert dossier["readiness"]["promotion_ready"] is False
+    assert dossier["safety"]["final_submit_clicked"] is True
