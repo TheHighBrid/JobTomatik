@@ -267,14 +267,56 @@ class AshbyAdapter(ATSAdapter):
         return False
 
     async def resolve_surface(self, page: Any) -> Any:
+        """Resolve the actual Ashby application surface, preferring application frames.
+
+        Embedded career sites can contain more than one Ashby frame. Returning the
+        first Ashby frame is unsafe because a non-application frame can mask the
+        application frame and make field filling or target verification operate on the
+        wrong surface.
+        """
+        ashby_frames: List[Any] = []
         for frame in getattr(page, "frames", []):
             try:
-                if frame is not page.main_frame and (
-                    urlparse(frame.url or "").hostname or ""
-                ).lower() == ASHBY_JOBS_HOST:
+                if frame is page.main_frame:
+                    continue
+                parsed = urlparse(frame.url or "")
+                if (parsed.hostname or "").lower() != ASHBY_JOBS_HOST:
+                    continue
+                if parsed.path.rstrip("/").endswith("/application"):
                     return frame
+                ashby_frames.append(frame)
             except Exception:
                 continue
+
+        for frame in ashby_frames:
+            for selector in (
+                'form[action*="ashbyhq.com" i]',
+                'button[type="submit"]',
+                'input[type="submit"]',
+                'input:not([type="hidden"])',
+                "textarea",
+                "select",
+            ):
+                try:
+                    if await frame.query_selector(selector):
+                        return frame
+                except Exception:
+                    continue
+
+        if ashby_frames:
+            return ashby_frames[0]
+
+        try:
+            application_iframe = await page.query_selector(
+                'iframe[src*="jobs.ashbyhq.com" i][src*="/application" i]'
+            )
+            if application_iframe:
+                frame = await application_iframe.content_frame()
+                if frame:
+                    return frame
+        except Exception:
+            pass
+
         try:
             iframe = await page.query_selector('iframe[src*="jobs.ashbyhq.com" i]')
             if iframe:
@@ -287,10 +329,10 @@ class AshbyAdapter(ATSAdapter):
 
     async def prepare(self, surface: Any, log: List[Dict[str, Any]]) -> None:
         current_url = getattr(surface, "url", "") or ""
-        if current_url.rstrip("/").endswith("/application"):
+        if urlparse(current_url).path.rstrip("/").endswith("/application"):
             return
         for selector in (
-            'a[href$="/application"]',
+            'a[href*="/application"]',
             'a:has-text("Apply for this Job")',
             'a:has-text("Apply for this job")',
             'button:has-text("Apply for this Job")',
@@ -348,9 +390,9 @@ class AshbyAdapter(ATSAdapter):
                 '[data-testid*="error" i]',
                 '[data-qa*="error" i]',
                 '[class*="error" i]',
-                '.field-error',
-                '.error-message',
-                '.validation-error',
+                ".field-error",
+                ".error-message",
+                ".validation-error",
                 '[role="alert"]',
                 '[aria-invalid="true"]',
             ),
@@ -369,8 +411,8 @@ class AshbyAdapter(ATSAdapter):
             '[data-testid*="confirmation" i]',
             '[data-testid*="success" i]',
             '[data-qa*="confirmation" i]',
-            '.application-confirmation',
-            '.confirmation',
+            ".application-confirmation",
+            ".confirmation",
         ):
             try:
                 element = await surface.query_selector(selector)
