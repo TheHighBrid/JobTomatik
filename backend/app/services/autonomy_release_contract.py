@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 from typing import Any, Dict, Mapping
@@ -10,6 +11,8 @@ from typing import Any, Dict, Mapping
 
 AUTONOMY_RELEASE_SCHEMA_VERSION = "autonomy_release_v1"
 AUTONOMY_RELEASE_CONTRACT_VERSION = "day27_v1"
+AUTONOMY_SIGNATURE_METHOD = "hmac-sha256"
+MIN_SIGNING_KEY_BYTES = 32
 MIN_RELIABILITY_ATTEMPTS = 20
 MIN_SUCCESS_RATE = 0.98
 MAX_AUTOMATIC_RETRIES_PER_ATTEMPT = 1
@@ -29,15 +32,19 @@ REQUIRED_POLICY_CONTROLS = (
 )
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_HMAC_SHA256_RE = re.compile(r"^hmac-sha256:[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _canonical_manifest_bytes(manifest: Mapping[str, Any]) -> bytes:
-    """Canonicalize the manifest while excluding its self-referential digest."""
+    """Canonicalize the manifest while excluding self-referential outputs."""
     value = json.loads(json.dumps(dict(manifest), sort_keys=True, default=str))
     integrity = value.get("integrity")
     if isinstance(integrity, dict):
         integrity.pop("manifest_digest", None)
+    attestation = value.get("attestation")
+    if isinstance(attestation, dict):
+        attestation.pop("signature", None)
     return json.dumps(
         value,
         sort_keys=True,
@@ -49,6 +56,29 @@ def _canonical_manifest_bytes(manifest: Mapping[str, Any]) -> bytes:
 def compute_autonomy_manifest_digest(manifest: Mapping[str, Any]) -> str:
     """Return the content digest that binds every certification field."""
     return "sha256:" + hashlib.sha256(_canonical_manifest_bytes(manifest)).hexdigest()
+
+
+def _signing_key_bytes(signing_key: str | bytes | None) -> bytes:
+    if isinstance(signing_key, bytes):
+        return signing_key
+    if isinstance(signing_key, str):
+        return signing_key.encode("utf-8")
+    return b""
+
+
+def compute_autonomy_manifest_signature(
+    manifest: Mapping[str, Any],
+    signing_key: str | bytes,
+) -> str:
+    """Sign the canonical manifest digest with the trusted runtime signing key."""
+    key = _signing_key_bytes(signing_key)
+    if len(key) < MIN_SIGNING_KEY_BYTES:
+        raise ValueError(
+            f"Autonomy certification signing key must be at least {MIN_SIGNING_KEY_BYTES} bytes."
+        )
+    digest = compute_autonomy_manifest_digest(manifest)
+    signature = hmac.new(key, digest.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{AUTONOMY_SIGNATURE_METHOD}:{signature}"
 
 
 def autonomy_release_contract_requirements() -> Dict[str, Any]:
@@ -76,6 +106,9 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
             "policy_digest",
             "manifest_digest",
         ],
+        "signature_method": AUTONOMY_SIGNATURE_METHOD,
+        "minimum_signing_key_bytes": MIN_SIGNING_KEY_BYTES,
+        "trusted_runtime_signing_key_required": True,
         "approval_must_bind_exact_release_commit": True,
         "runtime_eligibility_requires_certified_autonomous": True,
     }
@@ -92,12 +125,14 @@ def validate_autonomy_release_manifest(
     *,
     adapter_name: str,
     adapter_version: str,
+    trusted_signing_key: str | bytes | None = None,
 ) -> Dict[str, Any]:
     """Validate one candidate autonomous certification manifest.
 
     Validation is intentionally fail-closed. Passing release booleans or prose labels
     cannot promote an adapter unless the immutable certification record satisfies this
-    contract and is bound to the exact adapter version and release commit.
+    contract, is bound to the exact adapter version and release commit, and carries a
+    valid cryptographic attestation under the separately configured runtime signing key.
     """
     checks: Dict[str, bool] = {}
     missing: list[str] = []
@@ -149,7 +184,11 @@ def validate_autonomy_release_manifest(
     attempts = reliability.get("attempts")
     successes = reliability.get("confirmed_successes")
     reported_rate = reliability.get("success_rate")
-    attempts_valid = isinstance(attempts, int) and not isinstance(attempts, bool) and attempts >= MIN_RELIABILITY_ATTEMPTS
+    attempts_valid = (
+        isinstance(attempts, int)
+        and not isinstance(attempts, bool)
+        and attempts >= MIN_RELIABILITY_ATTEMPTS
+    )
     successes_valid = (
         isinstance(successes, int)
         and not isinstance(successes, bool)
@@ -256,12 +295,27 @@ def validate_autonomy_release_manifest(
     _record_check(checks, missing, "integrity_algorithm", integrity.get("algorithm") == "sha256")
     _record_check(checks, missing, "manifest_digest_format", bool(_SHA256_RE.fullmatch(digest)))
     expected_digest = compute_autonomy_manifest_digest(manifest)
-    _record_check(
-        checks,
-        missing,
-        "manifest_digest_matches",
-        bool(_SHA256_RE.fullmatch(digest)) and digest == expected_digest,
-    )
+    digest_matches = bool(_SHA256_RE.fullmatch(digest)) and digest == expected_digest
+    _record_check(checks, missing, "manifest_digest_matches", digest_matches)
+
+    attestation = manifest.get("attestation")
+    if not isinstance(attestation, Mapping):
+        attestation = {}
+    method = str(attestation.get("method") or "").strip().lower()
+    key_id = str(attestation.get("key_id") or "").strip()
+    signature = str(attestation.get("signature") or "").strip().lower()
+    key = _signing_key_bytes(trusted_signing_key)
+    key_valid = len(key) >= MIN_SIGNING_KEY_BYTES
+    _record_check(checks, missing, "attestation_method", method == AUTONOMY_SIGNATURE_METHOD)
+    _record_check(checks, missing, "attestation_key_id", bool(key_id))
+    _record_check(checks, missing, "attestation_signature_format", bool(_HMAC_SHA256_RE.fullmatch(signature)))
+    _record_check(checks, missing, "trusted_signing_key", key_valid)
+
+    signature_matches = False
+    if key_valid and digest_matches and _HMAC_SHA256_RE.fullmatch(signature):
+        expected_signature = compute_autonomy_manifest_signature(manifest, key)
+        signature_matches = hmac.compare_digest(signature, expected_signature)
+    _record_check(checks, missing, "attestation_signature_matches", signature_matches)
 
     return {
         "passed": not missing,
@@ -270,5 +324,6 @@ def validate_autonomy_release_manifest(
         "release_commit": release_commit or None,
         "manifest_digest": digest or None,
         "computed_manifest_digest": expected_digest,
+        "attestation_key_id": key_id or None,
         "requirements": autonomy_release_contract_requirements(),
     }
