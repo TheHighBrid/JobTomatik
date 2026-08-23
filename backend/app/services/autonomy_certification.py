@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Mapping
 
+from app.config import get_settings
 from app.services.ats_manifest import ats_certification_manifest
 from app.services.ats_maturity import AUTONOMY_RELEASE_GATES, HUMAN_REVIEWED_RELEASE_GATES
 from app.services.autonomy_release_contract import (
@@ -23,8 +24,6 @@ AUTONOMY_TARGET_MATURITY = "certified_autonomous"
 AUTONOMY_CERTIFICATION_FRAMEWORK_VERSION = "autonomy_certification_v2"
 _EXPLICIT_EXERCISE_EVIDENCE_STATUSES = frozenset({"certified", "reached"})
 
-# Ordered stages make the destination explicit without pretending the runtime is
-# already submission-capable. Each stage can be used as a release checklist.
 CERTIFICATION_STAGES = (
     {
         "id": "live_dry_run_evidence",
@@ -55,9 +54,9 @@ CERTIFICATION_STAGES = (
         "title": "Evidence-backed autonomous real submission",
         "description": (
             "Autonomous submission is permitted only after every autonomy release gate "
-            "passes and an immutable Day 27 certification manifest binds the adapter "
-            "version, release commit, fixture/evidence/policy digests, reliability, "
-            "retry bounds, circuit breaker, recovery drills, and explicit approval."
+            "passes and a signed immutable Day 27 certification manifest binds the adapter "
+            "version, release commit, fixture/evidence/policy digests, reliability, retry "
+            "bounds, circuit breaker, recovery drills, and explicit approval."
         ),
         "required_for": AUTONOMY_TARGET_MATURITY,
         "checks": AUTONOMY_RELEASE_GATES,
@@ -87,7 +86,6 @@ def _gate_status(adapter: Mapping[str, Any], release_key: str, gates: Iterable[s
 
 
 def _is_explicit_exercise_evidence(value: Any) -> bool:
-    """Accept only statuses that explicitly prove an exercise was reached or certified."""
     if not isinstance(value, str):
         return False
     return value.strip().lower() in _EXPLICIT_EXERCISE_EVIDENCE_STATUSES
@@ -107,9 +105,7 @@ def _live_dry_run_status(adapter: Mapping[str, Any]) -> Dict[str, Any]:
         "maturity_allows_live_dry_run": maturity_allows_live_dry_run,
         "live_certification_present": bool(live),
         "final_submit_not_clicked": live.get("final_submit_clicked") is False,
-        "boundary_or_synthetic_exercise_present": bool(
-            live.get("latest_certified_boundary")
-        )
+        "boundary_or_synthetic_exercise_present": bool(live.get("latest_certified_boundary"))
         or _is_explicit_exercise_evidence(live.get("synthetic_full_form_exercise"))
         or _is_explicit_exercise_evidence(live.get("synthetic_live_full_form_exercise")),
         "resume_upload_evidence_present": bool(
@@ -137,20 +133,17 @@ def _adapter_certification_plan(adapter: Mapping[str, Any]) -> Dict[str, Any]:
         release.get("certification_manifest"),
         adapter_name=str(adapter.get("name") or ""),
         adapter_version=str(adapter.get("version") or ""),
+        trusted_signing_key=get_settings().autonomy_certification_signing_key or None,
     )
     autonomy["certification_manifest"] = contract
     if not contract.get("passed"):
         autonomy["passed"] = False
         autonomy["missing"] = [
             *autonomy.get("missing", []),
-            *[
-                f"certification_manifest.{name}"
-                for name in contract.get("missing") or []
-            ],
+            *[f"certification_manifest.{name}" for name in contract.get("missing") or []],
         ]
 
     dry_run = _live_dry_run_status(adapter)
-
     blockers = []
     if not dry_run["passed"]:
         blockers.append("live_dry_run_evidence")
@@ -176,13 +169,6 @@ def _adapter_certification_plan(adapter: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 def build_autonomy_certification_manifest() -> Dict[str, Any]:
-    """Return an auditable roadmap from current adapter evidence to autonomy.
-
-    The output is intentionally derived from runtime manifests and current
-    operations settings. It can be surfaced in UI/CI without flipping any feature
-    flag or treating documentation language as certification evidence.
-    """
-
     ats = ats_certification_manifest()
     operations = operations_readiness_manifest()
     adapters = [
@@ -204,6 +190,9 @@ def build_autonomy_certification_manifest() -> Dict[str, Any]:
             "autopilot_enabled": operations.get("autopilot_enabled"),
             "real_submission_enabled": operations.get("real_submission_enabled"),
             "autonomous_adapters": ats.get("autonomous_adapters", []),
+            "trusted_signing_key_configured": bool(
+                get_settings().autonomy_certification_signing_key
+            ),
         },
         "stages": list(CERTIFICATION_STAGES),
         "adapters": adapters,
@@ -215,6 +204,7 @@ def build_autonomy_certification_manifest() -> Dict[str, Any]:
             "feature_flags_may_remain_off_until_release_approval": True,
             "autonomous_release_requires_all_adapter_gates": True,
             "autonomous_release_requires_immutable_certification_manifest": True,
+            "autonomous_release_requires_trusted_signature": True,
             "runtime_requires_certified_autonomous_maturity": True,
         },
     }
