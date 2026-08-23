@@ -8,6 +8,7 @@ from app.services.ats_maturity import AUTONOMY_RELEASE_GATES, HUMAN_REVIEWED_REL
 from app.services.autonomy_release_contract import (
     AUTONOMY_RELEASE_CONTRACT_VERSION,
     AUTONOMY_RELEASE_SCHEMA_VERSION,
+    AUTONOMY_SIGNATURE_METHOD,
     MIN_RELIABILITY_ATTEMPTS,
     MIN_SUCCESS_RATE,
 )
@@ -32,13 +33,17 @@ def test_autonomy_certification_manifest_tracks_current_blockers():
     assert manifest["release_contract"]["schema_version"] == AUTONOMY_RELEASE_SCHEMA_VERSION
     assert manifest["release_contract"]["minimum_reliability_attempts"] == MIN_RELIABILITY_ATTEMPTS
     assert manifest["release_contract"]["minimum_success_rate"] == MIN_SUCCESS_RATE
+    assert manifest["release_contract"]["signature_method"] == AUTONOMY_SIGNATURE_METHOD
+    assert manifest["release_contract"]["trusted_runtime_signing_key_required"] is True
     assert manifest["target_maturity"] == "certified_autonomous"
     assert manifest["current_runtime"]["real_submission_enabled"] is False
     assert manifest["current_runtime"]["autopilot_enabled"] is False
+    assert isinstance(manifest["current_runtime"]["trusted_signing_key_configured"], bool)
     assert manifest["ready_adapters"] == []
     assert manifest["remaining_adapter_count"] == len(manifest["adapters"])
     assert manifest["invariants"]["does_not_enable_real_submission"] is True
     assert manifest["invariants"]["autonomous_release_requires_immutable_certification_manifest"] is True
+    assert manifest["invariants"]["autonomous_release_requires_trusted_signature"] is True
     assert manifest["invariants"]["runtime_requires_certified_autonomous_maturity"] is True
 
     greenhouse = next(item for item in manifest["adapters"] if item["name"] == "greenhouse")
@@ -87,6 +92,7 @@ def test_autonomy_certification_endpoint(client):
     payload = response.json()
     assert payload["framework_version"] == "autonomy_certification_v2"
     assert payload["release_contract_version"] == AUTONOMY_RELEASE_CONTRACT_VERSION
+    assert payload["release_contract"]["signature_method"] == AUTONOMY_SIGNATURE_METHOD
     stage_ids = {stage["id"] for stage in payload["stages"]}
     assert {
         "live_dry_run_evidence",
