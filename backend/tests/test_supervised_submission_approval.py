@@ -317,7 +317,8 @@ def test_approved_submit_endpoint_queues_reference_without_consuming_it(
 
     fake_result = MagicMock(id="supervised-task-id")
     mock_task = MagicMock()
-    mock_task.delay.return_value = fake_result
+    mock_task.name = "app.tasks.applications.submit_application_task"
+    mock_task.app.send_task.return_value = fake_result
     monkeypatch.setattr(
         "app.api.supervised_submissions.submit_application_task",
         mock_task,
@@ -327,11 +328,18 @@ def test_approved_submit_endpoint_queues_reference_without_consuming_it(
         f"/api/supervised-submissions/applications/{app_id}/approvals/{reference}/submit"
     )
     assert response.status_code == 200
-    assert response.json()["task_id"] == "supervised-task-id"
-    mock_task.delay.assert_called_once_with(
-        app_id,
-        dry_run=False,
-        approval_reference=reference,
+    data = response.json()
+    assert data["task_id"] == "supervised-task-id"
+    assert data["attempt_reference"]
+    mock_task.app.send_task.assert_called_once_with(
+        "app.tasks.applications.submit_application_task",
+        args=[app_id],
+        kwargs={
+            "dry_run": False,
+            "approval_reference": reference,
+            "attempt_reference": data["attempt_reference"],
+        },
+        queue="applications",
     )
 
     db = TestingSessionLocal()
