@@ -1,0 +1,214 @@
+name: Ashby retained readiness dossier
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/ashby_*.py"
+      - "backend/app/services/form_filler*.py"
+      - "backend/app/services/upload_handler.py"
+      - "backend/scripts/certify_ashby_live.py"
+      - "backend/scripts/build_ashby_certification_dossier.py"
+      - "backend/tests/test_ashby_*.py"
+      - "backend/tests/test_ats_flow_safety.py"
+      - "backend/tests/test_ats_captcha_handoff.py"
+      - "backend/tests/test_form_filler_anonymous_controls.py"
+      - "backend/tests/test_application_safety.py"
+      - "backend/tests/test_submission_evidence_review.py"
+      - ".github/workflows/ashby-readiness-dossier.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retained-dry-run-dossier:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 65
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./ashby-readiness-dossier.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ashby-readiness-dossier-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "true"
+      REQUIRE_BROWSER_TESTS: "1"
+      HANDOFF_STORAGE_DIR: ./ashby-readiness-handoff-sessions
+      JOBTOMATIK_BROWSER_NODE_ID: ashby-readiness-ci
+
+    steps:
+      - name: Check out exact source commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run Ashby fixture, inherited safety, state and evidence matrix
+        shell: bash
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_ashby_adapter.py \
+            tests/test_ashby_manifest.py \
+            tests/test_ashby_surface_resolution.py \
+            tests/test_ashby_readiness.py \
+            tests/test_ats_flow_safety.py \
+            tests/test_ats_captcha_handoff.py \
+            tests/test_form_filler_anonymous_controls.py \
+            tests/test_application_safety.py \
+            tests/test_submission_evidence_review.py \
+            --junitxml=ashby-fixture-junit.xml
+
+      - name: Run Ashby resumable handoff matrix
+        shell: bash
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_ashby_handoff_runtime.py \
+            --junitxml=ashby-handoff-junit.xml
+
+      - name: Select current public Ashby candidates
+        shell: bash
+        run: |
+          python - <<'PY'
+          import httpx
+
+          response = httpx.get(
+              'https://api.ashbyhq.com/posting-api/job-board/ashby',
+              timeout=25,
+              follow_redirects=True,
+          )
+          response.raise_for_status()
+          jobs = [
+              job for job in (response.json().get('jobs') or [])
+              if job.get('isListed') and job.get('applyUrl')
+          ]
+          jobs.sort(key=lambda job: job.get('publishedAt') or '', reverse=True)
+          preferred_terms = (
+              'support', 'customer success', 'operations', 'analyst', 'manager'
+          )
+          preferred = [
+              job for job in jobs
+              if any(term in str(job.get('title') or '').lower() for term in preferred_terms)
+          ]
+          ordered = preferred + [job for job in jobs if job not in preferred]
+          urls = list(dict.fromkeys(job['applyUrl'] for job in ordered))[:6]
+          if len(urls) < 3:
+              raise SystemExit('Fewer than three current Ashby application URLs were returned.')
+          open('ashby-readiness-candidates.txt', 'w').write('\n'.join(urls))
+          print('\n'.join(urls))
+          PY
+
+      - name: Inspect current live Ashby forms
+        shell: bash
+        run: |
+          python -u scripts/certify_ashby_live.py \
+            --urls "$(head -n 3 ashby-readiness-candidates.txt)" \
+            --report ashby-live-smoke.json
+
+      - name: Exercise one current form with synthetic data only
+        shell: bash
+        run: |
+          : > ashby-synthetic-attempts.txt
+          rm -f ashby-synthetic-live.json
+          index=0
+          success=1
+          while IFS= read -r url; do
+            [ -z "$url" ] && continue
+            index=$((index + 1))
+            report="ashby-synthetic-attempt-${index}.json"
+            echo "=== Attempt ${index}: ${url} ===" | tee -a ashby-synthetic-attempts.txt
+            set +e
+            python -u scripts/certify_ashby_live.py \
+              --urls "$url" \
+              --exercise \
+              --synthetic-resume-path ashby-synthetic-resume.pdf \
+              --report "$report" \
+              >> ashby-synthetic-attempts.txt 2>&1
+            status=$?
+            set -e
+            if [ "$status" -eq 0 ]; then
+              cp "$report" ashby-synthetic-live.json
+              success=0
+              break
+            fi
+          done < ashby-readiness-candidates.txt
+          cat ashby-synthetic-attempts.txt
+          if [ "$success" -ne 0 ]; then
+            echo "No current Ashby candidate reached the bounded dry-run certification boundary."
+            exit 1
+          fi
+
+      - name: Build locked Ashby readiness dossier
+        shell: bash
+        run: |
+          generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          adapter_version="$(python -c 'from app.services.ats_registry import RegisteredAshbyAdapter; print(RegisteredAshbyAdapter.version)')"
+          python scripts/build_ashby_certification_dossier.py \
+            --fixture-junit ashby-fixture-junit.xml \
+            --handoff-junit ashby-handoff-junit.xml \
+            --live-smoke ashby-live-smoke.json \
+            --synthetic-live ashby-synthetic-live.json \
+            --source-commit "$SOURCE_COMMIT" \
+            --generated-at "$generated_at" \
+            --adapter-version "$adapter_version" \
+            --output ashby-certification-dossier.json
+
+      - name: Assert dossier remains dry-run and fail-closed
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          dossier = json.load(open('ashby-certification-dossier.json'))
+          assert dossier['source_commit'] == os.environ['SOURCE_COMMIT']
+          assert dossier['maturity'] == 'dry_run'
+          assert dossier['readiness']['dry_run_certification_ready'] is True
+          assert dossier['readiness']['human_reviewed_submit_ready'] is False
+          assert dossier['readiness']['autonomous_ready'] is False
+          assert dossier['readiness']['promotion_ready'] is False
+          assert dossier['safety']['allow_real_application_submit'] is False
+          assert dossier['safety']['credited_real_submissions'] == 0
+          assert dossier['safety']['final_submit_clicked'] is False
+          assert dossier['safety']['false_submitted_records'] == 0
+          assert dossier['safety']['uncertain_outcomes_credited_as_submitted'] == 0
+          assert dossier['synthetic_live_dry_run']['verified_upload_count'] >= 1
+          assert dossier['coverage']['distinct_current_public_targets'] >= 1
+          PY
+
+      - name: Upload locked Ashby readiness inputs and dossier
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ashby-retained-readiness-dossier
+          path: |
+            backend/ashby-certification-dossier.json
+            backend/ashby-fixture-junit.xml
+            backend/ashby-handoff-junit.xml
+            backend/ashby-live-smoke.json
+            backend/ashby-synthetic-live.json
+            backend/ashby-synthetic-attempt-*.json
+            backend/ashby-synthetic-attempts.txt
+            backend/ashby-readiness-candidates.txt
+            backend/ashby-synthetic-resume.pdf
+          if-no-files-found: warn
+          retention-days: 30
