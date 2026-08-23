@@ -5,8 +5,14 @@ from app.services.ats_maturity import (
     annotate_adapter_manifest,
     derive_adapter_maturity,
 )
-from app.services.autonomy_release_contract import compute_autonomy_manifest_digest
+from app.services.autonomy_release_contract import (
+    AUTONOMY_SIGNATURE_METHOD,
+    compute_autonomy_manifest_digest,
+    compute_autonomy_manifest_signature,
+)
 from app.services import unattended_policy
+
+TEST_SIGNING_KEY = "jobtomatik-day27-test-signing-key-0001"
 
 
 def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40):
@@ -58,8 +64,17 @@ def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40)
             "approved_for_commit": release_commit,
         },
         "integrity": {"algorithm": "sha256", "manifest_digest": ""},
+        "attestation": {
+            "method": AUTONOMY_SIGNATURE_METHOD,
+            "key_id": "test-day27-key",
+            "signature": "",
+        },
     }
     manifest["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(manifest)
+    manifest["attestation"]["signature"] = compute_autonomy_manifest_signature(
+        manifest,
+        TEST_SIGNING_KEY,
+    )
     return manifest
 
 
@@ -79,9 +94,7 @@ def test_current_registry_maturity_snapshot_is_explicit():
         item["autonomous_submission_allowed"] is False
         for item in adapters.values()
     )
-    assert manifest["safety_invariants"][
-        "certification_level_is_descriptive_only"
-    ] is True
+    assert manifest["safety_invariants"]["certification_level_is_descriptive_only"] is True
 
 
 def test_certification_prose_cannot_promote_operational_maturity():
@@ -119,7 +132,7 @@ def test_zero_submit_live_exercise_reaches_dry_run_only():
     assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
 
 
-def test_autonomous_promotion_requires_approval_gates_and_immutable_manifest():
+def test_autonomous_promotion_requires_gates_manifest_and_trusted_signature():
     release = {gate: True for gate in AUTONOMY_RELEASE_GATES}
     manifest = {
         "name": "example",
@@ -137,14 +150,18 @@ def test_autonomous_promotion_requires_approval_gates_and_immutable_manifest():
 
     release["approved"] = True
     release["approval_reference"] = "controlled-pilot-2026-07"
-    # Day 27 closes the old loophole: approval plus booleans is still insufficient.
     assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
 
     release["certification_manifest"] = _autonomy_manifest()
-    assert derive_adapter_maturity(manifest) is AdapterMaturity.CERTIFIED_AUTONOMOUS
+    # A signed manifest is still fail-closed unless the runtime has the trusted key.
+    assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.CERTIFIED_AUTONOMOUS
 
 
-def test_tampered_or_wrong_version_manifest_cannot_promote():
+def test_tampered_wrong_version_or_wrong_signature_cannot_promote():
     release = {gate: True for gate in AUTONOMY_RELEASE_GATES}
     release.update(
         {
@@ -164,13 +181,28 @@ def test_tampered_or_wrong_version_manifest_cannot_promote():
         },
         "autonomy_release": release,
     }
-    assert derive_adapter_maturity(manifest) is AdapterMaturity.CERTIFIED_AUTONOMOUS
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.CERTIFIED_AUTONOMOUS
 
     release["certification_manifest"]["reliability_window"]["duplicate_submissions"] = 1
-    assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.DRY_RUN
 
     release["certification_manifest"] = _autonomy_manifest(version="0.9.0")
-    assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.DRY_RUN
+
+    release["certification_manifest"] = _autonomy_manifest()
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key="different-trusted-signing-key-000000000",
+    ) is AdapterMaturity.DRY_RUN
 
 
 def test_generic_adapter_requires_a_specific_implementation_before_promotion():
@@ -188,7 +220,8 @@ def test_generic_adapter_requires_a_specific_implementation_before_promotion():
             "version": "1.0.0",
             "supported_hosts": [],
             "autonomy_release": release,
-        }
+        },
+        trusted_signing_key=TEST_SIGNING_KEY,
     )
 
     assert annotated["maturity"] == AdapterMaturity.UNSUPPORTED.value
