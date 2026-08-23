@@ -12,10 +12,15 @@ from typing import Any, Dict, Iterable, Mapping
 
 from app.services.ats_manifest import ats_certification_manifest
 from app.services.ats_maturity import AUTONOMY_RELEASE_GATES, HUMAN_REVIEWED_RELEASE_GATES
+from app.services.autonomy_release_contract import (
+    AUTONOMY_RELEASE_CONTRACT_VERSION,
+    autonomy_release_contract_requirements,
+    validate_autonomy_release_manifest,
+)
 from app.services.operations_policy import operations_readiness_manifest
 
 AUTONOMY_TARGET_MATURITY = "certified_autonomous"
-AUTONOMY_CERTIFICATION_FRAMEWORK_VERSION = "autonomy_certification_v1"
+AUTONOMY_CERTIFICATION_FRAMEWORK_VERSION = "autonomy_certification_v2"
 _EXPLICIT_EXERCISE_EVIDENCE_STATUSES = frozenset({"certified", "reached"})
 
 # Ordered stages make the destination explicit without pretending the runtime is
@@ -50,7 +55,9 @@ CERTIFICATION_STAGES = (
         "title": "Evidence-backed autonomous real submission",
         "description": (
             "Autonomous submission is permitted only after every autonomy release gate "
-            "has an explicit approval record and operations controls are configured."
+            "passes and an immutable Day 27 certification manifest binds the adapter "
+            "version, release commit, fixture/evidence/policy digests, reliability, "
+            "retry bounds, circuit breaker, recovery drills, and explicit approval."
         ),
         "required_for": AUTONOMY_TARGET_MATURITY,
         "checks": AUTONOMY_RELEASE_GATES,
@@ -123,6 +130,25 @@ def _live_dry_run_status(adapter: Mapping[str, Any]) -> Dict[str, Any]:
 def _adapter_certification_plan(adapter: Mapping[str, Any]) -> Dict[str, Any]:
     human = _gate_status(adapter, "human_reviewed_release", HUMAN_REVIEWED_RELEASE_GATES)
     autonomy = _gate_status(adapter, "autonomy_release", AUTONOMY_RELEASE_GATES)
+    release = adapter.get("autonomy_release")
+    if not isinstance(release, Mapping):
+        release = {}
+    contract = validate_autonomy_release_manifest(
+        release.get("certification_manifest"),
+        adapter_name=str(adapter.get("name") or ""),
+        adapter_version=str(adapter.get("version") or ""),
+    )
+    autonomy["certification_manifest"] = contract
+    if not contract.get("passed"):
+        autonomy["passed"] = False
+        autonomy["missing"] = [
+            *autonomy.get("missing", []),
+            *[
+                f"certification_manifest.{name}"
+                for name in contract.get("missing") or []
+            ],
+        ]
+
     dry_run = _live_dry_run_status(adapter)
 
     blockers = []
@@ -171,6 +197,8 @@ def build_autonomy_certification_manifest() -> Dict[str, Any]:
     )
     return {
         "framework_version": AUTONOMY_CERTIFICATION_FRAMEWORK_VERSION,
+        "release_contract_version": AUTONOMY_RELEASE_CONTRACT_VERSION,
+        "release_contract": autonomy_release_contract_requirements(),
         "target_maturity": AUTONOMY_TARGET_MATURITY,
         "current_runtime": {
             "autopilot_enabled": operations.get("autopilot_enabled"),
@@ -186,5 +214,7 @@ def build_autonomy_certification_manifest() -> Dict[str, Any]:
             "documentation_is_not_certification_evidence": True,
             "feature_flags_may_remain_off_until_release_approval": True,
             "autonomous_release_requires_all_adapter_gates": True,
+            "autonomous_release_requires_immutable_certification_manifest": True,
+            "runtime_requires_certified_autonomous_maturity": True,
         },
     }
