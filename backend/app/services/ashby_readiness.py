@@ -64,17 +64,6 @@ def _lane_targets(report: Dict[str, Any]) -> List[str]:
     return identities
 
 
-def _raw_lane_target_count(report: Dict[str, Any]) -> int:
-    values = []
-    for item in report.get("reports") or []:
-        if not isinstance(item, dict):
-            continue
-        identity = _target_identity(str(item.get("surface_url") or item.get("url") or ""))
-        if identity:
-            values.append(identity)
-    return len(values)
-
-
 def _verified_uploads(report: Dict[str, Any]) -> int:
     return sum(
         1
@@ -151,11 +140,11 @@ def build_ashby_certification_dossier(
     synthetic_targets = _lane_targets(synthetic)
     distinct_targets = list(dict.fromkeys([*live_targets, *synthetic_targets]))
 
-    live_raw_count = _raw_lane_target_count(live)
-    synthetic_raw_count = _raw_lane_target_count(synthetic)
-    live_duplicate_targets = max(live_raw_count - len(live_targets), 0)
+    live_duplicate_targets = max(
+        int(live.get("url_count") or 0) - len(live_targets), 0
+    )
     synthetic_duplicate_targets = max(
-        synthetic_raw_count - len(synthetic_targets), 0
+        int(synthetic.get("url_count") or 0) - len(synthetic_targets), 0
     )
 
     uploads_verified = _verified_uploads(synthetic)
