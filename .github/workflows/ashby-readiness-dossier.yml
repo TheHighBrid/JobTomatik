@@ -31,6 +31,7 @@ jobs:
         working-directory: backend
 
     env:
+      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
       PYTHONPATH: .
       DATABASE_URL: sqlite:///./ashby-readiness-dossier.db
       REDIS_URL: redis://localhost:6379/0
@@ -44,8 +45,10 @@ jobs:
       JOBTOMATIK_BROWSER_NODE_ID: ashby-readiness-ci
 
     steps:
-      - name: Check out repository
+      - name: Check out exact source commit
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -164,7 +167,7 @@ jobs:
             --handoff-junit ashby-handoff-junit.xml \
             --live-smoke ashby-live-smoke.json \
             --synthetic-live ashby-synthetic-live.json \
-            --source-commit "$GITHUB_SHA" \
+            --source-commit "$SOURCE_COMMIT" \
             --generated-at "$generated_at" \
             --adapter-version "$adapter_version" \
             --output ashby-certification-dossier.json
@@ -177,7 +180,7 @@ jobs:
           import os
 
           dossier = json.load(open('ashby-certification-dossier.json'))
-          assert dossier['source_commit'] == os.environ['GITHUB_SHA']
+          assert dossier['source_commit'] == os.environ['SOURCE_COMMIT']
           assert dossier['maturity'] == 'dry_run'
           assert dossier['readiness']['dry_run_certification_ready'] is True
           assert dossier['readiness']['human_reviewed_submit_ready'] is False
