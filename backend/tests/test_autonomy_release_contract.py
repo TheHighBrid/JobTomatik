@@ -9,6 +9,7 @@ from app.services.autonomy_release_contract import (
     MIN_RELIABILITY_ATTEMPTS,
     MIN_SIGNING_KEY_BYTES,
     MIN_SUCCESS_RATE,
+    REQUIRED_SHADOW_CHECKS,
     autonomy_release_contract_requirements,
     compute_autonomy_manifest_digest,
     compute_autonomy_manifest_signature,
@@ -70,6 +71,7 @@ def valid_manifest(*, adapter_name="ashby", adapter_version="1.1.0", commit="a" 
             "platform_limits": True,
             "kill_switch": True,
         },
+        "shadow_runs": {check: True for check in REQUIRED_SHADOW_CHECKS},
         "approval": {
             "approved": True,
             "approval_reference": "owner-day27-approval",
@@ -104,7 +106,9 @@ def test_valid_signed_manifest_satisfies_day27_contract():
     assert result["attestation_key_id"] == "test-day27-key"
     assert result["requirements"]["contract_version"] == AUTONOMY_RELEASE_CONTRACT_VERSION
     assert result["requirements"]["minimum_success_rate"] == MIN_SUCCESS_RATE
+    assert result["requirements"]["minimum_reliability_attempts"] == MIN_RELIABILITY_ATTEMPTS
     assert result["requirements"]["trusted_runtime_signing_key_required"] is True
+    assert result["requirements"]["day39_promotion_blocked_until_shadow_checks_pass"] is True
 
 
 def test_manifest_requires_a_separate_trusted_signing_key():
@@ -161,17 +165,30 @@ def test_adapter_version_and_exact_commit_are_immutable_bindings():
     assert result["checks"]["attestation_signature_matches"] is True
 
 
-def test_reliability_window_requires_sustained_consistent_success_rate():
-    manifest = valid_manifest()
-    manifest["reliability_window"].update(
+def test_reliability_window_requires_roadmap_sample_and_consistent_success_rate():
+    too_small = valid_manifest()
+    too_small["reliability_window"].update(
+        {
+            "attempts": MIN_RELIABILITY_ATTEMPTS - 1,
+            "confirmed_successes": MIN_RELIABILITY_ATTEMPTS - 1,
+            "success_rate": 1.0,
+        }
+    )
+    _resign(too_small)
+    result = validate(too_small)
+    assert result["passed"] is False
+    assert "minimum_reliability_attempts" in result["missing"]
+
+    below_rate = valid_manifest()
+    below_rate["reliability_window"].update(
         {
             "attempts": 20,
             "confirmed_successes": 19,
             "success_rate": 0.95,
         }
     )
-    _resign(manifest)
-    result = validate(manifest)
+    _resign(below_rate)
+    result = validate(below_rate)
     assert result["passed"] is False
     assert "minimum_success_rate" in result["missing"]
 
@@ -200,6 +217,19 @@ def test_retry_breaker_recovery_and_policy_controls_fail_closed():
     assert "policy_kill_switch" in result["missing"]
 
 
+def test_every_roadmap_shadow_gate_is_required_for_promotion():
+    manifest = valid_manifest()
+    manifest["shadow_runs"]["eight_hour_unattended_passed"] = False
+    manifest["shadow_runs"]["zero_duplicate_tasks"] = False
+    _resign(manifest)
+
+    result = validate(manifest)
+
+    assert result["passed"] is False
+    assert "shadow_eight_hour_unattended_passed" in result["missing"]
+    assert "shadow_zero_duplicate_tasks" in result["missing"]
+
+
 def test_short_signing_key_is_rejected_before_signature_generation():
     manifest = valid_manifest()
     try:
@@ -220,9 +250,13 @@ def test_machine_readable_schema_tracks_contract_shape():
     assert schema["properties"]["reliability_window"]["properties"]["success_rate"]["minimum"] == MIN_SUCCESS_RATE
     assert schema["properties"]["attestation"]["properties"]["method"]["const"] == AUTONOMY_SIGNATURE_METHOD
     assert "attestation" in schema["required"]
+    assert "shadow_runs" in schema["required"]
     assert set(requirements["required_recovery_drills"]) == set(
         schema["properties"]["recovery_drills"]["required"]
     )
     assert set(requirements["required_policy_controls"]) <= set(
         schema["properties"]["policy_readiness"]["required"]
+    )
+    assert set(requirements["required_shadow_checks"]) == set(
+        schema["properties"]["shadow_runs"]["required"]
     )
