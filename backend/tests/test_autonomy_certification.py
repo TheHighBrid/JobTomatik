@@ -11,6 +11,7 @@ from app.services.autonomy_release_contract import (
     AUTONOMY_SIGNATURE_METHOD,
     MIN_RELIABILITY_ATTEMPTS,
     MIN_SUCCESS_RATE,
+    REQUIRED_SHADOW_CHECKS,
 )
 
 
@@ -35,6 +36,8 @@ def test_autonomy_certification_manifest_tracks_current_blockers():
     assert manifest["release_contract"]["minimum_success_rate"] == MIN_SUCCESS_RATE
     assert manifest["release_contract"]["signature_method"] == AUTONOMY_SIGNATURE_METHOD
     assert manifest["release_contract"]["trusted_runtime_signing_key_required"] is True
+    assert tuple(manifest["release_contract"]["required_shadow_checks"]) == REQUIRED_SHADOW_CHECKS
+    assert manifest["release_contract"]["day39_promotion_blocked_until_shadow_checks_pass"] is True
     assert manifest["target_maturity"] == "certified_autonomous"
     assert manifest["current_runtime"]["real_submission_enabled"] is False
     assert manifest["current_runtime"]["autopilot_enabled"] is False
@@ -44,6 +47,7 @@ def test_autonomy_certification_manifest_tracks_current_blockers():
     assert manifest["invariants"]["does_not_enable_real_submission"] is True
     assert manifest["invariants"]["autonomous_release_requires_immutable_certification_manifest"] is True
     assert manifest["invariants"]["autonomous_release_requires_trusted_signature"] is True
+    assert manifest["invariants"]["autonomous_release_requires_4h_8h_24h_shadow_gates"] is True
     assert manifest["invariants"]["runtime_requires_certified_autonomous_maturity"] is True
 
     greenhouse = next(item for item in manifest["adapters"] if item["name"] == "greenhouse")
@@ -93,6 +97,7 @@ def test_autonomy_certification_endpoint(client):
     assert payload["framework_version"] == "autonomy_certification_v2"
     assert payload["release_contract_version"] == AUTONOMY_RELEASE_CONTRACT_VERSION
     assert payload["release_contract"]["signature_method"] == AUTONOMY_SIGNATURE_METHOD
+    assert tuple(payload["release_contract"]["required_shadow_checks"]) == REQUIRED_SHADOW_CHECKS
     stage_ids = {stage["id"] for stage in payload["stages"]}
     assert {
         "live_dry_run_evidence",
