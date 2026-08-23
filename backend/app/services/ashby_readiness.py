@@ -151,10 +151,13 @@ def build_ashby_certification_dossier(
     manual_challenge_outcomes = _manual_challenge_outcomes(synthetic)
     official_schema_statuses = _official_schema_statuses(live)
 
-    live_passed = bool(live.get("passed")) and _all_final_submit_false(live)
-    synthetic_passed = bool(synthetic.get("passed")) and _all_final_submit_false(
-        synthetic
+    live_final_submit_clicked = not _all_final_submit_false(live)
+    synthetic_final_submit_clicked = not _all_final_submit_false(synthetic)
+    any_final_submit_clicked = (
+        live_final_submit_clicked or synthetic_final_submit_clicked
     )
+    live_passed = bool(live.get("passed")) and not live_final_submit_clicked
+    synthetic_passed = bool(synthetic.get("passed")) and not synthetic_final_submit_clicked
     fixture_passed = fixture["passed"]
     handoff_passed = handoff["passed"]
 
@@ -213,7 +216,7 @@ def build_ashby_certification_dossier(
             "targets": live_targets,
             "duplicate_targets_within_lane": live_duplicate_targets,
             "official_form_definition_statuses": official_schema_statuses,
-            "final_submit_clicked": not _all_final_submit_false(live),
+            "final_submit_clicked": live_final_submit_clicked,
         },
         "synthetic_live_dry_run": {
             "passed": synthetic_passed,
@@ -228,7 +231,7 @@ def build_ashby_certification_dossier(
                 for item in synthetic.get("reports") or []
                 if isinstance(item, dict) and item.get("mode") == "exercise"
             ],
-            "final_submit_clicked": not _all_final_submit_false(synthetic),
+            "final_submit_clicked": synthetic_final_submit_clicked,
         },
         "coverage": {
             "distinct_current_public_targets": len(distinct_targets),
@@ -250,7 +253,7 @@ def build_ashby_certification_dossier(
         "safety": {
             "allow_real_application_submit": False,
             "credited_real_submissions": 0,
-            "final_submit_clicked": False,
+            "final_submit_clicked": any_final_submit_clicked,
             "false_submitted_records": 0,
             "uncertain_outcomes_credited_as_submitted": 0,
             "captcha_or_mfa_bypass_attempted": False,
