@@ -14,12 +14,11 @@
     "recovery_drills",
     "policy_readiness",
     "approval",
-    "integrity"
+    "integrity",
+    "attestation"
   ],
   "properties": {
-    "schema_version": {
-      "const": "autonomy_release_v1"
-    },
+    "schema_version": {"const": "autonomy_release_v1"},
     "adapter": {
       "type": "object",
       "additionalProperties": false,
@@ -63,11 +62,7 @@
     "retry_policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "bounded",
-        "max_automatic_retries_per_attempt",
-        "no_retry_after_submit_click_without_confirmation"
-      ],
+      "required": ["bounded", "max_automatic_retries_per_attempt", "no_retry_after_submit_click_without_confirmation"],
       "properties": {
         "bounded": {"const": true},
         "max_automatic_retries_per_attempt": {"type": "integer", "minimum": 0, "maximum": 1},
@@ -99,14 +94,7 @@
     "policy_readiness": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "ready",
-        "daily_weekly_caps",
-        "quiet_hours",
-        "employer_exclusions",
-        "platform_limits",
-        "kill_switch"
-      ],
+      "required": ["ready", "daily_weekly_caps", "quiet_hours", "employer_exclusions", "platform_limits", "kill_switch"],
       "properties": {
         "ready": {"const": true},
         "daily_weekly_caps": {"const": true},
@@ -133,6 +121,16 @@
       "properties": {
         "algorithm": {"const": "sha256"},
         "manifest_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "key_id", "signature"],
+      "properties": {
+        "method": {"const": "hmac-sha256"},
+        "key_id": {"type": "string", "minLength": 1},
+        "signature": {"type": "string", "pattern": "^hmac-sha256:[0-9a-f]{64}$"}
       }
     }
   }
