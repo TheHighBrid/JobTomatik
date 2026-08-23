@@ -6,6 +6,7 @@ from app.services.autonomy_release_contract import (
     AUTONOMY_RELEASE_CONTRACT_VERSION,
     AUTONOMY_RELEASE_SCHEMA_VERSION,
     AUTONOMY_SIGNATURE_METHOD,
+    MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
     MIN_RELIABILITY_ATTEMPTS,
     MIN_SIGNING_KEY_BYTES,
     MIN_SUCCESS_RATE,
@@ -39,8 +40,11 @@ def valid_manifest(*, adapter_name="ashby", adapter_version="1.1.0", commit="a" 
             "policy_digest": "sha256:" + "3" * 64,
         },
         "reliability_window": {
+            "evidence_type": "supervised_real_submission",
             "attempts": MIN_RELIABILITY_ATTEMPTS,
             "confirmed_successes": MIN_RELIABILITY_ATTEMPTS,
+            "distinct_confirmed_submissions": MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+            "independently_reviewed_successes": MIN_RELIABILITY_ATTEMPTS,
             "success_rate": 1.0,
             "false_positive_submitted_records": 0,
             "duplicate_submissions": 0,
@@ -107,6 +111,8 @@ def test_valid_signed_manifest_satisfies_day27_contract():
     assert result["requirements"]["contract_version"] == AUTONOMY_RELEASE_CONTRACT_VERSION
     assert result["requirements"]["minimum_success_rate"] == MIN_SUCCESS_RATE
     assert result["requirements"]["minimum_reliability_attempts"] == MIN_RELIABILITY_ATTEMPTS
+    assert result["requirements"]["minimum_distinct_confirmed_submissions"] == MIN_DISTINCT_CONFIRMED_SUBMISSIONS
+    assert result["requirements"]["reliability_evidence_type"] == "supervised_real_submission"
     assert result["requirements"]["trusted_runtime_signing_key_required"] is True
     assert result["requirements"]["day39_promotion_blocked_until_shadow_checks_pass"] is True
 
@@ -165,12 +171,21 @@ def test_adapter_version_and_exact_commit_are_immutable_bindings():
     assert result["checks"]["attestation_signature_matches"] is True
 
 
-def test_reliability_window_requires_roadmap_sample_and_consistent_success_rate():
+def test_reliability_window_requires_supervised_distinct_reviewed_evidence():
+    wrong_mode = valid_manifest()
+    wrong_mode["reliability_window"]["evidence_type"] = "dry_run"
+    _resign(wrong_mode)
+    result = validate(wrong_mode)
+    assert result["passed"] is False
+    assert "supervised_reliability_evidence" in result["missing"]
+
     too_small = valid_manifest()
     too_small["reliability_window"].update(
         {
             "attempts": MIN_RELIABILITY_ATTEMPTS - 1,
             "confirmed_successes": MIN_RELIABILITY_ATTEMPTS - 1,
+            "distinct_confirmed_submissions": MIN_DISTINCT_CONFIRMED_SUBMISSIONS - 1,
+            "independently_reviewed_successes": MIN_RELIABILITY_ATTEMPTS - 1,
             "success_rate": 1.0,
         }
     )
@@ -178,12 +193,24 @@ def test_reliability_window_requires_roadmap_sample_and_consistent_success_rate(
     result = validate(too_small)
     assert result["passed"] is False
     assert "minimum_reliability_attempts" in result["missing"]
+    assert "minimum_distinct_confirmed_submissions" in result["missing"]
 
+    unreviewed = valid_manifest()
+    unreviewed["reliability_window"]["independently_reviewed_successes"] -= 1
+    _resign(unreviewed)
+    result = validate(unreviewed)
+    assert result["passed"] is False
+    assert "all_successes_independently_reviewed" in result["missing"]
+
+
+def test_reliability_window_requires_consistent_success_rate():
     below_rate = valid_manifest()
     below_rate["reliability_window"].update(
         {
             "attempts": 20,
             "confirmed_successes": 19,
+            "distinct_confirmed_submissions": 19,
+            "independently_reviewed_successes": 19,
             "success_rate": 0.95,
         }
     )
@@ -219,14 +246,18 @@ def test_retry_breaker_recovery_and_policy_controls_fail_closed():
 
 def test_every_roadmap_shadow_gate_is_required_for_promotion():
     manifest = valid_manifest()
+    manifest["shadow_runs"]["final_submit_disabled"] = False
     manifest["shadow_runs"]["eight_hour_unattended_passed"] = False
+    manifest["shadow_runs"]["no_leaked_sessions"] = False
     manifest["shadow_runs"]["zero_duplicate_tasks"] = False
     _resign(manifest)
 
     result = validate(manifest)
 
     assert result["passed"] is False
+    assert "shadow_final_submit_disabled" in result["missing"]
     assert "shadow_eight_hour_unattended_passed" in result["missing"]
+    assert "shadow_no_leaked_sessions" in result["missing"]
     assert "shadow_zero_duplicate_tasks" in result["missing"]
 
 
@@ -246,8 +277,11 @@ def test_machine_readable_schema_tracks_contract_shape():
     requirements = autonomy_release_contract_requirements()
 
     assert schema["properties"]["schema_version"]["const"] == AUTONOMY_RELEASE_SCHEMA_VERSION
-    assert schema["properties"]["reliability_window"]["properties"]["attempts"]["minimum"] == MIN_RELIABILITY_ATTEMPTS
-    assert schema["properties"]["reliability_window"]["properties"]["success_rate"]["minimum"] == MIN_SUCCESS_RATE
+    reliability = schema["properties"]["reliability_window"]
+    assert reliability["properties"]["attempts"]["minimum"] == MIN_RELIABILITY_ATTEMPTS
+    assert reliability["properties"]["distinct_confirmed_submissions"]["minimum"] == MIN_DISTINCT_CONFIRMED_SUBMISSIONS
+    assert reliability["properties"]["evidence_type"]["const"] == "supervised_real_submission"
+    assert reliability["properties"]["success_rate"]["minimum"] == MIN_SUCCESS_RATE
     assert schema["properties"]["attestation"]["properties"]["method"]["const"] == AUTONOMY_SIGNATURE_METHOD
     assert "attestation" in schema["required"]
     assert "shadow_runs" in schema["required"]
