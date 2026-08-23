@@ -3,6 +3,7 @@ name: Autonomous certification contract
 on:
   pull_request:
     paths:
+      - "backend/app/config.py"
       - "backend/app/services/ats_manifest.py"
       - "backend/app/services/ats_maturity.py"
       - "backend/app/services/autonomy_certification.py"
@@ -35,6 +36,7 @@ jobs:
       DATABASE_URL: sqlite:///./autonomy-contract.db
       REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: autonomy-contract-ci-only
+      AUTONOMY_CERTIFICATION_SIGNING_KEY: jobtomatik-day27-ci-signing-key-00001
       AI_PROVIDER: template
       DEV_MOCK_JOBS: "false"
       ALLOW_REAL_APPLICATION_SUBMIT: "false"
@@ -54,7 +56,7 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install -q --disable-pip-version-check -r requirements.txt
 
-      - name: Export machine-readable contract
+      - name: Export machine-readable signed contract
         run: |
           python scripts/validate_autonomy_release_manifest.py \
             --print-requirements \
@@ -81,6 +83,8 @@ jobs:
           assert certification['ready_adapters'] == []
           assert certification['current_runtime']['real_submission_enabled'] is False
           assert certification['current_runtime']['autopilot_enabled'] is False
+          assert certification['current_runtime']['trusted_signing_key_configured'] is True
+          assert certification['invariants']['autonomous_release_requires_trusted_signature'] is True
           assert certification['invariants']['runtime_requires_certified_autonomous_maturity'] is True
           assert ats['autonomous_adapters'] == []
           assert all(
