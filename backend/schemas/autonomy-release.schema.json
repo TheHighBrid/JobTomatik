@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jobtomatik.local/schemas/autonomy-release.schema.json",
+  "title": "JobTomatik Autonomous Release Certification Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "adapter",
+    "source",
+    "reliability_window",
+    "retry_policy",
+    "circuit_breaker",
+    "recovery_drills",
+    "policy_readiness",
+    "approval",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "autonomy_release_v1"
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_commit", "fixture_digest", "evidence_digest", "policy_digest"],
+      "properties": {
+        "release_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "fixture_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "evidence_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "policy_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "reliability_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempts",
+        "confirmed_successes",
+        "success_rate",
+        "false_positive_submitted_records",
+        "duplicate_submissions",
+        "uncertain_outcomes_credited_as_submitted"
+      ],
+      "properties": {
+        "attempts": {"type": "integer", "minimum": 20},
+        "confirmed_successes": {"type": "integer", "minimum": 0},
+        "success_rate": {"type": "number", "minimum": 0.98, "maximum": 1.0},
+        "false_positive_submitted_records": {"const": 0},
+        "duplicate_submissions": {"const": 0},
+        "uncertain_outcomes_credited_as_submitted": {"const": 0}
+      }
+    },
+    "retry_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bounded",
+        "max_automatic_retries_per_attempt",
+        "no_retry_after_submit_click_without_confirmation"
+      ],
+      "properties": {
+        "bounded": {"const": true},
+        "max_automatic_retries_per_attempt": {"type": "integer", "minimum": 0, "maximum": 1},
+        "no_retry_after_submit_click_without_confirmation": {"const": true}
+      }
+    },
+    "circuit_breaker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verified", "failure_threshold", "halts_new_submissions"],
+      "properties": {
+        "verified": {"const": true},
+        "failure_threshold": {"type": "integer", "minimum": 1},
+        "halts_new_submissions": {"const": true}
+      }
+    },
+    "recovery_drills": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["process_crash", "worker_restart", "redis_interruption", "database_lock", "browser_death"],
+      "properties": {
+        "process_crash": {"const": true},
+        "worker_restart": {"const": true},
+        "redis_interruption": {"const": true},
+        "database_lock": {"const": true},
+        "browser_death": {"const": true}
+      }
+    },
+    "policy_readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ready",
+        "daily_weekly_caps",
+        "quiet_hours",
+        "employer_exclusions",
+        "platform_limits",
+        "kill_switch"
+      ],
+      "properties": {
+        "ready": {"const": true},
+        "daily_weekly_caps": {"const": true},
+        "quiet_hours": {"const": true},
+        "employer_exclusions": {"const": true},
+        "platform_limits": {"const": true},
+        "kill_switch": {"const": true}
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approved", "approval_reference", "approved_for_commit"],
+      "properties": {
+        "approved": {"const": true},
+        "approval_reference": {"type": "string", "minLength": 1},
+        "approved_for_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "manifest_digest"],
+      "properties": {
+        "algorithm": {"const": "sha256"},
+        "manifest_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
