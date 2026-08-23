@@ -1,0 +1,106 @@
+name: Autonomous certification contract
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_manifest.py"
+      - "backend/app/services/ats_maturity.py"
+      - "backend/app/services/autonomy_certification.py"
+      - "backend/app/services/autonomy_release_contract.py"
+      - "backend/app/services/unattended_policy.py"
+      - "backend/app/services/policy_gate.py"
+      - "backend/scripts/validate_autonomy_release_manifest.py"
+      - "backend/schemas/autonomy-release.schema.json"
+      - "backend/tests/test_ats_maturity.py"
+      - "backend/tests/test_autonomy_certification.py"
+      - "backend/tests/test_autonomy_release_contract.py"
+      - "backend/tests/test_policy_gate.py"
+      - ".github/workflows/autonomy-certification-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  executable-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./autonomy-contract.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: autonomy-contract-ci-only
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ENABLE_AUTOPILOT: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Export machine-readable contract
+        run: |
+          python scripts/validate_autonomy_release_manifest.py \
+            --print-requirements \
+            > autonomy-release-contract.json
+
+      - name: Run autonomous certification contract matrix
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_autonomy_release_contract.py \
+            tests/test_ats_maturity.py \
+            tests/test_autonomy_certification.py \
+            tests/test_policy_gate.py \
+            --junitxml=autonomy-contract-junit.xml
+
+      - name: Assert current runtime remains non-autonomous
+        run: |
+          python - <<'PY'
+          import json
+          from app.services.autonomy_certification import build_autonomy_certification_manifest
+          from app.services.ats_manifest import ats_certification_manifest
+
+          certification = build_autonomy_certification_manifest()
+          ats = ats_certification_manifest()
+          assert certification['ready_adapters'] == []
+          assert certification['current_runtime']['real_submission_enabled'] is False
+          assert certification['current_runtime']['autopilot_enabled'] is False
+          assert certification['invariants']['runtime_requires_certified_autonomous_maturity'] is True
+          assert ats['autonomous_adapters'] == []
+          assert all(
+              adapter['autonomous_submission_allowed'] is False
+              for adapter in ats['adapters']
+          )
+          open('autonomy-certification-current.json', 'w').write(
+              json.dumps(certification, indent=2, sort_keys=True) + '\n'
+          )
+          PY
+
+      - name: Upload certification contract evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: autonomy-certification-contract
+          path: |
+            backend/autonomy-release-contract.json
+            backend/autonomy-contract-junit.xml
+            backend/autonomy-certification-current.json
+            backend/schemas/autonomy-release.schema.json
+          if-no-files-found: error
+          retention-days: 30
