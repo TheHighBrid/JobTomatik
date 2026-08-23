@@ -55,8 +55,9 @@ CERTIFICATION_STAGES = (
         "description": (
             "Autonomous submission is permitted only after every autonomy release gate "
             "passes and a signed immutable Day 27 certification manifest binds the adapter "
-            "version, release commit, fixture/evidence/policy digests, reliability, retry "
-            "bounds, circuit breaker, recovery drills, and explicit approval."
+            "version, release commit, fixture/evidence/policy digests, supervised reliability, "
+            "retry bounds, circuit breaker, recovery drills, 4h/8h/24h unattended shadow "
+            "evidence, and explicit release approval."
         ),
         "required_for": AUTONOMY_TARGET_MATURITY,
         "checks": AUTONOMY_RELEASE_GATES,
@@ -205,6 +206,7 @@ def build_autonomy_certification_manifest() -> Dict[str, Any]:
             "autonomous_release_requires_all_adapter_gates": True,
             "autonomous_release_requires_immutable_certification_manifest": True,
             "autonomous_release_requires_trusted_signature": True,
+            "autonomous_release_requires_4h_8h_24h_shadow_gates": True,
             "runtime_requires_certified_autonomous_maturity": True,
         },
     }
