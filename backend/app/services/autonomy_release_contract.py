@@ -17,6 +17,7 @@ MIN_SIGNING_KEY_BYTES = 32
 # autonomy evidence starts from that established sample and must additionally pass
 # the 4h, 8h, and 24h unattended shadow gates below.
 MIN_RELIABILITY_ATTEMPTS = 10
+MIN_DISTINCT_CONFIRMED_SUBMISSIONS = 10
 MIN_SUCCESS_RATE = 0.98
 MAX_AUTOMATIC_RETRIES_PER_ATTEMPT = 1
 REQUIRED_RECOVERY_DRILLS = (
@@ -34,13 +35,17 @@ REQUIRED_POLICY_CONTROLS = (
     "kill_switch",
 )
 REQUIRED_SHADOW_CHECKS = (
+    "final_submit_disabled",
     "four_hour_unattended_passed",
     "eight_hour_unattended_passed",
     "twenty_four_hour_unattended_passed",
+    "no_leaked_sessions",
     "source_outage_breaker_verified",
     "browser_crash_recovery_verified",
     "stale_posting_rejected",
     "ambiguous_question_held",
+    "quiet_hour_transition_verified",
+    "daily_cap_reset_verified",
     "zero_policy_escapes",
     "zero_unexplained_records",
     "zero_duplicate_tasks",
@@ -104,7 +109,10 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
         "contract_version": AUTONOMY_RELEASE_CONTRACT_VERSION,
         "schema_version": AUTONOMY_RELEASE_SCHEMA_VERSION,
         "target_maturity": "certified_autonomous",
+        "reliability_evidence_type": "supervised_real_submission",
         "minimum_reliability_attempts": MIN_RELIABILITY_ATTEMPTS,
+        "minimum_distinct_confirmed_submissions": MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+        "all_confirmed_successes_require_independent_review": True,
         "minimum_success_rate": MIN_SUCCESS_RATE,
         "maximum_automatic_retries_per_attempt": MAX_AUTOMATIC_RETRIES_PER_ATTEMPT,
         "zero_tolerance": [
@@ -150,8 +158,8 @@ def validate_autonomy_release_manifest(
 
     Passing release booleans or prose labels cannot promote an adapter unless the
     immutable certification record satisfies the full contract, is bound to the exact
-    adapter version and release commit, includes the roadmap shadow-run evidence, and
-    carries a valid attestation under the separately configured runtime signing key.
+    adapter version and release commit, includes the roadmap supervised/shadow evidence,
+    and carries a valid attestation under the separately configured runtime signing key.
     """
     checks: Dict[str, bool] = {}
     missing: list[str] = []
@@ -200,9 +208,18 @@ def validate_autonomy_release_manifest(
     reliability = manifest.get("reliability_window")
     if not isinstance(reliability, Mapping):
         reliability = {}
+    evidence_type = str(reliability.get("evidence_type") or "").strip().lower()
     attempts = reliability.get("attempts")
     successes = reliability.get("confirmed_successes")
+    distinct_successes = reliability.get("distinct_confirmed_submissions")
+    independently_reviewed = reliability.get("independently_reviewed_successes")
     reported_rate = reliability.get("success_rate")
+    _record_check(
+        checks,
+        missing,
+        "supervised_reliability_evidence",
+        evidence_type == "supervised_real_submission",
+    )
     attempts_valid = (
         isinstance(attempts, int)
         and not isinstance(attempts, bool)
@@ -214,8 +231,32 @@ def validate_autonomy_release_manifest(
         and isinstance(attempts, int)
         and 0 <= successes <= attempts
     )
+    distinct_successes_valid = (
+        isinstance(distinct_successes, int)
+        and not isinstance(distinct_successes, bool)
+        and isinstance(successes, int)
+        and MIN_DISTINCT_CONFIRMED_SUBMISSIONS <= distinct_successes <= successes
+    )
+    independent_review_valid = (
+        isinstance(independently_reviewed, int)
+        and not isinstance(independently_reviewed, bool)
+        and isinstance(successes, int)
+        and independently_reviewed == successes
+    )
     _record_check(checks, missing, "minimum_reliability_attempts", attempts_valid)
     _record_check(checks, missing, "confirmed_success_count_valid", successes_valid)
+    _record_check(
+        checks,
+        missing,
+        "minimum_distinct_confirmed_submissions",
+        distinct_successes_valid,
+    )
+    _record_check(
+        checks,
+        missing,
+        "all_successes_independently_reviewed",
+        independent_review_valid,
+    )
     computed_rate = (
         float(successes) / float(attempts)
         if successes_valid and isinstance(attempts, int) and attempts > 0
