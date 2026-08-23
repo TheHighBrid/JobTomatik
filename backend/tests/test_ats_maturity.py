@@ -7,6 +7,8 @@ from app.services.ats_maturity import (
 )
 from app.services.autonomy_release_contract import (
     AUTONOMY_SIGNATURE_METHOD,
+    MIN_RELIABILITY_ATTEMPTS,
+    REQUIRED_SHADOW_CHECKS,
     compute_autonomy_manifest_digest,
     compute_autonomy_manifest_signature,
 )
@@ -26,8 +28,8 @@ def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40)
             "policy_digest": "sha256:" + "3" * 64,
         },
         "reliability_window": {
-            "attempts": 20,
-            "confirmed_successes": 20,
+            "attempts": MIN_RELIABILITY_ATTEMPTS,
+            "confirmed_successes": MIN_RELIABILITY_ATTEMPTS,
             "success_rate": 1.0,
             "false_positive_submitted_records": 0,
             "duplicate_submissions": 0,
@@ -58,6 +60,7 @@ def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40)
             "platform_limits": True,
             "kill_switch": True,
         },
+        "shadow_runs": {check: True for check in REQUIRED_SHADOW_CHECKS},
         "approval": {
             "approved": True,
             "approval_reference": "day27-owner-approval",
@@ -132,7 +135,7 @@ def test_zero_submit_live_exercise_reaches_dry_run_only():
     assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
 
 
-def test_autonomous_promotion_requires_gates_manifest_and_trusted_signature():
+def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_signature():
     release = {gate: True for gate in AUTONOMY_RELEASE_GATES}
     manifest = {
         "name": "example",
@@ -153,12 +156,24 @@ def test_autonomous_promotion_requires_gates_manifest_and_trusted_signature():
     assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
 
     release["certification_manifest"] = _autonomy_manifest()
-    # A signed manifest is still fail-closed unless the runtime has the trusted key.
     assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
     ) is AdapterMaturity.CERTIFIED_AUTONOMOUS
+
+    incomplete_shadow = _autonomy_manifest()
+    incomplete_shadow["shadow_runs"]["twenty_four_hour_unattended_passed"] = False
+    incomplete_shadow["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(incomplete_shadow)
+    incomplete_shadow["attestation"]["signature"] = compute_autonomy_manifest_signature(
+        incomplete_shadow,
+        TEST_SIGNING_KEY,
+    )
+    release["certification_manifest"] = incomplete_shadow
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.DRY_RUN
 
 
 def test_tampered_wrong_version_or_wrong_signature_cannot_promote():
