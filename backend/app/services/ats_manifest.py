@@ -33,6 +33,7 @@ def ats_certification_manifest() -> Dict[str, Any]:
             "maturity_is_derived_from_manifest_evidence": True,
             "autonomous_maturity_requires_explicit_release_gates": True,
             "autonomous_maturity_requires_immutable_certification_manifest": True,
+            "autonomous_maturity_requires_trusted_manifest_signature": True,
             "autonomous_manifest_binds_adapter_version_and_release_commit": True,
             "autonomous_manifest_binds_fixture_evidence_and_policy_digests": True,
             "unknown_or_missing_maturity_fails_closed": True,
