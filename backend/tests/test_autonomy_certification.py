@@ -9,6 +9,7 @@ from app.services.autonomy_release_contract import (
     AUTONOMY_RELEASE_CONTRACT_VERSION,
     AUTONOMY_RELEASE_SCHEMA_VERSION,
     AUTONOMY_SIGNATURE_METHOD,
+    MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
     MIN_RELIABILITY_ATTEMPTS,
     MIN_SUCCESS_RATE,
     REQUIRED_SHADOW_CHECKS,
@@ -33,6 +34,9 @@ def test_autonomy_certification_manifest_tracks_current_blockers():
     assert manifest["release_contract_version"] == AUTONOMY_RELEASE_CONTRACT_VERSION
     assert manifest["release_contract"]["schema_version"] == AUTONOMY_RELEASE_SCHEMA_VERSION
     assert manifest["release_contract"]["minimum_reliability_attempts"] == MIN_RELIABILITY_ATTEMPTS
+    assert manifest["release_contract"]["minimum_distinct_confirmed_submissions"] == MIN_DISTINCT_CONFIRMED_SUBMISSIONS
+    assert manifest["release_contract"]["reliability_evidence_type"] == "supervised_real_submission"
+    assert manifest["release_contract"]["all_confirmed_successes_require_independent_review"] is True
     assert manifest["release_contract"]["minimum_success_rate"] == MIN_SUCCESS_RATE
     assert manifest["release_contract"]["signature_method"] == AUTONOMY_SIGNATURE_METHOD
     assert manifest["release_contract"]["trusted_runtime_signing_key_required"] is True
