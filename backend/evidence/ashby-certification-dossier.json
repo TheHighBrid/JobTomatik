@@ -1,0 +1,116 @@
+{
+  "adapter_version": "1.1.0",
+  "certification_scope": "dry_run_pre_submit_only",
+  "coverage": {
+    "confirmation_detection_fixture_only": true,
+    "distinct_current_public_targets": 3,
+    "embedded_iframe_regression": true,
+    "hosted_form_live_inspection": true,
+    "live_official_form_definition_validation_retained": false,
+    "live_post_submit_confirmation": false,
+    "manual_challenge_handoff": true,
+    "official_form_definition_fixture_validation": true,
+    "query_suffixed_application_regression": true,
+    "resumable_handoff": true,
+    "verified_upload": true
+  },
+  "fixture_matrix": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true,
+    "skipped": 0,
+    "tests": 32
+  },
+  "generated_at": "2026-08-23T15:42:57Z",
+  "inputs": [
+    {
+      "kind": "fixture_matrix_junit",
+      "path": "ashby-fixture-junit.xml",
+      "sha256": "62178530041584c22b7d2ceb9515529e6b0cc39a6d6d62b2ecc7cbb0d62f16da",
+      "size_bytes": 4470
+    },
+    {
+      "kind": "resumable_handoff_junit",
+      "path": "ashby-handoff-junit.xml",
+      "sha256": "ed9b96a6ae2632215692eb09f4ea3f595a3c337ac8dd98ec30c19474ac878d05",
+      "size_bytes": 396
+    },
+    {
+      "kind": "live_public_form_inspection",
+      "path": "ashby-live-smoke.json",
+      "sha256": "0e0baf347c7f3fe1312b4968933bf9556c296195ebec6bd8db3596450de61774",
+      "size_bytes": 78481
+    },
+    {
+      "kind": "synthetic_live_dry_run",
+      "path": "ashby-synthetic-live.json",
+      "sha256": "890c990f53ea2a8d0ff070c9612e0fbf18a7bb295dee9baaa9a7bd48fb7639c6",
+      "size_bytes": 29239
+    }
+  ],
+  "live_public_form_inspection": {
+    "duplicate_targets_within_lane": 0,
+    "final_submit_clicked": false,
+    "official_form_definition_statuses": [
+      "not_configured"
+    ],
+    "passed": true,
+    "target_count": 3,
+    "targets": [
+      "ashby:9304472c-7233-4091-be2e-ac98b7fd3131",
+      "ashby:62d4f71e-f56c-447a-a965-a9c2ea8eac5e",
+      "ashby:5d4b0ed6-da8c-4377-a43a-c45bf90a0073"
+    ],
+    "url_count": 3
+  },
+  "maturity": "dry_run",
+  "platform": "ashby",
+  "readiness": {
+    "autonomous_ready": false,
+    "dry_run_blockers": [],
+    "dry_run_certification_ready": true,
+    "human_reviewed_submit_ready": false,
+    "promotion_blockers": [
+      "no_real_supervised_submission_evidence",
+      "no_live_post_submit_confirmation_evidence",
+      "independent_success_evidence_review_not_present",
+      "explicit_adapter_promotion_authorization_required",
+      "credentialed_live_form_definition_validation_not_retained"
+    ],
+    "promotion_ready": false
+  },
+  "repository": "TheHighBrid/JobTomatik",
+  "resumable_handoff_matrix": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true,
+    "skipped": 0,
+    "tests": 1
+  },
+  "safety": {
+    "allow_real_application_submit": false,
+    "captcha_or_mfa_bypass_attempted": false,
+    "credited_real_submissions": 0,
+    "false_submitted_records": 0,
+    "final_submit_clicked": false,
+    "maturity_changed": false,
+    "uncertain_outcomes_credited_as_submitted": 0
+  },
+  "schema_version": "1.0",
+  "source_commit": "a6acde8fd57bf06ddb4c9e2d36a75c9e821a8f55",
+  "synthetic_live_dry_run": {
+    "accepted_outcomes": [
+      "ready_to_submit"
+    ],
+    "duplicate_targets_within_lane": 0,
+    "final_submit_clicked": false,
+    "manual_challenge_handoff_count": 0,
+    "passed": true,
+    "target_count": 1,
+    "targets": [
+      "ashby:9304472c-7233-4091-be2e-ac98b7fd3131"
+    ],
+    "url_count": 1,
+    "verified_upload_count": 1
+  }
+}
