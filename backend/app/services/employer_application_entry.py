@@ -129,7 +129,7 @@ async def _embedded_hosted_ats_target(page: Any) -> str:
     """
     try:
         payload = await page.evaluate(
-            """() => {
+            r"""() => {
               const body = document.body ? (document.body.innerText || '') : '';
               const html = document.documentElement
                 ? (document.documentElement.innerHTML || '')
