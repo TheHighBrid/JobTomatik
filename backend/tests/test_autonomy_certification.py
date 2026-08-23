@@ -5,6 +5,12 @@ from app.services.autonomy_certification import (
     build_autonomy_certification_manifest,
 )
 from app.services.ats_maturity import AUTONOMY_RELEASE_GATES, HUMAN_REVIEWED_RELEASE_GATES
+from app.services.autonomy_release_contract import (
+    AUTONOMY_RELEASE_CONTRACT_VERSION,
+    AUTONOMY_RELEASE_SCHEMA_VERSION,
+    MIN_RELIABILITY_ATTEMPTS,
+    MIN_SUCCESS_RATE,
+)
 
 
 def _adapter_with_synthetic_live_exercise(status: str):
@@ -21,19 +27,28 @@ def _adapter_with_synthetic_live_exercise(status: str):
 def test_autonomy_certification_manifest_tracks_current_blockers():
     manifest = build_autonomy_certification_manifest()
 
-    assert manifest["framework_version"] == "autonomy_certification_v1"
+    assert manifest["framework_version"] == "autonomy_certification_v2"
+    assert manifest["release_contract_version"] == AUTONOMY_RELEASE_CONTRACT_VERSION
+    assert manifest["release_contract"]["schema_version"] == AUTONOMY_RELEASE_SCHEMA_VERSION
+    assert manifest["release_contract"]["minimum_reliability_attempts"] == MIN_RELIABILITY_ATTEMPTS
+    assert manifest["release_contract"]["minimum_success_rate"] == MIN_SUCCESS_RATE
     assert manifest["target_maturity"] == "certified_autonomous"
     assert manifest["current_runtime"]["real_submission_enabled"] is False
     assert manifest["current_runtime"]["autopilot_enabled"] is False
     assert manifest["ready_adapters"] == []
     assert manifest["remaining_adapter_count"] == len(manifest["adapters"])
     assert manifest["invariants"]["does_not_enable_real_submission"] is True
+    assert manifest["invariants"]["autonomous_release_requires_immutable_certification_manifest"] is True
+    assert manifest["invariants"]["runtime_requires_certified_autonomous_maturity"] is True
 
     greenhouse = next(item for item in manifest["adapters"] if item["name"] == "greenhouse")
     assert greenhouse["current_maturity"] == "dry_run"
     assert greenhouse["stages"]["live_dry_run_evidence"]["passed"] is True
     assert greenhouse["stages"]["human_reviewed_real_submission"]["passed"] is False
-    assert greenhouse["stages"]["autonomous_real_submission"]["passed"] is False
+    autonomy = greenhouse["stages"]["autonomous_real_submission"]
+    assert autonomy["passed"] is False
+    assert autonomy["certification_manifest"]["passed"] is False
+    assert "certification_manifest.manifest_present" in autonomy["missing"]
     assert greenhouse["ready_for_autonomous_release"] is False
     assert greenhouse["next_blockers"] == [
         "human_reviewed_real_submission",
@@ -70,6 +85,8 @@ def test_autonomy_certification_endpoint(client):
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["framework_version"] == "autonomy_certification_v2"
+    assert payload["release_contract_version"] == AUTONOMY_RELEASE_CONTRACT_VERSION
     stage_ids = {stage["id"] for stage in payload["stages"]}
     assert {
         "live_dry_run_evidence",
