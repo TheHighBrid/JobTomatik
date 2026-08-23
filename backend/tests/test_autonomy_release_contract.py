@@ -5,12 +5,26 @@ from pathlib import Path
 from app.services.autonomy_release_contract import (
     AUTONOMY_RELEASE_CONTRACT_VERSION,
     AUTONOMY_RELEASE_SCHEMA_VERSION,
+    AUTONOMY_SIGNATURE_METHOD,
     MIN_RELIABILITY_ATTEMPTS,
+    MIN_SIGNING_KEY_BYTES,
     MIN_SUCCESS_RATE,
     autonomy_release_contract_requirements,
     compute_autonomy_manifest_digest,
+    compute_autonomy_manifest_signature,
     validate_autonomy_release_manifest,
 )
+
+TEST_SIGNING_KEY = "jobtomatik-day27-test-signing-key-0001"
+
+
+def _resign(manifest):
+    manifest["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(manifest)
+    manifest["attestation"]["signature"] = compute_autonomy_manifest_signature(
+        manifest,
+        TEST_SIGNING_KEY,
+    )
+    return manifest
 
 
 def valid_manifest(*, adapter_name="ashby", adapter_version="1.1.0", commit="a" * 40):
@@ -62,24 +76,60 @@ def valid_manifest(*, adapter_name="ashby", adapter_version="1.1.0", commit="a" 
             "approved_for_commit": commit,
         },
         "integrity": {"algorithm": "sha256", "manifest_digest": ""},
+        "attestation": {
+            "method": AUTONOMY_SIGNATURE_METHOD,
+            "key_id": "test-day27-key",
+            "signature": "",
+        },
     }
-    manifest["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(manifest)
-    return manifest
+    return _resign(manifest)
 
 
-def test_valid_manifest_satisfies_day27_contract():
-    manifest = valid_manifest()
-    result = validate_autonomy_release_manifest(
+def validate(manifest, *, version="1.1.0", signing_key=TEST_SIGNING_KEY):
+    return validate_autonomy_release_manifest(
         manifest,
         adapter_name="ashby",
-        adapter_version="1.1.0",
+        adapter_version=version,
+        trusted_signing_key=signing_key,
     )
+
+
+def test_valid_signed_manifest_satisfies_day27_contract():
+    manifest = valid_manifest()
+    result = validate(manifest)
 
     assert result["passed"] is True
     assert result["missing"] == []
     assert result["manifest_digest"] == compute_autonomy_manifest_digest(manifest)
+    assert result["attestation_key_id"] == "test-day27-key"
     assert result["requirements"]["contract_version"] == AUTONOMY_RELEASE_CONTRACT_VERSION
     assert result["requirements"]["minimum_success_rate"] == MIN_SUCCESS_RATE
+    assert result["requirements"]["trusted_runtime_signing_key_required"] is True
+
+
+def test_manifest_requires_a_separate_trusted_signing_key():
+    manifest = valid_manifest()
+    result = validate(manifest, signing_key=None)
+
+    assert result["passed"] is False
+    assert "trusted_signing_key" in result["missing"]
+    assert "attestation_signature_matches" in result["missing"]
+
+
+def test_wrong_signing_key_or_tampered_signature_fails_closed():
+    manifest = valid_manifest()
+    result = validate(
+        manifest,
+        signing_key="different-day27-signing-key-0000000000",
+    )
+    assert result["passed"] is False
+    assert "attestation_signature_matches" in result["missing"]
+
+    tampered = copy.deepcopy(manifest)
+    tampered["attestation"]["signature"] = "hmac-sha256:" + "0" * 64
+    result = validate(tampered)
+    assert result["passed"] is False
+    assert "attestation_signature_matches" in result["missing"]
 
 
 def test_manifest_digest_detects_any_evidence_tampering():
@@ -87,38 +137,28 @@ def test_manifest_digest_detects_any_evidence_tampering():
     tampered = copy.deepcopy(manifest)
     tampered["reliability_window"]["duplicate_submissions"] = 1
 
-    result = validate_autonomy_release_manifest(
-        tampered,
-        adapter_name="ashby",
-        adapter_version="1.1.0",
-    )
+    result = validate(tampered)
 
     assert result["passed"] is False
     assert "zero_duplicate_submissions" in result["missing"]
     assert "manifest_digest_matches" in result["missing"]
+    assert "attestation_signature_matches" in result["missing"]
 
 
 def test_adapter_version_and_exact_commit_are_immutable_bindings():
     manifest = valid_manifest(commit="b" * 40)
 
-    wrong_version = validate_autonomy_release_manifest(
-        manifest,
-        adapter_name="ashby",
-        adapter_version="1.2.0",
-    )
+    wrong_version = validate(manifest, version="1.2.0")
     assert wrong_version["passed"] is False
     assert "adapter_version" in wrong_version["missing"]
 
     wrong_commit = copy.deepcopy(manifest)
     wrong_commit["approval"]["approved_for_commit"] = "c" * 40
-    wrong_commit["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(wrong_commit)
-    result = validate_autonomy_release_manifest(
-        wrong_commit,
-        adapter_name="ashby",
-        adapter_version="1.1.0",
-    )
+    _resign(wrong_commit)
+    result = validate(wrong_commit)
     assert result["passed"] is False
     assert "approval_exact_release_commit" in result["missing"]
+    assert result["checks"]["attestation_signature_matches"] is True
 
 
 def test_reliability_window_requires_sustained_consistent_success_rate():
@@ -130,23 +170,15 @@ def test_reliability_window_requires_sustained_consistent_success_rate():
             "success_rate": 0.95,
         }
     )
-    manifest["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(manifest)
-    result = validate_autonomy_release_manifest(
-        manifest,
-        adapter_name="ashby",
-        adapter_version="1.1.0",
-    )
+    _resign(manifest)
+    result = validate(manifest)
     assert result["passed"] is False
     assert "minimum_success_rate" in result["missing"]
 
     inconsistent = valid_manifest()
     inconsistent["reliability_window"]["success_rate"] = 0.99
-    inconsistent["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(inconsistent)
-    result = validate_autonomy_release_manifest(
-        inconsistent,
-        adapter_name="ashby",
-        adapter_version="1.1.0",
-    )
+    _resign(inconsistent)
+    result = validate(inconsistent)
     assert result["passed"] is False
     assert "success_rate_consistent" in result["missing"]
 
@@ -157,19 +189,25 @@ def test_retry_breaker_recovery_and_policy_controls_fail_closed():
     manifest["circuit_breaker"]["verified"] = False
     manifest["recovery_drills"]["browser_death"] = False
     manifest["policy_readiness"]["kill_switch"] = False
-    manifest["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(manifest)
+    _resign(manifest)
 
-    result = validate_autonomy_release_manifest(
-        manifest,
-        adapter_name="ashby",
-        adapter_version="1.1.0",
-    )
+    result = validate(manifest)
 
     assert result["passed"] is False
     assert "retry_limit" in result["missing"]
     assert "circuit_breaker_verified" in result["missing"]
     assert "recovery_browser_death" in result["missing"]
     assert "policy_kill_switch" in result["missing"]
+
+
+def test_short_signing_key_is_rejected_before_signature_generation():
+    manifest = valid_manifest()
+    try:
+        compute_autonomy_manifest_signature(manifest, "short-key")
+    except ValueError as exc:
+        assert str(MIN_SIGNING_KEY_BYTES) in str(exc)
+    else:
+        raise AssertionError("short signing key unexpectedly accepted")
 
 
 def test_machine_readable_schema_tracks_contract_shape():
@@ -180,6 +218,8 @@ def test_machine_readable_schema_tracks_contract_shape():
     assert schema["properties"]["schema_version"]["const"] == AUTONOMY_RELEASE_SCHEMA_VERSION
     assert schema["properties"]["reliability_window"]["properties"]["attempts"]["minimum"] == MIN_RELIABILITY_ATTEMPTS
     assert schema["properties"]["reliability_window"]["properties"]["success_rate"]["minimum"] == MIN_SUCCESS_RATE
+    assert schema["properties"]["attestation"]["properties"]["method"]["const"] == AUTONOMY_SIGNATURE_METHOD
+    assert "attestation" in schema["required"]
     assert set(requirements["required_recovery_drills"]) == set(
         schema["properties"]["recovery_drills"]["required"]
     )
