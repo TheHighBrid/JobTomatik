@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from app.services.autonomy_release_contract import (
     autonomy_release_contract_requirements,
     compute_autonomy_manifest_digest,
+    compute_autonomy_manifest_signature,
     validate_autonomy_release_manifest,
 )
 
@@ -29,6 +31,14 @@ def main() -> int:
         action="store_true",
         help="Print the canonical manifest digest for a candidate JSON",
     )
+    parser.add_argument(
+        "--print-signature",
+        action="store_true",
+        help=(
+            "Print the HMAC-SHA256 attestation using "
+            "AUTONOMY_CERTIFICATION_SIGNING_KEY"
+        ),
+    )
     args = parser.parse_args()
 
     if args.print_requirements:
@@ -47,6 +57,13 @@ def main() -> int:
         print(compute_autonomy_manifest_digest(manifest))
         return 0
 
+    signing_key = os.getenv("AUTONOMY_CERTIFICATION_SIGNING_KEY", "")
+    if args.print_signature:
+        if not signing_key:
+            raise SystemExit("AUTONOMY_CERTIFICATION_SIGNING_KEY is required to sign.")
+        print(compute_autonomy_manifest_signature(manifest, signing_key))
+        return 0
+
     adapter = manifest.get("adapter") if isinstance(manifest.get("adapter"), dict) else {}
     adapter_name = args.adapter_name or str(adapter.get("name") or "")
     adapter_version = args.adapter_version or str(adapter.get("version") or "")
@@ -54,6 +71,7 @@ def main() -> int:
         manifest,
         adapter_name=adapter_name,
         adapter_version=adapter_version,
+        trusted_signing_key=signing_key or None,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result.get("passed") else 1
