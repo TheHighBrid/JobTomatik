@@ -5,6 +5,7 @@ import pytest
 from app.services import phase4_candidate_gate
 from app.services.phase4_candidate_gate import (
     ADAPTER_INTEGRATION_PATHS,
+    COMMON_SOURCE_PATHS,
     SOURCE_PATHS,
     _candidate_eligible,
     _lever_metrics,
@@ -70,6 +71,13 @@ def test_phase4_freezes_all_adapter_versions_and_retains_digests():
 
 
 def test_phase4_source_digest_includes_installed_adapter_integrations():
+    assert COMMON_SOURCE_PATHS == (
+        "backend/app/services/ats_base.py",
+        "backend/app/services/ats_registry.py",
+    )
+    for source_paths in SOURCE_PATHS.values():
+        assert set(COMMON_SOURCE_PATHS).issubset(source_paths)
+
     assert ADAPTER_INTEGRATION_PATHS == {
         "ashby": ("backend/app/services/ashby_profile_aliases.py",),
         "smartrecruiters": (
