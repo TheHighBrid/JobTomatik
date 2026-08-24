@@ -12,6 +12,7 @@ from app.api import (
     answer_policies,
     applications,
     auth,
+    autonomy_control,
     certification,
     controller,
     evaluations,
@@ -257,6 +258,7 @@ app.include_router(agent_execution.router, prefix="/api")
 app.include_router(evaluations.router, prefix="/api")
 app.include_router(operations.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
+app.include_router(autonomy_control.router, prefix="/api")
 app.include_router(post_application.router, prefix="/api")
 app.include_router(certification.router, prefix="/api")
 app.include_router(recovery.router, prefix="/api")

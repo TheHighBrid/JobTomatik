@@ -1,12 +1,12 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Search, ListTodo, ClipboardList, User } from 'lucide-react'
+import { ClipboardList, LayoutDashboard, ListTodo, Search, ShieldCheck } from 'lucide-react'
 
 const TABS = [
   { to: '/', icon: LayoutDashboard, label: 'Home' },
   { to: '/search', icon: Search, label: 'Search' },
+  { to: '/autonomy', icon: ShieldCheck, label: 'Control' },
   { to: '/queue', icon: ListTodo, label: 'Queue' },
   { to: '/applications', icon: ClipboardList, label: 'Apps' },
-  { to: '/profile', icon: User, label: 'Profile' },
 ]
 
 export default function MobileNav() {
