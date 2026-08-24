@@ -50,15 +50,18 @@ class ControlledExternalBrowserRuntime(RetainableBrowserRuntime):
 
         if self.controlled_page_target_id:
             try:
-                _base.httpx.get(
+                response = _base.httpx.put(
                     f"{self.cdp_endpoint}/json/close/{self.controlled_page_target_id}",
                     timeout=2.0,
                 )
+                response.raise_for_status()
             except Exception:
                 # Chromium may already have closed the tab or disconnected. Cleanup
-                # remains best-effort, just like terminating an exited local process.
+                # remains best-effort, but retain the target ID so a later terminate
+                # call can retry a transient failure.
                 pass
-            self.controlled_page_target_id = ""
+            else:
+                self.controlled_page_target_id = ""
         if remove_profile:
             shutil.rmtree(self.session_dir, ignore_errors=True)
 

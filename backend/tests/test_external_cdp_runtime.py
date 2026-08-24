@@ -15,6 +15,9 @@ CHECK_SCRIPT = BACKEND_ROOT / "scripts/check_android_browser_cdp.py"
 class FakeResponse:
     status_code = 200
 
+    def raise_for_status(self):
+        return None
+
     def json(self):
         return {
             "Browser": "Chrome/149",
@@ -194,7 +197,7 @@ async def test_non_retained_application_runtime_closes_only_its_controlled_tab(
     close_requests = []
     monkeypatch.setattr(
         browser_runtime.httpx,
-        "get",
+        "put",
         lambda url, **kwargs: close_requests.append(url) or FakeResponse(),
     )
     retained_page = FakePage("https://www.linkedin.com/feed/")
@@ -213,6 +216,40 @@ async def test_non_retained_application_runtime_closes_only_its_controlled_tab(
     assert retained_page.closed is False
     runtime.terminate(remove_profile=False)
     assert len(close_requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_controlled_tab_close_can_be_retried(monkeypatch, tmp_path):
+    monkeypatch.setenv("HANDOFF_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", _noop_wait)
+    close_requests = []
+
+    class FailingResponse(FakeResponse):
+        def raise_for_status(self):
+            raise RuntimeError("temporary close failure")
+
+    responses = iter([FailingResponse(), FakeResponse()])
+
+    def fake_put(url, **kwargs):
+        close_requests.append(url)
+        return next(responses)
+
+    monkeypatch.setattr(browser_runtime.httpx, "put", fake_put)
+    runtime = await browser_runtime.attach_retainable_browser(
+        FakePlaywright(),
+        cdp_endpoint="http://127.0.0.1:9222",
+        create_controlled_page=True,
+    )
+
+    runtime.terminate(remove_profile=False)
+    assert runtime.controlled_page_target_id == "controlled-target"
+    runtime.terminate(remove_profile=False)
+
+    assert runtime.controlled_page_target_id == ""
+    assert close_requests == [
+        "http://127.0.0.1:9222/json/close/controlled-target",
+        "http://127.0.0.1:9222/json/close/controlled-target",
+    ]
 
 
 @pytest.mark.asyncio
