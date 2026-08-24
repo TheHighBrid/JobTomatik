@@ -1,0 +1,148 @@
+name: Phase 4 candidate gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_*.py"
+      - "backend/app/services/phase4_candidate_gate.py"
+      - "backend/app/services/autonomy_release_contract.py"
+      - "backend/evidence/greenhouse-phase-a-readiness.json"
+      - "backend/evidence/lever-pilot-readiness.json"
+      - "backend/evidence/ashby-certification-dossier.json"
+      - "backend/evidence/day28-phase4-version-freeze.json"
+      - "backend/scripts/build_phase4_candidate_gate.py"
+      - "backend/tests/test_greenhouse*.py"
+      - "backend/tests/test_lever*.py"
+      - "backend/tests/test_ashby*.py"
+      - "backend/tests/test_smartrecruiters*.py"
+      - "backend/tests/test_workday*.py"
+      - "backend/tests/test_ats_maturity.py"
+      - "backend/tests/test_autonomy_release_contract.py"
+      - "backend/tests/test_phase4_candidate_gate.py"
+      - ".github/workflows/phase4-candidate-gate.yml"
+      - "backend/requirements.txt"
+      - "frontend/package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: sqlite:///./phase4-gate.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: phase4-ci-only-secret-key-000000000000
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  ENABLE_RESUMABLE_HANDOFFS: "false"
+  GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+  LEVER_SUPERVISED_PILOT_ENABLED: "false"
+  REQUIRE_BROWSER_TESTS: "1"
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  cross-adapter-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run cross-adapter regression matrix
+        working-directory: backend
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_greenhouse_adapter.py \
+            tests/test_lever_adapter.py \
+            tests/test_ashby_adapter.py \
+            tests/test_smartrecruiters_adapter.py \
+            tests/test_workday_adapter.py \
+            tests/test_ats_maturity.py \
+            tests/test_autonomy_release_contract.py \
+            tests/test_phase4_candidate_gate.py \
+            --junitxml=phase4-cross-adapter-junit.xml
+
+      - name: Run Phase 4 dependency gate
+        run: bash scripts/verify.sh dependencies
+
+      - name: Verify canonical safety and maturity
+        run: bash scripts/verify.sh safety
+
+      - name: Export exact-head candidate and version freeze evidence
+        working-directory: backend
+        run: |
+          PYTHONPATH=. python scripts/build_phase4_candidate_gate.py \
+            --verification-commit "$SOURCE_COMMIT" \
+            --output phase4-candidate-gate.json
+
+      - name: Assert candidate is selected without promotion
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          gate = json.load(open('phase4-candidate-gate.json', encoding='utf-8'))
+          assert gate['verification_commit'] == os.environ['SOURCE_COMMIT']
+          assert gate['gate_passed'] is True
+          assert gate['drift'] == []
+          assert gate['candidate']['adapter'] == 'lever'
+          assert gate['candidate']['selection_scope'] == 'unattended_pilot_preparation_only'
+          assert gate['candidate']['promotion_authorized'] is False
+          assert gate['candidate']['unattended_submission_allowed'] is False
+          assert gate['candidate']['certified_autonomous'] is False
+          assert gate['candidate']['metrics']['supervised_confirmed_count'] == 0
+          assert gate['runtime_safety']['real_submission_enabled'] is False
+          assert gate['runtime_safety']['autopilot_enabled'] is False
+          assert gate['runtime_safety']['autonomous_adapters'] == []
+          assert gate['runtime_safety']['safe'] is True
+          versions = {row['adapter']: row['version'] for row in gate['adapter_freeze']}
+          assert versions == {
+              'greenhouse': '1.1.1',
+              'lever': '1.1.0',
+              'ashby': '1.1.0',
+              'smartrecruiters': '1.1.0',
+              'workday': '1.1.0',
+          }
+          PY
+
+      - name: Upload Phase 4 gate evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: phase4-candidate-gate
+          path: |
+            backend/phase4-candidate-gate.json
+            backend/phase4-cross-adapter-junit.xml
+            backend/evidence/day28-phase4-version-freeze.json
+          if-no-files-found: error
+          retention-days: 30
