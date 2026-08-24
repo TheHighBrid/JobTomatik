@@ -19,6 +19,7 @@ MODE_PAUSED = "paused"
 MODE_DRAINING = "draining"
 VALID_MODES = frozenset({MODE_RUNNING, MODE_PAUSED, MODE_DRAINING})
 MAX_CONTROL_HISTORY = 20
+_MISSING_SETTINGS = object()
 
 
 def _iso_now() -> str:
@@ -26,11 +27,22 @@ def _iso_now() -> str:
 
 
 def autonomy_control_state(user) -> dict[str, Any]:
-    settings = dict(user.automation_settings or {})
+    raw_settings = getattr(user, "automation_settings", _MISSING_SETTINGS)
+    principal_valid = raw_settings is not _MISSING_SETTINGS
+    if principal_valid:
+        try:
+            settings = dict(raw_settings or {})
+        except (TypeError, ValueError):
+            settings = {}
+            principal_valid = False
+    else:
+        settings = {}
+
     raw = settings.get(AUTONOMY_CONTROL_KEY)
     value = dict(raw) if isinstance(raw, dict) else {}
     requested_mode = str(value.get("mode") or MODE_RUNNING).strip().lower()
-    valid = requested_mode in VALID_MODES
+    mode_valid = requested_mode in VALID_MODES
+    valid = principal_valid and mode_valid
     mode = requested_mode if valid else MODE_PAUSED
     return {
         "version": AUTONOMY_CONTROL_VERSION,
