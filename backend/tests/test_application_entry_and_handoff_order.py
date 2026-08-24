@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import inspect
 from types import SimpleNamespace
 
@@ -10,6 +11,7 @@ from app.services.application_entry import apply_candidate_score, open_applicati
 from app.services.application_target import is_valid_application_target
 from app.services.application_target_resolver import resolve_application_target_with_browser
 from app.services.browser_navigation import classify_challenge_context
+from app.services.form_filler_handoff import fill_and_submit_application_with_handoff
 from app.services.handoff_session import HandoffSessionError, challenge_type_for_review
 
 
@@ -153,6 +155,31 @@ def test_target_resolver_never_requests_a_manual_apply_click():
     assert "wait_for_external_application_target" not in source
     assert "application_target_required" not in source
     assert "application_target_security_handoff_retained" in source
+
+
+@pytest.mark.parametrize(
+    "browser_flow",
+    [resolve_application_target_with_browser, fill_and_submit_application_with_handoff],
+)
+def test_controlled_page_release_occurs_inside_playwright_lifetime(browser_flow):
+    """Keep page cleanup ahead of ``async_playwright().__aexit__``."""
+    tree = ast.parse(inspect.getsource(browser_flow))
+    playwright_blocks = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncWith)
+        and any("async_playwright" in ast.unparse(item.context_expr) for item in node.items)
+    ]
+
+    assert len(playwright_blocks) == 1
+    release_calls = [
+        node
+        for node in ast.walk(playwright_blocks[0])
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "release_application_browser"
+    ]
+    assert len(release_calls) == 1
 
 
 def test_navigation_only_review_cannot_issue_a_retained_browser_handoff():
