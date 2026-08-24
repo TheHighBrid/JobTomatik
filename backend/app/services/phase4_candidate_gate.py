@@ -137,14 +137,22 @@ def _lever_metrics(data: Mapping[str, Any]) -> dict[str, Any]:
             int(summary.get("manual_challenge_boundary_count") or 0) > 0
             and int(summary.get("manual_challenge_violation_count") or 0) == 0
         ),
-        "zero_false_submissions": int(summary.get("false_submitted_count") or 0) == 0,
-        "zero_duplicate_submissions": int(summary.get("duplicate_submission_count") or 0) == 0,
-        "zero_uncertain_status_violations": int(summary.get("uncertain_status_violation_count") or 0) == 0,
+        "zero_false_submissions": _is_explicit_zero(summary, "false_submitted_count"),
+        "zero_duplicate_submissions": _is_explicit_zero(summary, "duplicate_submission_count"),
+        "zero_uncertain_status_violations": _is_explicit_zero(
+            summary, "uncertain_status_violation_count"
+        ),
         "final_submit_clicked": False,
         "independent_success_review_complete": bool(gates.get("all_success_evidence_independently_reviewed")),
         "explicit_promotion_approval": bool(gates.get("explicit_separate_promotion_approval")),
         "ten_supervised_confirmed_submissions": bool(gates.get("ten_supervised_confirmed_submissions")),
     }
+
+
+def _is_explicit_zero(values: Mapping[str, Any], key: str) -> bool:
+    """Accept safety evidence only when an explicit nonnegative integer is zero."""
+    value = values.get(key)
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0 and value == 0
 
 
 def _ashby_metrics(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -277,6 +285,23 @@ def build_phase4_candidate_gate(
 
         metrics = _metrics_for(adapter, evidence)
         live_evidence = current.get("live_certification") or {}
+        digests = {
+            "adapter_source_sha256": _digest_paths(repository_root, source_files),
+            "fixture_regression_sha256": _digest_paths(repository_root, fixture_files),
+            "retained_evidence_sha256": retained_evidence_sha256,
+            "manifest_live_evidence_sha256": _canonical_sha256(live_evidence),
+        }
+        frozen_digests = frozen.get("digests")
+        if not isinstance(frozen_digests, Mapping):
+            drift.append(f"{adapter}:missing_frozen_digests")
+        else:
+            for digest_name, computed_digest in digests.items():
+                if (
+                    digest_name not in frozen_digests
+                    or frozen_digests.get(digest_name) != computed_digest
+                ):
+                    drift.append(f"{adapter}:{digest_name}_drift")
+
         row = {
             "adapter": adapter,
             "version": version,
@@ -284,12 +309,7 @@ def build_phase4_candidate_gate(
             "candidate_eligible": _candidate_eligible(maturity, metrics),
             "ranking_key": list(_ranking_key(metrics)),
             "metrics": metrics,
-            "digests": {
-                "adapter_source_sha256": _digest_paths(repository_root, source_files),
-                "fixture_regression_sha256": _digest_paths(repository_root, fixture_files),
-                "retained_evidence_sha256": retained_evidence_sha256,
-                "manifest_live_evidence_sha256": _canonical_sha256(live_evidence),
-            },
+            "digests": digests,
             "sources": {
                 "adapter_source_paths": [item.relative_to(repository_root).as_posix() for item in source_files],
                 "fixture_regression_paths": [item.relative_to(repository_root).as_posix() for item in sorted(fixture_files)],
