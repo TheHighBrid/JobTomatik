@@ -5,7 +5,84 @@ from app.services.ats_maturity import (
     annotate_adapter_manifest,
     derive_adapter_maturity,
 )
+from app.services.autonomy_release_contract import (
+    AUTONOMY_SIGNATURE_METHOD,
+    MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+    MIN_RELIABILITY_ATTEMPTS,
+    REQUIRED_SHADOW_CHECKS,
+    compute_autonomy_manifest_digest,
+    compute_autonomy_manifest_signature,
+)
 from app.services import unattended_policy
+
+TEST_SIGNING_KEY = "jobtomatik-day27-test-signing-key-0001"
+
+
+def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40):
+    manifest = {
+        "schema_version": "autonomy_release_v1",
+        "adapter": {"name": name, "version": version},
+        "source": {
+            "release_commit": release_commit,
+            "fixture_digest": "sha256:" + "1" * 64,
+            "evidence_digest": "sha256:" + "2" * 64,
+            "policy_digest": "sha256:" + "3" * 64,
+        },
+        "reliability_window": {
+            "evidence_type": "supervised_real_submission",
+            "attempts": MIN_RELIABILITY_ATTEMPTS,
+            "confirmed_successes": MIN_RELIABILITY_ATTEMPTS,
+            "distinct_confirmed_submissions": MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+            "independently_reviewed_successes": MIN_RELIABILITY_ATTEMPTS,
+            "success_rate": 1.0,
+            "false_positive_submitted_records": 0,
+            "duplicate_submissions": 0,
+            "uncertain_outcomes_credited_as_submitted": 0,
+        },
+        "retry_policy": {
+            "bounded": True,
+            "max_automatic_retries_per_attempt": 1,
+            "no_retry_after_submit_click_without_confirmation": True,
+        },
+        "circuit_breaker": {
+            "verified": True,
+            "failure_threshold": 3,
+            "halts_new_submissions": True,
+        },
+        "recovery_drills": {
+            "process_crash": True,
+            "worker_restart": True,
+            "redis_interruption": True,
+            "database_lock": True,
+            "browser_death": True,
+        },
+        "policy_readiness": {
+            "ready": True,
+            "daily_weekly_caps": True,
+            "quiet_hours": True,
+            "employer_exclusions": True,
+            "platform_limits": True,
+            "kill_switch": True,
+        },
+        "shadow_runs": {check: True for check in REQUIRED_SHADOW_CHECKS},
+        "approval": {
+            "approved": True,
+            "approval_reference": "day27-owner-approval",
+            "approved_for_commit": release_commit,
+        },
+        "integrity": {"algorithm": "sha256", "manifest_digest": ""},
+        "attestation": {
+            "method": AUTONOMY_SIGNATURE_METHOD,
+            "key_id": "test-day27-key",
+            "signature": "",
+        },
+    }
+    manifest["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(manifest)
+    manifest["attestation"]["signature"] = compute_autonomy_manifest_signature(
+        manifest,
+        TEST_SIGNING_KEY,
+    )
+    return manifest
 
 
 def test_current_registry_maturity_snapshot_is_explicit():
@@ -24,9 +101,7 @@ def test_current_registry_maturity_snapshot_is_explicit():
         item["autonomous_submission_allowed"] is False
         for item in adapters.values()
     )
-    assert manifest["safety_invariants"][
-        "certification_level_is_descriptive_only"
-    ] is True
+    assert manifest["safety_invariants"]["certification_level_is_descriptive_only"] is True
 
 
 def test_certification_prose_cannot_promote_operational_maturity():
@@ -51,6 +126,7 @@ def test_certification_prose_cannot_promote_operational_maturity():
 def test_zero_submit_live_exercise_reaches_dry_run_only():
     manifest = {
         "name": "example",
+        "version": "1.0.0",
         "supported_hosts": ["jobs.example.test"],
         "certification_level": "fixture_live_certified",
         "live_certification": {
@@ -63,10 +139,11 @@ def test_zero_submit_live_exercise_reaches_dry_run_only():
     assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
 
 
-def test_autonomous_promotion_requires_approval_and_every_release_gate():
+def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_signature():
     release = {gate: True for gate in AUTONOMY_RELEASE_GATES}
     manifest = {
         "name": "example",
+        "version": "1.0.0",
         "supported_hosts": ["jobs.example.test"],
         "live_certification": {
             "synthetic_full_form_exercise": "certified",
@@ -76,24 +153,107 @@ def test_autonomous_promotion_requires_approval_and_every_release_gate():
         "autonomy_release": release,
     }
 
-    # Passing booleans alone are insufficient without an explicit approval
-    # reference that can be reviewed and audited.
     assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
 
     release["approved"] = True
     release["approval_reference"] = "controlled-pilot-2026-07"
-    assert derive_adapter_maturity(manifest) is AdapterMaturity.CERTIFIED_AUTONOMOUS
+    assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
+
+    release["certification_manifest"] = _autonomy_manifest()
+    assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.CERTIFIED_AUTONOMOUS
+
+    incomplete_shadow = _autonomy_manifest()
+    incomplete_shadow["shadow_runs"]["twenty_four_hour_unattended_passed"] = False
+    incomplete_shadow["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(incomplete_shadow)
+    incomplete_shadow["attestation"]["signature"] = compute_autonomy_manifest_signature(
+        incomplete_shadow,
+        TEST_SIGNING_KEY,
+    )
+    release["certification_manifest"] = incomplete_shadow
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.DRY_RUN
+
+    unreviewed = _autonomy_manifest()
+    unreviewed["reliability_window"]["independently_reviewed_successes"] -= 1
+    unreviewed["integrity"]["manifest_digest"] = compute_autonomy_manifest_digest(unreviewed)
+    unreviewed["attestation"]["signature"] = compute_autonomy_manifest_signature(
+        unreviewed,
+        TEST_SIGNING_KEY,
+    )
+    release["certification_manifest"] = unreviewed
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.DRY_RUN
+
+
+def test_tampered_wrong_version_or_wrong_signature_cannot_promote():
+    release = {gate: True for gate in AUTONOMY_RELEASE_GATES}
+    release.update(
+        {
+            "approved": True,
+            "approval_reference": "day27-test",
+            "certification_manifest": _autonomy_manifest(),
+        }
+    )
+    manifest = {
+        "name": "example",
+        "version": "1.0.0",
+        "supported_hosts": ["jobs.example.test"],
+        "live_certification": {
+            "synthetic_full_form_exercise": "certified",
+            "verified_resume_upload": True,
+            "final_submit_clicked": False,
+        },
+        "autonomy_release": release,
+    }
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.CERTIFIED_AUTONOMOUS
+
+    release["certification_manifest"]["reliability_window"]["duplicate_submissions"] = 1
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.DRY_RUN
+
+    release["certification_manifest"] = _autonomy_manifest(version="0.9.0")
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key=TEST_SIGNING_KEY,
+    ) is AdapterMaturity.DRY_RUN
+
+    release["certification_manifest"] = _autonomy_manifest()
+    assert derive_adapter_maturity(
+        manifest,
+        trusted_signing_key="different-trusted-signing-key-000000000",
+    ) is AdapterMaturity.DRY_RUN
 
 
 def test_generic_adapter_requires_a_specific_implementation_before_promotion():
     release = {gate: True for gate in AUTONOMY_RELEASE_GATES}
-    release.update({"approved": True, "approval_reference": "invalid-generic-release"})
+    release.update(
+        {
+            "approved": True,
+            "approval_reference": "invalid-generic-release",
+            "certification_manifest": _autonomy_manifest(name="generic"),
+        }
+    )
     annotated = annotate_adapter_manifest(
         {
             "name": "generic",
+            "version": "1.0.0",
             "supported_hosts": [],
             "autonomy_release": release,
-        }
+        },
+        trusted_signing_key=TEST_SIGNING_KEY,
     )
 
     assert annotated["maturity"] == AdapterMaturity.UNSUPPORTED.value
@@ -127,6 +287,10 @@ def test_ats_certification_endpoint_exposes_canonical_maturity(client):
     assert payload["maturity_model"] == "roadmap_issue_13_v1"
     assert payload["autonomous_adapters"] == []
     assert all("maturity" in item for item in payload["adapters"])
+    assert all(
+        item["release_gate_status"]["certified_autonomous"]["certification_manifest"]["passed"] is False
+        for item in payload["adapters"]
+    )
 
 
 def test_operations_readiness_exposes_product_goal_and_adapter_maturity(client):

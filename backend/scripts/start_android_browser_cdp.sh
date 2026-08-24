@@ -7,6 +7,7 @@ DISPLAY_VALUE="${DISPLAY:-:0}"
 BROWSER_BIN="${JOBTOMATIK_ANDROID_BROWSER_BIN:-$(command -v chromium-browser || true)}"
 RUNTIME_DIR="${JOBTOMATIK_ANDROID_RUNTIME_DIR:-$HOME/.jobtomatik-runtime}"
 SUPERVISOR_PID_FILE="$RUNTIME_DIR/chromium-supervisor.pid"
+BROWSER_PID_FILE="$RUNTIME_DIR/chromium-browser.pid"
 STOP_FILE="$RUNTIME_DIR/chromium-supervisor.stop"
 SUPERVISOR_LOG="$RUNTIME_DIR/chromium-supervisor.log"
 BROWSER_LOG="$RUNTIME_DIR/chromium.log"
@@ -70,7 +71,7 @@ rotate_log() {
 }
 
 browser_command() {
-  "$BROWSER_BIN" \
+  exec "$BROWSER_BIN" \
     --no-sandbox \
     --disable-dev-shm-usage \
     --disable-gpu \
@@ -101,19 +102,72 @@ supervisor_identity_matches() {
   jobtomatik_pid_has_all_tokens "$pid" "$SCRIPT_PATH" "supervise"
 }
 
+browser_identity_matches() {
+  local pid="$1"
+  jobtomatik_pid_has_all_tokens \
+    "$pid" \
+    "--remote-debugging-port=$CDP_PORT" \
+    "--user-data-dir=$PROFILE_DIR"
+}
+
+managed_browser_pids() {
+  local candidate=""
+  local emitted=""
+
+  if [[ -f "$BROWSER_PID_FILE" ]]; then
+    candidate="$(cat "$BROWSER_PID_FILE" 2>/dev/null || true)"
+    if [[ -n "$candidate" ]] && kill -0 "$candidate" 2>/dev/null && browser_identity_matches "$candidate"; then
+      printf '%s\n' "$candidate"
+      emitted="$candidate"
+    fi
+  fi
+
+  while read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    [[ "$candidate" != "$emitted" ]] || continue
+    if kill -0 "$candidate" 2>/dev/null && browser_identity_matches "$candidate"; then
+      printf '%s\n' "$candidate"
+    fi
+  done < <(pgrep -f "remote-debugging-port=${CDP_PORT}" 2>/dev/null || true)
+}
+
+signal_browser_if_managed() {
+  local signal_name="$1"
+  local pid="$2"
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  if browser_identity_matches "$pid"; then
+    jobtomatik_signal_if_identity \
+      "$signal_name" \
+      "$pid" \
+      "--remote-debugging-port=$CDP_PORT" \
+      "--user-data-dir=$PROFILE_DIR" || true
+    return 0
+  fi
+  echo "ANDROID_BROWSER_STALE_BROWSER_PID_REJECTED pid=$pid action=not_signaled" >&2
+}
+
+stop_browser_processes() {
+  local signal_name="${1:-TERM}"
+  local pid
+  while read -r pid; do
+    [[ -n "$pid" ]] || continue
+    signal_browser_if_managed "$signal_name" "$pid"
+  done < <(managed_browser_pids)
+}
+
 wait_for_shutdown() {
   local supervisor_pid="${1:-}"
   local index
-  for ((index = 0; index < 80; index += 1)); do
+  for ((index = 0; index < 40; index += 1)); do
     local supervisor_gone=true
-    # PID files can be stale and Android/Linux can recycle the numeric PID. Only wait
-    # on the PID while it still proves the exact JobTomatik browser-supervisor identity.
     if [[ -n "$supervisor_pid" ]] \
       && kill -0 "$supervisor_pid" 2>/dev/null \
       && supervisor_identity_matches "$supervisor_pid"; then
       supervisor_gone=false
     fi
-    if [[ "$supervisor_gone" == true ]] && ! is_healthy; then
+    if [[ "$supervisor_gone" == true ]] && ! is_healthy && [[ -z "$(managed_browser_pids)" ]]; then
       return 0
     fi
     sleep 0.25
@@ -131,15 +185,11 @@ signal_supervisor_if_managed() {
     return 0
   fi
   echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$pid action=not_signaled" >&2
-  return 1
 }
 
-stop_browser_processes() {
-  local pid
-  while read -r pid; do
-    [[ -n "$pid" ]] || continue
-    kill -TERM "$pid" 2>/dev/null || true
-  done < <(pgrep -f "chromium-browser.*remote-debugging-port=${CDP_PORT}" 2>/dev/null || true)
+supervisor_signal_handler() {
+  touch "$STOP_FILE"
+  stop_browser_processes TERM || true
 }
 
 case "$ACTION" in
@@ -158,6 +208,19 @@ case "$ACTION" in
     supervisor_pid=""
     if [[ -f "$SUPERVISOR_PID_FILE" ]]; then
       supervisor_pid="$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null || true)"
+    fi
+
+    # Stop the owned Chromium first. The supervisor can be blocked in `wait`, so
+    # signalling only the shell is insufficient. Identity is bound to the exact
+    # JobTomatik profile and CDP port, not to a brittle executable basename.
+    stop_browser_processes TERM
+    if [[ -n "$supervisor_pid" ]]; then
+      signal_supervisor_if_managed "$supervisor_pid"
+    fi
+
+    if ! wait_for_shutdown "$supervisor_pid"; then
+      echo "ANDROID_BROWSER_CDP_STOP_ESCALATING signal=KILL" >&2
+      stop_browser_processes KILL
       if [[ -n "$supervisor_pid" ]]; then
         # A live numeric PID is not enough: Android/Linux may have recycled it.
         # Clear rejected PIDs so shutdown never waits on an unrelated process.
@@ -165,13 +228,13 @@ case "$ACTION" in
           supervisor_pid=""
         fi
       fi
+      if ! wait_for_shutdown "$supervisor_pid"; then
+        echo "ANDROID_BROWSER_CDP_STOP_TIMEOUT" >&2
+        exit 1
+      fi
     fi
-    stop_browser_processes
-    if ! wait_for_shutdown "$supervisor_pid"; then
-      echo "ANDROID_BROWSER_CDP_STOP_TIMEOUT" >&2
-      exit 1
-    fi
-    rm -f "$SUPERVISOR_PID_FILE"
+
+    rm -f "$SUPERVISOR_PID_FILE" "$BROWSER_PID_FILE"
     if command -v termux-wake-unlock >/dev/null 2>&1; then
       termux-wake-unlock >/dev/null 2>&1 || true
     fi
@@ -190,22 +253,26 @@ case "$ACTION" in
     ;;
 
   supervise)
-    trap 'touch "$STOP_FILE"' TERM INT HUP
+    trap supervisor_signal_handler TERM INT HUP
     echo "$$" > "$SUPERVISOR_PID_FILE"
     while [[ ! -f "$STOP_FILE" ]]; do
       rotate_log "$BROWSER_LOG"
       echo "[$(date -Iseconds)] starting Chromium on CDP port $CDP_PORT" >> "$SUPERVISOR_LOG"
       set +e
-      browser_command >> "$BROWSER_LOG" 2>&1
+      browser_command >> "$BROWSER_LOG" 2>&1 &
+      browser_pid=$!
+      echo "$browser_pid" > "$BROWSER_PID_FILE"
+      wait "$browser_pid"
       exit_code=$?
       set -e
+      rm -f "$BROWSER_PID_FILE"
       if [[ -f "$STOP_FILE" ]]; then
         break
       fi
       echo "[$(date -Iseconds)] Chromium exited with code $exit_code; restarting in 3 seconds" >> "$SUPERVISOR_LOG"
       sleep 3
     done
-    rm -f "$SUPERVISOR_PID_FILE"
+    rm -f "$SUPERVISOR_PID_FILE" "$BROWSER_PID_FILE"
     ;;
 
   start)
@@ -227,7 +294,7 @@ case "$ACTION" in
             echo "ANDROID_BROWSER_CDP_CONNECTED"
             exit 0
           fi
-          jobtomatik_signal_if_identity TERM "$old_pid" "$SCRIPT_PATH" "supervise" || true
+          signal_supervisor_if_managed "$old_pid"
         else
           echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$old_pid action=not_signaled" >&2
         fi

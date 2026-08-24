@@ -11,7 +11,10 @@ from app.services.browser_navigation import (
     is_job_board_url,
     now_iso,
 )
-from app.services.browser_runtime import launch_application_browser
+from app.services.browser_runtime import (
+    launch_application_browser,
+    release_application_browser,
+)
 from app.services.employer_application_entry import continue_from_employer_landing
 from app.services.listing_availability import detect_closed_listing
 
@@ -84,166 +87,173 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
         from playwright.async_api import async_playwright
 
         async with async_playwright() as playwright:
-            runtime = await launch_application_browser(playwright)
-            page = runtime.page
-            log.append({
-                "action": "application_target_navigation_started",
-                "url": source_url,
-                "ts": now_iso(),
-            })
             try:
-                await page.goto(source_url, wait_until="domcontentloaded", timeout=30000)
+                runtime = await launch_application_browser(playwright)
+                page = runtime.page
+                log.append({
+                    "action": "application_target_navigation_started",
+                    "url": source_url,
+                    "ts": now_iso(),
+                })
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=10000)
+                    await page.goto(source_url, wait_until="domcontentloaded", timeout=30000)
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=10000)
+                    except PlaywrightTimeoutError:
+                        log.append({"action": "application_target_network_idle_timeout", "ts": now_iso()})
                 except PlaywrightTimeoutError:
-                    log.append({"action": "application_target_network_idle_timeout", "ts": now_iso()})
-            except PlaywrightTimeoutError:
-                log.append({"action": "application_target_navigation_timeout", "ts": now_iso()})
+                    log.append({"action": "application_target_navigation_timeout", "ts": now_iso()})
 
-            closed = await detect_closed_listing(page)
-            if closed:
+                closed = await detect_closed_listing(page)
+                if closed:
+                    result.update({
+                        "application_target_status": "failed",
+                        "requires_manual_review": False,
+                        "error": closed["summary"],
+                        "url": closed.get("url") or page.url or source_url,
+                        "terminal_reason": "listing_closed",
+                        "retryable": False,
+                        "listing_availability": "closed",
+                        "listing_closed_evidence": closed,
+                    })
+                    log.append({
+                        "action": "application_listing_closed",
+                        "source_url": source_url,
+                        "current_url": result["url"],
+                        "matched_text": closed.get("matched_text"),
+                        "manual_handoff_created": False,
+                        "retryable": False,
+                        "ts": now_iso(),
+                    })
+                    return result
+
+                target = await open_application_entry(page, log)
+                target_url = str(target.get("application_url") or "")
+                form_detected = bool(target.get("application_form_detected"))
+
+                current_url = str(getattr(page, "url", "") or target_url or source_url)
+                if not form_detected and current_url and not is_job_board_url(current_url):
+                    continued = await continue_from_employer_landing(
+                        page,
+                        source_url=source_url,
+                        log=log,
+                    )
+                    if continued:
+                        target = continued
+                        target_url = str(target.get("application_url") or "")
+                        form_detected = bool(target.get("application_form_detected"))
+
+                trusted_ats = str(target.get("trusted_ats_adapter") or "")
+                trusted_ats_version = str(target.get("trusted_ats_adapter_version") or "")
+                target_is_proven = bool(form_detected or trusted_ats)
+                if target_url and target_is_proven and is_valid_application_target(
+                    source_url,
+                    target_url,
+                    application_form_detected=form_detected,
+                ):
+                    result.update({
+                        "success": True,
+                        "application_target_url": target_url,
+                        "application_target_status": "resolved",
+                        "resolution_method": target.get("resolution_method") or "automatic_apply_navigation",
+                        "application_form_detected": form_detected,
+                        "form_evidence": target.get("form_evidence") or {},
+                        "trusted_ats_adapter": trusted_ats or None,
+                        "trusted_ats_adapter_version": trusted_ats_version or None,
+                        "url": target_url,
+                        "retryable": False,
+                    })
+                    log.append({
+                        "action": "application_target_proven",
+                        "url": target_url,
+                        "application_form_detected": form_detected,
+                        "trusted_ats_adapter": trusted_ats or None,
+                        "ts": now_iso(),
+                    })
+                    return result
+
+                closed = await detect_closed_listing(page)
+                if closed:
+                    result.update({
+                        "application_target_status": "failed",
+                        "requires_manual_review": False,
+                        "error": closed["summary"],
+                        "url": closed.get("url") or page.url or source_url,
+                        "terminal_reason": "listing_closed",
+                        "retryable": False,
+                        "listing_availability": "closed",
+                        "listing_closed_evidence": closed,
+                    })
+                    log.append({
+                        "action": "application_listing_closed",
+                        "source_url": source_url,
+                        "current_url": result["url"],
+                        "matched_text": closed.get("matched_text"),
+                        "manual_handoff_created": False,
+                        "retryable": False,
+                        "ts": now_iso(),
+                    })
+                    return result
+
+                challenge = await detect_blocking_challenge(page)
+                reason_code = str((challenge or {}).get("reason_code") or "")
+                if challenge and reason_code in _RESUMABLE_TARGET_REASONS:
+                    result.update({
+                        "application_target_status": "requires_human",
+                        "requires_manual_review": True,
+                        "error": challenge.get("summary"),
+                        "review_items": [challenge],
+                        "retryable": False,
+                    })
+                    controlled_target_id = await _controlled_page_target_id(page)
+                    snapshot_metadata = {
+                        "dry_run": True,
+                        "stage": "application_target_security_boundary",
+                        "source_listing_url": source_url,
+                        "adapter": "listing_resolver",
+                        "adapter_version": "2.3.0",
+                        "reason_code": reason_code,
+                    }
+                    if controlled_target_id:
+                        snapshot_metadata["controlled_page_target_id"] = controlled_target_id
+                    snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
+                    result["handoff_snapshot"] = snapshot
+                    retained = True
+                    log.append({
+                        "action": "application_target_security_handoff_retained",
+                        "reason_code": reason_code,
+                        "browser_session_id": snapshot["browser_session_id"],
+                        "current_url": snapshot["current_url"],
+                        "controlled_page_target_id_recorded": bool(controlled_target_id),
+                        "ts": now_iso(),
+                    })
+                    return result
+
+                current_url = str(getattr(page, "url", "") or source_url)
                 result.update({
                     "application_target_status": "failed",
                     "requires_manual_review": False,
-                    "error": closed["summary"],
-                    "url": closed.get("url") or page.url or source_url,
-                    "terminal_reason": "listing_closed",
-                    "retryable": False,
-                    "listing_availability": "closed",
-                    "listing_closed_evidence": closed,
+                    "error": (
+                        "JobTomatik could not reach an application form or a certified ATS "
+                        "entry point from the job page. No CAPTCHA, login, MFA, or anti-bot "
+                        "boundary was observed, so no manual handoff was created."
+                    ),
+                    "url": current_url,
+                    "terminal_reason": "application_form_unavailable",
                 })
                 log.append({
-                    "action": "application_listing_closed",
+                    "action": "application_target_automatic_resolution_failed",
                     "source_url": source_url,
-                    "current_url": result["url"],
-                    "matched_text": closed.get("matched_text"),
+                    "current_url": current_url,
                     "manual_handoff_created": False,
-                    "retryable": False,
                     "ts": now_iso(),
                 })
-                return result
-
-            target = await open_application_entry(page, log)
-            target_url = str(target.get("application_url") or "")
-            form_detected = bool(target.get("application_form_detected"))
-
-            current_url = str(getattr(page, "url", "") or target_url or source_url)
-            if not form_detected and current_url and not is_job_board_url(current_url):
-                continued = await continue_from_employer_landing(
-                    page,
-                    source_url=source_url,
-                    log=log,
-                )
-                if continued:
-                    target = continued
-                    target_url = str(target.get("application_url") or "")
-                    form_detected = bool(target.get("application_form_detected"))
-
-            trusted_ats = str(target.get("trusted_ats_adapter") or "")
-            trusted_ats_version = str(target.get("trusted_ats_adapter_version") or "")
-            target_is_proven = bool(form_detected or trusted_ats)
-            if target_url and target_is_proven and is_valid_application_target(
-                source_url,
-                target_url,
-                application_form_detected=form_detected,
-            ):
-                result.update({
-                    "success": True,
-                    "application_target_url": target_url,
-                    "application_target_status": "resolved",
-                    "resolution_method": target.get("resolution_method") or "automatic_apply_navigation",
-                    "application_form_detected": form_detected,
-                    "form_evidence": target.get("form_evidence") or {},
-                    "trusted_ats_adapter": trusted_ats or None,
-                    "trusted_ats_adapter_version": trusted_ats_version or None,
-                    "url": target_url,
-                    "retryable": False,
-                })
-                log.append({
-                    "action": "application_target_proven",
-                    "url": target_url,
-                    "application_form_detected": form_detected,
-                    "trusted_ats_adapter": trusted_ats or None,
-                    "ts": now_iso(),
-                })
-                return result
-
-            closed = await detect_closed_listing(page)
-            if closed:
-                result.update({
-                    "application_target_status": "failed",
-                    "requires_manual_review": False,
-                    "error": closed["summary"],
-                    "url": closed.get("url") or page.url or source_url,
-                    "terminal_reason": "listing_closed",
-                    "retryable": False,
-                    "listing_availability": "closed",
-                    "listing_closed_evidence": closed,
-                })
-                log.append({
-                    "action": "application_listing_closed",
-                    "source_url": source_url,
-                    "current_url": result["url"],
-                    "matched_text": closed.get("matched_text"),
-                    "manual_handoff_created": False,
-                    "retryable": False,
-                    "ts": now_iso(),
-                })
-                return result
-
-            challenge = await detect_blocking_challenge(page)
-            reason_code = str((challenge or {}).get("reason_code") or "")
-            if challenge and reason_code in _RESUMABLE_TARGET_REASONS:
-                result.update({
-                    "application_target_status": "requires_human",
-                    "requires_manual_review": True,
-                    "error": challenge.get("summary"),
-                    "review_items": [challenge],
-                    "retryable": False,
-                })
-                controlled_target_id = await _controlled_page_target_id(page)
-                snapshot_metadata = {
-                    "dry_run": True,
-                    "stage": "application_target_security_boundary",
-                    "source_listing_url": source_url,
-                    "adapter": "listing_resolver",
-                    "adapter_version": "2.3.0",
-                    "reason_code": reason_code,
-                }
-                if controlled_target_id:
-                    snapshot_metadata["controlled_page_target_id"] = controlled_target_id
-                snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
-                result["handoff_snapshot"] = snapshot
-                retained = True
-                log.append({
-                    "action": "application_target_security_handoff_retained",
-                    "reason_code": reason_code,
-                    "browser_session_id": snapshot["browser_session_id"],
-                    "current_url": snapshot["current_url"],
-                    "controlled_page_target_id_recorded": bool(controlled_target_id),
-                    "ts": now_iso(),
-                })
-                return result
-
-            current_url = str(getattr(page, "url", "") or source_url)
-            result.update({
-                "application_target_status": "failed",
-                "requires_manual_review": False,
-                "error": (
-                    "JobTomatik could not reach an application form or a certified ATS "
-                    "entry point from the job page. No CAPTCHA, login, MFA, or anti-bot "
-                    "boundary was observed, so no manual handoff was created."
-                ),
-                "url": current_url,
-                "terminal_reason": "application_form_unavailable",
-            })
-            log.append({
-                "action": "application_target_automatic_resolution_failed",
-                "source_url": source_url,
-                "current_url": current_url,
-                "manual_handoff_created": False,
-                "ts": now_iso(),
-            })
+            finally:
+                if runtime is not None:
+                    await release_application_browser(
+                        runtime,
+                        retain_controlled_page=retained,
+                    )
     except ImportError:
         result["application_target_status"] = "failed"
         result["error"] = "Playwright not installed"
@@ -257,8 +267,5 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
             "detail": str(exc)[:300],
             "ts": now_iso(),
         })
-    finally:
-        if runtime is not None and not retained:
-            runtime.terminate(remove_profile=False)
 
     return result

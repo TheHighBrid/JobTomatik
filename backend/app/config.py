@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str = DEFAULT_SECRET_KEY
     answer_vault_key: str = ""
+    # Separate trust root for signed certified-autonomous release manifests.
+    # It must remain empty until an operator intentionally configures a release key.
+    autonomy_certification_signing_key: str = ""
     algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = Field(default=10080, ge=5, le=43200)
 

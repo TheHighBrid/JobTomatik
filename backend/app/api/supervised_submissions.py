@@ -98,6 +98,59 @@ def _queued_attempt_payload(
     }
 
 
+def _synchronize_submission_attempt_counter(
+    db: Session,
+    application: Application,
+) -> None:
+    """Keep the next reservation monotonic after a pre-worker publish failure.
+
+    The application counter normally advances when the worker starts. A producer-side
+    failure can leave an immutable blocked SubmissionAttempt behind before that worker
+    transition happens. Reconcile the counter to the highest durable reservation so a
+    newly approved retry receives the next unique attempt number instead of colliding
+    with the blocked reservation.
+    """
+
+    latest = (
+        db.query(SubmissionAttempt.attempt_number)
+        .filter(SubmissionAttempt.application_id == application.id)
+        .order_by(SubmissionAttempt.attempt_number.desc())
+        .first()
+    )
+    latest_number = int(latest[0]) if latest else 0
+    current_number = int(application.submission_attempt_count or 0)
+    if latest_number > current_number:
+        application.submission_attempt_count = latest_number
+        db.flush()
+
+
+def _publish_supervised_submission_task(
+    application_id: int,
+    approval_reference: str,
+    attempt_reference: str,
+):
+    """Publish the exact supervised envelope without stale producer-side typing.
+
+    The worker installs the authoritative supervised task gate and accepts the approval
+    and durable attempt references. Celery's local Task.delay() argument checker is
+    generated from the original task function before that worker-only wrapper exists,
+    so it cannot represent the supervised envelope in an API producer process. Using
+    send_task() publishes the named task exactly as the worker contract expects while
+    retaining queue routing and all worker-side approval/attempt validation.
+    """
+
+    return submit_application_task.app.send_task(
+        submit_application_task.name,
+        args=[application_id],
+        kwargs={
+            "dry_run": False,
+            "approval_reference": approval_reference,
+            "attempt_reference": attempt_reference,
+        },
+        queue="applications",
+    )
+
+
 @router.get(
     "/applications/{application_id}/preflight",
     response_model=SupervisedPreflightOut,
@@ -246,6 +299,7 @@ async def queue_supervised_submission(
             consume=False,
             target_metadata=target_metadata,
         )
+        _synchronize_submission_attempt_counter(db, application)
         attempt, created = reserve_submission_attempt(
             db,
             application,
@@ -273,12 +327,12 @@ async def queue_supervised_submission(
 
     if created:
         try:
-            # Keep the established queue API contract. The worker derives the committed
-            # attempt from this immutable approval reference before consuming it.
-            task = submit_application_task.delay(
+            # Publish the exact immutable approval + attempt envelope. The worker still
+            # revalidates both records before consuming approval or touching a browser.
+            task = _publish_supervised_submission_task(
                 application_id,
-                dry_run=False,
-                approval_reference=reference,
+                reference,
+                attempt.reference,
             )
             attempt.task_id = str(task.id)
             db.commit()
