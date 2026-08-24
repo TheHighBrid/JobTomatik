@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from app.models.application import (
     Application,
@@ -100,6 +102,60 @@ def test_invalid_persisted_operator_state_fails_closed(db_session):
     assert scheduler["code"] == "operator_control_invalid"
     assert worker["allowed"] is False
     assert worker["code"] == "operator_control_invalid"
+
+
+def test_malformed_production_principal_fails_closed_without_attribute_error():
+    malformed = SimpleNamespace(id=934)
+
+    state = autonomy_control_state(malformed)
+    scheduler = scheduler_control_decision(malformed)
+    worker = worker_control_decision(malformed)
+
+    assert state["valid"] is False
+    assert state["mode"] == MODE_PAUSED
+    assert state["submission_authorized"] is False
+    assert scheduler["allowed"] is False
+    assert scheduler["code"] == "operator_control_invalid"
+    assert worker["allowed"] is False
+    assert worker["code"] == "operator_control_invalid"
+
+
+def test_malformed_shadow_principal_preserves_inherited_shadow_safety_guard(monkeypatch):
+    install_operator_autonomy_control()
+    malformed = SimpleNamespace(id=935)
+    rank = MagicMock()
+    dispatch = MagicMock()
+
+    monkeypatch.setattr(
+        scraping_tasks,
+        "scheduler_settings",
+        lambda _user: {
+            "auto_search_enabled": True,
+            "auto_apply_enabled": True,
+            "dry_run_mode": False,
+        },
+    )
+    monkeypatch.setattr(
+        scraping_tasks,
+        "settings",
+        SimpleNamespace(allow_real_application_submit=False),
+    )
+    monkeypatch.setattr(scraping_tasks, "rank_scheduler_candidates", rank)
+    monkeypatch.setattr(
+        "app.tasks.unattended.submit_unattended_application_task.apply_async",
+        dispatch,
+    )
+
+    wrapped = scraping_tasks._run_scheduler_cycle_for_user
+    assert getattr(wrapped, "_day34_operator_control_wrapper", False) is True
+    result = wrapped(MagicMock(), malformed, shadow_session_id=441)
+
+    assert result["reason"] == "shadow_safety_invariant_blocked"
+    assert result["applications_queued"] == 0
+    assert result["searched"] is False
+    assert result["shadow_session_id"] == 441
+    rank.assert_not_called()
+    dispatch.assert_not_called()
 
 
 def test_pause_drain_resume_api_is_account_scoped(auth_client, db_session):
