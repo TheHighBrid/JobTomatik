@@ -10,10 +10,14 @@ on:
       - "backend/app/services/autonomy_release_contract.py"
       - "backend/app/services/phase4_candidate_gate.py"
       - "backend/app/services/day33_recovery_chaos.py"
+      - "backend/app/services/dead_letter.py"
+      - "backend/app/services/dead_letter_drill.py"
       - "backend/app/services/operations_policy.py"
       - "backend/app/services/operational_observability.py"
       - ".github/workflows/day35-operations-rehearsal-gate.yml"
       - "backend/requirements.txt"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
   workflow_dispatch:
 
 permissions:
@@ -35,7 +39,7 @@ env:
 jobs:
   day35-operations-rehearsal:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - name: Check out exact source head
@@ -54,9 +58,14 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install backend dependencies
         run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Verify Phase 5 dependency integrity
+        run: bash scripts/verify.sh dependencies
 
       - name: Run Day 35 and inherited Phase 5 regressions
         working-directory: backend
@@ -72,6 +81,7 @@ jobs:
             tests/test_day31_autonomous_material_verification.py \
             tests/test_day32_observability_notifications.py \
             tests/test_day33_recovery_chaos.py \
+            tests/test_dead_letter_drill.py \
             tests/test_day34_autonomy_control.py \
             --junitxml=day35-operations-rehearsal-junit.xml
 
@@ -96,6 +106,12 @@ jobs:
           assert gate['verification_commit'] == os.environ['SOURCE_COMMIT']
           assert gate['gate_passed'] is True
 
+          scope = gate['evidence_scope']
+          assert scope['scheduling_caps_quiet_hours_retries_alerts'] == 'deterministic_no_submit_simulation'
+          assert scope['crash_recovery'] == 'executed_day33_recovery_contract'
+          assert scope['checkpoint_dead_letter_recovery'] == 'executed_production_dead_letter_contract'
+          assert scope['external_network_or_browser'] == 'not_exercised_day35'
+
           rehearsal = gate['rehearsal']
           assert rehearsal['passed'] is True
           assert rehearsal['mode'] == 'no_submit_simulation'
@@ -112,6 +128,17 @@ jobs:
           assert rehearsal['safety']['final_submit_clicked'] is False
           assert rehearsal['safety']['submission_authorized'] is False
           assert rehearsal['safety']['outreach_authorized'] is False
+
+          dead_letter = gate['executed_dead_letter_recovery']
+          assert dead_letter['passed'] is True
+          assert dead_letter['assertions']['dead_letter_created'] is True
+          assert dead_letter['assertions']['verified_checkpoint_requeue'] is True
+          assert dead_letter['assertions']['checkpoint_drift_blocked'] is True
+          assert dead_letter['assertions']['automatic_retry_disabled'] is True
+          assert dead_letter['safety']['network_contacted'] is False
+          assert dead_letter['safety']['final_submit_clicked'] is False
+          assert dead_letter['safety']['submission_authorized'] is False
+          assert dead_letter['safety']['outreach_authorized'] is False
 
           runtime = gate['runtime_safety']
           assert runtime['autopilot_enabled'] is False
