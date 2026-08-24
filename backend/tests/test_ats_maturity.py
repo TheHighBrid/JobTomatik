@@ -5,6 +5,8 @@ from app.services.ats_maturity import (
     annotate_adapter_manifest,
     derive_adapter_maturity,
 )
+import hashlib
+
 from app.services.autonomy_release_contract import (
     AUTONOMY_SIGNATURE_METHOD,
     MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
@@ -16,6 +18,15 @@ from app.services.autonomy_release_contract import (
 from app.services import unattended_policy
 
 TEST_SIGNING_KEY = "jobtomatik-day27-test-signing-key-0001"
+TEST_ARTIFACTS = {
+    "fixture_digest": b"retained fixture evidence",
+    "evidence_digest": b"retained supervised submission ledger",
+    "policy_digest": b"retained policy snapshot",
+}
+TEST_DIGESTS = {
+    name: "sha256:" + hashlib.sha256(content).hexdigest()
+    for name, content in TEST_ARTIFACTS.items()
+}
 
 
 def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40):
@@ -24,9 +35,7 @@ def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40)
         "adapter": {"name": name, "version": version},
         "source": {
             "release_commit": release_commit,
-            "fixture_digest": "sha256:" + "1" * 64,
-            "evidence_digest": "sha256:" + "2" * 64,
-            "policy_digest": "sha256:" + "3" * 64,
+            **TEST_DIGESTS,
         },
         "reliability_window": {
             "evidence_type": "supervised_real_submission",
@@ -164,6 +173,8 @@ def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_si
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.CERTIFIED_AUTONOMOUS
 
     incomplete_shadow = _autonomy_manifest()
@@ -177,6 +188,8 @@ def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_si
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
     unreviewed = _autonomy_manifest()
@@ -190,6 +203,8 @@ def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_si
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
 
@@ -216,24 +231,32 @@ def test_tampered_wrong_version_or_wrong_signature_cannot_promote():
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.CERTIFIED_AUTONOMOUS
 
     release["certification_manifest"]["reliability_window"]["duplicate_submissions"] = 1
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
     release["certification_manifest"] = _autonomy_manifest(version="0.9.0")
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
     release["certification_manifest"] = _autonomy_manifest()
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key="different-trusted-signing-key-000000000",
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
 
@@ -254,6 +277,8 @@ def test_generic_adapter_requires_a_specific_implementation_before_promotion():
             "autonomy_release": release,
         },
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     )
 
     assert annotated["maturity"] == AdapterMaturity.UNSUPPORTED.value

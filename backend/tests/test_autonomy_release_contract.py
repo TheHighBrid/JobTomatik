@@ -18,6 +18,17 @@ from app.services.autonomy_release_contract import (
 )
 
 TEST_SIGNING_KEY = "jobtomatik-day27-test-signing-key-0001"
+TEST_ARTIFACTS = {
+    "fixture_digest": b"retained fixture evidence",
+    "evidence_digest": b"retained supervised submission ledger",
+    "policy_digest": b"retained policy snapshot",
+}
+
+
+def _digest(content):
+    import hashlib
+
+    return "sha256:" + hashlib.sha256(content).hexdigest()
 
 
 def _resign(manifest):
@@ -35,9 +46,7 @@ def valid_manifest(*, adapter_name="ashby", adapter_version="1.1.0", commit="a" 
         "adapter": {"name": adapter_name, "version": adapter_version},
         "source": {
             "release_commit": commit,
-            "fixture_digest": "sha256:" + "1" * 64,
-            "evidence_digest": "sha256:" + "2" * 64,
-            "policy_digest": "sha256:" + "3" * 64,
+            **{name: _digest(content) for name, content in TEST_ARTIFACTS.items()},
         },
         "reliability_window": {
             "evidence_type": "supervised_real_submission",
@@ -97,6 +106,8 @@ def validate(manifest, *, version="1.1.0", signing_key=TEST_SIGNING_KEY):
         adapter_name="ashby",
         adapter_version=version,
         trusted_signing_key=signing_key,
+        trusted_release_commit=str(manifest.get("source", {}).get("release_commit") or ""),
+        trusted_source_artifacts=TEST_ARTIFACTS,
     )
 
 
@@ -169,6 +180,43 @@ def test_adapter_version_and_exact_commit_are_immutable_bindings():
     assert result["passed"] is False
     assert "approval_exact_release_commit" in result["missing"]
     assert result["checks"]["attestation_signature_matches"] is True
+
+
+def test_empty_adapter_version_cannot_be_certified():
+    manifest = valid_manifest(adapter_version="")
+    result = validate(manifest, version="")
+    assert result["passed"] is False
+    assert "adapter_version" in result["missing"]
+
+
+def test_release_commit_must_match_independent_runtime_identity():
+    manifest = valid_manifest()
+    result = validate_autonomy_release_manifest(
+        manifest,
+        adapter_name="ashby",
+        adapter_version="1.1.0",
+        trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="b" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
+    )
+    assert result["passed"] is False
+    assert "release_commit_matches_runtime" in result["missing"]
+
+
+def test_source_digests_are_recomputed_from_retained_artifacts():
+    manifest = valid_manifest()
+    artifacts = dict(TEST_ARTIFACTS)
+    artifacts["evidence_digest"] = b"fabricated replacement ledger"
+    result = validate_autonomy_release_manifest(
+        manifest,
+        adapter_name="ashby",
+        adapter_version="1.1.0",
+        trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=artifacts,
+    )
+    assert result["passed"] is False
+    assert "evidence_digest_matches_retained_artifact" in result["missing"]
 
 
 def test_reliability_window_requires_supervised_distinct_reviewed_evidence():

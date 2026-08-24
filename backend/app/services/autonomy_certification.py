@@ -130,11 +130,18 @@ def _adapter_certification_plan(adapter: Mapping[str, Any]) -> Dict[str, Any]:
     release = adapter.get("autonomy_release")
     if not isinstance(release, Mapping):
         release = {}
+    settings = get_settings()
     contract = validate_autonomy_release_manifest(
         release.get("certification_manifest"),
         adapter_name=str(adapter.get("name") or ""),
         adapter_version=str(adapter.get("version") or ""),
-        trusted_signing_key=get_settings().autonomy_certification_signing_key or None,
+        trusted_signing_key=settings.autonomy_certification_signing_key or None,
+        trusted_release_commit=settings.autonomy_release_commit or None,
+        trusted_source_artifacts={
+            "fixture_digest": settings.autonomy_fixture_artifact,
+            "evidence_digest": settings.autonomy_evidence_artifact,
+            "policy_digest": settings.autonomy_policy_artifact,
+        },
     )
     autonomy["certification_manifest"] = contract
     if not contract.get("passed"):
