@@ -1,0 +1,119 @@
+name: Day 30 policy queue gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/application_queue_policy.py"
+      - "backend/app/services/application_queue_policy_runtime.py"
+      - "backend/app/services/application_queue_policy_integration.py"
+      - "backend/app/api/settings.py"
+      - "backend/app/celery_app.py"
+      - "backend/scripts/build_day30_policy_queue_gate.py"
+      - "backend/tests/test_day30_application_queue_policy.py"
+      - "backend/tests/test_day30_policy_runtime.py"
+      - "backend/tests/test_day30_policy_audit_fail_closed.py"
+      - ".github/workflows/day30-policy-queue-gate.yml"
+      - "backend/requirements.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: sqlite:///./day30-policy-queue-gate.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: day30-policy-queue-ci-only-secret-key-000000000000
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  AUTOMATION_GLOBAL_KILL_SWITCH: "false"
+  ENABLE_RESUMABLE_HANDOFFS: "false"
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  day30-policy-bounded-queue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20.19.0"
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Run Day 30 policy regressions
+        working-directory: backend
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day30_application_queue_policy.py \
+            tests/test_day30_policy_runtime.py \
+            tests/test_day30_policy_audit_fail_closed.py \
+            tests/test_policy_gate.py \
+            tests/test_scheduler_policy.py \
+            tests/test_scheduler_unattended_activation.py \
+            tests/test_shadow_test_policy_profile.py \
+            --junitxml=day30-policy-queue-junit.xml
+
+      - name: Verify canonical safety
+        run: bash scripts/verify.sh safety
+
+      - name: Export exact-head Day 30 evidence
+        working-directory: backend
+        run: |
+          PYTHONPATH=. python scripts/build_day30_policy_queue_gate.py \
+            --verification-commit "$SOURCE_COMMIT" \
+            --output day30-policy-queue-gate.json
+
+      - name: Assert policy queue remains fail closed
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          gate = json.load(open('day30-policy-queue-gate.json', encoding='utf-8'))
+          assert gate['verification_commit'] == os.environ['SOURCE_COMMIT']
+          assert gate['gate_passed'] is True
+          assert gate['runtime_safety']['autopilot_enabled'] is False
+          assert gate['runtime_safety']['real_submission_enabled'] is False
+          contract = gate['policy_contract']
+          assert contract['explicit_roles_required_for_auto_apply'] is True
+          assert contract['explicit_workplace_modes_required_for_auto_apply'] is True
+          assert contract['explicit_authorized_countries_required_for_auto_apply'] is True
+          assert contract['per_enabled_platform_cap_required'] is True
+          assert contract['unknown_workplace_or_authorization_facts_fail_closed'] is True
+          assert contract['base_unattended_policy_is_never_weakened'] is True
+          assert contract['scheduler_and_worker_share_same_extension'] is True
+          assert contract['worker_recheck_excludes_only_current_application'] is True
+          assert contract['shadow_profile_preserved'] is True
+          assert contract['audit_persistence_failure_blocks_queue'] is True
+          assert contract['decision_dispositions'] == ['accepted', 'rejected', 'held']
+          PY
+
+      - name: Upload Day 30 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: day30-policy-queue-gate
+          path: |
+            backend/day30-policy-queue-gate.json
+            backend/day30-policy-queue-junit.xml
+          if-no-files-found: error
+          retention-days: 30

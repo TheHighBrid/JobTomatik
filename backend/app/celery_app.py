@@ -113,8 +113,9 @@ def ensure_worker_runtime_schema() -> None:
 
 @worker_init.connect
 def install_worker_task_integrations(**_kwargs):
-    """Install schema, safety, discovery, target-resolution, and browser extensions."""
+    """Install schema, safety, discovery, policy, target-resolution, and browser extensions."""
     from app.services.application_integrity import install_closed_application_task_gate
+    from app.services.application_queue_policy_integration import install_application_queue_policy
     from app.services.application_target_handoff import (
         install_application_target_handoff_task_persistence,
     )
@@ -132,6 +133,7 @@ def install_worker_task_integrations(**_kwargs):
     install_application_target_handoff_task_persistence()
     install_application_target_task_integration()
     install_scheduler_freshness_gate()
+    install_application_queue_policy()
     install_supervised_submission_task_gate()
     # Must wrap the supervised gate so a stale task cannot consume an approval.
     install_closed_application_task_gate()
