@@ -131,6 +131,7 @@ signal_supervisor_if_managed() {
     return 0
   fi
   echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$pid action=not_signaled" >&2
+  return 1
 }
 
 stop_browser_processes() {
@@ -158,7 +159,11 @@ case "$ACTION" in
     if [[ -f "$SUPERVISOR_PID_FILE" ]]; then
       supervisor_pid="$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null || true)"
       if [[ -n "$supervisor_pid" ]]; then
-        signal_supervisor_if_managed "$supervisor_pid"
+        # A live numeric PID is not enough: Android/Linux may have recycled it.
+        # Clear rejected PIDs so shutdown never waits on an unrelated process.
+        if ! signal_supervisor_if_managed "$supervisor_pid"; then
+          supervisor_pid=""
+        fi
       fi
     fi
     stop_browser_processes
