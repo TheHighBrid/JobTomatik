@@ -32,10 +32,23 @@ EVIDENCE_PATHS = {
     "lever": "backend/evidence/lever-pilot-readiness.json",
     "ashby": "backend/evidence/ashby-certification-dossier.json",
 }
+ADAPTER_INTEGRATION_PATHS = {
+    "ashby": ("backend/app/services/ashby_profile_aliases.py",),
+    "smartrecruiters": (
+        "backend/app/services/smartrecruiters_challenge.py",
+        "backend/app/services/smartrecruiters_contract.py",
+    ),
+    "workday": (
+        "backend/app/services/workday_challenge.py",
+        "backend/app/services/workday_popup_boundaries.py",
+        "backend/app/services/workday_port_integration.py",
+    ),
+}
 SOURCE_PATHS = {
     name: (
         f"backend/app/services/ats_{name}.py",
         "backend/app/services/ats_registry.py",
+        *ADAPTER_INTEGRATION_PATHS.get(name, ()),
     )
     for name in ADAPTERS
 }

@@ -4,6 +4,8 @@ import pytest
 
 from app.services import phase4_candidate_gate
 from app.services.phase4_candidate_gate import (
+    ADAPTER_INTEGRATION_PATHS,
+    SOURCE_PATHS,
     _candidate_eligible,
     _lever_metrics,
     build_phase4_candidate_gate,
@@ -65,6 +67,23 @@ def test_phase4_freezes_all_adapter_versions_and_retains_digests():
         assert re.fullmatch(r"[0-9a-f]{64}", row["digests"]["manifest_live_evidence_sha256"])
     for name in ("greenhouse", "lever", "ashby"):
         assert re.fullmatch(r"[0-9a-f]{64}", frozen[name]["digests"]["retained_evidence_sha256"])
+
+
+def test_phase4_source_digest_includes_installed_adapter_integrations():
+    assert ADAPTER_INTEGRATION_PATHS == {
+        "ashby": ("backend/app/services/ashby_profile_aliases.py",),
+        "smartrecruiters": (
+            "backend/app/services/smartrecruiters_challenge.py",
+            "backend/app/services/smartrecruiters_contract.py",
+        ),
+        "workday": (
+            "backend/app/services/workday_challenge.py",
+            "backend/app/services/workday_popup_boundaries.py",
+            "backend/app/services/workday_port_integration.py",
+        ),
+    }
+    for adapter, integration_paths in ADAPTER_INTEGRATION_PATHS.items():
+        assert set(integration_paths).issubset(SOURCE_PATHS[adapter])
 
 
 def test_phase4_digest_drift_fails_the_gate(monkeypatch):
