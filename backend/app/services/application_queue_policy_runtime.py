@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from typing import Callable
 
 from app.models.application import Application, ApplicationStatus
@@ -145,7 +144,10 @@ def _attach_audit_id(
     audit_id: int | None,
 ) -> AutomationDecision:
     if audit_id is None:
-        return decision
+        # A production policy decision without its durable explanation is not an
+        # admissible queue decision. Raising here makes the surrounding scheduler or
+        # worker transaction roll back instead of proceeding without an audit trail.
+        raise RuntimeError("day30_policy_audit_persistence_failed")
     return AutomationDecision(
         decision.allowed,
         decision.code,
