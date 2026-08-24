@@ -66,6 +66,9 @@ def test_greenhouse_url_parsing_and_schema_inspection():
     assert parse_greenhouse_job_url(
         "https://boards.greenhouse.io/acme/jobs/7654321"
     ) == ("acme", "7654321")
+    assert parse_greenhouse_job_url(
+        "https://boards.greenhouse.io/embed/job_app?token=246810&for=acme"
+    ) == ("acme", "246810")
 
     report = inspect_greenhouse_schema({
         "id": 123,

@@ -4,6 +4,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.auth import get_current_user
 from app.database import get_db
@@ -110,7 +111,8 @@ async def supervised_submission_preflight(
     application, user, job = _owned_records(db, application_id, current_user.id)
     _require_open_submission(application)
     target_metadata = await resolve_supervised_target_metadata(job)
-    return build_supervised_preflight(
+    return await run_in_threadpool(
+        build_supervised_preflight,
         db,
         application,
         user,
@@ -136,7 +138,8 @@ async def create_supervised_submission_approval(
     if target_metadata:
         persist_supervised_target_metadata(job, target_metadata)
     try:
-        approval = issue_supervised_approval(
+        approval = await run_in_threadpool(
+            issue_supervised_approval,
             db,
             application,
             user,
@@ -237,7 +240,8 @@ async def queue_supervised_submission(
     if target_metadata:
         persist_supervised_target_metadata(job, target_metadata)
     try:
-        approval = validate_supervised_approval(
+        approval = await run_in_threadpool(
+            validate_supervised_approval,
             db,
             application,
             user,

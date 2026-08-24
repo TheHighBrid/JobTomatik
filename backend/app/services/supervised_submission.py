@@ -164,7 +164,7 @@ def _greenhouse_target_liveness(application_url: str) -> Dict[str, Any]:
         return result
 
     try:
-        response = httpx.get(
+        response = _get_greenhouse_target_response(
             original_url,
             follow_redirects=True,
             timeout=TARGET_LIVENESS_TIMEOUT_SECONDS,
@@ -225,6 +225,18 @@ def _greenhouse_target_liveness(application_url: str) -> Dict[str, Any]:
     result["live"] = True
     result["blocker"] = None
     return result
+
+
+def _get_greenhouse_target_response(url: str, **kwargs: Any) -> httpx.Response:
+    """HTTP seam for the HTML liveness probe, independent of schema fetching."""
+
+    return httpx.get(url, **kwargs)
+
+
+def _get_greenhouse_schema_response(url: str, **kwargs: Any) -> httpx.Response:
+    """HTTP seam for the Boards API probe, independent of target liveness."""
+
+    return httpx.get(url, **kwargs)
 
 
 def _canonicalize_form_schema_value(value: Any) -> Any:
@@ -293,7 +305,7 @@ def _greenhouse_form_schema_status(application_url: str) -> Dict[str, Any]:
         f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs/{job_id}"
     )
     try:
-        response = httpx.get(
+        response = _get_greenhouse_schema_response(
             schema_url,
             params={"questions": "true"},
             timeout=FORM_SCHEMA_TIMEOUT_SECONDS,
@@ -326,6 +338,18 @@ def _greenhouse_form_schema_status(application_url: str) -> Dict[str, Any]:
     )
     result["required_uploads"] = list(inspection.get("required_uploads") or [])
     result["unsupported_fields"] = unsupported
+    # A successful response is not proof that Greenhouse returned a usable form.
+    # Require at least one parsed question and a concrete type for every field so
+    # empty/malformed payloads cannot be certified merely because no *known*
+    # unsupported type happened to be present.
+    parsed_question_surface = bool(questions) and all(
+        int(question.get("aggregate_field_count") or 0) > 0
+        and bool(question.get("field_types"))
+        and all(str(field_type or "").strip() for field_type in question["field_types"])
+        for question in questions
+    )
+    if not parsed_question_surface:
+        return result
     if not inspection.get("schema_certified") or unsupported:
         result["blocker"] = "application_form_schema_unsupported"
         return result

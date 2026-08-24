@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from types import SimpleNamespace
+
+import pytest
 
 from app.models.application import Application
 from app.models.job import Job, JobSource, JobStatus
@@ -135,6 +138,71 @@ def test_greenhouse_schema_fingerprint_is_order_insensitive_but_detects_option_d
         changed,
         "123456",
     ) != base_hash
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {},
+        {"questions": []},
+        {"questions": [{"label": "Name"}]},
+        {
+            "questions": [
+                {"label": "Name", "fields": [{"name": "first_name"}]}
+            ]
+        },
+    ],
+)
+def test_greenhouse_schema_probe_rejects_missing_or_malformed_questions(
+    monkeypatch,
+    schema,
+):
+    monkeypatch.setattr(
+        approval_service,
+        "_get_greenhouse_schema_response",
+        lambda *args, **kwargs: SimpleNamespace(
+            status_code=200,
+            json=lambda: schema,
+        ),
+    )
+
+    result = approval_service._greenhouse_form_schema_status(GREENHOUSE_URL)
+
+    assert result["verified"] is False
+    assert result["schema_hash"] is None
+    assert result["blocker"] == "application_form_schema_unverified"
+
+
+def test_embedded_greenhouse_schema_probe_uses_for_board_token(monkeypatch):
+    requested = {}
+    monkeypatch.setattr(
+        approval_service,
+        "_get_greenhouse_schema_response",
+        lambda url, **kwargs: (
+            requested.update(url=url)
+            or SimpleNamespace(
+                status_code=200,
+                json=lambda: {
+                    "questions": [
+                        {
+                            "label": "Name",
+                            "required": True,
+                            "fields": [{"name": "first_name", "type": "input_text"}],
+                        }
+                    ]
+                },
+            )
+        ),
+    )
+
+    result = approval_service._greenhouse_form_schema_status(
+        "https://boards.greenhouse.io/embed/job_app?token=123&for=acme"
+    )
+
+    assert requested["url"].endswith("/boards/acme/jobs/123")
+    assert result["board_token"] == "acme"
+    assert result["job_id"] == "123"
+    assert result["verified"] is True
 
 
 def test_unverified_live_greenhouse_schema_blocks_supervised_approval(
