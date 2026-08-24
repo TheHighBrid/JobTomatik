@@ -13,6 +13,7 @@ This facade changes only the external Android CDP attachment contract:
 from __future__ import annotations
 
 import asyncio
+import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
@@ -37,6 +38,47 @@ for _name in dir(_base):
 
 EXTERNAL_CDP_CONNECT_TIMEOUT_SECONDS = 60
 EXTERNAL_CDP_ATTACH_ATTEMPT_TIMEOUT_SECONDS = 45
+
+
+class ControlledExternalBrowserRuntime(RetainableBrowserRuntime):
+    """An external runtime that owns its application tab, but not Chromium."""
+
+    controlled_page_target_id: str = ""
+
+    def terminate(self, *, remove_profile: bool = False) -> None:
+        """Close the controlled CDP target without terminating the shared browser."""
+
+        if self.controlled_page_target_id:
+            try:
+                _base.httpx.get(
+                    f"{self.cdp_endpoint}/json/close/{self.controlled_page_target_id}",
+                    timeout=2.0,
+                )
+            except Exception:
+                # Chromium may already have closed the tab or disconnected. Cleanup
+                # remains best-effort, just like terminating an exited local process.
+                pass
+            self.controlled_page_target_id = ""
+        if remove_profile:
+            shutil.rmtree(self.session_dir, ignore_errors=True)
+
+
+async def _controlled_page_target_id(context: Any, page: Any) -> str:
+    """Return the durable CDP identity needed for synchronous final cleanup."""
+
+    session = None
+    try:
+        session = await context.new_cdp_session(page)
+        target = await session.send("Target.getTargetInfo")
+        return str((target.get("targetInfo") or {}).get("targetId") or "")
+    except Exception:
+        return ""
+    finally:
+        if session is not None:
+            try:
+                await session.detach()
+            except Exception:
+                pass
 
 
 async def _connect_external_playwright_over_cdp(playwright: Any, endpoint: str) -> Any:
@@ -140,9 +182,19 @@ async def attach_retainable_browser(
     if create_controlled_page:
         context = _single_external_context(browser)
         page = await context.new_page()
+        controlled_page_target_id = await _controlled_page_target_id(context, page)
+        if not controlled_page_target_id:
+            try:
+                await page.close()
+            except Exception:
+                pass
+            raise BrowserRuntimeError(
+                "Could not identify the newly controlled Chromium tab for safe cleanup."
+            )
         if viewport:
             await page.set_viewport_size(viewport)
     else:
+        controlled_page_target_id = ""
         context, page = await _select_context_page(
             browser,
             viewport=viewport,
@@ -152,7 +204,12 @@ async def attach_retainable_browser(
     session_id = str(uuid4())
     session_dir = handoff_storage_root() / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
-    return RetainableBrowserRuntime(
+    runtime_class = (
+        ControlledExternalBrowserRuntime
+        if create_controlled_page
+        else RetainableBrowserRuntime
+    )
+    runtime = runtime_class(
         process=ExternalBrowserProcess(endpoint),
         cdp_endpoint=endpoint,
         browser_session_id=session_id,
@@ -165,6 +222,9 @@ async def attach_retainable_browser(
         page=page,
         session_dir=session_dir,
     )
+    if create_controlled_page:
+        runtime.controlled_page_target_id = controlled_page_target_id
+    return runtime
 
 
 async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:

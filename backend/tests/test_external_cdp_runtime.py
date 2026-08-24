@@ -26,9 +26,22 @@ class FakePage:
     def __init__(self, url="https://www.linkedin.com/feed/"):
         self.url = url
         self.viewport = None
+        self.closed = False
 
     async def set_viewport_size(self, viewport):
         self.viewport = viewport
+
+    async def close(self):
+        self.closed = True
+
+
+class FakeCDPSession:
+    async def send(self, method):
+        assert method == "Target.getTargetInfo"
+        return {"targetInfo": {"targetId": "controlled-target"}}
+
+    async def detach(self):
+        return None
 
 
 class FakeContext:
@@ -41,6 +54,10 @@ class FakeContext:
         self.pages.append(page)
         self.created_pages.append(page)
         return page
+
+    async def new_cdp_session(self, page):
+        assert page in self.pages
+        return FakeCDPSession()
 
 
 class FakeBrowser:
@@ -165,6 +182,37 @@ async def test_application_attachment_creates_new_controlled_page_when_browser_h
     assert first.url == "https://www.linkedin.com/feed/"
     assert second.url == "http://localhost:3000/applications/220"
     assert len(context.pages) == 3
+
+
+@pytest.mark.asyncio
+async def test_non_retained_application_runtime_closes_only_its_controlled_tab(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("HANDOFF_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", _noop_wait)
+    close_requests = []
+    monkeypatch.setattr(
+        browser_runtime.httpx,
+        "get",
+        lambda url, **kwargs: close_requests.append(url) or FakeResponse(),
+    )
+    retained_page = FakePage("https://www.linkedin.com/feed/")
+    context = FakeContext([retained_page])
+
+    runtime = await browser_runtime.attach_retainable_browser(
+        FakePlaywright(FakeBrowser([context])),
+        cdp_endpoint="http://127.0.0.1:9222",
+        create_controlled_page=True,
+    )
+    runtime.terminate(remove_profile=False)
+
+    assert close_requests == [
+        "http://127.0.0.1:9222/json/close/controlled-target"
+    ]
+    assert retained_page.closed is False
+    runtime.terminate(remove_profile=False)
+    assert len(close_requests) == 1
 
 
 @pytest.mark.asyncio
