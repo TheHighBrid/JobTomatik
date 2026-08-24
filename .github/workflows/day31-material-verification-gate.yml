@@ -1,0 +1,111 @@
+name: Day 31 material verification gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/autonomous_material_verification.py"
+      - "backend/app/services/material_generation.py"
+      - "backend/app/services/material_task_integration.py"
+      - "backend/app/services/answer_policy.py"
+      - "backend/scripts/build_day31_material_verification_gate.py"
+      - "backend/tests/test_day31_autonomous_material_verification.py"
+      - "backend/tests/test_material_generation.py"
+      - "backend/tests/test_material_task_integration.py"
+      - "backend/tests/test_answer_policy_readiness.py"
+      - ".github/workflows/day31-material-verification-gate.yml"
+      - "backend/requirements.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: sqlite:///./day31-material-verification.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: day31-material-verification-ci-only-secret-000000000000
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  AUTOMATION_GLOBAL_KILL_SWITCH: "false"
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  day31-material-verification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20.19.0"
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Run Day 31 material regressions
+        working-directory: backend
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day31_autonomous_material_verification.py \
+            tests/test_material_generation.py \
+            tests/test_material_task_integration.py \
+            tests/test_answer_policy_readiness.py \
+            tests/test_answer_policies.py \
+            --junitxml=day31-material-verification-junit.xml
+
+      - name: Verify canonical safety
+        run: bash scripts/verify.sh safety
+
+      - name: Export exact-head Day 31 evidence
+        working-directory: backend
+        run: |
+          PYTHONPATH=. python scripts/build_day31_material_verification_gate.py \
+            --verification-commit "$SOURCE_COMMIT" \
+            --output day31-material-verification-gate.json
+
+      - name: Assert Day 31 remains fail closed
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          gate = json.load(open('day31-material-verification-gate.json', encoding='utf-8'))
+          assert gate['verification_commit'] == os.environ['SOURCE_COMMIT']
+          assert gate['gate_passed'] is True
+          assert gate['runtime_safety']['autopilot_enabled'] is False
+          assert gate['runtime_safety']['real_submission_enabled'] is False
+          contract = gate['contract']
+          assert contract['canonical_resume_selection'] is True
+          assert contract['conflicting_resume_fails_closed'] is True
+          assert contract['stale_resume_digest_detected'] is True
+          assert contract['unsupported_applicant_claim_fails_closed'] is True
+          assert contract['low_confidence_custom_answer_cannot_autofill'] is True
+          assert contract['submission_authority_unchanged'] is True
+          PY
+
+      - name: Upload Day 31 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: day31-material-verification-gate
+          path: |
+            backend/day31-material-verification-gate.json
+            backend/day31-material-verification-junit.xml
+          if-no-files-found: error
+          retention-days: 30
