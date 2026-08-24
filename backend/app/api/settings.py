@@ -22,8 +22,19 @@ from app.services.scheduler_policy import (
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+DAY30_POLICY_DEFAULTS = {
+    "autopilot_allowed_roles": [],
+    "autopilot_allowed_workplace_modes": [],
+    "autopilot_authorized_countries": [],
+    "autopilot_allow_sponsorship_required": False,
+    "autopilot_daily_platform_limits": {},
+}
+DAY30_POLICY_FIELDS = frozenset(DAY30_POLICY_DEFAULTS)
+ALLOWED_WORKPLACE_MODES = frozenset({"remote", "hybrid", "onsite"})
+
 DEFAULT_SETTINGS = {
     **SCHEDULER_DEFAULTS,
+    **DAY30_POLICY_DEFAULTS,
     "auto_generate_cover_letters": True,
     "auto_followup": True,
     "auto_followup_days": 7,
@@ -34,10 +45,12 @@ DEFAULT_SETTINGS = {
 }
 
 SCHEDULER_CONFLICT_FIELDS = {
+    "auto_apply_enabled",
     "auto_apply_daily_limit",
     "auto_apply_weekly_limit",
     "autopilot_employer_allow_list",
     "autopilot_employer_exclude_list",
+    *DAY30_POLICY_FIELDS,
 }
 
 
@@ -81,6 +94,11 @@ class SettingsUpdate(BaseModel):
     autopilot_min_salary: Optional[int] = Field(default=None, ge=0, le=2_000_000)
     autopilot_allowed_seniority: Optional[list[str]] = None
     autopilot_allowed_languages: Optional[list[str]] = None
+    autopilot_allowed_roles: Optional[list[str]] = None
+    autopilot_allowed_workplace_modes: Optional[list[str]] = None
+    autopilot_authorized_countries: Optional[list[str]] = None
+    autopilot_allow_sponsorship_required: Optional[bool] = None
+    autopilot_daily_platform_limits: Optional[dict[str, int]] = None
     scheduler_search_keywords: Optional[list[str]] = None
     scheduler_search_location: Optional[str] = Field(default=None, max_length=255)
     scheduler_search_sources: Optional[list[str]] = None
@@ -97,6 +115,9 @@ class SettingsUpdate(BaseModel):
         "autopilot_allowed_locations",
         "autopilot_allowed_seniority",
         "autopilot_allowed_languages",
+        "autopilot_allowed_roles",
+        "autopilot_allowed_workplace_modes",
+        "autopilot_authorized_countries",
         "scheduler_search_keywords",
         "scheduler_search_sources",
         mode="before",
@@ -116,6 +137,38 @@ class SettingsUpdate(BaseModel):
         unknown = sorted(set(normalized) - SUPPORTED_AUTOPILOT_PLATFORMS)
         if unknown:
             raise ValueError(f"Unsupported unattended platforms: {', '.join(unknown)}")
+        return normalized
+
+    @field_validator("autopilot_allowed_workplace_modes")
+    @classmethod
+    def validate_workplace_modes(cls, value: list[str] | None):
+        if value is None:
+            return value
+        normalized = [item.lower() for item in value]
+        unknown = sorted(set(normalized) - ALLOWED_WORKPLACE_MODES)
+        if unknown:
+            raise ValueError(
+                "Unsupported workplace modes: " + ", ".join(unknown)
+            )
+        return normalized
+
+    @field_validator("autopilot_daily_platform_limits")
+    @classmethod
+    def validate_platform_limits(cls, value: dict[str, int] | None):
+        if value is None:
+            return value
+        normalized: dict[str, int] = {}
+        for raw_platform, raw_limit in value.items():
+            platform = str(raw_platform or "").strip().lower()
+            if platform not in SUPPORTED_AUTOPILOT_PLATFORMS:
+                raise ValueError(f"Unsupported platform cap: {platform or raw_platform!r}")
+            try:
+                limit = int(raw_limit)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Platform cap for {platform} must be an integer") from exc
+            if limit < 1 or limit > 50:
+                raise ValueError(f"Platform cap for {platform} must be between 1 and 50")
+            normalized[platform] = limit
         return normalized
 
     @field_validator("scheduler_search_sources")
@@ -157,6 +210,28 @@ class SettingsUpdate(BaseModel):
             raise ValueError(
                 "Employer allow and exclude lists cannot overlap: " + ", ".join(overlap)
             )
+
+        if self.auto_apply_enabled is True:
+            missing: list[str] = []
+            if not self.autopilot_allowed_roles:
+                missing.append("autopilot_allowed_roles")
+            if not self.autopilot_allowed_workplace_modes:
+                missing.append("autopilot_allowed_workplace_modes")
+            if not self.autopilot_authorized_countries:
+                missing.append("autopilot_authorized_countries")
+            enabled = set(self.autopilot_enabled_platforms or [])
+            caps = set((self.autopilot_daily_platform_limits or {}).keys())
+            missing_caps = sorted(enabled - caps)
+            if missing_caps:
+                missing.extend(
+                    f"autopilot_daily_platform_limits.{platform}"
+                    for platform in missing_caps
+                )
+            if missing:
+                raise ValueError(
+                    "Auto-apply requires explicit Day 30 queue policy: "
+                    + ", ".join(missing)
+                )
         return self
 
 
@@ -179,7 +254,9 @@ async def update_settings(
 ):
     current = dict(current_user.automation_settings or {})
     updates = data.model_dump(exclude_none=True)
-    scheduler_fields_changed = bool(SCHEDULER_SETTING_FIELDS.intersection(updates))
+    scheduler_fields_changed = bool(
+        (SCHEDULER_SETTING_FIELDS | DAY30_POLICY_FIELDS).intersection(updates)
+    )
     policy_was_current = scheduler_policy_is_current(current_user)
 
     # Validate cross-field scheduler invariants against the effective saved policy
