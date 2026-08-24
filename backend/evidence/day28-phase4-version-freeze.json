@@ -1,0 +1,99 @@
+{
+  "schema_version": "1.0",
+  "phase": "day28_phase4_gate",
+  "freeze_source_commit": "0e11c23045827f5fb7b0fd031bd0f03ac35c4399",
+  "candidate": {
+    "adapter": "lever",
+    "selection_scope": "unattended_pilot_preparation_only",
+    "promotion_authorized": false,
+    "unattended_submission_allowed": false
+  },
+  "adapters": {
+    "ashby": {
+      "maturity": "dry_run",
+      "version": "1.1.0"
+    },
+    "greenhouse": {
+      "maturity": "dry_run",
+      "version": "1.1.1"
+    },
+    "lever": {
+      "maturity": "dry_run",
+      "version": "1.1.0"
+    },
+    "smartrecruiters": {
+      "maturity": "detect_only",
+      "version": "1.1.0"
+    },
+    "workday": {
+      "maturity": "detect_only",
+      "version": "1.1.0"
+    }
+  },
+  "ranking_policy": {
+    "dimensions_in_priority_order": [
+      "supervised_confirmed_count",
+      "retained_dry_run_count",
+      "distinct_target_count",
+      "explicit_region_coverage_count",
+      "durable_archive_verification_present",
+      "manual_boundary_verification_present"
+    ],
+    "eligible_maturity": "dry_run",
+    "requires_zero_false_submissions": true,
+    "requires_zero_duplicate_submissions": true,
+    "requires_zero_uncertain_status_violations": true,
+    "requires_final_submit_not_clicked": true,
+    "preference_based_tiebreak_allowed": false
+  },
+  "remaining_supervised_only_boundaries": {
+    "lever": [
+      "ten_distinct_supervised_confirmed_submissions",
+      "independent_review_of_every_confirmed_success",
+      "separate_explicit_promotion_approval",
+      "signed_exact_commit_autonomy_release_manifest",
+      "day36_4h_shadow_gate",
+      "day37_8h_shadow_gate",
+      "day38_24h_shadow_gate",
+      "owner_authorized_live_configuration"
+    ],
+    "greenhouse": [
+      "ten_distinct_supervised_confirmed_submissions",
+      "independent_review_of_every_confirmed_success",
+      "separate_explicit_promotion_approval",
+      "signed_exact_commit_autonomy_release_manifest",
+      "day36_4h_shadow_gate",
+      "day37_8h_shadow_gate",
+      "day38_24h_shadow_gate"
+    ],
+    "ashby": [
+      "real_supervised_submission_evidence",
+      "live_post_submit_confirmation_evidence",
+      "independent_success_evidence_review",
+      "credentialed_live_form_definition_validation",
+      "separate_explicit_promotion_approval",
+      "signed_exact_commit_autonomy_release_manifest",
+      "day36_4h_shadow_gate",
+      "day37_8h_shadow_gate",
+      "day38_24h_shadow_gate"
+    ],
+    "smartrecruiters": [
+      "live_preform_datadome_remains_manual_handoff",
+      "live_full_form_not_certified",
+      "dry_run_maturity_not_reached"
+    ],
+    "workday": [
+      "login_or_account_creation_remains_manual_handoff",
+      "live_authenticated_full_form_not_certified",
+      "dry_run_maturity_not_reached"
+    ]
+  },
+  "freeze_policy": {
+    "adapter_version_change_requires_phase4_regate": true,
+    "adapter_source_or_fixture_digest_change_requires_phase4_regate": true,
+    "retained_evidence_digest_change_requires_phase4_regate": true,
+    "maturity_promotion_is_out_of_scope": true,
+    "real_submission_enablement_is_out_of_scope": true,
+    "autopilot_enablement_is_out_of_scope": true
+  }
+}
