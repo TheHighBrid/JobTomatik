@@ -13,22 +13,17 @@ from app.services.application_state import (
     normalize_state,
     transition_application_state,
 )
-from app.services.material_generation import generate_application_material
+from app.services.autonomous_material_verification import (
+    generate_autonomy_verified_material,
+)
 
 
 _INSTALLED = False
 _ORIGINAL_RUN = None
 
 
-def _critical_material_warning(warnings: list[str]) -> bool:
-    return any(
-        warning.startswith("No substantive applicant claim")
-        for warning in warnings
-    )
-
-
 def install_verified_material_task_integration() -> None:
-    """Replace legacy cover-letter task output with a source-mapped material version."""
+    """Replace legacy cover-letter task output with Day 31 verified material."""
     global _INSTALLED, _ORIGINAL_RUN
     if _INSTALLED:
         return
@@ -54,7 +49,7 @@ def install_verified_material_task_integration() -> None:
             if not job or not user:
                 return {"error": "Missing job or user"}
 
-            material = generate_application_material(
+            material, verification = generate_autonomy_verified_material(
                 db,
                 application,
                 user,
@@ -63,20 +58,32 @@ def install_verified_material_task_integration() -> None:
             )
             warnings = list(material.warnings or [])
             current_state = normalize_state(application.automation_state)
-            critical = _critical_material_warning(warnings)
+            requires_review = bool(verification["requires_manual_review"])
 
-            if critical:
+            event_payload = {
+                "material_id": material.id,
+                "material_version": material.version,
+                "material_status": material.status,
+                "warning_count": len(warnings),
+                "verification_policy": verification["policy_version"],
+                "verification_sha256": verification["verification_sha256"],
+                "content_sha256": verification["content_sha256"],
+                "resume_sha256": verification["resume"].get("sha256"),
+                "blockers": list(verification["blockers"]),
+            }
+
+            if requires_review:
                 create_manual_review_task(
                     db,
                     application,
                     ManualReviewReason.validation_error,
-                    "Application materials need source evidence before submission.",
+                    "Application materials require review before autonomous use.",
                     details={
-                        "material_id": material.id,
+                        **event_payload,
                         "material_type": material.material_type,
-                        "material_version": material.version,
                         "warnings": warnings,
-                        "stage": "verified_material_generation",
+                        "advisories": list(verification["advisories"]),
+                        "stage": "day31_autonomous_material_verification",
                     },
                     blocking_url=job.url,
                     target_state=ApplicationAutomationState.needs_review,
@@ -86,27 +93,17 @@ def install_verified_material_task_integration() -> None:
                     db,
                     application,
                     ApplicationAutomationState.ready_to_apply,
-                    "verified_cover_letter_generated",
-                    {
-                        "material_id": material.id,
-                        "material_version": material.version,
-                        "material_status": material.status,
-                        "warning_count": len(warnings),
-                    },
+                    "autonomous_material_verified",
+                    event_payload,
                 )
             else:
                 db.add(
                     ApplicationEvent(
                         application_id=application.id,
-                        event_type="verified_cover_letter_generated",
+                        event_type="autonomous_material_verified",
                         from_state=current_state,
                         to_state=current_state,
-                        payload={
-                            "material_id": material.id,
-                            "material_version": material.version,
-                            "material_status": material.status,
-                            "warning_count": len(warnings),
-                        },
+                        payload=event_payload,
                     )
                 )
 
@@ -119,7 +116,12 @@ def install_verified_material_task_integration() -> None:
                 "material_status": material.status,
                 "claim_count": len(material.claims or []),
                 "warning_count": len(warnings),
-                "requires_manual_review": critical,
+                "requires_manual_review": requires_review,
+                "verification_policy": verification["policy_version"],
+                "verification_sha256": verification["verification_sha256"],
+                "content_sha256": verification["content_sha256"],
+                "resume_sha256": verification["resume"].get("sha256"),
+                "blockers": list(verification["blockers"]),
             }
         except Exception as exc:
             db.rollback()
