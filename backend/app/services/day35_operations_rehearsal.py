@@ -43,7 +43,7 @@ REQUIRED_SIMULATION_STAGES = (
 # material only and do not attempt to replace the application's secret-management layer.
 _SECRET_PATTERNS = (
     re.compile(r"redis://[^\s:@/]+:[^\s@/]+@", re.IGNORECASE),
-    re.compile(r"authorization\s*[:=]\s*bearer\s+[a-z0-9._~+/=-]+", re.IGNORECASE),
+    re.compile(r"\bbearer\s+[a-z0-9._~+/=-]+", re.IGNORECASE),
     re.compile(r"(?:api[_-]?key|secret[_-]?key|password)\s*[:=]\s*[^\s,;}]+", re.IGNORECASE),
     re.compile(r"sk-[a-z0-9_-]{16,}", re.IGNORECASE),
 )
