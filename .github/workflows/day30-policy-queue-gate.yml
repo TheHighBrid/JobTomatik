@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - "backend/app/services/application_queue_policy.py"
+      - "backend/app/services/application_queue_policy_runtime.py"
       - "backend/app/services/application_queue_policy_integration.py"
       - "backend/app/api/settings.py"
       - "backend/app/celery_app.py"
       - "backend/scripts/build_day30_policy_queue_gate.py"
       - "backend/tests/test_day30_application_queue_policy.py"
+      - "backend/tests/test_day30_policy_runtime.py"
       - ".github/workflows/day30-policy-queue-gate.yml"
       - "backend/requirements.txt"
   workflow_dispatch:
@@ -60,6 +62,7 @@ jobs:
         run: |
           pytest -q --tb=short -ra \
             tests/test_day30_application_queue_policy.py \
+            tests/test_day30_policy_runtime.py \
             tests/test_policy_gate.py \
             tests/test_scheduler_policy.py \
             tests/test_scheduler_unattended_activation.py \
@@ -96,6 +99,8 @@ jobs:
           assert contract['unknown_workplace_or_authorization_facts_fail_closed'] is True
           assert contract['base_unattended_policy_is_never_weakened'] is True
           assert contract['scheduler_and_worker_share_same_extension'] is True
+          assert contract['worker_recheck_excludes_only_current_application'] is True
+          assert contract['shadow_profile_preserved'] is True
           assert contract['decision_dispositions'] == ['accepted', 'rejected', 'held']
           PY
 
