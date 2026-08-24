@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from sqlalchemy.orm import Session
@@ -30,13 +31,17 @@ def partition_new_discovery_jobs(
     db: Session,
     raw_jobs: Iterable[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], int]:
-    """Normalize identities and collapse duplicates repeated within this search.
+    """Normalize identities, freshness, and duplicates repeated within this search.
 
     A listing already persisted globally remains in the returned list, but its
     ``external_id`` is rebound to the existing row. The main discovery pipeline can
     then preserve its user-scoped evaluation and knowledge-graph behavior while
     correctly counting it as a duplicate. Only additional copies of the same listing
     within the current search are removed here.
+
+    Every observed listing receives ``discovery_last_seen_at``. Existing rows preserve
+    their original ``discovery_first_seen_at`` so freshness can expire independently of
+    creation history while repeated rediscovery extends only the last-seen boundary.
     """
     existing_by_external: dict[str, Job] = {}
     existing_by_identity: dict[str, Job] = {}
@@ -49,6 +54,7 @@ def partition_new_discovery_jobs(
     collapsed_duplicates = 0
     seen_run_identities: set[str] = set()
     seen_run_external_ids: set[str] = set()
+    observed_at = datetime.now(timezone.utc).isoformat()
 
     for raw_job in raw_jobs:
         normalized = dict(raw_job)
@@ -67,6 +73,21 @@ def partition_new_discovery_jobs(
         if existing is not None:
             normalized["external_id"] = existing.external_id
             external_id = str(existing.external_id or "")
+            existing_raw = dict(existing.raw_data or {})
+            first_seen = (
+                existing_raw.get("discovery_first_seen_at")
+                or existing_raw.get("discovery_last_seen_at")
+                or (
+                    existing.created_at.isoformat()
+                    if getattr(existing, "created_at", None) is not None
+                    else observed_at
+                )
+            )
+        else:
+            first_seen = normalized["raw_data"].get("discovery_first_seen_at") or observed_at
+
+        normalized["raw_data"]["discovery_first_seen_at"] = first_seen
+        normalized["raw_data"]["discovery_last_seen_at"] = observed_at
 
         if external_id in seen_run_external_ids or identity in seen_run_identities:
             collapsed_duplicates += 1
