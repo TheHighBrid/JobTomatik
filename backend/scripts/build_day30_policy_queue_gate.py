@@ -26,6 +26,7 @@ SOURCES = (
     "backend/app/celery_app.py",
     "backend/tests/test_day30_application_queue_policy.py",
     "backend/tests/test_day30_policy_runtime.py",
+    "backend/tests/test_day30_policy_audit_fail_closed.py",
     ".github/workflows/day30-policy-queue-gate.yml",
 )
 
@@ -88,6 +89,7 @@ def build_gate(verification_commit: str) -> dict:
             "worker_recheck_excludes_only_current_application": True,
             "ambiguous_worker_application_does_not_under_count": True,
             "shadow_profile_preserved": True,
+            "audit_persistence_failure_blocks_queue": True,
             "decision_dispositions": ["accepted", "rejected", "held"],
         },
         "runtime_safety": runtime,
