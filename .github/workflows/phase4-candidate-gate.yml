@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - "backend/app/services/ats_*.py"
+      - "backend/app/services/ashby_profile_aliases.py"
+      - "backend/app/services/smartrecruiters_challenge.py"
+      - "backend/app/services/smartrecruiters_contract.py"
+      - "backend/app/services/workday_challenge.py"
+      - "backend/app/services/workday_popup_boundaries.py"
+      - "backend/app/services/workday_port_integration.py"
       - "backend/app/services/phase4_candidate_gate.py"
       - "backend/app/services/autonomy_release_contract.py"
       - "backend/evidence/greenhouse-phase-a-readiness.json"
