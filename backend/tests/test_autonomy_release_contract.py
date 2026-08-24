@@ -285,6 +285,7 @@ def test_machine_readable_schema_tracks_contract_shape():
     assert schema["properties"]["attestation"]["properties"]["method"]["const"] == AUTONOMY_SIGNATURE_METHOD
     assert "attestation" in schema["required"]
     assert "shadow_runs" in schema["required"]
+    assert "shadow_runs" in schema["properties"]
     assert set(requirements["required_recovery_drills"]) == set(
         schema["properties"]["recovery_drills"]["required"]
     )
@@ -293,4 +294,8 @@ def test_machine_readable_schema_tracks_contract_shape():
     )
     assert set(requirements["required_shadow_checks"]) == set(
         schema["properties"]["shadow_runs"]["required"]
+    )
+    assert all(
+        schema["properties"]["shadow_runs"]["properties"][check] == {"const": True}
+        for check in REQUIRED_SHADOW_CHECKS
     )
