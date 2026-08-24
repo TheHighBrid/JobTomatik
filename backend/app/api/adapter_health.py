@@ -5,9 +5,9 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.services.adapter_health import build_adapter_health_report
-from app.services.operational_observability import (
-    build_operational_observability_report,
-    sync_operational_notifications,
+from app.services.day32_observability import (
+    build_day32_observability_report,
+    sync_day32_operational_notifications,
 )
 
 
@@ -38,9 +38,9 @@ async def get_operational_observability(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return source, adapter, policy, and material health for this account."""
+    """Return Day 32 source, adapter, policy, and material health for this account."""
 
-    return build_operational_observability_report(
+    return build_day32_observability_report(
         db,
         current_user.id,
         window_hours=window_hours,
@@ -54,9 +54,9 @@ async def refresh_operational_notifications(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Persist current incidents as deduplicated in-app notifications only."""
+    """Persist actionable incidents and at most one routine UTC-day digest."""
 
-    result = sync_operational_notifications(
+    result = sync_day32_operational_notifications(
         db,
         current_user.id,
         window_hours=window_hours,

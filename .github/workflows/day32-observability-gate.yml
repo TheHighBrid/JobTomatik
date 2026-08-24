@@ -1,0 +1,121 @@
+name: Day 32 observability gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/day32_observability.py"
+      - "backend/app/services/operational_observability.py"
+      - "backend/app/services/adapter_health.py"
+      - "backend/app/services/autonomous_material_verification.py"
+      - "backend/app/api/adapter_health.py"
+      - "backend/scripts/build_day32_observability_gate.py"
+      - "backend/tests/test_day32_observability_notifications.py"
+      - "backend/tests/test_operational_observability.py"
+      - "backend/tests/test_adapter_health.py"
+      - "frontend/src/pages/AdapterHealth.jsx"
+      - ".github/workflows/day32-observability-gate.yml"
+      - "backend/requirements.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: sqlite:///./day32-observability.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: day32-observability-ci-only-secret-000000000000
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  AUTOMATION_GLOBAL_KILL_SWITCH: "false"
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  day32-observability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20.19.0"
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Run Day 32 observability regressions
+        working-directory: backend
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day32_observability_notifications.py \
+            tests/test_operational_observability.py \
+            tests/test_adapter_health.py \
+            tests/test_day31_autonomous_material_verification.py \
+            --junitxml=day32-observability-junit.xml
+
+      - name: Verify canonical safety
+        run: bash scripts/verify.sh safety
+
+      - name: Export exact-head Day 32 evidence
+        working-directory: backend
+        run: |
+          PYTHONPATH=. python scripts/build_day32_observability_gate.py \
+            --verification-commit "$SOURCE_COMMIT" \
+            --output day32-observability-gate.json
+
+      - name: Assert Day 32 remains fail closed
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          gate = json.load(open('day32-observability-gate.json', encoding='utf-8'))
+          assert gate['verification_commit'] == os.environ['SOURCE_COMMIT']
+          assert gate['gate_passed'] is True
+          assert gate['runtime_safety']['autopilot_enabled'] is False
+          assert gate['runtime_safety']['real_submission_enabled'] is False
+          contract = gate['contract']
+          for key in (
+              'adapter_success_dashboard',
+              'source_success_dashboard',
+              'submission_uncertain_alert',
+              'repeated_validation_failure_alert',
+              'source_breakage_alert',
+              'lockout_risk_alert',
+              'circuit_breaker_alert',
+              'evidence_mismatch_alert',
+              'exact_application_links',
+              'explicit_recovery_actions',
+              'incident_notifications_deduplicated',
+              'routine_successes_digest_only',
+              'submission_authority_unchanged',
+          ):
+              assert contract[key] is True
+          PY
+
+      - name: Upload Day 32 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: day32-observability-gate
+          path: |
+            backend/day32-observability-gate.json
+            backend/day32-observability-junit.xml
+          if-no-files-found: error
+          retention-days: 30
