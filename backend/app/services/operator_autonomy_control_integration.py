@@ -57,6 +57,18 @@ def install_operator_autonomy_control() -> None:
             shadow_session_id=None,
             shadow_application_limit=None,
         ):
+            # Correlated shadow tests intentionally use malformed principals to prove
+            # that the inherited scheduler shadow guard fails closed before ranking or
+            # worker dispatch. Preserve that stronger, existing safety contract rather
+            # than masking it with a Day 34 operator-control error.
+            if shadow_session_id is not None and not hasattr(user, "automation_settings"):
+                return original_cycle(
+                    db,
+                    user,
+                    shadow_session_id=shadow_session_id,
+                    shadow_application_limit=shadow_application_limit,
+                )
+
             decision = scheduler_control_decision(user)
             if not decision["allowed"]:
                 return _blocked_scheduler_result(
