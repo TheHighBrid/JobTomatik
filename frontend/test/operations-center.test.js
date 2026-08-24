@@ -52,7 +52,7 @@ test('Operations API separates snapshots, memory correction, and graph reads', (
 })
 
 test('Operations Center is routed from primary navigation', () => {
-  assert.equal(appSource.includes("import OperationsCenter from './pages/OperationsCenter'"), true)
+  assert.equal(appSource.includes("lazy(() => import('./pages/OperationsCenter'))"), true)
   assert.equal(appSource.includes('path="operations"'), true)
   assert.equal(layoutSource.includes("to: '/operations'"), true)
   assert.equal(layoutSource.includes("label: 'Operations Center'"), true)
