@@ -2,7 +2,9 @@
 
 Provider search pages often decorate the same listing URL with changing tracking
 parameters. Persisted jobs must use the provider's posting identifier or a canonical
-URL rather than those volatile parameters.
+URL rather than those volatile parameters. When a broad board exposes the exact
+employer/ATS apply URL, that stronger proof is used across sources so one employer
+posting is not duplicated merely because it was discovered on two boards.
 """
 
 from __future__ import annotations
@@ -17,6 +19,18 @@ _LINKEDIN_JOB_ID = re.compile(r"/jobs/view/(?:[^/?#]*?-)?(?P<id>\d{6,})(?:/|$)",
 _JOBBANK_JOB_ID = re.compile(
     r"/(?:jobsearch/jobposting|rechercheemplois/offredemploi)/(?P<id>\d+)",
     re.IGNORECASE,
+)
+_EMPLOYER_ATS_HOSTS = frozenset(
+    {
+        "jobs.lever.co",
+        "jobs.eu.lever.co",
+        "boards.greenhouse.io",
+        "boards.eu.greenhouse.io",
+        "job-boards.greenhouse.io",
+        "job-boards.eu.greenhouse.io",
+        "jobs.ashbyhq.com",
+        "jobs.smartrecruiters.com",
+    }
 )
 
 
@@ -106,11 +120,54 @@ def canonical_job_url(
     return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path, parsed.query, ""))
 
 
+def canonical_employer_apply_url(value: Any) -> str | None:
+    """Canonicalize only employer/ATS URLs that are strong cross-source identity proof."""
+
+    parsed = urlsplit(str(value or "").strip())
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return None
+    host = parsed.netloc.lower().split("@")[-1].split(":")[0].removeprefix("www.")
+    is_workday = host.endswith("myworkdayjobs.com")
+    if host not in _EMPLOYER_ATS_HOSTS and not is_workday:
+        return None
+
+    path = re.sub(r"/{2,}", "/", parsed.path or "/").rstrip("/") or "/"
+    query = ""
+    if "greenhouse.io" in host:
+        values = parse_qs(parsed.query)
+        gh_jid = (values.get("gh_jid") or values.get("gh_jid[]") or [None])[0]
+        if gh_jid:
+            query = f"gh_jid={gh_jid}"
+    return urlunsplit(("https", host, path, query, ""))
+
+
+def employer_posting_identity(job: Mapping[str, Any]) -> str | None:
+    """Return a source-independent identity only when an employer apply URL is proven."""
+
+    raw_data = job.get("raw_data") if isinstance(job.get("raw_data"), Mapping) else {}
+    candidates = [
+        raw_data.get("selected_apply_url"),
+        job.get("url"),
+    ]
+    for candidate in candidates:
+        canonical = canonical_employer_apply_url(candidate)
+        if not canonical:
+            continue
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:32]
+        return f"employer_apply:{digest}"
+    return None
+
+
 def job_identity_key(job: Mapping[str, Any]) -> str:
-    """Build a stable identity from provider ID, canonical URL, or a bounded fallback."""
+    """Build a stable identity from employer proof, provider ID, URL, or bounded fallback."""
     source = job.get("source")
     source_name = _source_value(source)
     raw_data = job.get("raw_data") if isinstance(job.get("raw_data"), Mapping) else {}
+
+    employer_identity = employer_posting_identity(job)
+    if employer_identity:
+        return employer_identity
+
     posting_id = provider_posting_id(
         source,
         str(job.get("url") or ""),
@@ -158,7 +215,9 @@ def stable_external_id(job: Mapping[str, Any]) -> str:
 
 
 __all__ = [
+    "canonical_employer_apply_url",
     "canonical_job_url",
+    "employer_posting_identity",
     "job_identity_key",
     "provider_posting_id",
     "stable_external_id",
