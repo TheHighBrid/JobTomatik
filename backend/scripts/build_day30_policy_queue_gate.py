@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 
 from app.config import get_settings
@@ -21,10 +20,12 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 SOURCES = (
     "backend/app/services/application_queue_policy.py",
+    "backend/app/services/application_queue_policy_runtime.py",
     "backend/app/services/application_queue_policy_integration.py",
     "backend/app/api/settings.py",
     "backend/app/celery_app.py",
     "backend/tests/test_day30_application_queue_policy.py",
+    "backend/tests/test_day30_policy_runtime.py",
     ".github/workflows/day30-policy-queue-gate.yml",
 )
 
@@ -84,6 +85,9 @@ def build_gate(verification_commit: str) -> dict:
             "unknown_workplace_or_authorization_facts_fail_closed": True,
             "base_unattended_policy_is_never_weakened": True,
             "scheduler_and_worker_share_same_extension": True,
+            "worker_recheck_excludes_only_current_application": True,
+            "ambiguous_worker_application_does_not_under_count": True,
+            "shadow_profile_preserved": True,
             "decision_dispositions": ["accepted", "rejected", "held"],
         },
         "runtime_safety": runtime,
