@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import re
+from pathlib import Path
 from typing import Any, Dict, Mapping
 
 
@@ -135,6 +136,8 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
         "signature_method": AUTONOMY_SIGNATURE_METHOD,
         "minimum_signing_key_bytes": MIN_SIGNING_KEY_BYTES,
         "trusted_runtime_signing_key_required": True,
+        "trusted_runtime_release_commit_required": True,
+        "retained_source_artifacts_rehashed_at_runtime": True,
         "approval_must_bind_exact_release_commit": True,
         "day39_promotion_blocked_until_shadow_checks_pass": True,
         "runtime_eligibility_requires_certified_autonomous": True,
@@ -147,12 +150,30 @@ def _record_check(checks: Dict[str, bool], errors: list[str], name: str, passed:
         errors.append(name)
 
 
+def _artifact_digest(value: str | bytes | Path | None) -> str | None:
+    """Hash retained evidence content; precomputed digest strings are not trusted."""
+    try:
+        if isinstance(value, Path):
+            content = value.read_bytes()
+        elif isinstance(value, bytes):
+            content = value
+        elif isinstance(value, str) and value.strip():
+            content = Path(value).read_bytes()
+        else:
+            return None
+    except (OSError, ValueError):
+        return None
+    return "sha256:" + hashlib.sha256(content).hexdigest()
+
+
 def validate_autonomy_release_manifest(
     manifest: Any,
     *,
     adapter_name: str,
     adapter_version: str,
     trusted_signing_key: str | bytes | None = None,
+    trusted_release_commit: str | None = None,
+    trusted_source_artifacts: Mapping[str, str | bytes | Path] | None = None,
 ) -> Dict[str, Any]:
     """Validate one candidate autonomous certification manifest.
 
@@ -189,11 +210,15 @@ def validate_autonomy_release_manifest(
         str(adapter.get("name") or "").strip().lower()
         == str(adapter_name or "").strip().lower(),
     )
+    expected_adapter_version = str(adapter_version or "").strip()
+    certified_adapter_version = str(adapter.get("version") or "").strip()
     _record_check(
         checks,
         missing,
         "adapter_version",
-        str(adapter.get("version") or "").strip() == str(adapter_version or "").strip(),
+        bool(expected_adapter_version)
+        and bool(certified_adapter_version)
+        and certified_adapter_version == expected_adapter_version,
     )
 
     source = manifest.get("source")
@@ -201,9 +226,23 @@ def validate_autonomy_release_manifest(
         source = {}
     release_commit = str(source.get("release_commit") or "").strip().lower()
     _record_check(checks, missing, "release_commit", bool(_COMMIT_RE.fullmatch(release_commit)))
+    runtime_commit = str(trusted_release_commit or "").strip().lower()
+    _record_check(
+        checks,
+        missing,
+        "release_commit_matches_runtime",
+        bool(_COMMIT_RE.fullmatch(runtime_commit)) and release_commit == runtime_commit,
+    )
+    artifacts = trusted_source_artifacts or {}
     for name in ("fixture_digest", "evidence_digest", "policy_digest"):
         value = str(source.get(name) or "").strip().lower()
         _record_check(checks, missing, name, bool(_SHA256_RE.fullmatch(value)))
+        _record_check(
+            checks,
+            missing,
+            f"{name}_matches_retained_artifact",
+            _artifact_digest(artifacts.get(name)) == value,
+        )
 
     reliability = manifest.get("reliability_window")
     if not isinstance(reliability, Mapping):

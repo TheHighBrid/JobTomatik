@@ -5,6 +5,8 @@ from app.services.ats_maturity import (
     annotate_adapter_manifest,
     derive_adapter_maturity,
 )
+import hashlib
+
 from app.services.autonomy_release_contract import (
     AUTONOMY_SIGNATURE_METHOD,
     MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
@@ -14,8 +16,89 @@ from app.services.autonomy_release_contract import (
     compute_autonomy_manifest_signature,
 )
 from app.services import unattended_policy
+from app.services import ats_maturity
 
 TEST_SIGNING_KEY = "jobtomatik-day27-test-signing-key-0001"
+TEST_ARTIFACTS = {
+    "fixture_digest": b"retained fixture evidence",
+    "evidence_digest": b"retained supervised submission ledger",
+    "policy_digest": b"retained policy snapshot",
+}
+TEST_DIGESTS = {
+    name: "sha256:" + hashlib.sha256(content).hexdigest()
+    for name, content in TEST_ARTIFACTS.items()
+}
+
+
+def test_runtime_release_commit_must_match_attested_running_revision(monkeypatch):
+    configured = "a" * 40
+    running = "b" * 40
+    monkeypatch.setattr(
+        ats_maturity,
+        "get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "autonomy_release_commit": configured,
+                "autonomy_fixture_artifact": "fixture.json",
+                "autonomy_evidence_artifact": "evidence.json",
+                "autonomy_policy_artifact": "policy.json",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        ats_maturity,
+        "runtime_identity_manifest",
+        lambda: {"revision": running, "deployment_attested": True},
+    )
+
+    trusted_commit, _ = ats_maturity._runtime_release_identity()
+
+    assert trusted_commit is None
+
+    monkeypatch.setattr(
+        ats_maturity,
+        "runtime_identity_manifest",
+        lambda: {"revision": configured.upper(), "deployment_attested": True},
+    )
+    trusted_commit, _ = ats_maturity._runtime_release_identity()
+    assert trusted_commit == configured
+
+
+def test_annotation_uses_one_certification_validation_snapshot(monkeypatch):
+    release = {
+        **{gate: True for gate in AUTONOMY_RELEASE_GATES},
+        "approved": True,
+        "approval_reference": "day27-test",
+        "certification_manifest": {},
+    }
+    results = iter(
+        [
+            {"passed": True, "missing": []},
+            {"passed": False, "missing": ["source.evidence_digest_verified"]},
+        ]
+    )
+    calls = 0
+
+    def changing_validation(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return next(results)
+
+    monkeypatch.setattr(
+        ats_maturity, "validate_autonomy_release_manifest", changing_validation
+    )
+
+    annotated = annotate_adapter_manifest(
+        {"name": "example", "version": "1.0.0", "autonomy_release": release},
+        trusted_release_commit="a" * 40,
+    )
+
+    assert calls == 1
+    assert annotated["maturity"] == AdapterMaturity.CERTIFIED_AUTONOMOUS.value
+    assert annotated["autonomous_submission_allowed"] is True
+    assert annotated["release_gate_status"]["certified_autonomous"]["passed"] is True
 
 
 def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40):
@@ -24,9 +107,7 @@ def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40)
         "adapter": {"name": name, "version": version},
         "source": {
             "release_commit": release_commit,
-            "fixture_digest": "sha256:" + "1" * 64,
-            "evidence_digest": "sha256:" + "2" * 64,
-            "policy_digest": "sha256:" + "3" * 64,
+            **TEST_DIGESTS,
         },
         "reliability_window": {
             "evidence_type": "supervised_real_submission",
@@ -164,6 +245,8 @@ def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_si
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.CERTIFIED_AUTONOMOUS
 
     incomplete_shadow = _autonomy_manifest()
@@ -177,6 +260,8 @@ def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_si
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
     unreviewed = _autonomy_manifest()
@@ -190,6 +275,8 @@ def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_si
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
 
@@ -216,24 +303,32 @@ def test_tampered_wrong_version_or_wrong_signature_cannot_promote():
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.CERTIFIED_AUTONOMOUS
 
     release["certification_manifest"]["reliability_window"]["duplicate_submissions"] = 1
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
     release["certification_manifest"] = _autonomy_manifest(version="0.9.0")
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
     release["certification_manifest"] = _autonomy_manifest()
     assert derive_adapter_maturity(
         manifest,
         trusted_signing_key="different-trusted-signing-key-000000000",
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     ) is AdapterMaturity.DRY_RUN
 
 
@@ -254,6 +349,8 @@ def test_generic_adapter_requires_a_specific_implementation_before_promotion():
             "autonomy_release": release,
         },
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     )
 
     assert annotated["maturity"] == AdapterMaturity.UNSUPPORTED.value

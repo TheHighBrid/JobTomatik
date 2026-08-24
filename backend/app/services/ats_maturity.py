@@ -17,6 +17,7 @@ from app.services.autonomy_release_contract import (
     AUTONOMY_RELEASE_CONTRACT_VERSION,
     validate_autonomy_release_manifest,
 )
+from app.services.runtime_identity import runtime_identity_manifest
 
 
 class AdapterMaturity(str, Enum):
@@ -98,10 +99,36 @@ def _runtime_signing_key(explicit: str | bytes | None) -> str | bytes | None:
     return get_settings().autonomy_certification_signing_key or None
 
 
+def _runtime_release_identity() -> tuple[str | None, Dict[str, str]]:
+    settings = get_settings()
+    identity = runtime_identity_manifest()
+    attested_revision = (
+        str(identity.get("revision") or "").strip().lower()
+        if identity.get("deployment_attested") is True
+        else None
+    )
+    configured_revision = str(settings.autonomy_release_commit or "").strip().lower()
+    # AUTONOMY_RELEASE_COMMIT is an additional release constraint, not an
+    # alternate runtime identity. Fail closed unless it names the revision that
+    # the deployment startup checks attested as actually running.
+    runtime_commit = (
+        attested_revision
+        if configured_revision and configured_revision == attested_revision
+        else None
+    )
+    return runtime_commit, {
+        "fixture_digest": settings.autonomy_fixture_artifact,
+        "evidence_digest": settings.autonomy_evidence_artifact,
+        "policy_digest": settings.autonomy_policy_artifact,
+    }
+
+
 def _autonomy_release_status(
     manifest: Mapping[str, Any],
     *,
     trusted_signing_key: str | bytes | None = None,
+    trusted_release_commit: str | None = None,
+    trusted_source_artifacts: Mapping[str, Any] | None = None,
 ) -> tuple[bool, list[str], Dict[str, Any]]:
     """Require release gates plus a signed immutable Day 27 certification record."""
     base_ready, missing = _release_status(
@@ -113,11 +140,18 @@ def _autonomy_release_status(
     if not isinstance(section, Mapping):
         section = {}
 
+    runtime_commit, artifacts = _runtime_release_identity()
+    if trusted_release_commit is not None:
+        runtime_commit = trusted_release_commit
+    if trusted_source_artifacts is not None:
+        artifacts = dict(trusted_source_artifacts)
     contract = validate_autonomy_release_manifest(
         section.get("certification_manifest"),
         adapter_name=str(manifest.get("name") or ""),
         adapter_version=str(manifest.get("version") or ""),
         trusted_signing_key=_runtime_signing_key(trusted_signing_key),
+        trusted_release_commit=runtime_commit,
+        trusted_source_artifacts=artifacts,
     )
     contract_missing = [
         f"certification_manifest.{name}" for name in contract.get("missing") or []
@@ -176,6 +210,8 @@ def derive_adapter_maturity(
     manifest: Mapping[str, Any],
     *,
     trusted_signing_key: str | bytes | None = None,
+    trusted_release_commit: str | None = None,
+    trusted_source_artifacts: Mapping[str, Any] | None = None,
 ) -> AdapterMaturity:
     """Derive the current operational maturity from reviewable evidence.
 
@@ -186,14 +222,24 @@ def derive_adapter_maturity(
     fixture, evidence, and policy digests, and signed under the trusted runtime key.
     """
 
+    autonomy_ready, _, _ = _autonomy_release_status(
+        manifest,
+        trusted_signing_key=trusted_signing_key,
+        trusted_release_commit=trusted_release_commit,
+        trusted_source_artifacts=trusted_source_artifacts,
+    )
+    return _derive_adapter_maturity(manifest, autonomy_ready=autonomy_ready)
+
+
+def _derive_adapter_maturity(
+    manifest: Mapping[str, Any], *, autonomy_ready: bool
+) -> AdapterMaturity:
+    """Derive maturity from a single autonomy-contract validation snapshot."""
+
     name = str(manifest.get("name") or "").strip().lower()
     if not name or name == "generic":
         return AdapterMaturity.UNSUPPORTED
 
-    autonomy_ready, _, _ = _autonomy_release_status(
-        manifest,
-        trusted_signing_key=trusted_signing_key,
-    )
     if autonomy_ready:
         return AdapterMaturity.CERTIFIED_AUTONOMOUS
 
@@ -218,14 +264,12 @@ def annotate_adapter_manifest(
     manifest: Mapping[str, Any],
     *,
     trusted_signing_key: str | bytes | None = None,
+    trusted_release_commit: str | None = None,
+    trusted_source_artifacts: Mapping[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Add canonical maturity and release-gate diagnostics."""
 
     value = dict(manifest)
-    maturity = derive_adapter_maturity(
-        value,
-        trusted_signing_key=trusted_signing_key,
-    )
     human_ready, missing_human = _release_status(
         value,
         "human_reviewed_release",
@@ -234,7 +278,10 @@ def annotate_adapter_manifest(
     autonomy_ready, missing_autonomy, autonomy_contract = _autonomy_release_status(
         value,
         trusted_signing_key=trusted_signing_key,
+        trusted_release_commit=trusted_release_commit,
+        trusted_source_artifacts=trusted_source_artifacts,
     )
+    maturity = _derive_adapter_maturity(value, autonomy_ready=autonomy_ready)
 
     human_allowed = maturity in {
         AdapterMaturity.HUMAN_REVIEWED_SUBMIT,

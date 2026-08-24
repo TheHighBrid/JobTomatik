@@ -72,6 +72,12 @@ def main() -> int:
         adapter_name=adapter_name,
         adapter_version=adapter_version,
         trusted_signing_key=signing_key or None,
+        trusted_release_commit=os.getenv("AUTONOMY_RELEASE_COMMIT") or None,
+        trusted_source_artifacts={
+            "fixture_digest": os.getenv("AUTONOMY_FIXTURE_ARTIFACT", ""),
+            "evidence_digest": os.getenv("AUTONOMY_EVIDENCE_ARTIFACT", ""),
+            "policy_digest": os.getenv("AUTONOMY_POLICY_ARTIFACT", ""),
+        },
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result.get("passed") else 1
