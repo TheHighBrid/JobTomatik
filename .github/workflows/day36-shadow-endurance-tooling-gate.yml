@@ -1,0 +1,165 @@
+name: Day 36 shadow endurance tooling gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/day36_endurance_runtime.py"
+      - "backend/app/services/day36_shadow_endurance.py"
+      - "backend/app/services/full_stack_shadow.py"
+      - "backend/app/models/certification.py"
+      - "backend/app/api/shadow_runs.py"
+      - "backend/app/tasks/shadow_runs.py"
+      - "backend/app/celery_app.py"
+      - "backend/scripts/export_day36_shadow_endurance.py"
+      - "backend/tests/test_day36_shadow_endurance.py"
+      - "backend/evidence/day35-unattended-pilot-configuration.json"
+      - ".github/workflows/day36-shadow-endurance-tooling-gate.yml"
+      - "backend/requirements.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: sqlite:///./day36-shadow-endurance-tooling.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: day36-shadow-endurance-ci-only-secret-000000000000
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  AUTOMATION_GLOBAL_KILL_SWITCH: "false"
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  day36-endurance-tooling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20.19.0"
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Compile Day 36 surfaces
+        working-directory: backend
+        run: |
+          python -m compileall -q \
+            app/services/day36_endurance_runtime.py \
+            app/services/day36_shadow_endurance.py \
+            app/services/full_stack_shadow.py \
+            app/models/certification.py \
+            app/api/shadow_runs.py \
+            app/tasks/shadow_runs.py \
+            app/celery_app.py \
+            scripts/export_day36_shadow_endurance.py
+
+      - name: Run Day 36 and inherited shadow regressions
+        working-directory: backend
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day36_shadow_endurance.py \
+            tests/test_full_stack_shadow.py \
+            tests/test_full_stack_shadow_recovery.py \
+            tests/test_android_shadow_launch_admission.py \
+            tests/test_android_shadow_preflight_truth.py \
+            tests/test_shadow_worker_exception.py \
+            tests/test_shadow_worker_cap_exclusion.py \
+            tests/test_day35_operations_rehearsal.py \
+            --junitxml=day36-shadow-endurance-tooling-junit.xml
+
+      - name: Verify canonical safety
+        run: bash scripts/verify.sh safety
+
+      - name: Record tooling readiness without claiming a four-hour run
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_version": "1.0",
+              "verification_commit": os.environ["SOURCE_COMMIT"],
+              "tooling_ready": True,
+              "real_four_hour_run_claimed": False,
+              "day36_complete": False,
+              "day37_entry_eligible": False,
+              "contract": {
+                  "exact_duration_seconds": 14400,
+                  "persisted_elapsed_time_required": True,
+                  "continuous_cycle_coverage_required": True,
+                  "memory_telemetry_required": True,
+                  "browser_cleanup_reconciliation_required": True,
+                  "notification_quality_required": True,
+                  "zero_duplicate_tasks_required": True,
+                  "zero_false_status_required": True,
+                  "zero_runaway_retry_required": True,
+                  "real_submission_must_remain_disabled": True,
+                  "adapter_maturity_must_remain_dry_run": True,
+                  "exporter_cannot_start_or_advance_session": True,
+              },
+              "next_required_evidence": (
+                  "A completed physical-runtime shadow_run_4h session with at least "
+                  "14,400 persisted elapsed seconds exported by "
+                  "scripts/export_day36_shadow_endurance.py"
+              ),
+          }
+          Path("day36-shadow-endurance-tooling-gate.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Assert CI did not counterfeit Day 36 completion
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          gate = json.load(open('day36-shadow-endurance-tooling-gate.json', encoding='utf-8'))
+          assert gate['verification_commit'] == os.environ['SOURCE_COMMIT']
+          assert gate['tooling_ready'] is True
+          assert gate['real_four_hour_run_claimed'] is False
+          assert gate['day36_complete'] is False
+          assert gate['day37_entry_eligible'] is False
+          contract = gate['contract']
+          assert contract['exact_duration_seconds'] == 14400
+          assert contract['persisted_elapsed_time_required'] is True
+          assert contract['continuous_cycle_coverage_required'] is True
+          assert contract['memory_telemetry_required'] is True
+          assert contract['browser_cleanup_reconciliation_required'] is True
+          assert contract['notification_quality_required'] is True
+          assert contract['real_submission_must_remain_disabled'] is True
+          assert contract['adapter_maturity_must_remain_dry_run'] is True
+          PY
+
+      - name: Upload Day 36 tooling evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: day36-shadow-endurance-tooling-gate
+          path: |
+            backend/day36-shadow-endurance-tooling-gate.json
+            backend/day36-shadow-endurance-tooling-junit.xml
+          if-no-files-found: error
+          retention-days: 30
