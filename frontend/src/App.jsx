@@ -7,6 +7,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const CommandCenter = lazy(() => import('./pages/CommandCenter'))
 const OperationsCenter = lazy(() => import('./pages/OperationsCenter'))
 const SchedulerCenter = lazy(() => import('./pages/SchedulerCenter'))
+const AutonomyCenter = lazy(() => import('./pages/AutonomyCenter'))
 const PostApplicationCenter = lazy(() => import('./pages/PostApplicationCenter'))
 const CertificationCenter = lazy(() => import('./pages/CertificationCenter'))
 const ShadowCampaignCenter = lazy(() => import('./pages/ShadowCampaignCenter'))
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="command-center" element={<CommandCenter />} />
             <Route path="operations" element={<OperationsCenter />} />
             <Route path="scheduler" element={<SchedulerCenter />} />
+            <Route path="autonomy" element={<AutonomyCenter />} />
             <Route path="post-application" element={<PostApplicationCenter />} />
             <Route path="certification" element={<CertificationCenter />} />
             <Route path="shadow-campaigns" element={<ShadowCampaignCenter />} />
