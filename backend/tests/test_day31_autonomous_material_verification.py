@@ -12,7 +12,18 @@ from app.services.autonomous_material_verification import (
 
 
 def _user(db_session):
-    return db_session.query(User).filter(User.email == "test@example.com").one()
+    user = db_session.query(User).filter(User.email == "test@example.com").one_or_none()
+    if user is None:
+        user = User(
+            email="test@example.com",
+            hashed_password="day31-test-only",
+            profile_data={},
+            job_preferences={},
+            automation_settings={},
+        )
+        db_session.add(user)
+        db_session.flush()
+    return user
 
 
 def _resume(user: User, tmp_path, name: str = "resume.pdf", content: bytes = b"resume-v1"):
