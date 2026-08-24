@@ -124,6 +124,7 @@ def install_worker_task_integrations(**_kwargs):
     )
     from app.services.discovery_freshness_integration import install_scheduler_freshness_gate
     from app.services.handoff_integration import install_handoff_task_integration
+    from app.services.operator_autonomy_control_integration import install_operator_autonomy_control
     from app.services.supervised_submission_integration import (
         install_supervised_submission_task_gate,
     )
@@ -134,6 +135,8 @@ def install_worker_task_integrations(**_kwargs):
     install_application_target_task_integration()
     install_scheduler_freshness_gate()
     install_application_queue_policy()
+    # Wrap the complete Day 30 evaluator so pause/drain cannot be bypassed by workers.
+    install_operator_autonomy_control()
     install_supervised_submission_task_gate()
     # Must wrap the supervised gate so a stale task cannot consume an approval.
     install_closed_application_task_gate()
