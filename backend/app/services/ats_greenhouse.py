@@ -54,7 +54,8 @@ def parse_greenhouse_job_url(url: str) -> Tuple[Optional[str], Optional[str]]:
     if is_greenhouse_host(parsed.hostname or ""):
         if parts:
             if parts[0] in {"embed", "v1"}:
-                pass
+                if parts[:2] == ["embed", "job_app"]:
+                    board_token = (query.get("for") or [None])[0]
             else:
                 board_token = parts[0]
         for index, part in enumerate(parts):
