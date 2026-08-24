@@ -1,0 +1,183 @@
+name: Day 35 operations rehearsal gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/day35_operations_rehearsal.py"
+      - "backend/evidence/day35-unattended-pilot-configuration.json"
+      - "backend/scripts/build_day35_operations_rehearsal_gate.py"
+      - "backend/tests/test_day35_operations_rehearsal.py"
+      - "backend/app/services/autonomy_release_contract.py"
+      - "backend/app/services/phase4_candidate_gate.py"
+      - "backend/app/services/day33_recovery_chaos.py"
+      - "backend/app/services/dead_letter.py"
+      - "backend/app/services/dead_letter_drill.py"
+      - "backend/app/services/operations_policy.py"
+      - "backend/app/services/operational_observability.py"
+      - ".github/workflows/day35-operations-rehearsal-gate.yml"
+      - "backend/requirements.txt"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: sqlite:///./day35-operations-rehearsal.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: day35-operations-rehearsal-ci-only-secret-000000000000
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  AUTOMATION_GLOBAL_KILL_SWITCH: "false"
+  ENABLE_RESUMABLE_HANDOFFS: "false"
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  day35-operations-rehearsal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Verify Phase 5 dependency integrity
+        run: bash scripts/verify.sh dependencies
+
+      - name: Run Day 35 and inherited Phase 5 regressions
+        working-directory: backend
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day35_operations_rehearsal.py \
+            tests/test_autonomy_release_contract.py \
+            tests/test_phase4_candidate_gate.py \
+            tests/test_continuous_discovery.py \
+            tests/test_day30_application_queue_policy.py \
+            tests/test_day30_policy_runtime.py \
+            tests/test_day30_policy_audit_fail_closed.py \
+            tests/test_day31_autonomous_material_verification.py \
+            tests/test_day32_observability_notifications.py \
+            tests/test_day33_recovery_chaos.py \
+            tests/test_dead_letter_drill.py \
+            tests/test_day34_autonomy_control.py \
+            --junitxml=day35-operations-rehearsal-junit.xml
+
+      - name: Verify canonical safety
+        run: bash scripts/verify.sh safety
+
+      - name: Export exact-head Day 35 evidence
+        working-directory: backend
+        run: |
+          PYTHONPATH=. python scripts/build_day35_operations_rehearsal_gate.py \
+            --verification-commit "$SOURCE_COMMIT" \
+            --output day35-operations-rehearsal-gate.json
+
+      - name: Assert rehearsal is shadow-entry only
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          gate = json.load(open('day35-operations-rehearsal-gate.json', encoding='utf-8'))
+          assert gate['verification_commit'] == os.environ['SOURCE_COMMIT']
+          assert gate['gate_passed'] is True
+
+          scope = gate['evidence_scope']
+          assert scope['scheduling_caps_quiet_hours_retries_alerts'] == 'deterministic_no_submit_simulation'
+          assert scope['crash_recovery'] == 'executed_day33_recovery_contract'
+          assert scope['checkpoint_dead_letter_recovery'] == 'executed_production_dead_letter_contract'
+          assert scope['external_network_or_browser'] == 'not_exercised_day35'
+
+          rehearsal = gate['rehearsal']
+          assert rehearsal['passed'] is True
+          assert rehearsal['mode'] == 'no_submit_simulation'
+          assert rehearsal['assertions']['quiet_hours_verified'] is True
+          assert rehearsal['assertions']['platform_cap_exhaustion_verified'] is True
+          assert rehearsal['assertions']['bounded_retry_verified'] is True
+          assert rehearsal['assertions']['alerts_verified'] is True
+          assert rehearsal['assertions']['dead_letter_verified'] is True
+          assert rehearsal['assertions']['audit_explainability_verified'] is True
+          assert rehearsal['assertions']['audit_secret_leakage_clear'] is True
+          assert rehearsal['assertions']['no_duplicate_candidates'] is True
+          assert rehearsal['assertions']['no_state_corruption'] is True
+          assert rehearsal['assertions']['no_false_submission_state'] is True
+          assert rehearsal['safety']['final_submit_clicked'] is False
+          assert rehearsal['safety']['submission_authorized'] is False
+          assert rehearsal['safety']['outreach_authorized'] is False
+
+          dead_letter = gate['executed_dead_letter_recovery']
+          assert dead_letter['passed'] is True
+          assert dead_letter['assertions']['dead_letter_created'] is True
+          assert dead_letter['assertions']['verified_checkpoint_requeue'] is True
+          assert dead_letter['assertions']['checkpoint_drift_blocked'] is True
+          assert dead_letter['assertions']['automatic_retry_disabled'] is True
+          assert dead_letter['safety']['network_contacted'] is False
+          assert dead_letter['safety']['final_submit_clicked'] is False
+          assert dead_letter['safety']['submission_authorized'] is False
+          assert dead_letter['safety']['outreach_authorized'] is False
+
+          runtime = gate['runtime_safety']
+          assert runtime['autopilot_enabled'] is False
+          assert runtime['real_submission_enabled'] is False
+          assert runtime['real_followup_send_enabled'] is False
+          assert runtime['safe'] is True
+
+          freeze = gate['pilot_configuration_freeze']
+          assert freeze['valid'] is True
+          assert freeze['configuration']['candidate']['adapter'] == 'lever'
+          assert freeze['configuration']['candidate']['adapter_version'] == '1.1.0'
+          assert freeze['configuration']['candidate']['required_current_maturity'] == 'dry_run'
+          assert freeze['configuration']['candidate']['promotion_authorized'] is False
+
+          recommendation = gate['provisional_autonomy_recommendation']
+          assert recommendation['eligible_to_enter_shadow_runs'] is True
+          assert recommendation['recommendation'] == 'proceed_to_day36_unattended_shadow_run'
+          assert recommendation['certified_autonomous_recommended'] is False
+          assert recommendation['promotion_authorized'] is False
+          assert recommendation['live_submission_authorized'] is False
+          assert recommendation['day39_promotion_blocked'] is True
+          assert recommendation['remaining_autonomy_contract_blockers']
+          for name, value in recommendation['source_bindings'].items():
+              assert value, name
+
+          recovery = gate['completed_recovery_evidence']
+          assert recovery['passed'] is True
+          assert recovery['assertions']['no_duplicate_submission'] is True
+          assert recovery['assertions']['no_status_corruption'] is True
+          PY
+
+      - name: Upload Day 35 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: day35-operations-rehearsal-gate
+          path: |
+            backend/day35-operations-rehearsal-gate.json
+            backend/day35-operations-rehearsal-junit.xml
+            backend/evidence/day35-unattended-pilot-configuration.json
+          if-no-files-found: error
+          retention-days: 30
