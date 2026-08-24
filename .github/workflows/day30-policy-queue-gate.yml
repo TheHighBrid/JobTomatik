@@ -11,6 +11,7 @@ on:
       - "backend/scripts/build_day30_policy_queue_gate.py"
       - "backend/tests/test_day30_application_queue_policy.py"
       - "backend/tests/test_day30_policy_runtime.py"
+      - "backend/tests/test_day30_policy_audit_fail_closed.py"
       - ".github/workflows/day30-policy-queue-gate.yml"
       - "backend/requirements.txt"
   workflow_dispatch:
@@ -63,6 +64,7 @@ jobs:
           pytest -q --tb=short -ra \
             tests/test_day30_application_queue_policy.py \
             tests/test_day30_policy_runtime.py \
+            tests/test_day30_policy_audit_fail_closed.py \
             tests/test_policy_gate.py \
             tests/test_scheduler_policy.py \
             tests/test_scheduler_unattended_activation.py \
@@ -101,6 +103,7 @@ jobs:
           assert contract['scheduler_and_worker_share_same_extension'] is True
           assert contract['worker_recheck_excludes_only_current_application'] is True
           assert contract['shadow_profile_preserved'] is True
+          assert contract['audit_persistence_failure_blocks_queue'] is True
           assert contract['decision_dispositions'] == ['accepted', 'rejected', 'held']
           PY
 
