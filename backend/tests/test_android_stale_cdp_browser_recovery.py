@@ -27,14 +27,21 @@ def test_android_wrapper_proves_real_playwright_before_proot_stack_start():
     assert artifact_index < browser_index < playwright_index < stack_index < acceptance_index
 
 
-def test_android_browser_probe_uses_same_real_playwright_cdp_path_as_worker():
+def test_android_browser_recovery_probe_checks_attachment_without_selecting_pages():
     source = WRAPPER.read_text(encoding="utf-8")
     probe = _function_body(source, "run_browser_playwright_probe")
 
-    assert "probe_external_playwright_cdp" in probe
+    assert "probe_external_playwright_cdp_attachment" in probe
     assert "http://127.0.0.1:9222" in probe
     assert "playwright_attach_ready" in probe
     assert "browser_owned_by_jobtomatik" in probe
+
+    runtime = (BACKEND_ROOT / "app/services/browser_runtime.py").read_text(encoding="utf-8")
+    attachment_probe = runtime.split(
+        "async def probe_external_playwright_cdp_attachment", 1
+    )[1].split("\n\nasync def ", 1)[0]
+    assert "_connect_external_playwright_over_cdp" in attachment_probe
+    assert "_select_context_page" not in attachment_probe
 
 
 def test_ordinary_restart_preserves_browser_and_fails_closed_when_playwright_is_stale():
@@ -83,6 +90,7 @@ def test_native_browser_recovery_waits_only_on_verified_supervisor_identity():
     assert "supervisor_identity_matches" in shutdown
     assert "! is_healthy" in shutdown
     assert 'wait_for_shutdown "$supervisor_pid"' in stop_case
+    assert 'supervisor_pid=""' in stop_case
     assert "ANDROID_BROWSER_CDP_STOP_TIMEOUT" in stop_case
     assert '"$SCRIPT_PATH" stop' in recovery_case
     assert 'exec "$SCRIPT_PATH" start "$START_URL"' in recovery_case

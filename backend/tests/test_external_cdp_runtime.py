@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from playwright import async_api as playwright_api
 
 from app.services import browser_runtime
 from app.services.browser_runtime_base import BrowserRuntimeError
@@ -68,6 +69,49 @@ async def test_external_cdp_attachment_rejects_ambiguous_multi_page_context():
             viewport=None,
             resize_viewport=False,
         )
+
+
+@pytest.mark.asyncio
+async def test_launcher_attachment_probe_accepts_ambiguous_multi_page_context(
+    monkeypatch,
+):
+    browser = type(
+        "Browser",
+        (),
+        {
+            "contexts": [
+                type(
+                    "Context",
+                    (),
+                    {"pages": [_UrlPage("https://one.test"), _UrlPage("https://two.test")]},
+                )()
+            ]
+        },
+    )()
+
+    class FakePlaywrightManager:
+        async def __aenter__(self):
+            return SimpleNamespace(chromium=object())
+
+        async def __aexit__(self, *_args):
+            return None
+
+    async def fake_wait(_endpoint):
+        return None
+
+    async def fake_connect(_playwright, _endpoint):
+        return browser
+
+    monkeypatch.setattr(playwright_api, "async_playwright", FakePlaywrightManager)
+    monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", fake_wait)
+    monkeypatch.setattr(browser_runtime, "_connect_external_playwright_over_cdp", fake_connect)
+
+    proof = await browser_runtime.probe_external_playwright_cdp_attachment(
+        "http://127.0.0.1:9222"
+    )
+
+    assert proof["playwright_attach_ready"] is True
+    assert proof["context_count"] == 1
 
 
 @pytest.mark.asyncio
