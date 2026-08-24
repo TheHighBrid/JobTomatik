@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
-from app.services.application_queue_policy import build_policy_evaluator
+from app.services.application_queue_policy_runtime import (
+    build_shared_evaluator,
+    build_worker_evaluator,
+    install_context_aware_cap_helpers,
+)
 
 
 _INSTALLED = False
 
 
 def install_application_queue_policy() -> None:
-    """Patch the two runtime consumers of the inherited unattended evaluator.
+    """Patch scheduler and worker consumers without weakening inherited policy.
 
-    The scheduler ranks through ``scheduler_policy.evaluate_unattended_job_policy``;
-    the unattended worker imports the same evaluator directly. Patching both module
-    globals keeps the Day 30 checks identical before queue creation and immediately
-    before browser execution without mutating the inherited base gate itself.
+    Scheduler admission uses the shared evaluator with normal counts. The unattended
+    worker uses the same evaluator inside a narrow current-application context so its
+    recheck excludes only the row it is currently processing from global, employer,
+    and per-platform caps. Explicit no-submit shadow semantics remain inherited.
     """
 
     global _INSTALLED
@@ -24,7 +28,9 @@ def install_application_queue_policy() -> None:
     from app.services import scheduler_policy, unattended_policy
     from app.tasks import unattended as unattended_tasks
 
-    wrapped = build_policy_evaluator(unattended_policy.evaluate_unattended_job_policy)
-    scheduler_policy.evaluate_unattended_job_policy = wrapped
-    unattended_tasks.evaluate_unattended_job_policy = wrapped
+    install_context_aware_cap_helpers()
+    shared = build_shared_evaluator(unattended_policy.evaluate_unattended_job_policy)
+    worker = build_worker_evaluator(shared)
+    scheduler_policy.evaluate_unattended_job_policy = shared
+    unattended_tasks.evaluate_unattended_job_policy = worker
     _INSTALLED = True
