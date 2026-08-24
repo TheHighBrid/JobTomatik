@@ -2,7 +2,15 @@ import re
 
 import pytest
 
-from app.services.phase4_candidate_gate import build_phase4_candidate_gate
+from app.services import phase4_candidate_gate
+from app.services.phase4_candidate_gate import (
+    ADAPTER_INTEGRATION_PATHS,
+    COMMON_SOURCE_PATHS,
+    SOURCE_PATHS,
+    _candidate_eligible,
+    _lever_metrics,
+    build_phase4_candidate_gate,
+)
 
 
 SHA = "1" * 40
@@ -62,6 +70,40 @@ def test_phase4_freezes_all_adapter_versions_and_retains_digests():
         assert re.fullmatch(r"[0-9a-f]{64}", frozen[name]["digests"]["retained_evidence_sha256"])
 
 
+def test_phase4_source_digest_includes_installed_adapter_integrations():
+    assert COMMON_SOURCE_PATHS == (
+        "backend/app/services/ats_base.py",
+        "backend/app/services/ats_registry.py",
+    )
+    for source_paths in SOURCE_PATHS.values():
+        assert set(COMMON_SOURCE_PATHS).issubset(source_paths)
+
+    assert ADAPTER_INTEGRATION_PATHS == {
+        "ashby": ("backend/app/services/ashby_profile_aliases.py",),
+        "smartrecruiters": (
+            "backend/app/services/smartrecruiters_challenge.py",
+            "backend/app/services/smartrecruiters_contract.py",
+        ),
+        "workday": (
+            "backend/app/services/workday_challenge.py",
+            "backend/app/services/workday_popup_boundaries.py",
+            "backend/app/services/workday_port_integration.py",
+        ),
+    }
+    for adapter, integration_paths in ADAPTER_INTEGRATION_PATHS.items():
+        assert set(integration_paths).issubset(SOURCE_PATHS[adapter])
+
+
+def test_phase4_digest_drift_fails_the_gate(monkeypatch):
+    monkeypatch.setattr(phase4_candidate_gate, "_digest_paths", lambda *_: "0" * 64)
+
+    gate = _gate()
+
+    assert gate["gate_passed"] is False
+    assert "lever:adapter_source_sha256_drift" in gate["drift"]
+    assert "lever:fixture_regression_sha256_drift" in gate["drift"]
+
+
 def test_phase4_publishes_remaining_supervised_and_shadow_boundaries():
     gate = _gate()
     blockers = set(gate["candidate"]["remaining_blockers"])
@@ -92,3 +134,27 @@ def test_phase4_runtime_remains_non_autonomous():
 def test_phase4_requires_exact_verification_commit():
     with pytest.raises(ValueError, match="40-character"):
         build_phase4_candidate_gate(verification_commit="short")
+
+
+@pytest.mark.parametrize(
+    ("counter", "invalid_value"),
+    [
+        ("false_submitted_count", None),
+        ("duplicate_submission_count", -1),
+        ("uncertain_status_violation_count", "0"),
+    ],
+)
+def test_lever_missing_or_invalid_safety_counter_fails_closed(counter, invalid_value):
+    summary = {
+        "false_submitted_count": 0,
+        "duplicate_submission_count": 0,
+        "uncertain_status_violation_count": 0,
+    }
+    if invalid_value is None:
+        summary.pop(counter)
+    else:
+        summary[counter] = invalid_value
+
+    metrics = _lever_metrics({"summary": summary})
+
+    assert _candidate_eligible("dry_run", metrics) is False
