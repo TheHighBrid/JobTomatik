@@ -1,4 +1,5 @@
 import re
+import subprocess
 
 import pytest
 
@@ -13,7 +14,12 @@ from app.services.phase4_candidate_gate import (
 )
 
 
-SHA = "1" * 40
+SHA = subprocess.run(
+    ["git", "rev-parse", "HEAD"],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip()
 
 
 def _gate():
@@ -74,12 +80,16 @@ def test_phase4_source_digest_includes_installed_adapter_integrations():
     assert COMMON_SOURCE_PATHS == (
         "backend/app/services/ats_base.py",
         "backend/app/services/ats_registry.py",
+        "backend/app/services/control_engine.py",
     )
     for source_paths in SOURCE_PATHS.values():
         assert set(COMMON_SOURCE_PATHS).issubset(source_paths)
 
     assert ADAPTER_INTEGRATION_PATHS == {
-        "ashby": ("backend/app/services/ashby_profile_aliases.py",),
+        "ashby": (
+            "backend/app/services/ashby_profile_aliases.py",
+            "backend/app/services/form_filler_v2.py",
+        ),
         "smartrecruiters": (
             "backend/app/services/smartrecruiters_challenge.py",
             "backend/app/services/smartrecruiters_contract.py",
@@ -134,6 +144,11 @@ def test_phase4_runtime_remains_non_autonomous():
 def test_phase4_requires_exact_verification_commit():
     with pytest.raises(ValueError, match="40-character"):
         build_phase4_candidate_gate(verification_commit="short")
+
+
+def test_phase4_rejects_commit_that_does_not_match_checkout():
+    with pytest.raises(ValueError, match="clean checkout of verification_commit"):
+        build_phase4_candidate_gate(verification_commit="1" * 40)
 
 
 @pytest.mark.parametrize(

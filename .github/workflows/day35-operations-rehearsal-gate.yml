@@ -7,6 +7,8 @@ on:
     paths:
       - "backend/app/services/ats_*.py"
       - "backend/app/services/phase4_candidate_gate.py"
+      - "backend/app/services/control_engine.py"
+      - "backend/app/services/form_filler_v2.py"
       - "backend/app/services/autonomy_release_contract.py"
       - "backend/evidence/greenhouse-phase-a-readiness.json"
       - "backend/evidence/lever-pilot-readiness.json"
@@ -58,6 +60,8 @@ on:
       - "backend/tests/test_day35_operations_rehearsal.py"
       - "backend/app/services/autonomy_release_contract.py"
       - "backend/app/services/phase4_candidate_gate.py"
+      - "backend/app/services/control_engine.py"
+      - "backend/app/services/form_filler_v2.py"
       - "backend/app/services/day33_recovery_chaos.py"
       - "backend/app/services/dead_letter.py"
       - "backend/app/services/dead_letter_drill.py"

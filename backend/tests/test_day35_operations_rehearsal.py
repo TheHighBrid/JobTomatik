@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 
@@ -15,6 +16,13 @@ from app.services.day35_operations_rehearsal import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+HEAD_COMMIT = subprocess.run(
+    ["git", "rev-parse", "HEAD"],
+    cwd=REPO_ROOT,
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip()
 
 
 def _configuration() -> dict:
@@ -139,7 +147,7 @@ def test_gate_binds_candidate_code_fixture_evidence_recovery_and_policy_digests(
     monkeypatch.setenv("ALLOW_REAL_APPLICATION_SUBMIT", "false")
     monkeypatch.setenv("ALLOW_REAL_FOLLOWUP_SEND", "false")
     gate = build_day35_rehearsal_gate(
-        verification_commit="a" * 40,
+        verification_commit=HEAD_COMMIT,
         root=REPO_ROOT,
     )
     recommendation = gate["provisional_autonomy_recommendation"]
@@ -190,7 +198,7 @@ def test_gate_rejects_drift_in_each_frozen_safety_section(monkeypatch):
         monkeypatch.setattr(rehearsal, "_load_configuration", lambda _root, value=changed: value)
 
         gate = rehearsal.build_day35_rehearsal_gate(
-            verification_commit="e" * 40,
+            verification_commit=HEAD_COMMIT,
             root=REPO_ROOT,
         )
 
@@ -238,7 +246,7 @@ def test_provisional_recommendation_retains_future_shadow_and_supervised_blocker
     monkeypatch.setenv("ALLOW_REAL_APPLICATION_SUBMIT", "false")
     monkeypatch.setenv("ALLOW_REAL_FOLLOWUP_SEND", "false")
     gate = build_day35_rehearsal_gate(
-        verification_commit="b" * 40,
+        verification_commit=HEAD_COMMIT,
         root=REPO_ROOT,
     )
     blockers = set(
@@ -257,7 +265,7 @@ def test_completed_day33_recovery_evidence_is_rechecked_in_gate(monkeypatch):
     monkeypatch.setenv("ALLOW_REAL_APPLICATION_SUBMIT", "false")
     monkeypatch.setenv("ALLOW_REAL_FOLLOWUP_SEND", "false")
     gate = build_day35_rehearsal_gate(
-        verification_commit="c" * 40,
+        verification_commit=HEAD_COMMIT,
         root=REPO_ROOT,
     )
     recovery = gate["completed_recovery_evidence"]
@@ -289,7 +297,7 @@ def test_gate_fails_if_runtime_autopilot_is_enabled(monkeypatch):
     get_operations_settings.cache_clear()
     try:
         gate = build_day35_rehearsal_gate(
-            verification_commit="d" * 40,
+            verification_commit=HEAD_COMMIT,
             root=REPO_ROOT,
         )
         assert gate["gate_passed"] is False

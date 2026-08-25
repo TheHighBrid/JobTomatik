@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -33,7 +34,10 @@ EVIDENCE_PATHS = {
     "ashby": "backend/evidence/ashby-certification-dossier.json",
 }
 ADAPTER_INTEGRATION_PATHS = {
-    "ashby": ("backend/app/services/ashby_profile_aliases.py",),
+    "ashby": (
+        "backend/app/services/ashby_profile_aliases.py",
+        "backend/app/services/form_filler_v2.py",
+    ),
     "smartrecruiters": (
         "backend/app/services/smartrecruiters_challenge.py",
         "backend/app/services/smartrecruiters_contract.py",
@@ -47,6 +51,7 @@ ADAPTER_INTEGRATION_PATHS = {
 COMMON_SOURCE_PATHS = (
     "backend/app/services/ats_base.py",
     "backend/app/services/ats_registry.py",
+    "backend/app/services/control_engine.py",
 )
 SOURCE_PATHS = {
     name: (
@@ -64,6 +69,31 @@ COMMON_FIXTURE_PATHS = (
 
 def _root() -> Path:
     return Path(__file__).resolve().parents[3]
+
+
+def _verify_repository_tree(root: Path, verification_commit: str) -> None:
+    """Require the digest inputs to come from the exact claimed Git tree."""
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "diff", "--quiet", verification_commit, "--"],
+            cwd=root,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(
+            "repository tree must be a clean checkout of verification_commit"
+        ) from exc
+    if head != verification_commit:
+        raise ValueError(
+            "verification_commit must match the checked-out repository HEAD"
+        )
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -265,6 +295,7 @@ def build_phase4_candidate_gate(
         raise ValueError("verification_commit must be an exact 40-character git SHA")
 
     repository_root = root or _root()
+    _verify_repository_tree(repository_root, verification_commit)
     freeze = _load_json(repository_root / FREEZE_PATH)
     manifest_by_name, ats = _manifest_map()
     operations = operations_readiness_manifest()
