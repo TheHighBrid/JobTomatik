@@ -17,7 +17,6 @@ from app.config import get_settings
 from app.models.application import (
     Application,
     ApplicationAutomationState,
-    ApplicationEvent,
     ApplicationStatus,
     ManualReviewStatus,
     ManualReviewTask,
@@ -341,6 +340,16 @@ def change_autonomy_mode(
     mode: str,
     reason: str | None = None,
 ) -> dict[str, Any]:
+    # ``automation_settings`` is a single JSON value shared with the settings API.
+    # Lock and refresh before replacing it so a concurrent settings PATCH cannot
+    # commit an older snapshot over a pause or drain action (or vice versa).
+    user = (
+        db.query(User)
+        .filter(User.id == user.id)
+        .with_for_update()
+        .populate_existing()
+        .one()
+    )
     state = set_autonomy_control_mode(
         user,
         mode=mode,
@@ -373,7 +382,6 @@ def reject_application_from_autonomy_queue(
     if not can_reject:
         raise AutonomyControlError(blocker or "Application cannot be rejected from autonomy queue")
 
-    current_state = normalize_state(application.automation_state)
     detail = (reason or "Rejected from Android autonomy control centre.").strip()[:500]
     try:
         transition_application_state(

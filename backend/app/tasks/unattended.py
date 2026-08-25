@@ -3,6 +3,8 @@
 import logging
 from datetime import datetime, timezone
 
+from celery.exceptions import Retry
+
 from app.celery_app import celery_app
 from app.config import get_settings
 from app.database import SessionLocal
@@ -247,6 +249,7 @@ def _block_shadow_worker(
     bind=True,
     name="app.tasks.unattended.submit_unattended_application_task",
     queue="applications",
+    max_retries=None,
 )
 def submit_unattended_application_task(
     self,
@@ -309,6 +312,17 @@ def submit_unattended_application_task(
                     shadow_session_id=effective_shadow_session_id,
                 )
 
+            if decision.code == "operator_paused":
+                # A pause is a temporary queue hold, not a policy failure.  Leave
+                # the application and its review state untouched and keep retrying
+                # until an operator resumes (or revokes the queued application).
+                db.rollback()
+                logger.info(
+                    "Deferred unattended application %s while operator pause is active",
+                    application_id,
+                )
+                raise self.retry(countdown=60)
+
             result = {
                 "success": False,
                 "dry_run": dry_run,
@@ -354,6 +368,8 @@ def submit_unattended_application_task(
                 decision.code,
             )
             return result
+    except Retry:
+        raise
     except Exception as exc:
         logger.exception("submit_unattended_application_task failed")
         db.rollback()
