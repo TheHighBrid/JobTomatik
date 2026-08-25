@@ -10,7 +10,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+# Support the documented direct CLI invocation from a repository checkout. When Python
+# executes ``scripts/export_day36_shadow_endurance.py`` directly, it places ``scripts``
+# rather than the backend root on sys.path, so ``app`` would otherwise be unresolved.
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.database import SessionLocal
 from app.services.certification_scale import current_revision
