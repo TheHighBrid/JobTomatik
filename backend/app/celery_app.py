@@ -113,7 +113,7 @@ def ensure_worker_runtime_schema() -> None:
 
 @worker_init.connect
 def install_worker_task_integrations(**_kwargs):
-    """Install schema, safety, discovery, policy, target-resolution, and browser extensions."""
+    """Install schema, safety, policy, telemetry, target, and browser extensions."""
     from app.services.application_integrity import install_closed_application_task_gate
     from app.services.application_queue_policy_integration import install_application_queue_policy
     from app.services.application_target_handoff import (
@@ -122,6 +122,7 @@ def install_worker_task_integrations(**_kwargs):
     from app.services.application_target_task_integration import (
         install_application_target_task_integration,
     )
+    from app.services.day36_endurance_runtime import install_day36_endurance_runtime
     from app.services.discovery_freshness_integration import install_scheduler_freshness_gate
     from app.services.handoff_integration import install_handoff_task_integration
     from app.services.operator_autonomy_control_integration import install_operator_autonomy_control
@@ -130,6 +131,8 @@ def install_worker_task_integrations(**_kwargs):
     )
 
     ensure_worker_runtime_schema()
+    # Install telemetry before the first shadow cycle can retain observability evidence.
+    install_day36_endurance_runtime()
     install_handoff_task_integration()
     install_application_target_handoff_task_persistence()
     install_application_target_task_integration()
