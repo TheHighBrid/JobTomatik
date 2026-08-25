@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 
 from app.services.day35_operations_rehearsal import (
@@ -166,6 +167,70 @@ def test_gate_binds_candidate_code_fixture_evidence_recovery_and_policy_digests(
         "day35_rehearsal_digest",
     ):
         assert bindings[key]
+
+
+def test_gate_rejects_drift_in_each_frozen_safety_section(monkeypatch):
+    monkeypatch.setenv("AUTOPILOT_ENABLED", "false")
+    monkeypatch.setenv("ALLOW_REAL_APPLICATION_SUBMIT", "false")
+    monkeypatch.setenv("ALLOW_REAL_FOLLOWUP_SEND", "false")
+
+    from app.services import day35_operations_rehearsal as rehearsal
+
+    mutations = (
+        ("simulation", "final_submit_allowed", True),
+        ("simulation", "recruiter_outreach_allowed", True),
+        ("policy", "maximum_automatic_retries_per_attempt", 2),
+        ("runtime_invariants", "no_submit_route_in_rehearsal", False),
+        ("freeze_policy", "configuration_digest_drift_requires_regate", False),
+    )
+    original = _configuration()
+    for section, setting, unsafe_value in mutations:
+        changed = deepcopy(original)
+        changed[section][setting] = unsafe_value
+        monkeypatch.setattr(rehearsal, "_load_configuration", lambda _root, value=changed: value)
+
+        gate = rehearsal.build_day35_rehearsal_gate(
+            verification_commit="e" * 40,
+            root=REPO_ROOT,
+        )
+
+        assert gate["pilot_configuration_freeze"]["valid"] is False
+        assert gate["gate_passed"] is False
+        assert gate["provisional_autonomy_recommendation"]["eligible_to_enter_shadow_runs"] is False
+
+
+def test_exported_gate_digest_covers_executed_evidence(monkeypatch):
+    from scripts import build_day35_operations_rehearsal_gate as builder
+
+    payload = {
+        "gate_passed": True,
+        "gate_sha256": "stale-service-digest",
+        "pilot_configuration_freeze": {"valid": True},
+        "provisional_autonomy_recommendation": {
+            "eligible_to_enter_shadow_runs": True,
+            "certified_autonomous_recommended": False,
+            "promotion_authorized": False,
+            "live_submission_authorized": False,
+            "day39_promotion_blocked": True,
+        },
+    }
+    dead_letter = {
+        "passed": True,
+        "safety": {
+            "final_submit_clicked": False,
+            "network_contacted": False,
+            "submission_authorized": False,
+            "outreach_authorized": False,
+        },
+    }
+    monkeypatch.setattr(builder, "build_day35_rehearsal_gate", lambda **_kwargs: deepcopy(payload))
+    monkeypatch.setattr(builder, "run_dead_letter_recovery_drill", lambda: dead_letter)
+    monkeypatch.setattr(builder, "SOURCES", ())
+
+    gate = builder.build_gate("f" * 40)
+    digest = gate.pop("gate_sha256")
+
+    assert digest == builder.canonical_sha256(gate)
 
 
 def test_provisional_recommendation_retains_future_shadow_and_supervised_blockers(monkeypatch):
