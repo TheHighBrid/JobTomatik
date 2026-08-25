@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "backend/app/services/ats_*.py"
+      - "backend/app/services/control_engine.py"
+      - "backend/app/services/form_filler_v2.py"
       - "backend/app/services/ashby_profile_aliases.py"
       - "backend/app/services/smartrecruiters_challenge.py"
       - "backend/app/services/smartrecruiters_contract.py"
