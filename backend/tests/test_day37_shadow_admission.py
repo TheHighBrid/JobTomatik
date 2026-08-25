@@ -24,6 +24,20 @@ from tests.test_day36_shadow_endurance import REVISION, _application, _session, 
 NOW = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
 
 
+def _make_day36_report_provenance_valid(session: ShadowRunSession) -> None:
+    """Add the Phase 12 reconciliation invariant and rebind the retained hash."""
+
+    report = dict(session.final_report or {})
+    reconciliation = dict(report.get("reconciliation") or {})
+    reconciliation["reconciled"] = True
+    report["reconciliation"] = reconciliation
+    payload = dict(report)
+    payload.pop("report_sha256", None)
+    report["report_sha256"] = canonical_hash(payload)
+    session.final_report = report
+    session.report_sha256 = report["report_sha256"]
+
+
 def _record_day36_evidence(
     db,
     user: User,
@@ -94,6 +108,8 @@ def _valid_predecessor(db):
     user = _user(db)
     application = _application(db, user)
     session = _session(db, user, application)
+    _make_day36_report_provenance_valid(session)
+    db.flush()
     record = _record_day36_evidence(db, user, session)
     return user, session, record
 
