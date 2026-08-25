@@ -52,6 +52,80 @@ def _diagnostic(
     }
 
 
+def fold_discovery_results(
+    task_meta: list[dict[str, Any]],
+    results: list[Any],
+    *,
+    diagnostics: list[dict[str, Any]] | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Fold independent source results using the same bounded fault-isolation contract.
+
+    The helper is intentionally side-effect free. Production search uses it after
+    ``asyncio.gather(return_exceptions=True)`` and Day 37 can exercise that exact
+    failure reducer with controlled inputs without causing a real provider outage.
+    Raw exception text is never retained.
+    """
+
+    safe_diagnostics = list(diagnostics or [])
+    discovered_public_ats: list[dict[str, Any]] = []
+    discovered_broad: list[dict[str, Any]] = []
+
+    for meta, result in zip(task_meta, results):
+        if isinstance(result, Exception):
+            error_code = type(result).__name__.lower()
+            safe_diagnostics.append(
+                _diagnostic(
+                    source=meta["source"],
+                    kind=meta["kind"],
+                    status="failed",
+                    target=meta.get("target"),
+                    error_code=error_code,
+                )
+            )
+            logger.warning("Discovery source %s failed: %s", meta["source"], error_code)
+            continue
+
+        rows = [item for item in result if isinstance(item, dict)] if isinstance(result, list) else []
+        safe_diagnostics.append(
+            _diagnostic(
+                source=meta["source"],
+                kind=meta["kind"],
+                status="success",
+                target=meta.get("target"),
+                result_count=len(rows),
+            )
+        )
+        if meta["kind"] == "public_ats":
+            discovered_public_ats.extend(rows)
+        else:
+            discovered_broad.extend(rows)
+
+    # User-owned public ATS targets are intentional high-trust discovery inputs. Keep
+    # their rows ahead of broad-board volume when applying the aggregate limit, while
+    # preserving deterministic target/source order and the same global dedup contract.
+    discovered = [*discovered_public_ats, *discovered_broad]
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for job in discovered:
+        external_id = str(job.get("external_id") or "").strip()
+        source = str(job.get("source") or "manual").strip().lower()
+        url = str(job.get("url") or "").strip()
+        key = external_id or f"{source}:{url}"
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        raw = dict(job.get("raw_data") or {})
+        raw.setdefault("discovery_source", source)
+        raw.setdefault("official_public_ats", source in SUPPORTED_PUBLIC_ATS)
+        job["raw_data"] = raw
+        unique.append(job)
+        if len(unique) >= max(0, int(limit)):
+            break
+
+    return {"jobs": unique, "source_diagnostics": safe_diagnostics}
+
+
 async def search_jobs_with_diagnostics(
     keywords: str,
     location: str | None = None,
@@ -81,12 +155,14 @@ async def search_jobs_with_diagnostics(
         try:
             normalized = normalize_target(target)
         except PublicATSDiscoveryError:
-            diagnostics.append(_diagnostic(
-                source="ats_target",
-                kind="public_ats",
-                status="failed",
-                error_code="invalid_target",
-            ))
+            diagnostics.append(
+                _diagnostic(
+                    source="ats_target",
+                    kind="public_ats",
+                    status="failed",
+                    error_code="invalid_target",
+                )
+            )
             logger.warning("Ignoring invalid ATS target")
             continue
         if sources is None or normalized["provider"] in normalized_sources:
@@ -124,66 +200,24 @@ async def search_jobs_with_diagnostics(
                 limit=target_limit,
             )
         )
-        task_meta.append({
-            "source": target["provider"],
-            "kind": "public_ats",
-            "target": target.get("identifier"),
-        })
+        task_meta.append(
+            {
+                "source": target["provider"],
+                "kind": "public_ats",
+                "target": target.get("identifier"),
+            }
+        )
 
     if not tasks:
         return {"jobs": [], "source_diagnostics": diagnostics}
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    discovered_public_ats: list[dict[str, Any]] = []
-    discovered_broad: list[dict[str, Any]] = []
-    for meta, result in zip(task_meta, results):
-        if isinstance(result, Exception):
-            error_code = type(result).__name__.lower()
-            diagnostics.append(_diagnostic(
-                source=meta["source"],
-                kind=meta["kind"],
-                status="failed",
-                target=meta.get("target"),
-                error_code=error_code,
-            ))
-            logger.warning("Discovery source %s failed: %s", meta["source"], error_code)
-            continue
-        rows = [item for item in result if isinstance(item, dict)] if isinstance(result, list) else []
-        diagnostics.append(_diagnostic(
-            source=meta["source"],
-            kind=meta["kind"],
-            status="success",
-            target=meta.get("target"),
-            result_count=len(rows),
-        ))
-        if meta["kind"] == "public_ats":
-            discovered_public_ats.extend(rows)
-        else:
-            discovered_broad.extend(rows)
-
-    # User-owned public ATS targets are intentional high-trust discovery inputs. Keep
-    # their rows ahead of broad-board volume when applying the aggregate limit, while
-    # preserving deterministic target/source order and the same global dedup contract.
-    discovered = [*discovered_public_ats, *discovered_broad]
-    seen: set[str] = set()
-    unique: list[dict[str, Any]] = []
-    for job in discovered:
-        external_id = str(job.get("external_id") or "").strip()
-        source = str(job.get("source") or "manual").strip().lower()
-        url = str(job.get("url") or "").strip()
-        key = external_id or f"{source}:{url}"
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        raw = dict(job.get("raw_data") or {})
-        raw.setdefault("discovery_source", source)
-        raw.setdefault("official_public_ats", source in SUPPORTED_PUBLIC_ATS)
-        job["raw_data"] = raw
-        unique.append(job)
-        if len(unique) >= limit:
-            break
-
-    return {"jobs": unique, "source_diagnostics": diagnostics}
+    return fold_discovery_results(
+        task_meta,
+        list(results),
+        diagnostics=diagnostics,
+        limit=limit,
+    )
 
 
 async def search_jobs(
@@ -209,3 +243,6 @@ async def search_jobs(
         limit=limit,
     )
     return list(result["jobs"])
+
+
+__all__ = ["fold_discovery_results", "search_jobs", "search_jobs_with_diagnostics"]
