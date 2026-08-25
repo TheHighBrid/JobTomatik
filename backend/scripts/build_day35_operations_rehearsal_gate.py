@@ -11,6 +11,7 @@ from pathlib import Path
 from app.services.day35_operations_rehearsal import (
     PILOT_CONFIGURATION_PATH,
     build_day35_rehearsal_gate,
+    canonical_sha256,
 )
 from app.services.dead_letter_drill import run_dead_letter_recovery_drill
 
@@ -79,6 +80,10 @@ def build_gate(verification_commit: str) -> dict:
         and payload["provisional_autonomy_recommendation"]["live_submission_authorized"] is False
         and payload["provisional_autonomy_recommendation"]["day39_promotion_blocked"] is True
     )
+    # The service-level digest predates the executed production drill and export
+    # metadata above. Replace it so the digest authenticates the complete artifact.
+    payload.pop("gate_sha256", None)
+    payload["gate_sha256"] = canonical_sha256(payload)
     return payload
 
 
