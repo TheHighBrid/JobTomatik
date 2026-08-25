@@ -563,6 +563,48 @@ def build_day35_rehearsal_gate(
     required_bindings_present = all(source_bindings.values())
 
     candidate_config = dict(configuration.get("candidate") or {})
+    expected_safety_envelope = {
+        "simulation": {
+            "mode": "no_submit",
+            "discovery_enabled": True,
+            "scoring_enabled": True,
+            "material_preparation_enabled": True,
+            "dry_run_form_fill_enabled": True,
+            "final_submit_allowed": False,
+            "recruiter_outreach_allowed": False,
+        },
+        "policy": {
+            "daily_application_cap": 3,
+            "weekly_application_cap": 5,
+            "per_platform_daily_cap": 2,
+            "quiet_hours_start_utc": 0,
+            "quiet_hours_end_utc": 6,
+            "maximum_automatic_retries_per_attempt": 1,
+            "unknown_required_answers": "hold_for_review",
+            "challenge_boundary": "manual_handoff_only",
+            "uncertain_submission": "never_retry_automatically",
+        },
+        "runtime_invariants": {
+            "canonical_autopilot_default_must_remain_false": True,
+            "real_application_submit_must_remain_false": True,
+            "real_followup_send_must_remain_false": True,
+            "adapter_maturity_must_not_change": True,
+            "no_live_employer_contact_in_rehearsal": True,
+            "no_submit_route_in_rehearsal": True,
+        },
+        "freeze_policy": {
+            "adapter_or_version_drift_requires_regate": True,
+            "adapter_source_digest_drift_requires_regate": True,
+            "fixture_digest_drift_requires_regate": True,
+            "retained_evidence_digest_drift_requires_regate": True,
+            "configuration_digest_drift_requires_regate": True,
+            "day39_remains_blocked_until_day38_evidence_and_separate_promotion": True,
+        },
+    }
+    safety_envelope_valid = all(
+        configuration.get(section) == expected
+        for section, expected in expected_safety_envelope.items()
+    )
     runtime_safe = bool(
         operations.autopilot_enabled is False
         and core.allow_real_application_submit is False
@@ -573,6 +615,7 @@ def build_day35_rehearsal_gate(
         and str(selected.get("version") or "") == str(candidate_config.get("adapter_version") or "")
         and str(selected.get("maturity") or "") == str(candidate_config.get("required_current_maturity") or "")
         and candidate_config.get("promotion_authorized") is False
+        and safety_envelope_valid
         and required_bindings_present
     )
 
