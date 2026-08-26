@@ -251,19 +251,38 @@ def test_android_four_hour_insert_accepts_exact_noncertifying_canary(monkeypatch
     _require_android_shadow_admission(session)
 
 
-def test_android_eight_and_twenty_four_hour_stages_remain_locked(monkeypatch):
+def test_android_eight_hour_requires_fresh_runtime_while_twenty_four_hour_stays_locked(monkeypatch):
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
-    for evidence_type in ("shadow_run_8h", "shadow_run_24h"):
-        session = ShadowRunSession(
-            user_id=9,
-            candidate_revision="f" * 40,
-            target_evidence_type=evidence_type,
-            requested_duration_seconds=1,
-            started_at=None,
-            expected_end_at=None,
-        )
-        with pytest.raises(ValueError, match="intentionally locked"):
-            _require_android_shadow_admission(session)
+    revision = "f" * 40
+    monkeypatch.setattr(
+        runtime_acceptance,
+        "runtime_acceptance_status",
+        lambda **_kwargs: {
+            "ok": True,
+            "blockers": [],
+            "revision": revision,
+        },
+    )
+    eight_hour = ShadowRunSession(
+        user_id=9,
+        candidate_revision=revision,
+        target_evidence_type="shadow_run_8h",
+        requested_duration_seconds=8 * 60 * 60,
+        started_at=None,
+        expected_end_at=None,
+    )
+    _require_android_shadow_admission(eight_hour)
+
+    twenty_four_hour = ShadowRunSession(
+        user_id=9,
+        candidate_revision=revision,
+        target_evidence_type="shadow_run_24h",
+        requested_duration_seconds=24 * 60 * 60,
+        started_at=None,
+        expected_end_at=None,
+    )
+    with pytest.raises(ValueError, match="intentionally locked until the 8h stage passes"):
+        _require_android_shadow_admission(twenty_four_hour)
 
 
 def test_non_android_shadow_tests_do_not_require_physical_device_receipt(monkeypatch):

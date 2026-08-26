@@ -11,6 +11,7 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.shadow_runs import ShadowCampaignStartRequest, ShadowCampaignStopRequest
+from app.services.day37_shadow_admission import DAY37_SECONDS, day37_android_launch_admission
 from app.services.full_stack_shadow import (
     ShadowCampaignError,
     create_shadow_session,
@@ -72,6 +73,20 @@ def _android_account_qualification_required(target_evidence_type: str) -> bool:
     )
 
 
+def _android_day37_admission_required(target_evidence_type: str) -> bool:
+    return (
+        os.environ.get("JOBTOMATIK_RUNTIME_MODE") == "android_managed"
+        and str(target_evidence_type or "") == "shadow_run_8h"
+    )
+
+
+def _android_day38_stage_locked(target_evidence_type: str) -> bool:
+    return (
+        os.environ.get("JOBTOMATIK_RUNTIME_MODE") == "android_managed"
+        and str(target_evidence_type or "") == "shadow_run_24h"
+    )
+
+
 def _qualification_reuse_state(user_id: int) -> dict:
     """Return whether 4h admission can avoid consuming a new canary application.
 
@@ -95,19 +110,50 @@ def _qualification_reuse_state(user_id: int) -> dict:
     }
 
 
+def _apply_day37_preflight(
+    db: Session,
+    user: User,
+    payload: dict,
+) -> dict:
+    """Expose the exact Day 36 predecessor/runtime/policy gates before an 8h launch."""
+
+    candidate_revision = str(payload.get("candidate_revision") or "")
+    requested_duration = int(payload.get("requested_duration_seconds") or DAY37_SECONDS)
+    admission = day37_android_launch_admission(
+        db,
+        user,
+        candidate_revision=candidate_revision,
+        requested_duration_seconds=requested_duration,
+    )
+    checks = payload.setdefault("checks", {})
+    blockers = list(payload.get("blockers") or [])
+    for name, passed in dict(admission.get("checks") or {}).items():
+        check_name = f"day37_{name}"
+        checks[check_name] = bool(passed)
+        if not passed and check_name not in blockers:
+            blockers.append(check_name)
+
+    payload["day37_admission"] = admission
+    payload["blockers"] = blockers
+    payload["ok"] = not blockers
+    if blockers:
+        payload["expected_start_acknowledgment"] = None
+    return payload
+
+
 def _shadow_start_preflight(
     db: Session,
     user: User,
     *,
     target_evidence_type: str,
 ) -> dict:
-    """Expose every cheap prerequisite before the expensive Android qualification.
+    """Expose every cheap prerequisite before any timed Android campaign starts.
 
-    A fresh account/runtime qualification receipt lets the timed campaign use the one
-    remaining application slot required by launch policy. If a new canary is required,
-    preflight reserves two slots: one for the canary plus one still available for the
-    campaign. The canary and ORM insertion guard re-check mutable policy afterward so
-    drift remains fail-closed.
+    The 4h stage keeps its account-scoped real application-path qualification canary.
+    The 8h stage instead requires the retained, independently reviewed Day 36 campaign
+    plus fresh exact-runtime acceptance and an 8h policy window. The 24h stage stays
+    explicitly unavailable until Day 38 tooling lands. ORM insertion guards repeat the
+    stage-specific mutable checks so API/UI callers cannot become the authority.
     """
 
     payload = full_stack_shadow_preflight(
@@ -115,6 +161,29 @@ def _shadow_start_preflight(
         user,
         target_evidence_type=target_evidence_type,
     )
+
+    if _android_day38_stage_locked(target_evidence_type):
+        checks = payload.setdefault("checks", {})
+        checks["day38_24h_stage_unlocked"] = False
+        blockers = list(payload.get("blockers") or [])
+        if "day38_24h_stage_unlocked" not in blockers:
+            blockers.append("day38_24h_stage_unlocked")
+        payload["stage_gate"] = {
+            "stage": "day38",
+            "target_evidence_type": "shadow_run_24h",
+            "ok": False,
+            "blockers": ["day38_24h_stage_unlocked"],
+            "submission_authorized": False,
+            "outreach_authorized": False,
+        }
+        payload["blockers"] = blockers
+        payload["ok"] = False
+        payload["expected_start_acknowledgment"] = None
+        return payload
+
+    if _android_day37_admission_required(target_evidence_type):
+        return _apply_day37_preflight(db, user, payload)
+
     if not _android_account_qualification_required(target_evidence_type):
         return payload
 
