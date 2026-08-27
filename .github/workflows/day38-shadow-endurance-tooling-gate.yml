@@ -17,6 +17,7 @@ on:
       - "backend/app/services/day36_shadow_endurance.py"
       - "backend/app/services/day36_endurance_runtime.py"
       - "backend/tests/test_day38_shadow_admission.py"
+      - "backend/tests/test_day38_runtime.py"
       - "backend/tests/test_day38_shadow_endurance.py"
       - "backend/tests/test_day38_exporter_cli.py"
       - "backend/tests/test_android_shadow_preflight_truth.py"
@@ -98,6 +99,7 @@ jobs:
         run: |
           pytest -q --tb=short -ra \
             tests/test_day38_shadow_admission.py \
+            tests/test_day38_runtime.py \
             tests/test_day38_shadow_endurance.py \
             tests/test_day38_exporter_cli.py \
             tests/test_day37_shadow_admission.py \
