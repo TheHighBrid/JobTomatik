@@ -9,8 +9,12 @@ import re
 from typing import Any, Dict, Mapping
 
 
-AUTONOMY_RELEASE_SCHEMA_VERSION = "autonomy_release_v1"
-AUTONOMY_RELEASE_CONTRACT_VERSION = "day27_v1"
+# v2 is intentionally not backward-compatible with the provisional Day 27 schema.
+# Day 38 proved that production's "daily" capacity is a rolling previous-24-hours
+# window, not a UTC-midnight reset. A v1 manifest must therefore be regenerated and
+# re-approved rather than silently reinterpreted under different evidence semantics.
+AUTONOMY_RELEASE_SCHEMA_VERSION = "autonomy_release_v2"
+AUTONOMY_RELEASE_CONTRACT_VERSION = "day39_v2"
 AUTONOMY_SIGNATURE_METHOD = "hmac-sha256"
 MIN_SIGNING_KEY_BYTES = 32
 # The roadmap's supervised gate is ten distinct confirmed submissions. Sustained
@@ -45,7 +49,9 @@ REQUIRED_SHADOW_CHECKS = (
     "stale_posting_rejected",
     "ambiguous_question_held",
     "quiet_hour_transition_verified",
-    "daily_cap_reset_verified",
+    "production_policy_diagnostics_non_authoritative",
+    "rolling_24h_semantics_verified",
+    "rolling_24h_membership_rollover_verified",
     "zero_policy_escapes",
     "zero_unexplained_records",
     "zero_duplicate_tasks",
@@ -104,7 +110,7 @@ def compute_autonomy_manifest_signature(
 
 
 def autonomy_release_contract_requirements() -> Dict[str, Any]:
-    """Return the machine-readable Day 27 autonomous promotion requirements."""
+    """Return the machine-readable post-shadow autonomous promotion requirements."""
     return {
         "contract_version": AUTONOMY_RELEASE_CONTRACT_VERSION,
         "schema_version": AUTONOMY_RELEASE_SCHEMA_VERSION,
@@ -123,6 +129,8 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
         "required_recovery_drills": list(REQUIRED_RECOVERY_DRILLS),
         "required_policy_controls": list(REQUIRED_POLICY_CONTROLS),
         "required_shadow_checks": list(REQUIRED_SHADOW_CHECKS),
+        "capacity_semantics": "rolling_previous_24_hours",
+        "legacy_utc_midnight_daily_reset_claims_rejected": True,
         "required_source_bindings": [
             "adapter_name",
             "adapter_version",
@@ -158,8 +166,9 @@ def validate_autonomy_release_manifest(
 
     Passing release booleans or prose labels cannot promote an adapter unless the
     immutable certification record satisfies the full contract, is bound to the exact
-    adapter version and release commit, includes the roadmap supervised/shadow evidence,
-    and carries a valid attestation under the separately configured runtime signing key.
+    adapter version and release commit, includes the supervised and physical shadow
+    evidence, and carries a valid attestation under the separately configured runtime
+    signing key.
     """
     checks: Dict[str, bool] = {}
     missing: list[str] = []
