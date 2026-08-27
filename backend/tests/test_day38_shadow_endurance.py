@@ -9,9 +9,17 @@ from app.services.day38_runtime import (
 from app.services.day38_shadow_endurance import _policy_transition_report
 
 
-def _diagnostic(*, active: bool, count: int, cap: int = 5) -> dict:
+def _diagnostic(
+    *,
+    active: bool,
+    count: int,
+    observed_at: str,
+    members: list[int],
+    cap: int = 5,
+) -> dict:
     return {
         "version": DAY38_POLICY_TELEMETRY_VERSION,
+        "observed_at": observed_at,
         "authoritative": False,
         "quiet_hours": {
             "start_hour_utc": 0,
@@ -24,6 +32,8 @@ def _diagnostic(*, active: bool, count: int, cap: int = 5) -> dict:
             "cap": cap,
             "remaining": max(0, cap - count),
             "at_or_above_cap": count >= cap,
+            "member_application_ids": members,
+            "semantics": "rolling_previous_24_hours",
         },
         "production_decision": {
             "allowed": not active and count < cap,
@@ -52,29 +62,69 @@ def _cycle(number: int, diagnostic: dict) -> SimpleNamespace:
     )
 
 
-def test_day38_policy_report_requires_real_quiet_and_capacity_transitions():
+def test_day38_policy_report_requires_real_quiet_and_rolling_window_transitions():
     report = _policy_transition_report(
         [
-            _cycle(1, _diagnostic(active=False, count=4)),
-            _cycle(2, _diagnostic(active=True, count=5)),
-            _cycle(3, _diagnostic(active=False, count=6)),
+            _cycle(
+                1,
+                _diagnostic(
+                    active=False,
+                    count=7,
+                    observed_at="2026-09-04T12:00:00+00:00",
+                    members=[1, 2, 3, 4, 5, 6, 7],
+                ),
+            ),
+            _cycle(
+                2,
+                _diagnostic(
+                    active=True,
+                    count=8,
+                    observed_at="2026-09-05T01:00:00+00:00",
+                    members=[2, 3, 4, 5, 6, 7, 8, 9],
+                ),
+            ),
+            _cycle(
+                3,
+                _diagnostic(
+                    active=False,
+                    count=9,
+                    observed_at="2026-09-05T11:30:00+00:00",
+                    members=[4, 5, 6, 7, 8, 9, 10, 11, 12],
+                ),
+            ),
         ]
     )
 
     assert report["passed"] is True
     assert report["checks"]["quiet_hours_transition_observed"] is True
-    assert report["checks"]["rolling_24h_capacity_threshold_crossed"] is True
+    assert report["checks"]["rolling_24h_window_observed_across_full_run"] is True
+    assert report["checks"]["rolling_24h_membership_rollover_observed"] is True
     assert report["rolling_24h_capacity"]["semantics"] == "rolling_previous_24_hours"
-    assert report["rolling_24h_capacity"]["minimum_count"] == 4
-    assert report["rolling_24h_capacity"]["maximum_count"] == 6
+    assert report["rolling_24h_capacity"]["aged_out_member_application_ids"] == [1, 2, 3]
+    # The campaign may remain over the cap because no-submit shadow rows count in the
+    # production database. Rollover, not an artificial threshold crossing, is the gate.
+    assert report["rolling_24h_capacity"]["threshold_crossed"] is False
 
 
 def test_day38_policy_report_rejects_authoritative_or_missing_diagnostics():
-    unsafe = _diagnostic(active=True, count=5)
+    unsafe = _diagnostic(
+        active=True,
+        count=5,
+        observed_at="2026-09-05T01:00:00+00:00",
+        members=[1, 2, 3, 4, 5],
+    )
     unsafe["authoritative"] = True
     report = _policy_transition_report(
         [
-            _cycle(1, _diagnostic(active=False, count=4)),
+            _cycle(
+                1,
+                _diagnostic(
+                    active=False,
+                    count=5,
+                    observed_at="2026-09-04T12:00:00+00:00",
+                    members=[1, 2, 3, 4, 5],
+                ),
+            ),
             _cycle(2, unsafe),
             SimpleNamespace(
                 cycle_number=3,
@@ -95,8 +145,36 @@ def test_day38_policy_report_rejects_authoritative_or_missing_diagnostics():
     assert report["authoritative_cycle_numbers"] == [2]
 
 
+def test_day38_policy_report_rejects_missing_real_window_rollover():
+    first = _diagnostic(
+        active=False,
+        count=5,
+        observed_at="2026-09-04T12:00:00+00:00",
+        members=[1, 2, 3, 4, 5],
+    )
+    last = _diagnostic(
+        active=True,
+        count=5,
+        observed_at="2026-09-05T11:30:00+00:00",
+        members=[1, 2, 3, 4, 5],
+    )
+    report = _policy_transition_report([_cycle(1, first), _cycle(2, last)])
+
+    assert report["passed"] is False
+    assert report["checks"]["rolling_24h_window_observed_across_full_run"] is True
+    assert report["checks"]["rolling_24h_membership_rollover_observed"] is False
+
+
 def test_day38_policy_report_rejects_production_profile_as_execution_authority():
-    cycle = _cycle(1, _diagnostic(active=False, count=4))
+    cycle = _cycle(
+        1,
+        _diagnostic(
+            active=False,
+            count=4,
+            observed_at="2026-09-04T12:00:00+00:00",
+            members=[1, 2, 3, 4],
+        ),
+    )
     cycle.scheduler_result = {
         "policy_profile": "production",
         "production_limits_enforced": True,
