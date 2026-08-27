@@ -58,7 +58,14 @@ def production_policy_diagnostic(
     *,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Return non-authoritative production-policy state for one shadow-cycle timestamp."""
+    """Return non-authoritative production-policy state for one shadow-cycle timestamp.
+
+    The rolling-window member ids are bounded identifiers only. They let the post-run
+    certifier prove that real persisted rows aged out of the previous-24-hours window
+    during the physical 24-hour run. Requiring a below-cap -> over-cap threshold crossing
+    would be self-defeating because the shadow campaign itself creates no-submit
+    Application rows that the production counter can see.
+    """
 
     current = _naive_utc(now)
     operations = get_operations_settings()
@@ -77,16 +84,21 @@ def production_policy_diagnostic(
 
     rolling_24h_start = current - timedelta(days=1)
     rolling_7d_start = current - timedelta(days=7)
-    daily_count = int(
-        db.query(func.count(Application.id))
+    daily_rows = (
+        db.query(Application.id, Application.created_at)
         .filter(
             Application.user_id == int(user.id),
             Application.created_at >= rolling_24h_start,
             Application.created_at <= current,
         )
-        .scalar()
-        or 0
+        .order_by(Application.created_at.asc(), Application.id.asc())
+        .all()
     )
+    daily_count = len(daily_rows)
+    daily_member_ids = [int(row[0]) for row in daily_rows]
+    oldest_daily_created_at = daily_rows[0][1] if daily_rows else None
+    newest_daily_created_at = daily_rows[-1][1] if daily_rows else None
+
     weekly_count = int(
         db.query(func.count(Application.id))
         .filter(
@@ -98,8 +110,12 @@ def production_policy_diagnostic(
         or 0
     )
 
-    quiet_start = int(user_settings.get("quiet_hours_start_utc", operations.quiet_hours_start_utc))
-    quiet_end = int(user_settings.get("quiet_hours_end_utc", operations.quiet_hours_end_utc))
+    quiet_start = int(
+        user_settings.get("quiet_hours_start_utc", operations.quiet_hours_start_utc)
+    )
+    quiet_end = int(
+        user_settings.get("quiet_hours_end_utc", operations.quiet_hours_end_utc)
+    )
     quiet_start = min(23, max(0, quiet_start))
     quiet_end = min(23, max(0, quiet_end))
 
@@ -109,6 +125,12 @@ def production_policy_diagnostic(
         now=current,
         policy_profile="production",
     ).to_dict()
+
+    def _iso_naive(value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        aware = ensure_aware(value)
+        return aware.astimezone(timezone.utc).isoformat() if aware else None
 
     return {
         "version": DAY38_POLICY_TELEMETRY_VERSION,
@@ -125,13 +147,19 @@ def production_policy_diagnostic(
         },
         "rolling_24h_capacity": {
             "window_start": rolling_24h_start.replace(tzinfo=timezone.utc).isoformat(),
+            "window_end": current.replace(tzinfo=timezone.utc).isoformat(),
+            "member_application_ids": daily_member_ids,
+            "oldest_member_created_at": _iso_naive(oldest_daily_created_at),
+            "newest_member_created_at": _iso_naive(newest_daily_created_at),
             "count": daily_count,
             "cap": effective_daily,
             "remaining": max(0, effective_daily - daily_count),
             "at_or_above_cap": daily_count >= effective_daily,
+            "semantics": "rolling_previous_24_hours",
         },
         "rolling_7d_capacity": {
             "window_start": rolling_7d_start.replace(tzinfo=timezone.utc).isoformat(),
+            "window_end": current.replace(tzinfo=timezone.utc).isoformat(),
             "count": weekly_count,
             "cap": effective_weekly,
             "remaining": max(0, effective_weekly - weekly_count),
