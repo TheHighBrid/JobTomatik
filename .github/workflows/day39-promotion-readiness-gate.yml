@@ -6,10 +6,13 @@ on:
       - "backend/app/services/day39_promotion_readiness.py"
       - "backend/scripts/build_day39_promotion_readiness.py"
       - "backend/tests/test_day39_promotion_readiness.py"
+      - "backend/tests/test_day39_autonomy_contract_semantics.py"
+      - "backend/tests/test_autonomy_release_contract.py"
       - "backend/app/services/day38_shadow_endurance.py"
       - "backend/app/services/day38_runtime.py"
       - "backend/app/services/autonomy_release_contract.py"
       - "backend/app/services/ats_maturity.py"
+      - "backend/schemas/autonomy-release.schema.json"
       - "docs/operations/DAY_39_BOUNDED_LIVE_PROMOTION.md"
       - ".github/workflows/day39-promotion-readiness-gate.yml"
   workflow_dispatch:
@@ -48,20 +51,25 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
 
-      - name: Compile Day 39 tooling
+      - name: Compile Day 39 tooling and autonomy contract
         working-directory: backend
         run: |
           python -m compileall -q \
             app/services/day39_promotion_readiness.py \
+            app/services/autonomy_release_contract.py \
             scripts/build_day39_promotion_readiness.py
 
       - name: Smoke-test standalone exporter CLI
         working-directory: backend
         run: env -u PYTHONPATH python scripts/build_day39_promotion_readiness.py --help >/dev/null
 
-      - name: Run Day 39 promotion regressions
+      - name: Run Day 39 and autonomy-contract regressions
         working-directory: backend
-        run: pytest -q --tb=short -ra tests/test_day39_promotion_readiness.py
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day39_promotion_readiness.py \
+            tests/test_day39_autonomy_contract_semantics.py \
+            tests/test_autonomy_release_contract.py
 
       - name: Verify current repository remains non-autonomous
         working-directory: backend
@@ -69,15 +77,21 @@ jobs:
           python - <<'PY'
           from app.config import get_settings
           from app.services.ats_manifest import ats_certification_manifest
+          from app.services.autonomy_release_contract import autonomy_release_contract_requirements
 
           settings = get_settings()
           ats = ats_certification_manifest()
           lever = next(item for item in ats["adapters"] if item["name"] == "lever")
+          requirements = autonomy_release_contract_requirements()
           assert settings.allow_real_application_submit is False
           assert settings.allow_real_followup_send is False
           assert lever["maturity"] == "dry_run"
           assert lever["autonomous_submission_allowed"] is False
           assert ats["autonomous_adapters"] == []
+          assert requirements["schema_version"] == "autonomy_release_v2"
+          assert requirements["contract_version"] == "day39_v2"
+          assert requirements["capacity_semantics"] == "rolling_previous_24_hours"
+          assert requirements["legacy_utc_midnight_daily_reset_claims_rejected"] is True
           PY
 
       - name: Record tooling readiness without counterfeiting Day 39
@@ -95,7 +109,10 @@ jobs:
               "owner_promotion_approval_required": True,
               "physical_day38_evidence_required": True,
               "exact_head_release_matrix_required": True,
+              "autonomy_contract_version": "day39_v2",
+              "autonomy_schema_version": "autonomy_release_v2",
               "rolling_capacity_semantics": "rolling_previous_24_hours",
+              "legacy_utc_midnight_daily_reset_claims_rejected": True,
           }
           Path("backend/day39-promotion-readiness-tooling-gate.json").write_text(
               json.dumps(payload, indent=2, sort_keys=True) + "\n",
