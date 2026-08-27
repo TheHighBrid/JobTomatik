@@ -1,63 +1,89 @@
-name: Publish JobTomatik v2 by authorized command
+name: Publish JobTomatik v2 by owner-authorized exact commit
 
 on:
-  issue_comment:
-    types:
-      - created
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact 40-character main commit approved for JobTomatik v2.00
+        required: true
+        type: string
+      authorization_reference:
+        description: Owner approval or release-audit reference
+        required: true
+        type: string
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: read
 
 concurrency:
-  group: publish-jobtomatik-v2-command
+  group: publish-jobtomatik-v2
   cancel-in-progress: false
 
 env:
-  AUTHORIZED_PR_NUMBER: "142"
-  RELEASE_COMMAND: /publish-jobtomatik-v2.0.0
   APK_NAME: JobTomatik-v2.00.apk
+  RELEASE_TAG: v2.0.0
+  EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+  AUTHORIZATION_REFERENCE: ${{ inputs.authorization_reference }}
 
 jobs:
-  authorize:
-    if: >-
-      github.event.issue.pull_request &&
-      github.event.issue.number == 142 &&
-      github.event.comment.body == '/publish-jobtomatik-v2.0.0' &&
-      (github.event.comment.user.login == 'TheHighBrid' ||
-       github.event.comment.user.login == 'chatgpt-codex-connector[bot]')
+  authorize-exact-release:
+    if: github.actor == 'TheHighBrid'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      source_commit: ${{ steps.source.outputs.source_commit }}
     steps:
-      - name: Announce authorized publication
-        uses: actions/github-script@v9
+      - name: Check out repository history
+        uses: actions/checkout@v7
         with:
-          script: |
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
-              body: `🚀 Authorized JobTomatik v2.00 publication started.\n\nRun: ${runUrl}\nSource branch: main`,
-            });
+          fetch-depth: 0
+
+      - name: Verify owner authorization and exact current main commit
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test -n "$AUTHORIZATION_REFERENCE"
+          git fetch origin main --no-tags
+          MAIN_HEAD="$(git rev-parse origin/main)"
+          test "$EXPECTED_SOURCE_COMMIT" = "$MAIN_HEAD"
+          git cat-file -e "$EXPECTED_SOURCE_COMMIT^{commit}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release tag $RELEASE_TAG already exists; refusing mutable republish." >&2
+            exit 1
+          fi
+          echo "source_commit=$EXPECTED_SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
 
   build-and-publish:
-    needs: authorize
+    needs: authorize-exact-release
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 50
+    env:
+      SOURCE_COMMIT: ${{ needs.authorize-exact-release.outputs.source_commit }}
+      VITE_JOBTOMATIK_RUNTIME_REVISION: ${{ needs.authorize-exact-release.outputs.source_commit }}
     defaults:
       run:
         working-directory: frontend
     steps:
-      - name: Check out current main source
+      - name: Check out exact approved source commit
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ needs.authorize-exact-release.outputs.source_commit }}
+          fetch-depth: 0
+
+      - name: Re-attest source before build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          git fetch origin main --no-tags
+          test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
 
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -86,7 +112,7 @@ jobs:
       - name: Build frontend and synchronize Capacitor
         run: npm run android:prepare
 
-      - name: Select signing mode
+      - name: Select explicit signing mode
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.JOBTOMATIK_KEYSTORE_BASE64 }}
@@ -110,7 +136,7 @@ jobs:
             echo "SIGNING_MODE=development" >> "$GITHUB_ENV"
           fi
 
-      - name: Lint and assemble APK
+      - name: Lint and assemble exact-source APK
         shell: bash
         run: |
           set -euo pipefail
@@ -141,8 +167,11 @@ jobs:
           grep -q "package: name='ca.jobtomatik.app'" release/APK-BADGING.txt
           grep -q "versionCode='200'" release/APK-BADGING.txt
           grep -q "versionName='2.0.0'" release/APK-BADGING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "release/$APK_NAME" | tee release/APK-SIGNING.txt
 
           sha256sum "release/$APK_NAME" > release/JobTomatik-v2.00.sha256
+          printf '%s\n' "$SOURCE_COMMIT" > release/SOURCE-COMMIT.txt
+          grep -Fxq "$SOURCE_COMMIT" release/SOURCE-COMMIT.txt
 
           cat > release/BUILD-INFO.txt <<EOF
           JobTomatik v2.00
@@ -150,64 +179,61 @@ jobs:
           Android application ID: ca.jobtomatik.app
           Android version code: 200
           Signing mode: $SIGNING_MODE
-          Source commit: $GITHUB_SHA
-          Built by: GitHub Actions authorized-command publisher
+          Source commit: $SOURCE_COMMIT
+          Authorization reference: $AUTHORIZATION_REFERENCE
+          Built by: GitHub Actions exact-commit publisher
           EOF
 
           cat > release/RELEASE_NOTES.md <<EOF
           # JobTomatik v2.00
 
-          JobTomatik v2.00 packages the current JobTomatik application and updated visual system into a new Android build.
+          This artifact is built from the exact owner-authorized release commit.
 
           - Android version: 2.0.0
           - Android version code: 200
           - Application ID: ca.jobtomatik.app
           - Signing mode: $SIGNING_MODE
-          - Source commit: $GITHUB_SHA
+          - Source commit: $SOURCE_COMMIT
+          - Authorization reference: $AUTHORIZATION_REFERENCE
 
-          The APK was compiled, linted, identity-checked, version-checked, and supplied with a SHA-256 checksum by GitHub Actions.
+          Publication does not itself promote adapter maturity. Runtime autonomy remains bounded by the exact tagged manifest, certified-adapter maturity, policy limits, and fail-safe submission controls.
           EOF
 
-      - name: Upload release bundle artifact
+      - name: Upload immutable release bundle candidate
         uses: actions/upload-artifact@v7
         with:
-          name: JobTomatik-v2.00-command-release-bundle
+          name: JobTomatik-v2.00-${{ needs.authorize-exact-release.outputs.source_commit }}
           path: frontend/release/*
           if-no-files-found: error
           retention-days: 90
 
-      - name: Publish GitHub release
+      - name: Re-attest main immediately before publication
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release tag $RELEASE_TAG appeared during build; refusing overwrite." >&2
+            exit 1
+          fi
+
+      - name: Publish immutable GitHub release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v2.0.0
-          target_commitish: main
+          target_commitish: ${{ needs.authorize-exact-release.outputs.source_commit }}
           name: JobTomatik v2.00
           body_path: frontend/release/RELEASE_NOTES.md
           make_latest: true
           fail_on_unmatched_files: true
-          overwrite_files: true
+          overwrite_files: false
           files: |
             frontend/release/JobTomatik-v2.00.apk
             frontend/release/JobTomatik-v2.00.sha256
+            frontend/release/SOURCE-COMMIT.txt
             frontend/release/BUILD-INFO.txt
             frontend/release/APK-BADGING.txt
-
-  report-release-status:
-    needs:
-      - authorize
-      - build-and-publish
-    if: always() && needs.authorize.result != 'skipped'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Report publication result
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const build = '${{ needs.build-and-publish.result }}';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
-              body: `JobTomatik v2.00 publication finished.\n\n- Build and release: **${build}**\n- Run: ${runUrl}`,
-            });
+            frontend/release/APK-SIGNING.txt
