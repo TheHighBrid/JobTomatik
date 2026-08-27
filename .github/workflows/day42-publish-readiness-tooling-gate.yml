@@ -4,9 +4,13 @@ on:
   pull_request:
     paths:
       - '.github/workflows/day42-publish-readiness-tooling-gate.yml'
+      - '.github/workflows/android-apk.yml'
+      - '.github/workflows/publish-v1-command.yml'
       - 'backend/app/services/day42_publish_readiness.py'
       - 'backend/scripts/build_day42_publish_readiness.py'
       - 'backend/tests/test_day42_publish_readiness.py'
+      - 'backend/tests/test_v1_release_contract.py'
+      - 'backend/tests/test_v2_release_provenance.py'
       - 'docs/operations/DAY_42_V2_RELEASE.md'
   workflow_dispatch:
 
@@ -47,9 +51,15 @@ jobs:
           python -m compileall -q \
             app/services/day42_publish_readiness.py \
             scripts/build_day42_publish_readiness.py \
-            tests/test_day42_publish_readiness.py
-      - name: Run Day 42 contract tests
-        run: pytest -q --tb=short -ra tests/test_day42_publish_readiness.py
+            tests/test_day42_publish_readiness.py \
+            tests/test_v1_release_contract.py \
+            tests/test_v2_release_provenance.py
+      - name: Run Day 42 and release provenance contract tests
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day42_publish_readiness.py \
+            tests/test_v1_release_contract.py \
+            tests/test_v2_release_provenance.py
       - name: Prove readiness tooling has no publisher authority
         run: |
           python - <<'PY'
@@ -71,6 +81,8 @@ jobs:
               'requires_truthful_maturity_manifest': True,
               'requires_separate_owner_publication_authorization': True,
               'requires_separate_hardened_publisher': True,
+              'publisher_is_workflow_dispatch_only': True,
+              'pr_apk_build_is_read_only': True,
           }
           Path('day42-publish-readiness-tooling.json').write_text(
               json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8'
@@ -82,6 +94,8 @@ jobs:
           assert payload['release_tag_created'] is False
           assert payload['github_release_created'] is False
           assert payload['main_modified'] is False
+          assert payload['publisher_is_workflow_dispatch_only'] is True
+          assert payload['pr_apk_build_is_read_only'] is True
           PY
       - name: Upload Day 42 tooling evidence
         uses: actions/upload-artifact@v7
