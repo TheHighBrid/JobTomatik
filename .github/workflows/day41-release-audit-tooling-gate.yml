@@ -1,0 +1,113 @@
+name: Day 41 release-audit tooling gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/day41-release-audit-tooling-gate.yml'
+      - 'backend/app/services/day41_release_audit.py'
+      - 'backend/app/services/day41_database_restore.py'
+      - 'backend/scripts/build_day41_release_candidate_audit.py'
+      - 'backend/scripts/run_day41_database_restore_drill.py'
+      - 'backend/tests/test_day41_release_audit.py'
+      - 'backend/tests/test_day41_database_restore.py'
+      - 'docs/operations/DAY_41_RELEASE_CANDIDATE_AUDIT.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-audit-contract:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./day41-release-audit.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: day41-release-audit-ci-only-secret-key
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: 'false'
+      ALLOW_REAL_APPLICATION_SUBMIT: 'false'
+      ALLOW_REAL_FOLLOWUP_SEND: 'false'
+      AUTOPILOT_ENABLED: 'false'
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+      - name: Compile Day 41 tooling
+        run: |
+          python -m compileall -q \
+            app/services/day41_release_audit.py \
+            app/services/day41_database_restore.py \
+            scripts/build_day41_release_candidate_audit.py \
+            scripts/run_day41_database_restore_drill.py \
+            tests/test_day41_release_audit.py \
+            tests/test_day41_database_restore.py
+      - name: Run Day 41 contract tests
+        run: pytest -q --tb=short -ra tests/test_day41_release_audit.py tests/test_day41_database_restore.py
+      - name: Exercise non-destructive SQLite restore drill
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('day41-ci-source.sqlite3')
+          conn = sqlite3.connect(path)
+          conn.execute('CREATE TABLE proof (id INTEGER PRIMARY KEY, value TEXT NOT NULL)')
+          conn.executemany('INSERT INTO proof(value) VALUES (?)', [('one',), ('two',), ('three',)])
+          conn.commit()
+          conn.close()
+          PY
+          python scripts/run_day41_database_restore_drill.py \
+            --database day41-ci-source.sqlite3 \
+            --work-dir .runtime/day41-ci-restore \
+            --output day41-ci-database-restore.json
+      - name: Prove CI cannot claim Day 41 completion or publication
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = {
+              'tooling_ready': True,
+              'real_day41_audit_claimed': False,
+              'day41_complete': False,
+              'day42_entry_eligible': False,
+              'release_published': False,
+              'release_tag_created': False,
+              'live_mode_enabled': False,
+              'real_submission_enabled': False,
+              'real_followup_send_enabled': False,
+              'requires_real_day40_certification': True,
+              'requires_exact_head_release_matrix': True,
+              'requires_database_restore_drill': True,
+              'requires_separate_day42_publication': True,
+          }
+          Path('day41-release-audit-tooling-readiness.json').write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(payload, sort_keys=True))
+          assert payload['real_day41_audit_claimed'] is False
+          assert payload['day41_complete'] is False
+          assert payload['day42_entry_eligible'] is False
+          assert payload['release_published'] is False
+          assert payload['release_tag_created'] is False
+          PY
+      - name: Upload Day 41 tooling evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: day41-release-audit-tooling-readiness
+          path: |
+            backend/day41-ci-database-restore.json
+            backend/day41-release-audit-tooling-readiness.json
+          if-no-files-found: error
+          retention-days: 30
