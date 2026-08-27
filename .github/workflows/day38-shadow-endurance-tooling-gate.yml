@@ -24,6 +24,7 @@ on:
       - "backend/tests/test_shadow_evidence_provenance.py"
       - "backend/tests/test_full_stack_shadow.py"
       - "backend/evidence/day35-unattended-pilot-configuration.json"
+      - "docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md"
       - "docs/operations/DAY_38_TWENTY_FOUR_HOUR_SHADOW_ENDURANCE.md"
       - ".github/workflows/day38-shadow-endurance-tooling-gate.yml"
       - "backend/requirements.txt"
@@ -141,8 +142,10 @@ jobs:
                   "production_policy_diagnostic_must_be_non_authoritative": True,
                   "shadow_execution_profile_must_remain_shadow_test": True,
                   "quiet_hours_transition_required_when_configured": True,
-                  "rolling_24h_capacity_transition_required": True,
+                  "rolling_24h_window_rollover_required": True,
+                  "rolling_24h_policy_observation_minimum_seconds": 82800,
                   "rolling_capacity_semantics": "rolling_previous_24_hours",
+                  "cap_threshold_crossing_not_required": True,
                   "zero_duplicate_tasks_required": True,
                   "zero_false_status_required": True,
                   "zero_runaway_retry_required": True,
@@ -156,8 +159,9 @@ jobs:
               "next_required_evidence": (
                   "A completed physical-runtime shadow_run_24h session with at least "
                   "86,400 persisted elapsed seconds, complete diagnostic production-policy "
-                  "telemetry, observed quiet-hour and rolling-cap transitions, and all "
-                  "strict Day 38 checks exported by scripts/export_day38_shadow_endurance.py"
+                  "telemetry, observed quiet-hour transition and real rolling-24-hour "
+                  "membership rollover, and all strict Day 38 checks exported by "
+                  "scripts/export_day38_shadow_endurance.py"
               ),
           }
           Path("day38-shadow-endurance-tooling-gate.json").write_text(
@@ -190,8 +194,10 @@ jobs:
           assert contract["production_policy_diagnostic_must_be_non_authoritative"] is True
           assert contract["shadow_execution_profile_must_remain_shadow_test"] is True
           assert contract["quiet_hours_transition_required_when_configured"] is True
-          assert contract["rolling_24h_capacity_transition_required"] is True
+          assert contract["rolling_24h_window_rollover_required"] is True
+          assert contract["rolling_24h_policy_observation_minimum_seconds"] == 82800
           assert contract["rolling_capacity_semantics"] == "rolling_previous_24_hours"
+          assert contract["cap_threshold_crossing_not_required"] is True
           assert contract["real_submission_must_remain_disabled"] is True
           assert contract["real_followup_send_must_remain_disabled"] is True
           assert contract["adapter_maturity_must_remain_dry_run"] is True
