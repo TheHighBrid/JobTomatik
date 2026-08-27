@@ -3,13 +3,14 @@
 The certifier consumes retained Phase 11 evidence. It never starts, advances, repairs,
 or reviews a campaign and never changes adapter maturity or submission/outreach flags.
 Day 38 additionally requires diagnostic production-policy telemetry proving that a full
-24-hour no-submit run crossed configured quiet hours and the rolling 24-hour capacity
-threshold while execution itself remained on the non-authoritative ``shadow_test``
+24-hour no-submit run crossed configured quiet hours and a real rolling-24-hour window
+rollover while execution itself remained on the non-authoritative ``shadow_test``
 profile.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,10 +41,21 @@ from app.services.operations_policy import evaluate_circuit_breaker_policy
 
 
 DAY38_ENDURANCE_VERSION = "day38-twenty-four-hour-shadow-v1"
+MIN_POLICY_OBSERVATION_SPAN_SECONDS = 23 * 60 * 60
 
 
 def _root() -> Path:
     return Path(__file__).resolve().parents[3]
+
+
+def _parsed_time(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _policy_transition_report(cycles: list[ShadowRunCycle]) -> dict[str, Any]:
@@ -98,21 +110,39 @@ def _policy_transition_report(cycles: list[ShadowRunCycle]) -> dict[str, Any]:
         bool((sample.get("quiet_hours") or {}).get("active")) for sample in samples
     }
 
+    capacity_rows = [dict(sample.get("rolling_24h_capacity") or {}) for sample in samples]
     daily_caps = {
-        int((sample.get("rolling_24h_capacity") or {}).get("cap") or 0)
-        for sample in samples
-        if int((sample.get("rolling_24h_capacity") or {}).get("cap") or 0) > 0
+        int(row.get("cap") or 0)
+        for row in capacity_rows
+        if int(row.get("cap") or 0) > 0
     }
-    daily_counts = [
-        int((sample.get("rolling_24h_capacity") or {}).get("count") or 0)
-        for sample in samples
-    ]
+    daily_counts = [int(row.get("count") or 0) for row in capacity_rows]
     daily_cap = next(iter(daily_caps)) if len(daily_caps) == 1 else None
     below_cap_observed = bool(
         daily_cap is not None and any(count < daily_cap for count in daily_counts)
     )
     at_or_above_cap_observed = bool(
         daily_cap is not None and any(count >= daily_cap for count in daily_counts)
+    )
+    threshold_crossed = below_cap_observed and at_or_above_cap_observed
+    semantics = {str(row.get("semantics") or "") for row in capacity_rows}
+
+    first_members = {
+        int(item)
+        for item in (capacity_rows[0].get("member_application_ids") or [])
+    } if capacity_rows else set()
+    last_members = {
+        int(item)
+        for item in (capacity_rows[-1].get("member_application_ids") or [])
+    } if capacity_rows else set()
+    aged_out_member_ids = sorted(first_members - last_members)
+
+    first_observed = _parsed_time(samples[0].get("observed_at")) if samples else None
+    last_observed = _parsed_time(samples[-1].get("observed_at")) if samples else None
+    observation_span_seconds = (
+        max(0.0, (last_observed - first_observed).total_seconds())
+        if first_observed is not None and last_observed is not None
+        else 0.0
     )
 
     decision_codes = [
@@ -133,8 +163,11 @@ def _policy_transition_report(cycles: list[ShadowRunCycle]) -> dict[str, Any]:
             True if not quiet_configured else quiet_states == {False, True}
         ),
         "rolling_24h_cap_stable": len(daily_caps) == 1,
-        "rolling_24h_capacity_threshold_crossed": below_cap_observed
-        and at_or_above_cap_observed,
+        "rolling_24h_semantics_exact": semantics == {"rolling_previous_24_hours"},
+        "rolling_24h_window_observed_across_full_run": (
+            observation_span_seconds >= MIN_POLICY_OBSERVATION_SPAN_SECONDS
+        ),
+        "rolling_24h_membership_rollover_observed": bool(aged_out_member_ids),
     }
 
     return {
@@ -148,6 +181,7 @@ def _policy_transition_report(cycles: list[ShadowRunCycle]) -> dict[str, Any]:
             set(execution_profile_mismatches)
         ),
         "unsafe_cycle_numbers": unsafe_cycle_numbers,
+        "observation_span_seconds": observation_span_seconds,
         "quiet_hours": {
             "configuration_pairs": sorted(quiet_pairs),
             "configured": quiet_configured,
@@ -159,6 +193,10 @@ def _policy_transition_report(cycles: list[ShadowRunCycle]) -> dict[str, Any]:
             "maximum_count": max(daily_counts) if daily_counts else None,
             "below_cap_observed": below_cap_observed,
             "at_or_above_cap_observed": at_or_above_cap_observed,
+            "threshold_crossed": threshold_crossed,
+            "first_member_application_ids": sorted(first_members),
+            "last_member_application_ids": sorted(last_members),
+            "aged_out_member_application_ids": aged_out_member_ids,
             "semantics": "rolling_previous_24_hours",
         },
         "production_decision_codes": decision_codes,
