@@ -1,0 +1,110 @@
+name: Day 39 live-window tooling gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/day39-live-window-tooling-gate.yml'
+      - 'backend/app/services/day39_live_window.py'
+      - 'backend/tests/test_day39_live_window.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-window-contract:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./day39-live-window.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: day39-live-window-ci-only-secret-key
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: 'false'
+      ALLOW_REAL_APPLICATION_SUBMIT: 'false'
+      ALLOW_REAL_FOLLOWUP_SEND: 'false'
+      AUTOPILOT_ENABLED: 'false'
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+      - name: Run bounded live-window contract tests
+        run: pytest -q --tb=short -ra tests/test_day39_live_window.py
+      - name: Assert evaluator cannot persist or enable live submission
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timedelta, timezone
+          from app.services.day39_live_window import (
+              build_day39_live_window_readiness,
+              expected_live_window_acknowledgment,
+          )
+
+          revision = 'a' * 40
+          now = datetime(2026, 9, 5, 14, 0, tzinfo=timezone.utc)
+          report = build_day39_live_window_readiness(
+              promotion={
+                  'passed': True,
+                  'promotion_authorized': True,
+                  'live_window_authorized': False,
+                  'real_submission_authorized': False,
+                  'release_candidate_revision': revision,
+                  'target_adapter': 'lever',
+                  'target_adapter_version': '1.1.0',
+                  'target_maturity': 'certified_autonomous',
+              },
+              adapter_state={
+                  'name': 'lever',
+                  'version': '1.1.0',
+                  'maturity': 'certified_autonomous',
+                  'autonomous_submission_allowed': True,
+              },
+              runtime_safety={
+                  'current_revision': revision,
+                  'allow_real_application_submit': False,
+                  'allow_real_followup_send': False,
+                  'global_kill_switch': False,
+                  'live_window_authorized': False,
+              },
+              policy_state={
+                  'ready': True,
+                  'policy_profile': 'production',
+                  'circuit_breaker_clear': True,
+                  'quiet_hours_active': False,
+                  'remaining_daily': 5,
+                  'remaining_weekly': 20,
+              },
+              owner_request={
+                  'approved': True,
+                  'approval_reference': 'ci-first-wave',
+                  'approved_for_commit': revision,
+                  'adapter': 'lever',
+                  'adapter_version': '1.1.0',
+                  'max_submission_attempts': 2,
+                  'starts_at': now.isoformat(),
+                  'expires_at': (now + timedelta(hours=6)).isoformat(),
+                  'acknowledgment': expected_live_window_acknowledgment(
+                      revision=revision,
+                      attempt_cap=2,
+                  ),
+              },
+              now=now,
+          )
+          assert report['authorization_eligible'] is True
+          assert report['authorization_persisted'] is False
+          assert report['live_window_authorized'] is False
+          assert report['real_submission_enabled'] is False
+          assert report['invariants']['worker_must_recheck_before_browser_work'] is True
+          assert report['invariants']['attempt_reservation_must_be_atomic'] is True
+          PY
