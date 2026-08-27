@@ -339,7 +339,7 @@ def test_day37_launch_fails_closed_on_wrong_duration_or_runtime_revision(monkeyp
     assert "runtime_acceptance_revision_matches_campaign" in admission["blockers"]
 
 
-def test_android_24h_remains_locked(monkeypatch):
+def test_android_24h_requires_fresh_runtime_acceptance_after_day38_unlock(monkeypatch):
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     target = ShadowRunSession(
         user_id=1,
@@ -354,5 +354,7 @@ def test_android_24h_remains_locked(monkeypatch):
         stop_requested=False,
     )
 
-    with pytest.raises(ValueError, match="locked until the 8h stage passes"):
+    # Day 38 no longer uses the old unconditional lock. It still fails closed at the
+    # ORM boundary unless a fresh exact-runtime acceptance receipt exists.
+    with pytest.raises(ValueError, match="requires fresh exact-runtime acceptance"):
         _require_android_shadow_admission(target)

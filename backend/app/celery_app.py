@@ -123,6 +123,7 @@ def install_worker_task_integrations(**_kwargs):
         install_application_target_task_integration,
     )
     from app.services.day36_endurance_runtime import install_day36_endurance_runtime
+    from app.services.day38_runtime import install_day38_worker_integration
     from app.services.discovery_freshness_integration import install_scheduler_freshness_gate
     from app.services.handoff_integration import install_handoff_task_integration
     from app.services.operator_autonomy_control_integration import install_operator_autonomy_control
@@ -133,6 +134,7 @@ def install_worker_task_integrations(**_kwargs):
     ensure_worker_runtime_schema()
     # Install telemetry before the first shadow cycle can retain observability evidence.
     install_day36_endurance_runtime()
+    install_day38_worker_integration()
     install_handoff_task_integration()
     install_application_target_handoff_task_persistence()
     install_application_target_task_integration()
