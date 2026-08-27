@@ -120,7 +120,7 @@ def test_release_documentation_is_present():
     assert not missing, f"Missing release documentation: {missing}"
 
 
-def test_owner_v2_publisher_is_exact_commit_authorized_and_narrowly_scoped():
+def test_owner_v2_publisher_is_exact_artifact_authorized_and_narrowly_scoped():
     workflow_path = (
         REPO_ROOT / ".github" / "workflows" / "publish-v1-command.yml"
     )
@@ -130,15 +130,21 @@ def test_owner_v2_publisher_is_exact_commit_authorized_and_narrowly_scoped():
     assert not (
         REPO_ROOT / ".github" / "workflows" / "publish-v1-authorized.yml"
     ).exists()
-    assert "name: Publish JobTomatik v2 by owner-authorized exact commit" in workflow
+    assert "name: Publish JobTomatik v2 by owner-authorized exact artifact" in workflow
     assert "workflow_dispatch:" in workflow
     assert "source_commit:" in workflow
+    assert "candidate_run_id:" in workflow
+    assert "approved_apk_sha256:" in workflow
+    assert "day42_readiness_sha256:" in workflow
     assert "authorization_reference:" in workflow
+    assert "acknowledgment:" in workflow
     assert "github.actor == 'TheHighBrid'" in workflow
     assert "issue_comment:" not in workflow
     assert "chatgpt-codex-connector[bot]" not in workflow
     assert '[[ "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]' in workflow
+    assert '[[ "$APPROVED_APK_SHA256" =~ ^[0-9a-f]{64}$ ]]' in workflow
     assert 'test "$EXPECTED_SOURCE_COMMIT" = "$MAIN_HEAD"' in workflow
+    assert "actions/download-artifact@v8" in workflow
     assert "ref: ${{ needs.authorize-exact-release.outputs.source_commit }}" in workflow
     assert 'test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"' in workflow
     assert "versionCode='200'" in workflow
@@ -151,3 +157,5 @@ def test_owner_v2_publisher_is_exact_commit_authorized_and_narrowly_scoped():
     assert "JobTomatik-v2.00.sha256" in workflow
     assert "SOURCE-COMMIT.txt" in workflow
     assert "APK-SIGNING.txt" in workflow
+    assert "CANDIDATE-METADATA.json" in workflow
+    assert "DAY42-READINESS-SHA256.txt" in workflow
