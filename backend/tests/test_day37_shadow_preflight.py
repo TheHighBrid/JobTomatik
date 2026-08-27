@@ -174,22 +174,12 @@ def test_android_eight_hour_preflight_preserves_ack_only_when_day37_is_ready(
     }
 
 
-def test_android_twenty_four_hour_preflight_stays_explicitly_locked(
+def test_android_twenty_four_hour_preflight_uses_fail_closed_day38_admission(
     db_session,
     monkeypatch,
 ):
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     user = _user(db_session)
-    monkeypatch.setattr(
-        shadow_api,
-        "full_stack_shadow_preflight",
-        lambda *_args, **_kwargs: _base_preflight("shadow_run_24h"),
-    )
-    monkeypatch.setattr(
-        shadow_api,
-        "day37_android_launch_admission",
-        lambda *_args, **_kwargs: pytest.fail("Day 37 admission must not unlock the Day 38 stage"),
-    )
 
     result = shadow_api._shadow_start_preflight(
         db_session,
@@ -197,13 +187,18 @@ def test_android_twenty_four_hour_preflight_stays_explicitly_locked(
         target_evidence_type="shadow_run_24h",
     )
 
-    assert result["ok"] is False
-    assert result["checks"]["day38_24h_stage_unlocked"] is False
-    assert result["blockers"] == ["day38_24h_stage_unlocked"]
-    assert result["expected_start_acknowledgment"] is None
+    # The old unconditional Day 38 hard lock is gone. The new gate is fail-closed and
+    # exposes real admission state instead of a permanent `day38_24h_stage_unlocked=false`.
+    assert "day38_24h_stage_unlocked" not in result["checks"]
+    assert "day38_admission" in result
     assert result["stage_gate"]["stage"] == "day38"
+    assert result["stage_gate"]["target_evidence_type"] == "shadow_run_24h"
     assert result["stage_gate"]["submission_authorized"] is False
     assert result["stage_gate"]["outreach_authorized"] is False
+    assert result["ok"] is False
+    assert result["expected_start_acknowledgment"] is None
+    assert result["day38_admission"]["ok"] is False
+    assert result["day38_admission"]["blockers"]
 
 
 def test_non_android_eight_hour_preflight_does_not_require_physical_day37_gate(
