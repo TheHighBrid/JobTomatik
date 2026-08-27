@@ -1,19 +1,36 @@
-name: Publish JobTomatik v2 by owner-authorized exact commit
+name: Publish JobTomatik v2 by owner-authorized exact artifact
 
 on:
   workflow_dispatch:
     inputs:
       source_commit:
-        description: Exact 40-character main commit approved for JobTomatik v2.00
+        description: Exact 40-character current main commit approved for JobTomatik v2.00
+        required: true
+        type: string
+      candidate_run_id:
+        description: Successful Build JobTomatik v2 exact-commit release candidate workflow run ID
+        required: true
+        type: string
+      approved_apk_sha256:
+        description: Exact 64-character SHA-256 of the APK approved for publication
+        required: true
+        type: string
+      day42_readiness_sha256:
+        description: Exact 64-character SHA-256 of the passing Day 42 readiness report
         required: true
         type: string
       authorization_reference:
-        description: Owner approval or release-audit reference
+        description: Owner publication approval reference
+        required: true
+        type: string
+      acknowledgment:
+        description: Exact Day 42 publication acknowledgment
         required: true
         type: string
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: publish-jobtomatik-v2
@@ -23,7 +40,11 @@ env:
   APK_NAME: JobTomatik-v2.00.apk
   RELEASE_TAG: v2.0.0
   EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+  CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+  APPROVED_APK_SHA256: ${{ inputs.approved_apk_sha256 }}
+  DAY42_READINESS_SHA256: ${{ inputs.day42_readiness_sha256 }}
   AUTHORIZATION_REFERENCE: ${{ inputs.authorization_reference }}
+  PUBLICATION_ACKNOWLEDGMENT: ${{ inputs.acknowledgment }}
 
 jobs:
   authorize-exact-release:
@@ -32,6 +53,9 @@ jobs:
     timeout-minutes: 10
     outputs:
       source_commit: ${{ steps.source.outputs.source_commit }}
+      candidate_run_id: ${{ steps.source.outputs.candidate_run_id }}
+      approved_apk_sha256: ${{ steps.source.outputs.approved_apk_sha256 }}
+      day42_readiness_sha256: ${{ steps.source.outputs.day42_readiness_sha256 }}
     steps:
       - name: Check out repository history
         uses: actions/checkout@v7
@@ -44,7 +68,12 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CANDIDATE_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$APPROVED_APK_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$DAY42_READINESS_SHA256" =~ ^[0-9a-f]{64}$ ]]
           test -n "$AUTHORIZATION_REFERENCE"
+          EXPECTED_ACK="PUBLISH JOBTOMATIK V2.0.0 ${EXPECTED_SOURCE_COMMIT:0:12} ${APPROVED_APK_SHA256:0:12}"
+          test "$PUBLICATION_ACKNOWLEDGMENT" = "$EXPECTED_ACK"
           git fetch origin main --no-tags
           MAIN_HEAD="$(git rev-parse origin/main)"
           test "$EXPECTED_SOURCE_COMMIT" = "$MAIN_HEAD"
@@ -54,17 +83,49 @@ jobs:
             exit 1
           fi
           echo "source_commit=$EXPECTED_SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "candidate_run_id=$CANDIDATE_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "approved_apk_sha256=$APPROVED_APK_SHA256" >> "$GITHUB_OUTPUT"
+          echo "day42_readiness_sha256=$DAY42_READINESS_SHA256" >> "$GITHUB_OUTPUT"
 
-  build-and-publish:
+      - name: Verify candidate workflow run identity
+        uses: actions/github-script@v9
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        with:
+          script: |
+            const runId = Number(process.env.CANDIDATE_RUN_ID);
+            if (!Number.isSafeInteger(runId) || runId <= 0) {
+              core.setFailed('candidate_run_id must be a positive integer');
+              return;
+            }
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+            });
+            if (run.path !== '.github/workflows/build-v2-release-candidate.yml') {
+              core.setFailed(`Unexpected candidate workflow path: ${run.path}`);
+            }
+            if (run.event !== 'workflow_dispatch') {
+              core.setFailed(`Unexpected candidate workflow event: ${run.event}`);
+            }
+            if (run.conclusion !== 'success') {
+              core.setFailed(`Candidate workflow did not succeed: ${run.conclusion}`);
+            }
+            if (run.head_sha !== process.env.EXPECTED_SOURCE_COMMIT) {
+              core.setFailed(`Candidate workflow head ${run.head_sha} does not match approved source`);
+            }
+
+  verify-and-publish:
     needs: authorize-exact-release
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 25
     env:
       SOURCE_COMMIT: ${{ needs.authorize-exact-release.outputs.source_commit }}
-      VITE_JOBTOMATIK_RUNTIME_REVISION: ${{ needs.authorize-exact-release.outputs.source_commit }}
-    defaults:
-      run:
-        working-directory: frontend
+      CANDIDATE_RUN_ID: ${{ needs.authorize-exact-release.outputs.candidate_run_id }}
+      APPROVED_APK_SHA256: ${{ needs.authorize-exact-release.outputs.approved_apk_sha256 }}
+      DAY42_READINESS_SHA256: ${{ needs.authorize-exact-release.outputs.day42_readiness_sha256 }}
     steps:
       - name: Check out exact approved source commit
         uses: actions/checkout@v7
@@ -72,7 +133,7 @@ jobs:
           ref: ${{ needs.authorize-exact-release.outputs.source_commit }}
           fetch-depth: 0
 
-      - name: Re-attest source before build
+      - name: Re-attest exact source before candidate download
         shell: bash
         run: |
           set -euo pipefail
@@ -80,160 +141,121 @@ jobs:
           git fetch origin main --no-tags
           test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
 
-      - name: Set up Node
-        uses: actions/setup-node@v7
+      - name: Download exact prepublication candidate
+        uses: actions/download-artifact@v8
         with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Set up Java
-        uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
+          name: JobTomatik-v2.00-candidate-${{ needs.authorize-exact-release.outputs.source_commit }}
+          path: candidate
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.authorize-exact-release.outputs.candidate_run_id }}
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Install Android platform
+      - name: Install Android verification tools
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "build-tools;35.0.0"
 
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Run frontend tests
-        run: npm test
-
-      - name: Build frontend and synchronize Capacitor
-        run: npm run android:prepare
-
-      - name: Select explicit signing mode
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.JOBTOMATIK_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.JOBTOMATIK_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.JOBTOMATIK_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.JOBTOMATIK_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
-            KEYSTORE_PATH="$RUNNER_TEMP/jobtomatik-release.jks"
-            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
-            test -s "$KEYSTORE_PATH"
-            echo "JOBTOMATIK_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
-            echo "JOBTOMATIK_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "JOBTOMATIK_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "JOBTOMATIK_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "APK_VARIANT=release" >> "$GITHUB_ENV"
-            echo "SIGNING_MODE=release" >> "$GITHUB_ENV"
-          else
-            echo "APK_VARIANT=debug" >> "$GITHUB_ENV"
-            echo "SIGNING_MODE=development" >> "$GITHUB_ENV"
-          fi
-
-      - name: Lint and assemble exact-source APK
+      - name: Verify exact candidate bytes, source, metadata, and signing
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x android/gradlew
-          cd android
-          ./gradlew --no-daemon lintDebug
-          if [ "$APK_VARIANT" = "release" ]; then
-            ./gradlew --no-daemon assembleRelease
-          else
-            ./gradlew --no-daemon assembleDebug
-          fi
+          test -s "candidate/$APK_NAME"
+          test -s candidate/SOURCE-COMMIT.txt
+          test -s candidate/CANDIDATE-METADATA.json
+          test -s candidate/BUILD-INFO.txt
+          test -s candidate/APK-BADGING.txt
+          test -s candidate/APK-SIGNING.txt
+          test -s candidate/JobTomatik-v2.00.sha256
+          test "$(tr -d '\r\n' < candidate/SOURCE-COMMIT.txt)" = "$SOURCE_COMMIT"
+          ACTUAL_APK_SHA256="$(sha256sum "candidate/$APK_NAME" | cut -d' ' -f1)"
+          test "$ACTUAL_APK_SHA256" = "$APPROVED_APK_SHA256"
+          grep -Fq "$APPROVED_APK_SHA256" candidate/JobTomatik-v2.00.sha256
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "candidate/$APK_NAME" > candidate/PUBLISH-APK-BADGING.txt
+          grep -q "package: name='ca.jobtomatik.app'" candidate/PUBLISH-APK-BADGING.txt
+          grep -q "versionCode='200'" candidate/PUBLISH-APK-BADGING.txt
+          grep -q "versionName='2.0.0'" candidate/PUBLISH-APK-BADGING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "candidate/$APK_NAME" > candidate/PUBLISH-APK-SIGNING.txt
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          metadata = json.loads(Path('candidate/CANDIDATE-METADATA.json').read_text(encoding='utf-8'))
+          assert metadata.get('version') == 'jobtomatik-v2-release-candidate-v1'
+          assert metadata.get('source_revision') == os.environ['SOURCE_COMMIT']
+          assert metadata.get('apk_sha256') == os.environ['APPROVED_APK_SHA256']
+          assert int(metadata.get('workflow_run_id') or 0) == int(os.environ['CANDIDATE_RUN_ID'])
+          assert metadata.get('publication_authorized') is False
+          assert metadata.get('signing_mode') in {'release', 'development'}
+          PY
 
-      - name: Package and verify JobTomatik v2.00
+      - name: Prepare immutable release bundle from approved candidate
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$APK_VARIANT" = "release" ]; then
-            SOURCE_APK="android/app/build/outputs/apk/release/app-release.apk"
-          else
-            SOURCE_APK="android/app/build/outputs/apk/debug/app-debug.apk"
-          fi
-
-          test -s "$SOURCE_APK"
           mkdir -p release
-          cp "$SOURCE_APK" "release/$APK_NAME"
-
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "release/$APK_NAME" | tee release/APK-BADGING.txt
-          grep -q "package: name='ca.jobtomatik.app'" release/APK-BADGING.txt
-          grep -q "versionCode='200'" release/APK-BADGING.txt
-          grep -q "versionName='2.0.0'" release/APK-BADGING.txt
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "release/$APK_NAME" | tee release/APK-SIGNING.txt
-
-          sha256sum "release/$APK_NAME" > release/JobTomatik-v2.00.sha256
-          printf '%s\n' "$SOURCE_COMMIT" > release/SOURCE-COMMIT.txt
-          grep -Fxq "$SOURCE_COMMIT" release/SOURCE-COMMIT.txt
-
-          cat > release/BUILD-INFO.txt <<EOF
-          JobTomatik v2.00
-          Technical version: 2.0.0
-          Android application ID: ca.jobtomatik.app
-          Android version code: 200
-          Signing mode: $SIGNING_MODE
-          Source commit: $SOURCE_COMMIT
-          Authorization reference: $AUTHORIZATION_REFERENCE
-          Built by: GitHub Actions exact-commit publisher
-          EOF
-
+          cp "candidate/$APK_NAME" release/
+          cp candidate/JobTomatik-v2.00.sha256 release/
+          cp candidate/SOURCE-COMMIT.txt release/
+          cp candidate/BUILD-INFO.txt release/
+          cp candidate/APK-BADGING.txt release/
+          cp candidate/APK-SIGNING.txt release/
+          cp candidate/CANDIDATE-METADATA.json release/
+          printf '%s\n' "$DAY42_READINESS_SHA256" > release/DAY42-READINESS-SHA256.txt
           cat > release/RELEASE_NOTES.md <<EOF
           # JobTomatik v2.00
 
-          This artifact is built from the exact owner-authorized release commit.
+          This release publishes the exact prebuilt APK approved by the Day 42 gate.
 
-          - Android version: 2.0.0
-          - Android version code: 200
-          - Application ID: ca.jobtomatik.app
-          - Signing mode: $SIGNING_MODE
           - Source commit: $SOURCE_COMMIT
+          - APK SHA-256: $APPROVED_APK_SHA256
+          - Candidate workflow run: $CANDIDATE_RUN_ID
+          - Day 42 readiness SHA-256: $DAY42_READINESS_SHA256
           - Authorization reference: $AUTHORIZATION_REFERENCE
 
           Publication does not itself promote adapter maturity. Runtime autonomy remains bounded by the exact tagged manifest, certified-adapter maturity, policy limits, and fail-safe submission controls.
           EOF
 
-      - name: Upload immutable release bundle candidate
+      - name: Upload final verified release bundle
         uses: actions/upload-artifact@v7
         with:
-          name: JobTomatik-v2.00-${{ needs.authorize-exact-release.outputs.source_commit }}
-          path: frontend/release/*
+          name: JobTomatik-v2.00-publish-${{ needs.authorize-exact-release.outputs.source_commit }}
+          path: release/*
           if-no-files-found: error
           retention-days: 90
 
-      - name: Re-attest main immediately before publication
+      - name: Re-attest main and immutable tag state immediately before publication
         shell: bash
-        working-directory: .
         run: |
           set -euo pipefail
           git fetch origin main --no-tags
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
           test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
           if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release tag $RELEASE_TAG appeared during build; refusing overwrite." >&2
+            echo "Release tag $RELEASE_TAG appeared before publication; refusing overwrite." >&2
             exit 1
           fi
+          test "$(sha256sum "release/$APK_NAME" | cut -d' ' -f1)" = "$APPROVED_APK_SHA256"
 
-      - name: Publish immutable GitHub release
+      - name: Publish exact approved GitHub release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v2.0.0
           target_commitish: ${{ needs.authorize-exact-release.outputs.source_commit }}
           name: JobTomatik v2.00
-          body_path: frontend/release/RELEASE_NOTES.md
+          body_path: release/RELEASE_NOTES.md
           make_latest: true
           fail_on_unmatched_files: true
           overwrite_files: false
           files: |
-            frontend/release/JobTomatik-v2.00.apk
-            frontend/release/JobTomatik-v2.00.sha256
-            frontend/release/SOURCE-COMMIT.txt
-            frontend/release/BUILD-INFO.txt
-            frontend/release/APK-BADGING.txt
-            frontend/release/APK-SIGNING.txt
+            release/JobTomatik-v2.00.apk
+            release/JobTomatik-v2.00.sha256
+            release/SOURCE-COMMIT.txt
+            release/BUILD-INFO.txt
+            release/APK-BADGING.txt
+            release/APK-SIGNING.txt
+            release/CANDIDATE-METADATA.json
+            release/DAY42-READINESS-SHA256.txt
