@@ -306,6 +306,7 @@ def reserve_live_pilot_attempt(
         .values(
             reserved_submission_attempts=LivePilotAuthorization.reserved_submission_attempts + 1
         )
+        .execution_options(synchronize_session=False)
     )
     result = db.execute(statement)
     if int(result.rowcount or 0) != 1:
