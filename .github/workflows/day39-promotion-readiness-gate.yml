@@ -1,0 +1,112 @@
+name: Day 39 promotion readiness tooling gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/day39_promotion_readiness.py"
+      - "backend/scripts/build_day39_promotion_readiness.py"
+      - "backend/tests/test_day39_promotion_readiness.py"
+      - "backend/app/services/day38_shadow_endurance.py"
+      - "backend/app/services/day38_runtime.py"
+      - "backend/app/services/autonomy_release_contract.py"
+      - "backend/app/services/ats_maturity.py"
+      - "docs/operations/DAY_39_BOUNDED_LIVE_PROMOTION.md"
+      - ".github/workflows/day39-promotion-readiness-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  promotion-readiness-tooling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    env:
+      DATABASE_URL: sqlite:///./day39-promotion-readiness.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: day39-promotion-readiness-ci-only
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ALLOW_REAL_FOLLOWUP_SEND: "false"
+      AUTOPILOT_ENABLED: "false"
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Compile Day 39 tooling
+        working-directory: backend
+        run: |
+          python -m compileall -q \
+            app/services/day39_promotion_readiness.py \
+            scripts/build_day39_promotion_readiness.py
+
+      - name: Smoke-test standalone exporter CLI
+        working-directory: backend
+        run: env -u PYTHONPATH python scripts/build_day39_promotion_readiness.py --help >/dev/null
+
+      - name: Run Day 39 promotion regressions
+        working-directory: backend
+        run: pytest -q --tb=short -ra tests/test_day39_promotion_readiness.py
+
+      - name: Verify current repository remains non-autonomous
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.config import get_settings
+          from app.services.ats_manifest import ats_certification_manifest
+
+          settings = get_settings()
+          ats = ats_certification_manifest()
+          lever = next(item for item in ats["adapters"] if item["name"] == "lever")
+          assert settings.allow_real_application_submit is False
+          assert settings.allow_real_followup_send is False
+          assert lever["maturity"] == "dry_run"
+          assert lever["autonomous_submission_allowed"] is False
+          assert ats["autonomous_adapters"] == []
+          PY
+
+      - name: Record tooling readiness without counterfeiting Day 39
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = {
+              "tooling_ready": True,
+              "day39_complete": False,
+              "promotion_authorized": False,
+              "live_window_authorized": False,
+              "real_submission_authorized": False,
+              "owner_promotion_approval_required": True,
+              "physical_day38_evidence_required": True,
+              "exact_head_release_matrix_required": True,
+              "rolling_capacity_semantics": "rolling_previous_24_hours",
+          }
+          Path("backend/day39-promotion-readiness-tooling-gate.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload tooling evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: day39-promotion-readiness-tooling-gate
+          path: backend/day39-promotion-readiness-tooling-gate.json
+          if-no-files-found: error
+          retention-days: 30
