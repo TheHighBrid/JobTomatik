@@ -251,7 +251,7 @@ def test_android_four_hour_insert_accepts_exact_noncertifying_canary(monkeypatch
     _require_android_shadow_admission(session)
 
 
-def test_android_eight_hour_requires_fresh_runtime_while_twenty_four_hour_stays_locked(monkeypatch):
+def test_android_eight_hour_accepts_fresh_runtime_while_twenty_four_hour_stays_fail_closed(monkeypatch):
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     revision = "f" * 40
     monkeypatch.setattr(
@@ -281,7 +281,9 @@ def test_android_eight_hour_requires_fresh_runtime_while_twenty_four_hour_stays_
         started_at=None,
         expected_end_at=None,
     )
-    with pytest.raises(ValueError, match="intentionally locked until the 8h stage passes"):
+    # The old unconditional lock was retired after Day 37 passed. Day 38 remains
+    # fail-closed until its own fresh exact-runtime acceptance/admission is available.
+    with pytest.raises(ValueError, match="requires fresh exact-runtime acceptance"):
         _require_android_shadow_admission(twenty_four_hour)
 
 
