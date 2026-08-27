@@ -1,0 +1,54 @@
+name: Phase 4 freeze regate diagnostic
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/phase4-freeze-regate-diagnostic.yml'
+      - 'backend/tests/test_ats_maturity.py'
+      - 'backend/tests/test_autonomy_release_contract.py'
+      - 'backend/tests/test_greenhouse*.py'
+      - 'backend/tests/test_lever*.py'
+      - 'backend/tests/test_ashby*.py'
+      - 'backend/tests/test_smartrecruiters*.py'
+      - 'backend/tests/test_workday*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture-digests:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Recompute Phase 4 fixture digests
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path.cwd()
+          common = (
+              'backend/tests/test_ats_maturity.py',
+              'backend/tests/test_autonomy_release_contract.py',
+          )
+          adapters = ('greenhouse', 'lever', 'ashby', 'smartrecruiters', 'workday')
+          result = {}
+          for adapter in adapters:
+              paths = list((root / 'backend/tests').glob(f'test_{adapter}*.py'))
+              paths.extend(root / item for item in common)
+              digest = hashlib.sha256()
+              for path in sorted(paths, key=lambda item: item.as_posix()):
+                  relative = path.relative_to(root).as_posix().encode('utf-8')
+                  digest.update(relative)
+                  digest.update(b'\0')
+                  digest.update(path.read_bytes())
+                  digest.update(b'\0')
+              result[adapter] = digest.hexdigest()
+          print('PHASE4_FIXTURE_DIGESTS=' + json.dumps(result, sort_keys=True))
+          PY
