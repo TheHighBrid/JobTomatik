@@ -4,8 +4,12 @@ on:
   pull_request:
     paths:
       - '.github/workflows/day39-live-window-tooling-gate.yml'
+      - 'backend/app/models/live_pilot.py'
+      - 'backend/app/models/__init__.py'
       - 'backend/app/services/day39_live_window.py'
+      - 'backend/app/services/day39_live_authorization.py'
       - 'backend/tests/test_day39_live_window.py'
+      - 'backend/tests/test_day39_live_authorization.py'
   workflow_dispatch:
 
 permissions:
@@ -40,8 +44,12 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install backend dependencies
         run: python -m pip install -q --disable-pip-version-check -r requirements.txt
-      - name: Run bounded live-window contract tests
-        run: pytest -q --tb=short -ra tests/test_day39_live_window.py
+      - name: Run bounded live-window and persistence tests
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day39_live_window.py \
+            tests/test_day39_live_authorization.py \
+            tests/test_worker_schema_bootstrap.py
       - name: Assert evaluator cannot persist or enable live submission
         run: |
           python - <<'PY'
