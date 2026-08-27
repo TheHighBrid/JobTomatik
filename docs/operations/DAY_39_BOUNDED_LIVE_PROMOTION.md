@@ -24,6 +24,14 @@ Day 38 must first produce genuine physical Android `shadow_run_24h` evidence tha
 
 The old roadmap phrase `daily-cap reset` is not a valid promotion claim. Production does not use a UTC-midnight daily reset.
 
+## Day 38 runtime freeze boundary
+
+The physical Day 38 candidate is the fully post-merge-green revision selected before the 24-hour campaign starts. Do not merge Day 39, APK-release, or cleanup work merely to make that runtime look newer while the campaign is being prepared or executed.
+
+Day 38 currently installs its 24-hour Android API/model wrappers from `app.api` package bootstrap. FastAPI imports that package before exposing the shadow-run routes, so the physical API launch path receives the Day 38 admission wrappers. The underlying `models/certification.py` still contains the earlier explicit 24-hour lock as the delegated fallback for processes that never install the Day 38 API integration. Native-model consolidation is therefore a post-Day-38 hardening item, not a reason to mutate the physical Day 38 candidate during evidence collection.
+
+Any future non-API campaign launcher must either install the same Day 38 integration or wait for that native-model consolidation. It must not bypass the lock directly.
+
 ## Exact-head release matrix
 
 After Day 38 evidence is retained and reviewed, run the release matrix on the **current post-shadow release candidate**, not the older Day 38 runtime revision. The Day 39 readiness evaluator deliberately allows the Day 38 evidence SHA to precede the release-candidate SHA.
