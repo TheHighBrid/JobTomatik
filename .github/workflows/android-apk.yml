@@ -5,6 +5,7 @@ on:
     paths:
       - "frontend/**"
       - "backend/tests/test_v1_release_contract.py"
+      - "backend/tests/test_v2_release_provenance.py"
       - ".github/workflows/android-apk.yml"
   push:
     branches:
@@ -12,13 +13,12 @@ on:
     paths:
       - "frontend/**"
       - "backend/tests/test_v1_release_contract.py"
+      - "backend/tests/test_v2_release_provenance.py"
       - ".github/workflows/android-apk.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+  contents: read
 
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -30,15 +30,25 @@ jobs:
     timeout-minutes: 35
 
     env:
-      VITE_JOBTOMATIK_RUNTIME_REVISION: ${{ github.sha }}
+      SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+      VITE_JOBTOMATIK_RUNTIME_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
 
     defaults:
       run:
         working-directory: frontend
 
     steps:
-      - name: Check out repository
+      - name: Check out exact source revision
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checkout revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_REVISION"
+          [[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]]
 
       - name: Set up Node
         uses: actions/setup-node@v7
@@ -79,131 +89,54 @@ jobs:
           cd android
           ./gradlew --no-daemon --version
 
-      - name: Lint and assemble debug APK
+      - name: Lint and assemble development APK
         shell: bash
         run: |
+          set -euo pipefail
           set -o pipefail
           cd android
           ./gradlew --no-daemon lintDebug assembleDebug | tee android-build-output.txt
 
-      - name: Verify APK identity, version, and source revision
+      - name: Verify APK identity, version, signing, and source revision
         shell: bash
         run: |
+          set -euo pipefail
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee android-apk-badging.txt
           grep -q "package: name='ca.jobtomatik.app'" android-apk-badging.txt
           grep -q "versionCode='200'" android-apk-badging.txt
           grep -q "versionName='2.0.0'" android-apk-badging.txt
-          mkdir -p release
-          cp "$APK" release/JobTomatik-v2.00-debug.apk
-          sha256sum release/JobTomatik-v2.00-debug.apk > release/JobTomatik-v2.00-debug.sha256
-          printf '%s\n' "$GITHUB_SHA" > release/SOURCE-COMMIT.txt
-          grep -Fxq "$GITHUB_SHA" release/SOURCE-COMMIT.txt
-
-      - name: Upload APK and reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: jobtomatik-v2-android-apk
-          path: |
-            frontend/release/*
-            frontend/android/android-build-output.txt
-            frontend/android-apk-badging.txt
-            frontend/android/app/build/reports/lint-results-debug.html
-          if-no-files-found: warn
-          retention-days: 30
-
-  publish-v2-release:
-    needs: build-apk
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.head_ref == 'release/publish-v2.0.0'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Download verified APK artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: jobtomatik-v2-android-apk
-          path: downloaded
-
-      - name: Prepare JobTomatik v2.00 release files
-        shell: bash
-        run: |
-          set -euo pipefail
-          SOURCE_APK="$(find downloaded -type f -name 'JobTomatik-v2.00-debug.apk' -print -quit)"
-          test -n "$SOURCE_APK"
-          test -s "$SOURCE_APK"
-
-          SOURCE_COMMIT_FILE="$(find downloaded -type f -name 'SOURCE-COMMIT.txt' -print -quit)"
-          test -n "$SOURCE_COMMIT_FILE"
-          test -s "$SOURCE_COMMIT_FILE"
-          SOURCE_COMMIT="$(tr -d '\r\n' < "$SOURCE_COMMIT_FILE")"
-          [[ "$SOURCE_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | tee android-apk-signing.txt
 
           mkdir -p release
-          cp "$SOURCE_APK" release/JobTomatik-v2.00.apk
-          cp "$SOURCE_COMMIT_FILE" release/SOURCE-COMMIT.txt
-          sha256sum release/JobTomatik-v2.00.apk > release/JobTomatik-v2.00.sha256
-
-          BADGING="$(find downloaded -type f -name 'android-apk-badging.txt' -print -quit)"
-          if [ -n "$BADGING" ]; then
-            cp "$BADGING" release/APK-BADGING.txt
-          else
-            printf '%s\n' "Verified during Android APK build job." > release/APK-BADGING.txt
-          fi
+          cp "$APK" release/JobTomatik-v2.00-development.apk
+          sha256sum release/JobTomatik-v2.00-development.apk > release/JobTomatik-v2.00-development.sha256
+          printf '%s\n' "$SOURCE_REVISION" > release/SOURCE-COMMIT.txt
+          grep -Fxq "$SOURCE_REVISION" release/SOURCE-COMMIT.txt
+          cp android-apk-signing.txt release/APK-SIGNING.txt
 
           cat > release/BUILD-INFO.txt <<EOF
-          JobTomatik v2.00
+          JobTomatik v2.00 candidate artifact
           Technical version: 2.0.0
           Android application ID: ca.jobtomatik.app
           Android version code: 200
           Signing mode: development
-          Source commit: $SOURCE_COMMIT
+          Source commit: $SOURCE_REVISION
+          Publication authorized: false
           Built and verified by: GitHub Actions
           EOF
 
-          cat > release/RELEASE_NOTES.md <<EOF
-          # JobTomatik v2.00
-
-          JobTomatik v2.00 packages the current application and updated visual system into a new Android APK.
-
-          - Android version: 2.0.0
-          - Android version code: 200
-          - Application ID: ca.jobtomatik.app
-          - Signing mode: development
-          - Source commit: $SOURCE_COMMIT
-
-          The APK was compiled, linted, identity-checked, version-checked, and supplied with a SHA-256 checksum by GitHub Actions.
-          EOF
-
-      - name: Publish JobTomatik v2.00 GitHub release
-        uses: softprops/action-gh-release@v3
+      - name: Upload APK candidate and reports
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          tag_name: v2.0.0
-          target_commitish: main
-          name: JobTomatik v2.00
-          body_path: release/RELEASE_NOTES.md
-          make_latest: true
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          files: |
-            release/JobTomatik-v2.00.apk
-            release/JobTomatik-v2.00.sha256
-            release/SOURCE-COMMIT.txt
-            release/BUILD-INFO.txt
-            release/APK-BADGING.txt
-
-      - name: Report release publication
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `✅ JobTomatik v2.00 was compiled and published as GitHub Release \`v2.0.0\`.\n\nRun: ${runUrl}`,
-            });
+          name: jobtomatik-v2-android-apk-${{ env.SOURCE_REVISION }}
+          path: |
+            frontend/release/*
+            frontend/android/android-build-output.txt
+            frontend/android-apk-badging.txt
+            frontend/android-apk-signing.txt
+            frontend/android/app/build/reports/lint-results-debug.html
+          if-no-files-found: warn
+          retention-days: 30
