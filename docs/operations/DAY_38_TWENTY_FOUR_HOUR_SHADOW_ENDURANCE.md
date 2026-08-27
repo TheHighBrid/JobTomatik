@@ -43,10 +43,10 @@ Each completed Day 38 cycle additionally retains a diagnostic-only evaluation of
 - cannot enable submission or outreach;
 - records what the production policy would have decided;
 - records whether configured UTC quiet hours were active;
-- records rolling previous-24-hours application count, cap, remaining capacity, and threshold state;
+- records rolling previous-24-hours application count, cap, remaining capacity, threshold state, and the bounded application-id membership of that time window;
 - records rolling previous-7-days capacity state.
 
-The current production "daily" application cap is a rolling previous-24-hours window. It is not a UTC-midnight reset. Day 38 evidence must describe and certify the implementation that actually exists rather than inventing a calendar reset.
+The current production "daily" application cap is a rolling previous-24-hours window. It is not a UTC-midnight reset. The strict certifier therefore proves a real rolling-window rollover by showing that persisted application records present in the first diagnostic sample aged out of the window by the final sample. It does not require a below-cap to over-cap threshold crossing, because no-submit shadow applications themselves are persisted Application rows and can keep the raw production counter above the cap for the whole test.
 
 ## Strict Day 38 certification requirements
 
@@ -71,7 +71,9 @@ A completed campaign is not Day 38 evidence merely because its generic Phase 11 
 - verified Day 37 predecessor still valid;
 - diagnostic production-policy evidence on every completed cycle;
 - configured quiet-hours transition observed across the 24-hour window;
-- rolling 24-hour capacity observed both below and at-or-above its threshold;
+- stable rolling-24-hours cap configuration and exact rolling-window semantics;
+- policy diagnostics spanning at least 23 hours of the physical campaign;
+- at least one persisted application that was inside the first rolling-24-hours sample aging out by the last sample;
 - circuit breaker clear at certification;
 - real submission and follow-up send still disabled;
 - frozen and live Lever manifests still at `1.1.0 / dry_run`;
