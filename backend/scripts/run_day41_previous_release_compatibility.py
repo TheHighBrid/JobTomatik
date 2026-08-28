@@ -71,8 +71,9 @@ def _migration_probe(
     database_url: str,
     env: dict[str, str],
 ) -> dict[str, Any]:
-    # Import Alembic while cwd is outside ``backend`` so the repository's local
-    # ``backend/alembic`` migration directory cannot shadow the installed package.
+    # Import Alembic while cwd is outside ``backend`` and without an inherited
+    # PYTHONPATH so neither checkout's local ``backend/alembic`` migration
+    # directory can shadow the installed Alembic package.
     code = r'''
 import json
 import os
@@ -99,6 +100,7 @@ with engine.connect() as connection:
 print(json.dumps({"script_heads": script_heads, "database_heads": database_heads}, sort_keys=True))
 '''
     probe_env = dict(env)
+    probe_env.pop("PYTHONPATH", None)
     probe_env["COMPAT_BACKEND"] = str(backend)
     probe_env["COMPAT_DATABASE_URL"] = database_url
     probe_env["DATABASE_URL"] = database_url
