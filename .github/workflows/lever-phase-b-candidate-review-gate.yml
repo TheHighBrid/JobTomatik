@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - "backend/evidence/lever-phase-b-candidate-review-2026-08-28.json"
-      - "backend/tests/test_lever_phase_b_candidate_review.py"
       - ".github/workflows/lever-phase-b-candidate-review-gate.yml"
 
 permissions:
@@ -26,8 +25,64 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install focused test dependency
-        run: python -m pip install -q --disable-pip-version-check pytest
-
       - name: Validate candidate review queue
-        run: python -m pytest -q tests/test_lever_phase_b_candidate_review.py
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          path = Path("evidence/lever-phase-b-candidate-review-2026-08-28.json")
+          queue = json.loads(path.read_text(encoding="utf-8"))
+          candidates = list(queue.get("candidates") or [])
+
+          assert queue["schema_version"] == "lever-phase-b-candidate-review-v1"
+          assert queue["purpose"] == "owner_review_before_supervised_phase_b_selection"
+          assert queue["required_confirmed_phase_b_submissions"] == 10
+          assert queue["prepared_candidate_count"] == len(candidates) >= 12
+          assert queue["distinct_lever_site_count"] == len({str(item["site"]).casefold() for item in candidates})
+
+          for key in (
+              "selected_by_user",
+              "authorization_issued",
+              "submission_queued",
+              "runtime_flags_changed",
+              "real_submission_enabled",
+              "lever_supervised_pilot_enabled",
+              "autopilot_enabled",
+              "promotion_authorized",
+          ):
+              assert queue[key] is False
+          assert queue["owner_selection_required"] is True
+
+          posting_ids = []
+          sites = []
+          for rank, item in enumerate(candidates, start=1):
+              assert item["rank"] == rank
+              assert item["source_kind"] == "direct_employer_lever"
+              assert item["selected"] is False
+              assert item["preflight_status"] == "not_materialized"
+              assert str(item["posting_id"]).strip()
+              assert str(item["site"]).strip()
+              assert str(item["employer"]).strip()
+              assert str(item["role"]).strip()
+
+              parsed = urlparse(str(item["canonical_url"]))
+              assert parsed.scheme == "https"
+              assert parsed.netloc.casefold() == "jobs.lever.co"
+              assert parsed.path.strip("/").split("/")[-1] == item["posting_id"]
+
+              posting_ids.append(str(item["posting_id"]).casefold())
+              sites.append(str(item["site"]).casefold())
+
+          assert len(posting_ids) == len(set(posting_ids))
+          assert len(sites) == len(set(sites))
+
+          raw = json.dumps(queue, sort_keys=True).casefold()
+          assert "one final-submit click maximum per approval" in raw
+          assert "availability must be revalidated immediately before owner selection/import" in raw
+          assert "authorize_final_submit" not in queue
+          assert "approval_reference" not in queue
+          assert "selection_quote" not in queue
+          print("PHASE_B_CANDIDATE_REVIEW=PASS", len(candidates))
+          PY
