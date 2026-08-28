@@ -55,8 +55,9 @@ def test_frontend_apk_scripts_run_gradle_assembly():
     package = json.loads(
         (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
     )
+    release_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
-    assert package["version"] == "1.0.0"
+    assert package["version"] == release_version
     assert "assembleDebug" in package["scripts"]["build:apk:debug"]
     assert "assembleRelease" in package["scripts"]["build:apk:release"]
     assert "lintDebug" in package["scripts"]["android:lint"]
