@@ -6,9 +6,10 @@ on:
       - '.github/workflows/day41-v1-compatibility-drill.yml'
       - 'RELEASE_SOURCE.txt'
       - 'backend/alembic/**'
-      - 'backend/alembic.ini'
+      - 'backend/app/main.py'
       - 'backend/app/models/**'
       - 'backend/app/services/day41_previous_release_compatibility.py'
+      - 'backend/app/services/followup_schema.py'
       - 'backend/scripts/run_day41_previous_release_compatibility.py'
       - 'backend/tests/test_day41_previous_release_compatibility.py'
       - 'backend/requirements.txt'
@@ -50,25 +51,12 @@ jobs:
           .venv-current/bin/python -m pip install -q --disable-pip-version-check -r candidate/backend/requirements.txt
           .venv-v1/bin/python -m pip install -q --disable-pip-version-check -r previous/backend/requirements.txt
 
-          # The compatibility drill must never acquire its migration tooling from the
-          # candidate checkout through PYTHONPATH. Reassert the exact frozen-v1 pins
-          # and prove the isolated interpreter can import them before touching a DB.
-          env -u PYTHONPATH .venv-v1/bin/python -m pip install -q --disable-pip-version-check \
-            sqlalchemy==2.0.30 alembic==1.13.1
           env -u PYTHONPATH .venv-v1/bin/python - <<'PY'
-          import alembic
           import sqlalchemy
           import sys
-
-          assert alembic.__version__ == '1.13.1', alembic.__version__
           assert sqlalchemy.__version__ == '2.0.30', sqlalchemy.__version__
           assert '/.venv-v1/' in sys.executable.replace('\\', '/')
-          print({
-              'python': sys.executable,
-              'alembic': alembic.__version__,
-              'alembic_file': alembic.__file__,
-              'sqlalchemy': sqlalchemy.__version__,
-          })
+          print({'python': sys.executable, 'sqlalchemy': sqlalchemy.__version__})
           PY
 
       - name: Compile and unit-test compatibility tooling
@@ -93,7 +81,9 @@ jobs:
           ../../.venv-current/bin/python -m pytest -q --tb=short -ra \
             tests/test_day41_previous_release_compatibility.py
 
-      - name: Run real frozen-v1 to candidate migration drill
+      - name: Run real frozen-v1 runtime-schema upgrade drill
+        id: compatibility_drill
+        continue-on-error: true
         shell: bash
         env:
           PYTHONPATH: ${{ github.workspace }}/candidate/backend
@@ -115,7 +105,51 @@ jobs:
             --candidate-python "${{ github.workspace }}/.venv-current/bin/python" \
             --output evidence/day41-previous-release-compatibility.json
 
-      - name: Prove drill is synthetic and non-destructive
+      - name: Validate retained compatibility evidence boundary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('candidate/backend/evidence/day41-previous-release-compatibility.json')
+          assert path.is_file(), 'compatibility report was not retained'
+          report = json.loads(path.read_text(encoding='utf-8'))
+          assert report['previous_release_revision'] == '6f7f9fa6a7d3c63516cde381410ac188364dba36'
+          assert report['previous_schema_bootstrap_method'] == 'orm_create_all_plus_safe_migrate'
+          assert report['candidate_schema_upgrade_method'] == 'orm_create_all_plus_safe_migrate'
+          assert report['previous_alembic_revision_count'] == 0
+          assert report['candidate_alembic_revision_count'] == 0
+          assert report['alembic_revision_chain_claimed'] is False
+          assert report['live_database_touched'] is False
+          assert report['synthetic_data_only'] is True
+          assert report['row_contents_retained_in_report'] is False
+          assert len(report['report_sha256']) == 64
+          print(json.dumps({
+              'passed': report['passed'],
+              'previous_release_revision': report['previous_release_revision'],
+              'candidate_revision': report['candidate_revision'],
+              'previous_table_count': report['previous_table_count'],
+              'migrated_table_count': report['migrated_table_count'],
+              'candidate_expected_table_count': report['candidate_expected_table_count'],
+              'missing_candidate_tables': report['missing_candidate_tables'],
+              'missing_candidate_columns': report['missing_candidate_columns'],
+              'report_sha256': report['report_sha256'],
+          }, sort_keys=True))
+          PY
+
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: day41-frozen-v1-compatibility-${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate/backend/evidence/day41-previous-release-compatibility.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce compatibility pass
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -125,24 +159,11 @@ jobs:
           report = json.loads(
               Path('candidate/backend/evidence/day41-previous-release-compatibility.json').read_text(encoding='utf-8')
           )
-          assert report['passed'] is True
-          assert report['previous_release_revision'] == '6f7f9fa6a7d3c63516cde381410ac188364dba36'
-          assert report['live_database_touched'] is False
-          assert report['synthetic_data_only'] is True
-          assert report['row_contents_retained_in_report'] is False
-          assert len(report['report_sha256']) == 64
-          print(json.dumps({
-              'passed': report['passed'],
-              'previous_release_revision': report['previous_release_revision'],
-              'candidate_revision': report['candidate_revision'],
-              'report_sha256': report['report_sha256'],
-          }, sort_keys=True))
+          assert report['passed'] is True, json.dumps({
+              'checks': report['checks'],
+              'missing_previous_tables': report['missing_previous_tables'],
+              'missing_previous_columns': report['missing_previous_columns'],
+              'missing_candidate_tables': report['missing_candidate_tables'],
+              'missing_candidate_columns': report['missing_candidate_columns'],
+          }, sort_keys=True)
           PY
-
-      - name: Upload compatibility evidence
-        uses: actions/upload-artifact@v7
-        with:
-          name: day41-frozen-v1-compatibility-${{ github.event.pull_request.head.sha || github.sha }}
-          path: candidate/backend/evidence/day41-previous-release-compatibility.json
-          if-no-files-found: error
-          retention-days: 90
