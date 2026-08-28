@@ -50,6 +50,27 @@ jobs:
           .venv-current/bin/python -m pip install -q --disable-pip-version-check -r candidate/backend/requirements.txt
           .venv-v1/bin/python -m pip install -q --disable-pip-version-check -r previous/backend/requirements.txt
 
+          # The compatibility drill must never acquire its migration tooling from the
+          # candidate checkout through PYTHONPATH. Reassert the exact frozen-v1 pins
+          # and prove the isolated interpreter can import them before touching a DB.
+          env -u PYTHONPATH .venv-v1/bin/python -m pip install -q --disable-pip-version-check \
+            sqlalchemy==2.0.30 alembic==1.13.1
+          env -u PYTHONPATH .venv-v1/bin/python - <<'PY'
+          import alembic
+          import sqlalchemy
+          import sys
+
+          assert alembic.__version__ == '1.13.1', alembic.__version__
+          assert sqlalchemy.__version__ == '2.0.30', sqlalchemy.__version__
+          assert '/.venv-v1/' in sys.executable.replace('\\', '/')
+          print({
+              'python': sys.executable,
+              'alembic': alembic.__version__,
+              'alembic_file': alembic.__file__,
+              'sqlalchemy': sqlalchemy.__version__,
+          })
+          PY
+
       - name: Compile and unit-test compatibility tooling
         shell: bash
         env:
