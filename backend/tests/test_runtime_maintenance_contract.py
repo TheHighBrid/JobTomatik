@@ -9,6 +9,7 @@ import bcrypt
 import pytest
 
 from app.auth import hash_password, verify_password
+from app.version import APP_VERSION
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -86,6 +87,7 @@ def test_web_package_and_android_release_tracks_are_consistent():
     assert android_name is not None
     assert android_code is not None
     assert web_version == "2.0.0"
+    assert APP_VERSION == web_version
     assert package["version"] == web_version
     assert package_lock["version"] == web_version
     assert package_lock["packages"][""]["version"] == web_version

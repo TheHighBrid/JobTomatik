@@ -68,7 +68,7 @@ curl http://127.0.0.1:8010/api/system/health
 Expected response:
 
 ```json
-{"status":"ok","service":"JobTomatik API","version":"1.0.0"}
+{"status":"ok","service":"JobTomatik API","version":"2.0.0"}
 ```
 
 Then open the app login screen, expand **API connection**, tap **Reset** or set
