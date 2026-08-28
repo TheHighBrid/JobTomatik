@@ -80,6 +80,56 @@ Required compact result:
 
 The retained report SHA-256 becomes one input to the strict Day 41 release dossier.
 
+## Frozen-v1 previous-release compatibility drill
+
+JobTomatik v1.00 records the frozen release source commit as:
+
+`6f7f9fa6a7d3c63516cde381410ac188364dba36`
+
+Day 41 must prove that the exact v2 candidate can consume a database created by that frozen release without destroying existing schema or data. The dedicated workflow is:
+
+`.github/workflows/day41-v1-compatibility-drill.yml`
+
+The drill uses two isolated checkouts and two isolated Python environments. It:
+
+1. checks out the exact Day 41 candidate and frozen v1 source;
+2. creates a temporary SQLite database with the frozen v1 Alembic chain;
+3. inserts one synthetic user sentinel into the v1 database;
+4. records the complete v1 table/column schema;
+5. runs the candidate Alembic chain against that same temporary database;
+6. requires the migrated database to reach the candidate script heads exactly;
+7. verifies every v1 table and every v1 column still exists;
+8. verifies the synthetic user row is byte-for-byte equivalent across the stable fields used by the probe;
+9. runs `PRAGMA integrity_check` and `PRAGMA foreign_key_check`;
+10. queries the migrated v1 sentinel through the current candidate ORM.
+
+The temporary database is deleted after the drill. The live Android database is never opened, copied, or mutated by this workflow, and no real row contents are retained.
+
+The reusable command is:
+
+```bash
+cd <CANDIDATE_CHECKOUT>/backend
+<CANDIDATE_PYTHON> scripts/run_day41_previous_release_compatibility.py \
+  --previous-checkout <FROZEN_V1_CHECKOUT> \
+  --candidate-checkout <CANDIDATE_CHECKOUT> \
+  --previous-python <FROZEN_V1_PYTHON> \
+  --candidate-python <CANDIDATE_PYTHON> \
+  --output evidence/day41-previous-release-compatibility.json
+```
+
+Required result:
+
+```json
+{
+  "passed": true,
+  "previous_release_revision": "6f7f9fa6a7d3c63516cde381410ac188364dba36",
+  "live_database_touched": false,
+  "synthetic_data_only": true
+}
+```
+
+Feed its exact `report_sha256` to the Day 41 recovery-drill input as `previous_release_compatibility_report_sha256`, with `previous_release_compatibility_passed=true` only when the retained report itself passed.
+
 ## Recovery drills
 
 The release dossier additionally requires retained, hashed proof for:
@@ -87,7 +137,7 @@ The release dossier additionally requires retained, hashed proof for:
 - rollback drill;
 - kill-switch drill;
 - database restore drill;
-- previous-release compatibility drill.
+- frozen-v1 previous-release compatibility drill.
 
 A drill is not considered complete merely because a script exists. The exact release candidate must have retained pass evidence for each required drill.
 
@@ -155,16 +205,6 @@ A genuine pass returns:
 
 ## CI boundary
 
-CI for this preparatory branch may prove the audit and restore tooling work, but it must explicitly retain:
+CI for preparatory branches may prove the audit, restore, and compatibility tooling work, but it must never claim that the genuine Day 41 release audit is complete merely because synthetic CI passed.
 
-```json
-{
-  "real_day41_audit_claimed": false,
-  "day41_complete": false,
-  "day42_entry_eligible": false,
-  "release_published": false,
-  "release_tag_created": false
-}
-```
-
-Day 42 publication remains a separate exact-commit, owner-authorized action.
+Day 42 publication remains a separate exact-commit, exact-artifact, owner-authorized action.
