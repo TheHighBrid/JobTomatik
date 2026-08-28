@@ -38,7 +38,7 @@ cd /root/JobTomatik
 
 Use the repository's managed Android commands and acceptance tooling rather than manually reconstructing process commands unless diagnosing a specific failure.
 
-Before a certification or live operation after any code update, obtain a fresh exact-revision runtime acceptance. A receipt from an older commit is stale even when every process is otherwise healthy.
+Before a certification or live operation after any code update, obtain a fresh exact-revision runtime acceptance. A runtime acceptance receipt from an older source revision is stale, even when every process is otherwise healthy.
 
 ## Routine autonomous operation
 
