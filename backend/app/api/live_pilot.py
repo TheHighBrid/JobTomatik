@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -30,6 +30,8 @@ router = APIRouter(prefix="/live-pilot", tags=["live-pilot"])
 
 
 class LivePilotAuthorizeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     approval_reference: str = Field(min_length=1, max_length=255)
     max_submission_attempts: int = Field(default=2, ge=1, le=DAY39_LIVE_MAX_ATTEMPTS)
     window_minutes: int = Field(default=360, ge=5, le=DAY39_LIVE_MAX_WINDOW_SECONDS // 60)
@@ -37,6 +39,8 @@ class LivePilotAuthorizeRequest(BaseModel):
 
 
 class LivePilotRevokeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     reason: str = Field(min_length=1, max_length=500)
 
 
