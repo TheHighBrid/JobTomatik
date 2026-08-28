@@ -8,6 +8,10 @@ from app.database import get_db
 from app.models.application import Application
 from app.models.job import Job
 from app.models.user import User
+from app.schemas.lever_phase_b_current_intake import (
+    CurrentLeverPhaseBImportIn,
+    CurrentLeverPhaseBImportOut,
+)
 from app.schemas.supervised_pilot_dossier import SupervisedPilotDossierOut
 from app.schemas.supervised_pilot_roster import (
     LeverPhaseBLaunchOut,
@@ -22,6 +26,10 @@ from app.schemas.supervised_pilot_roster import (
 from app.services.greenhouse_pilot_ingestion import (
     GreenhousePilotIngestionError,
     read_greenhouse_pilot_readiness,
+)
+from app.services.lever_phase_b_current_intake import (
+    CurrentLeverPhaseBIntakeError,
+    import_current_lever_phase_b_candidate,
 )
 from app.services.lever_phase_b_launch import LeverPhaseBLaunchError
 from app.services.lever_phase_b_preparation import (
@@ -117,6 +125,35 @@ def import_supervised_pilot_application_candidate(
             source_reference=data.source_reference,
         )
     except SupervisedPilotIntakeError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    db.commit()
+    return result
+
+
+@router.post(
+    "/lever-candidates",
+    response_model=CurrentLeverPhaseBImportOut,
+    status_code=201,
+)
+async def import_current_lever_phase_b_application_candidate(
+    data: CurrentLeverPhaseBImportIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = await import_current_lever_phase_b_candidate(
+            db,
+            current_user,
+            employer=data.employer,
+            role=data.role,
+            application_url=data.application_url,
+            location=data.location,
+            notes=data.notes,
+            source_reference=data.source_reference,
+        )
+    except CurrentLeverPhaseBIntakeError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
