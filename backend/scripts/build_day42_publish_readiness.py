@@ -47,6 +47,8 @@ def main() -> int:
                 "publication_eligible": report.get("publication_eligible"),
                 "publication_executed": report.get("publication_executed"),
                 "candidate_revision": report.get("candidate_revision"),
+                "candidate_run_id": report.get("candidate_run_id"),
+                "candidate_workflow_path": report.get("candidate_workflow_path"),
                 "apk_sha256": report.get("apk_sha256"),
                 "report_sha256": report.get("report_sha256"),
                 "output": str(output),
