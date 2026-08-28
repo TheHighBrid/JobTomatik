@@ -8,6 +8,17 @@ def _read(path: str) -> str:
     return (REPO_ROOT / path).read_text(encoding="utf-8")
 
 
+def _toolchain_values() -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in _read(".jobtomatik-toolchain.env").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        values[key] = value
+    return values
+
+
 def test_root_release_identity_is_v2_candidate():
     assert _read("VERSION").strip() == "2.0.0"
 
@@ -30,6 +41,34 @@ def test_v2_release_document_set_exists():
     )
     missing = [path for path in required if not (REPO_ROOT / path).is_file()]
     assert missing == []
+
+
+def test_android_build_guide_and_helper_follow_canonical_toolchain():
+    guide = _read("BUILDING_APK.md")
+    helper = _read("build-apk.sh")
+    toolchain = _toolchain_values()
+
+    for key in (
+        "JOBTOMATIK_NODE_MIN_VERSION",
+        "JOBTOMATIK_JAVA_MAJOR",
+        "JOBTOMATIK_GRADLE_VERSION",
+        "JOBTOMATIK_ANDROID_API",
+        "JOBTOMATIK_ANDROID_BUILD_TOOLS",
+    ):
+        assert toolchain[key] in guide
+        assert key in helper
+
+    assert ".jobtomatik-toolchain.env" in guide
+    assert ".jobtomatik-toolchain.env" in helper
+    assert "npm ci" in guide
+    assert "npm ci" in helper
+    assert "npm install" not in helper
+    assert "http://127.0.0.1:8010" in guide
+    assert "host port `8000`" in guide
+    assert "Wildcards are rejected" in guide
+    assert "already allows `*`" not in guide
+    assert ".github/workflows/build-v2-release-candidate.yml" in guide
+    assert "must not rebuild after approval" in guide
 
 
 def test_release_notes_are_truthful_prepublication_docs():
