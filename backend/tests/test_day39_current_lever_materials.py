@@ -251,8 +251,10 @@ def test_current_lever_prepare_and_review_preserve_execution_boundary(
 
 
 def test_current_lever_materials_reject_non_current_application(
+    auth_client,
     db_session,
 ):
+    _ = auth_client
     user = _user(db_session)
     job = Job(title="Other", company="Other", url="https://example.com/job")
     db_session.add(job)
