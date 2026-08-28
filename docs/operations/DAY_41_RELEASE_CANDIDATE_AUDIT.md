@@ -33,7 +33,7 @@ The Day 41 dossier requires the release matrix to bind one exact 40-character co
 
 The Day 40 certification revision and Day 41 release-matrix revision must be identical. A code change after Day 40 requires the affected exact-head gates to be rerun and the release audit must bind the new commit truthfully.
 
-## Data, security, privacy, dependencies, and migration
+## Data, security, privacy, dependencies, and schema upgrade
 
 Retain machine-readable results for:
 
@@ -43,7 +43,7 @@ Retain machine-readable results for:
 - `bash scripts/verify.sh dependencies`;
 - `pip check`;
 - production-only npm audit;
-- migration smoke test;
+- schema-upgrade compatibility smoke test;
 - Android candidate verification;
 - release-provenance verification;
 - source/artifact secret scan;
@@ -80,30 +80,49 @@ Required compact result:
 
 The retained report SHA-256 becomes one input to the strict Day 41 release dossier.
 
-## Frozen-v1 previous-release compatibility drill
+## Frozen-v1 previous-release runtime-schema compatibility drill
 
 JobTomatik v1.00 records the frozen release source commit as:
 
 `6f7f9fa6a7d3c63516cde381410ac188364dba36`
 
-Day 41 must prove that the exact v2 candidate can consume a database created by that frozen release without destroying existing schema or data. The dedicated workflow is:
+Day 41 must prove that the exact v2 candidate can consume a database created by that frozen release without destroying existing schema/data and that the upgraded database satisfies the complete current ORM schema.
+
+### Historical schema truth
+
+Frozen v1.00 contains `backend/alembic/env.py` and `backend/alembic.ini`, but it contains **no Alembic revision files**. The candidate currently has the same architectural fact: no `backend/alembic/versions/*.py` revisions.
+
+The actual v1 runtime database bootstrap in `app.main.lifespan` was:
+
+```python
+Base.metadata.create_all(bind=engine)
+_safe_migrate(engine)
+```
+
+The current candidate uses the same schema-bootstrap shape with a larger ORM and stricter additive `_safe_migrate` path. Therefore the Day 41 compatibility drill must reproduce those real runtime paths. It must not claim an Alembic revision-chain upgrade that does not exist.
+
+The dedicated workflow is:
 
 `.github/workflows/day41-v1-compatibility-drill.yml`
 
 The drill uses two isolated checkouts and two isolated Python environments. It:
 
 1. checks out the exact Day 41 candidate and frozen v1 source;
-2. creates a temporary SQLite database with the frozen v1 Alembic chain;
-3. inserts one synthetic user sentinel into the v1 database;
-4. records the complete v1 table/column schema;
-5. runs the candidate Alembic chain against that same temporary database;
-6. requires the migrated database to reach the candidate script heads exactly;
+2. creates a temporary SQLite database through frozen v1's real `Base.metadata.create_all + _safe_migrate` startup path;
+3. inserts one synthetic user sentinel into that real v1 schema;
+4. records every v1 table and column;
+5. records the complete ORM schema expected by the exact candidate;
+6. runs the candidate's real `Base.metadata.create_all + _safe_migrate` startup path against that same temporary database;
 7. verifies every v1 table and every v1 column still exists;
-8. verifies the synthetic user row is byte-for-byte equivalent across the stable fields used by the probe;
-9. runs `PRAGMA integrity_check` and `PRAGMA foreign_key_check`;
-10. queries the migrated v1 sentinel through the current candidate ORM.
+8. verifies every current candidate ORM table and column exists after the upgrade;
+9. verifies the synthetic user row remains equivalent across the stable fields used by the probe;
+10. runs `PRAGMA integrity_check` and `PRAGMA foreign_key_check`;
+11. queries the upgraded v1 sentinel through the current candidate ORM;
+12. records that both frozen v1 and the candidate have zero Alembic revision files and explicitly sets `alembic_revision_chain_claimed=false`.
 
 The temporary database is deleted after the drill. The live Android database is never opened, copied, or mutated by this workflow, and no real row contents are retained.
+
+A failed compatibility run retains its machine-readable report before CI fails, so missing candidate columns/tables are inspectable instead of disappearing behind a shell exit code.
 
 The reusable command is:
 
@@ -123,6 +142,11 @@ Required result:
 {
   "passed": true,
   "previous_release_revision": "6f7f9fa6a7d3c63516cde381410ac188364dba36",
+  "previous_schema_bootstrap_method": "orm_create_all_plus_safe_migrate",
+  "candidate_schema_upgrade_method": "orm_create_all_plus_safe_migrate",
+  "previous_alembic_revision_count": 0,
+  "candidate_alembic_revision_count": 0,
+  "alembic_revision_chain_claimed": false,
   "live_database_touched": false,
   "synthetic_data_only": true
 }
