@@ -1,8 +1,9 @@
 """Read-only Day 42 exact-commit publication readiness evaluator.
 
 A passing result means an owner may invoke the separate hardened release workflow for
-one exact commit and APK. This module cannot create a tag, GitHub release, or artifact,
-and cannot enable application submission or follow-up sending.
+one exact commit and one exact prebuilt APK candidate. This module cannot create a tag,
+GitHub release, or artifact, and cannot enable application submission or follow-up
+sending.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from typing import Any, Mapping
 DAY42_PUBLISH_READINESS_VERSION = "day42-publish-readiness-v1"
 DAY42_RELEASE_VERSION = "v2.0.0"
 DAY42_RELEASE_TAG = "v2.0.0"
+DAY42_CANDIDATE_WORKFLOW_PATH = ".github/workflows/build-v2-release-candidate.yml"
 
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -36,6 +38,7 @@ DAY42_REQUIRED_WORKFLOWS = (
     "Day 39 live-window tooling gate",
     "Day 40 second-wave tooling gate",
     "Day 41 release-audit tooling gate",
+    "Day 42 publish-readiness tooling gate",
 )
 
 EXPECTED_ADAPTER_SCOPE = {
@@ -63,6 +66,14 @@ def _sha256(value: Any) -> str:
     return text if _SHA256.fullmatch(text) else ""
 
 
+def _positive_int(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
+
+
 def _canonical_hash(value: Mapping[str, Any]) -> str:
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
@@ -86,7 +97,7 @@ def build_day42_publish_readiness(
     release_documents: Any,
     owner_authorization: Any,
 ) -> dict[str, Any]:
-    """Evaluate whether the separate v2.0.0 publisher may be invoked."""
+    """Evaluate whether the separate exact-artifact v2.0.0 publisher may be invoked."""
 
     audit = _mapping(day41_audit)
     matrix = _mapping(final_release_matrix)
@@ -105,6 +116,9 @@ def build_day42_publish_readiness(
     owner_revision = _sha40(owner.get("approved_for_commit"))
     apk_sha = _sha256(artifact.get("apk_sha256"))
     audit_sha = _sha256(audit.get("report_sha256"))
+    candidate_run_id = _positive_int(artifact.get("workflow_run_id"))
+    owner_candidate_run_id = _positive_int(owner.get("approved_candidate_run_id"))
+    candidate_workflow_path = str(artifact.get("workflow_path") or "").strip()
     expected_ack = expected_day42_publication_acknowledgment(
         revision=matrix_revision,
         apk_sha256=apk_sha,
@@ -140,10 +154,15 @@ def build_day42_publish_readiness(
             _sha256(artifact.get("signing_certificate_sha256"))
         ),
         "signing_mode_truthful": signing_mode in {"release_signed", "development_signed"},
+        "candidate_run_id_valid": candidate_run_id > 0,
+        "candidate_workflow_exact": candidate_workflow_path == DAY42_CANDIDATE_WORKFLOW_PATH,
+        "candidate_workflow_succeeded": artifact.get("workflow_conclusion") == "success",
         "candidate_reproducible": artifact.get("reproducible_build") is True,
         "source_commit_file_present": artifact.get("source_commit_file_present") is True,
         "checksums_file_present": artifact.get("checksums_file_present") is True,
         "build_info_present": artifact.get("build_info_present") is True,
+        "candidate_metadata_present": artifact.get("candidate_metadata_present") is True,
+        "publication_not_pre_authorized_in_candidate": artifact.get("publication_authorized") is False,
     }
 
     adapters = _mapping(maturity.get("adapters"))
@@ -192,6 +211,8 @@ def build_day42_publish_readiness(
         "owner_commit_exact": bool(matrix_revision) and owner_revision == matrix_revision,
         "owner_apk_sha256_exact": bool(apk_sha)
         and _sha256(owner.get("approved_apk_sha256")) == apk_sha,
+        "owner_candidate_run_exact": candidate_run_id > 0
+        and owner_candidate_run_id == candidate_run_id,
         "owner_acknowledgment_exact": bool(expected_ack)
         and str(owner.get("acknowledgment") or "") == expected_ack,
     }
@@ -218,6 +239,8 @@ def build_day42_publish_readiness(
         "release_version": DAY42_RELEASE_VERSION,
         "release_tag": DAY42_RELEASE_TAG,
         "candidate_revision": matrix_revision or None,
+        "candidate_run_id": candidate_run_id or None,
+        "candidate_workflow_path": candidate_workflow_path or None,
         "apk_sha256": apk_sha or None,
         "day41_report_sha256": audit_sha or None,
         "expected_acknowledgment": expected_ack or None,
@@ -230,7 +253,7 @@ def build_day42_publish_readiness(
         "real_submission_enabled": False,
         "real_followup_send_enabled": False,
         "next_action": (
-            "invoke_separate_exact_commit_v2_publisher"
+            "invoke_separate_exact_artifact_v2_publisher"
             if eligible
             else "satisfy_day42_publish_blockers"
         ),
@@ -239,8 +262,9 @@ def build_day42_publish_readiness(
             "publisher_must_recheck_main_before_publication": True,
             "publisher_must_refuse_existing_v2_tag": True,
             "release_target_commitish_must_be_exact_sha": True,
+            "publisher_must_not_rebuild_approved_apk": True,
             "development_signed_artifact_must_be_labeled_truthfully": True,
-            "owner_authorization_is_exact_commit_and_apk_bound": True,
+            "owner_authorization_is_exact_commit_apk_and_candidate_run_bound": True,
         },
     }
     result["report_sha256"] = _canonical_hash(result)
@@ -248,6 +272,7 @@ def build_day42_publish_readiness(
 
 
 __all__ = [
+    "DAY42_CANDIDATE_WORKFLOW_PATH",
     "DAY42_PUBLISH_READINESS_VERSION",
     "DAY42_RELEASE_TAG",
     "DAY42_RELEASE_VERSION",
