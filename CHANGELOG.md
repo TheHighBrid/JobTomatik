@@ -64,7 +64,7 @@ Changes after the v2.0.0 release candidate belong here. Do not move a change int
 - Made pull-request Android APK builds read-only and incapable of publishing a release.
 - Added an owner-triggered exact-current-main candidate builder that creates one prepublication APK and records its source commit, SHA-256, signing identity, Day 41 audit reference, and candidate workflow run ID.
 - Added a read-only Day 42 publication-readiness evaluator bound to the exact candidate, exact release matrix, maturity manifest, repository state, release documents, and owner approval.
-- Added an owner-only publisher that downloads and verifies the approved prebuilt candidate rather than rebuilding the APK after approval.
+- The publisher downloads and verifies the approved prebuilt candidate, then publishes those exact bytes rather than rebuilding the APK after approval.
 - Bound final publication to exact source commit, exact APK SHA-256, exact candidate workflow run ID, and retained Day 42 readiness SHA-256.
 - Added immutable `v2.0.0` tag checks, exact-SHA `target_commitish`, release-asset overwrite refusal, source-commit metadata, APK badging, signing-certificate output, and candidate metadata retention.
 
