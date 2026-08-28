@@ -102,10 +102,10 @@ jobs:
             echo "JOBTOMATIK_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
             echo "JOBTOMATIK_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
             echo "APK_VARIANT=release" >> "$GITHUB_ENV"
-            echo "SIGNING_MODE=release" >> "$GITHUB_ENV"
+            echo "SIGNING_MODE=release_signed" >> "$GITHUB_ENV"
           else
             echo "APK_VARIANT=debug" >> "$GITHUB_ENV"
-            echo "SIGNING_MODE=development" >> "$GITHUB_ENV"
+            echo "SIGNING_MODE=development_signed" >> "$GITHUB_ENV"
           fi
 
       - name: Lint and assemble candidate APK
