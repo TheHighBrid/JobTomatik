@@ -19,9 +19,35 @@ from app.models.user import User
 from app.services.evidence_ledger import eligible_evidence_query, rebuild_user_evidence
 
 
-GENERATOR_VERSION = "verified-material-v1"
+GENERATOR_VERSION = "verified-material-v2"
 SUPPORTED_MATERIAL_TYPES = {"cover_letter", "resume_summary"}
 TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9+.#/-]{1,}", re.IGNORECASE)
+LEADING_BULLET_RE = re.compile(r"^[\s•·▪◦\uf0b7\-*–]+")
+MALFORMED_PUNCTUATION_RE = re.compile(r"[,;:]\s*\.")
+TRAILING_FRAGMENT_RE = re.compile(
+    r"(?:[,;:]|\b(?:and|or|with|when|while|because|including|for|to|of|the|a|an|internal|strong))\s*$",
+    re.IGNORECASE,
+)
+GENERIC_ALIGNMENT_TERMS = {
+    "data",
+    "management",
+    "time",
+    "tools",
+    "using",
+}
+SKILL_DISPLAY_ALIASES = {
+    "ai tools": "AI Tools",
+    "risk management": "Risk Management",
+    "data analysis": "Data Analysis",
+    "time managements": "Time Management",
+    "microsoft office": "Microsoft Office",
+    "linux": "Linux",
+    "debian": "Debian",
+    "descalation": "De-escalation",
+    "bilingual": "Bilingual",
+    "tsys": "TSYS",
+    "ts2": "TS2",
+}
 STOP_WORDS = {
     "and", "the", "for", "with", "from", "that", "this", "your", "our", "you",
     "are", "will", "have", "has", "job", "role", "work", "team", "position",
@@ -42,6 +68,7 @@ KIND_WEIGHT = {
     "identity": 0.5,
     "location": 0.5,
 }
+NARRATIVE_KINDS = {"employment", "achievement", "project", "summary"}
 
 
 class MaterialGenerationError(RuntimeError):
@@ -97,6 +124,68 @@ def _first(units: Iterable[EvidenceUnit], kind: str) -> EvidenceUnit | None:
     return next((unit for unit in units if unit.kind == kind), None)
 
 
+def _clean_material_statement(value: Any) -> str:
+    text = str(value or "").replace("\x00", " ")
+    text = LEADING_BULLET_RE.sub("", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+([,.;:])", r"\1", text)
+    return text
+
+
+def _display_skill(value: Any) -> str:
+    text = _clean_material_statement(value)
+    return SKILL_DISPLAY_ALIASES.get(text.casefold(), text)
+
+
+def _narrative_fragment_reason(
+    value: Any,
+    *,
+    reject_pdf_bullet: bool = True,
+) -> str | None:
+    raw = str(value or "")
+    text = _clean_material_statement(raw)
+    if not text:
+        return "empty statement"
+    if reject_pdf_bullet and "\uf0b7" in raw:
+        return "private-use bullet glyph"
+    if MALFORMED_PUNCTUATION_RE.search(text):
+        return "malformed punctuation"
+    if TRAILING_FRAGMENT_RE.search(text):
+        return "truncated or dangling ending"
+    return None
+
+
+def _usable_narrative_unit(unit: EvidenceUnit) -> bool:
+    if unit.kind not in NARRATIVE_KINDS:
+        return True
+    text = _clean_material_statement(unit.statement)
+    if len(text) < 20:
+        return False
+    return _narrative_fragment_reason(unit.statement, reject_pdf_bullet=False) is None
+
+
+def _clean_units(
+    ranked: Iterable[EvidenceUnit],
+    kinds: set[str],
+    *,
+    limit: int,
+) -> list[EvidenceUnit]:
+    return [
+        unit
+        for unit in ranked
+        if unit.kind in kinds and _usable_narrative_unit(unit)
+    ][:limit]
+
+
+def _as_sentence(value: Any) -> str:
+    text = _clean_material_statement(value).rstrip()
+    if not text:
+        return ""
+    if text[-1] not in ".!?”\"'":
+        text += "."
+    return text
+
+
 def _claim(
     text: str,
     evidence_units: Iterable[EvidenceUnit] = (),
@@ -126,6 +215,17 @@ def _identity_name(units: list[EvidenceUnit], user: User) -> tuple[str, Evidence
     return ((name_unit.statement if name_unit else (user.full_name or "")).strip(), name_unit)
 
 
+def _alignment_terms(job: Job, units: Iterable[EvidenceUnit], *, limit: int = 6) -> list[str]:
+    evidence_terms: set[str] = set()
+    for unit in units:
+        evidence_terms.update(_tokens(_clean_material_statement(unit.statement)))
+    return sorted(
+        term
+        for term in (_job_terms(job) & evidence_terms)
+        if term not in GENERIC_ALIGNMENT_TERMS
+    )[:limit]
+
+
 def _cover_letter_content(
     user: User,
     job: Job,
@@ -143,39 +243,77 @@ def _cover_letter_content(
     years = _first(ranked, "experience")
     if current_role and years:
         sentence = (
-            f"My documented profile identifies my current or most recent role as "
-            f"{current_role.statement}, with {years.statement} years of experience."
+            f"My background includes {_clean_material_statement(years.statement)} years of "
+            f"experience, including work as {_clean_material_statement(current_role.statement)}."
         )
         opening_parts.append(sentence)
         claims.append(_claim(sentence, [current_role, years], category="career_summary"))
     elif current_role:
         sentence = (
-            f"My documented profile identifies my current or most recent role as "
-            f"{current_role.statement}."
+            "My background includes experience as "
+            f"{_clean_material_statement(current_role.statement)}."
         )
         opening_parts.append(sentence)
         claims.append(_claim(sentence, [current_role], category="career_summary"))
     elif years:
-        sentence = f"My documented profile records {years.statement} years of experience."
+        sentence = (
+            f"My background includes {_clean_material_statement(years.statement)} years of experience."
+        )
         opening_parts.append(sentence)
         claims.append(_claim(sentence, [years], category="career_summary"))
     else:
         warnings.append("No source-backed current role or years-of-experience statement was available")
     paragraphs.append(" ".join(opening_parts))
 
-    employment = [unit for unit in ranked if unit.kind == "employment"][:3]
+    employment_candidates = [unit for unit in ranked if unit.kind == "employment"]
+    employment = _clean_units(ranked, {"employment"}, limit=3)
     if employment:
-        employment_lines = []
+        role_sentences: list[str] = []
+        detail_units: list[EvidenceUnit] = []
         for unit in employment:
             if unit.organization and unit.role:
-                sentence = f"My employment record includes {unit.role} experience with {unit.organization}."
-            elif unit.organization:
-                sentence = f"My employment record includes experience with {unit.organization}."
+                sentence = (
+                    f"My experience includes work as {_clean_material_statement(unit.role)} "
+                    f"with {_clean_material_statement(unit.organization)}."
+                )
+                if sentence not in role_sentences:
+                    role_sentences.append(sentence)
+                    claims.append(_claim(sentence, [unit], category="employment"))
             else:
-                sentence = f"My employment record includes: {unit.statement}."
-            employment_lines.append(sentence)
-            claims.append(_claim(sentence, [unit], category="employment"))
-        paragraphs.append(" ".join(employment_lines))
+                detail_units.append(unit)
+
+        if role_sentences:
+            paragraphs.append(" ".join(role_sentences[:2]))
+
+        if detail_units:
+            terms = _alignment_terms(job, detail_units, limit=6)
+            if terms:
+                sentence = (
+                    "My documented employment history also covers areas directly relevant to "
+                    "this role, including " + ", ".join(terms) + "."
+                )
+                paragraphs.append(sentence)
+                claims.append(
+                    _claim(
+                        sentence,
+                        detail_units,
+                        category="job_alignment",
+                        applicant_fact=False,
+                    )
+                )
+            elif not role_sentences:
+                sentence = " ".join(_as_sentence(unit.statement) for unit in detail_units)
+                paragraphs.append(sentence)
+                for unit in detail_units:
+                    claims.append(
+                        _claim(
+                            _as_sentence(unit.statement),
+                            [unit],
+                            category="employment",
+                        )
+                    )
+    elif employment_candidates:
+        warnings.append("No complete source-backed employment statement was available")
     else:
         warnings.append("No source-backed employment history was available")
 
@@ -183,7 +321,8 @@ def _cover_letter_content(
         unit
         for unit in ranked
         if unit.kind in {"achievement", "skill", "credential", "project", "language"}
-    ][:6]
+        and _usable_narrative_unit(unit)
+    ][:8]
     if relevant:
         grouped: dict[str, list[EvidenceUnit]] = defaultdict(list)
         for unit in relevant:
@@ -191,31 +330,35 @@ def _cover_letter_content(
 
         detail_sentences: list[str] = []
         labels = {
-            "achievement": "Source-backed highlights include",
-            "skill": "Documented skills include",
-            "credential": "Documented credentials include",
-            "project": "Documented project evidence includes",
-            "language": "Documented language capabilities include",
+            "achievement": "Selected documented achievements include",
+            "skill": "My documented skills include",
+            "credential": "My documented credentials include",
+            "project": "My documented project experience includes",
+            "language": "My documented language capabilities include",
         }
         for kind in ("achievement", "skill", "credential", "project", "language"):
             group = grouped.get(kind) or []
             if not group:
                 continue
-            values = "; ".join(unit.statement for unit in group[:3])
+            values = "; ".join(
+                _display_skill(unit.statement)
+                if kind == "skill"
+                else _clean_material_statement(unit.statement)
+                for unit in group[:4]
+            )
             sentence = f"{labels[kind]} {values}."
             detail_sentences.append(sentence)
-            claims.append(_claim(sentence, group[:3], category=kind))
-        paragraphs.append(" ".join(detail_sentences))
+            claims.append(_claim(sentence, group[:4], category=kind))
+        if detail_sentences:
+            paragraphs.append(" ".join(detail_sentences))
     else:
         warnings.append("No source-backed achievements, skills, credentials, projects, or languages were available")
 
-    alignment_terms = sorted(
-        _job_terms(job)
-        & set().union(*(_tokens(unit.statement) for unit in relevant))
-    )[:6]
+    alignment_source = [*employment, *relevant]
+    alignment_terms = _alignment_terms(job, alignment_source)
     if alignment_terms:
         sentence = (
-            "These documented qualifications overlap with the posting in areas including "
+            "Together, this background overlaps with the posting in areas including "
             + ", ".join(alignment_terms)
             + "."
         )
@@ -223,14 +366,14 @@ def _cover_letter_content(
         claims.append(
             _claim(
                 sentence,
-                relevant,
+                alignment_source,
                 category="job_alignment",
                 applicant_fact=False,
             )
         )
 
     paragraphs.append(
-        "Thank you for considering my application. I would welcome the opportunity to discuss the documented experience above in relation to your team’s needs."
+        "Thank you for considering my application. I would welcome the opportunity to discuss how my experience could support your team and customers."
     )
 
     name, name_unit = _identity_name(ranked, user)
@@ -272,27 +415,74 @@ def _resume_summary_content(
     )
 
     summary_units = [
-        unit for unit in ranked if unit.kind in {"role", "experience", "summary"}
+        unit
+        for unit in ranked
+        if unit.kind in {"role", "experience", "summary"}
+        and (unit.kind not in NARRATIVE_KINDS or _usable_narrative_unit(unit))
     ][:3]
+    employment = _clean_units(ranked, {"employment"}, limit=5)
     if summary_units:
-        summary = " ".join(unit.statement.rstrip(".") + "." for unit in summary_units)
+        current_role = next((unit for unit in summary_units if unit.kind == "role"), None)
+        years = next((unit for unit in summary_units if unit.kind == "experience"), None)
+        narrative = next((unit for unit in summary_units if unit.kind == "summary"), None)
+        summary_parts: list[str] = []
+        summary_claim_units: list[EvidenceUnit] = []
+        if current_role and years:
+            summary_parts.append(
+                f"{_clean_material_statement(current_role.statement)} with "
+                f"{_clean_material_statement(years.statement)} years of experience."
+            )
+            summary_claim_units.extend([current_role, years])
+        elif current_role:
+            summary_parts.append(
+                f"Background includes experience as {_clean_material_statement(current_role.statement)}."
+            )
+            summary_claim_units.append(current_role)
+        elif years:
+            summary_parts.append(
+                f"Background includes {_clean_material_statement(years.statement)} years of experience."
+            )
+            summary_claim_units.append(years)
+        if narrative:
+            summary_parts.append(_as_sentence(narrative.statement))
+            summary_claim_units.append(narrative)
+        terms = _alignment_terms(job, employment, limit=5)
+        if terms:
+            summary_parts.append(
+                "Documented experience overlaps with this role in " + ", ".join(terms) + "."
+            )
+        summary = " ".join(part for part in summary_parts if part)
         sections.append(f"PROFESSIONAL SUMMARY\n{summary}")
-        claims.append(_claim(summary, summary_units, category="career_summary"))
+        claims.append(
+            _claim(
+                summary,
+                [*summary_claim_units, *employment],
+                category="career_summary",
+            )
+        )
     else:
         warnings.append("No source-backed professional summary evidence was available")
 
-    employment = [unit for unit in ranked if unit.kind == "employment"][:5]
+    employment_candidates = [unit for unit in ranked if unit.kind == "employment"]
     if employment:
-        lines = [f"• {unit.statement}" for unit in employment]
+        lines = [f"• {_clean_material_statement(unit.statement)}" for unit in employment]
         sections.append("RELEVANT EXPERIENCE\n" + "\n".join(lines))
         for unit in employment:
-            claims.append(_claim(unit.statement, [unit], category="employment"))
+            claims.append(
+                _claim(
+                    _clean_material_statement(unit.statement),
+                    [unit],
+                    category="employment",
+                )
+            )
+    elif employment_candidates:
+        warnings.append("No complete source-backed employment statement was available")
     else:
         warnings.append("No source-backed employment evidence was available")
 
     skills = [unit for unit in ranked if unit.kind == "skill"][:12]
     if skills:
-        line = ", ".join(unit.statement for unit in skills)
+        line = ", ".join(_display_skill(unit.statement) for unit in skills)
         sections.append(f"CORE SKILLS\n{line}")
         claims.append(_claim(line, skills, category="skill"))
     else:
@@ -304,12 +494,26 @@ def _resume_summary_content(
         ("PROJECTS", {"project"}, "project"),
         ("LANGUAGES", {"language"}, "language"),
     ):
-        units = [unit for unit in ranked if unit.kind in kinds][:5]
+        units = [
+            unit
+            for unit in ranked
+            if unit.kind in kinds and _usable_narrative_unit(unit)
+        ][:5]
         if not units:
             continue
-        sections.append(heading + "\n" + "\n".join(f"• {unit.statement}" for unit in units))
+        sections.append(
+            heading
+            + "\n"
+            + "\n".join(f"• {_clean_material_statement(unit.statement)}" for unit in units)
+        )
         for unit in units:
-            claims.append(_claim(unit.statement, [unit], category=category))
+            claims.append(
+                _claim(
+                    _clean_material_statement(unit.statement),
+                    [unit],
+                    category=category,
+                )
+            )
 
     return "\n\n".join(sections).strip() + "\n", claims, warnings
 
@@ -332,6 +536,16 @@ def validate_claims(
         expected_hashes = [unit_by_id[unit_id].source_hash for unit_id in ids]
         if expected_hashes != (claim.get("evidence_hashes") or []):
             warnings.append(f"Claim {index} evidence hashes do not match the ledger")
+
+        text = str(claim.get("text") or "")
+        if "\uf0b7" in text:
+            warnings.append(f"Claim {index} contains an unsafe PDF bullet glyph")
+        if MALFORMED_PUNCTUATION_RE.search(text):
+            warnings.append(f"Claim {index} contains malformed punctuation")
+        if claim.get("category") in {"employment", "career_summary", "achievement", "project"}:
+            reason = _narrative_fragment_reason(text)
+            if reason:
+                warnings.append(f"Claim {index} contains a likely incomplete narrative: {reason}")
     return warnings
 
 
