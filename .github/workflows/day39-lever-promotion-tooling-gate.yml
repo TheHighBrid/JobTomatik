@@ -1,0 +1,108 @@
+name: Day 39 Lever promotion tooling gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/day39-lever-promotion-tooling-gate.yml'
+      - 'backend/app/services/day39_lever_promotion.py'
+      - 'backend/app/services/autonomy_release_loader.py'
+      - 'backend/app/services/ats_manifest.py'
+      - 'backend/scripts/build_day39_lever_promotion.py'
+      - 'backend/tests/test_day39_lever_promotion.py'
+      - 'backend/app/services/autonomy_release_contract.py'
+      - 'backend/app/services/ats_maturity.py'
+      - 'backend/app/services/operations_policy.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  promotion-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./day39-promotion.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: day39-promotion-ci-only-secret-key-000000000
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: 'false'
+      ALLOW_REAL_APPLICATION_SUBMIT: 'false'
+      ALLOW_REAL_FOLLOWUP_SEND: 'false'
+      AUTOPILOT_ENABLED: 'false'
+      AUTONOMY_CERTIFICATION_SIGNING_KEY: ''
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Compile promotion boundary
+        run: |
+          python -m py_compile \
+            app/services/day39_lever_promotion.py \
+            app/services/autonomy_release_loader.py \
+            app/services/ats_manifest.py \
+            scripts/build_day39_lever_promotion.py
+
+      - name: Run promotion, maturity, and release-contract regressions
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day39_lever_promotion.py \
+            tests/test_ats_maturity.py \
+            tests/test_autonomy_release_contract.py \
+            tests/test_day35_operations_rehearsal.py \
+            tests/test_day38_shadow_endurance.py
+
+      - name: Prove current retained Lever evidence cannot promote
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          readiness = json.loads(Path('evidence/lever-pilot-readiness.json').read_text())
+          summary = readiness['summary']
+          assert summary['qualifying_dry_run_count'] >= 30
+          assert summary['supervised_confirmed_count'] == 0
+          assert summary['gates']['ten_supervised_confirmed_submissions'] is False
+          assert summary['promotion_ready'] is False
+          PY
+
+      - name: Prove no retained release record means Lever stays dry run
+        run: |
+          python - <<'PY'
+          from app.services.ats_manifest import ats_certification_manifest
+
+          adapters = {item['name']: item for item in ats_certification_manifest()['adapters']}
+          lever = adapters['lever']
+          assert lever['version'] == '1.1.0'
+          assert lever['maturity'] == 'dry_run'
+          assert lever['autonomous_submission_allowed'] is False
+          PY
+
+      - name: Prove promotion tooling never toggles consequential runtime flags
+        run: |
+          python - <<'PY'
+          from app.config import get_settings
+          from app.services.operations_settings import get_operations_settings
+
+          core = get_settings()
+          operations = get_operations_settings()
+          assert core.allow_real_application_submit is False
+          assert core.allow_real_followup_send is False
+          assert operations.autopilot_enabled is False
+          PY
