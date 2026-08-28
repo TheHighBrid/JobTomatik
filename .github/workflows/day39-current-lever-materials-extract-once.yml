@@ -1,0 +1,52 @@
+name: Day39 current Lever material bridge extractor once
+
+on:
+  push:
+    branches:
+      - codex/day39-current-lever-materials
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/day39-current-lever-materials
+          fetch-depth: 0
+
+      - name: Extract and run patch script
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/day39-current-lever-materials-patch-once.yml').read_text(encoding='utf-8').splitlines()
+          start = next(i for i, line in enumerate(source) if line.strip() == "python - <<'PY'") + 1
+          end = max(i for i, line in enumerate(source) if line.strip() == 'PY')
+          body = []
+          for line in source[start:end]:
+              body.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/day39_current_lever_materials_patch.py').write_text('\n'.join(body) + '\n', encoding='utf-8')
+          PY
+
+          python /tmp/day39_current_lever_materials_patch.py
+
+          python -m py_compile \
+            backend/app/services/ats_lever.py \
+            backend/app/services/lever_phase_b_reviewed_materials.py \
+            backend/app/api/supervised_pilot_roster.py \
+            backend/tests/test_day39_current_lever_materials.py
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            backend/app/services/ats_lever.py \
+            backend/app/services/lever_phase_b_reviewed_materials.py \
+            backend/app/api/supervised_pilot_roster.py \
+            backend/tests/test_day39_current_lever_materials.py \
+            .github/workflows/day39-current-lever-intake.yml
+          git commit -m "Add reviewed materials path for current Lever candidates"
+          git push origin HEAD:codex/day39-current-lever-materials
