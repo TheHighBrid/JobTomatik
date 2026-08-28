@@ -1,0 +1,438 @@
+{
+  "schema_version": "lever-phase-b-candidate-review-v1",
+  "generated_at": "2026-08-28T10:29:00-04:00",
+  "source_runtime_revision": "63fee3011f0d9c5eb3d139c4b344c899c1b034a5",
+  "purpose": "owner_review_before_supervised_phase_b_selection",
+  "required_confirmed_phase_b_submissions": 10,
+  "prepared_candidate_count": 12,
+  "distinct_lever_site_count": 12,
+  "selected_by_user": false,
+  "owner_selection_required": true,
+  "authorization_issued": false,
+  "submission_queued": false,
+  "runtime_flags_changed": false,
+  "real_submission_enabled": false,
+  "lever_supervised_pilot_enabled": false,
+  "autopilot_enabled": false,
+  "promotion_authorized": false,
+  "notes": [
+    "This is a read-only discovery/review queue, not a user selection receipt or application approval.",
+    "Every posting was observed on a direct employer jobs.lever.co site during the August 28, 2026 sweep; availability must be revalidated immediately before owner selection/import because job postings can close without notice.",
+    "The first six candidates are the strongest current fit cluster. Candidates 7-12 are backups or stretches and should be used only after owner review of the listed fit gaps.",
+    "No legal, work-authorization, sponsorship, citizenship, clearance, demographic, salary-expectation, relocation, or other user-specific answer is inferred by this artifact.",
+    "Phase B credit requires a separate exact owner approval per real application, one final-submit click maximum per approval, strong confirmation evidence, and independent review."
+  ],
+  "candidates": [
+    {
+      "rank": 1,
+      "site": "eqbank",
+      "posting_id": "0d95c00e-3019-4390-8a57-c05d9bf58a10",
+      "employer": "EQ Bank / Equitable Bank",
+      "role": "Bilingual Customer Care Representative (ENG & FR)",
+      "location": "Remote, Canada",
+      "workplace": "remote",
+      "commitment": "full_time",
+      "canonical_url": "https://jobs.lever.co/eqbank/0d95c00e-3019-4390-8a57-c05d9bf58a10",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "high",
+      "fit_reasons": [
+        "direct Canadian banking/fintech environment",
+        "requires French and English bilingual communication",
+        "requires customer service and banking/finance experience",
+        "fully remote"
+      ],
+      "known_requirements": [
+        "1-3 years call-centre/customer-service experience",
+        "1+ years banking or finance experience",
+        "French and English bilingual communication",
+        "evening/weekend shift availability"
+      ],
+      "owner_or_policy_answers_required_before_selection": [
+        "legal entitlement to work in Canada",
+        "background/credit/employment verification question",
+        "customer-service narrative questions",
+        "optional demographic survey preference"
+      ],
+      "fit_gaps_or_risks": [
+        "shift schedule includes evenings, weekends, and potentially midnight"
+      ],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 2,
+      "site": "fullscript",
+      "posting_id": "a52e4915-8239-4581-8828-84661f070424",
+      "employer": "Fullscript",
+      "role": "Technical Support Specialist",
+      "location": "Ottawa, ON / Calgary, AB / Kelowna, BC / Toronto, ON",
+      "workplace": "hybrid_remote_first",
+      "commitment": "full_time",
+      "canonical_url": "https://jobs.lever.co/fullscript/a52e4915-8239-4581-8828-84661f070424",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "high",
+      "fit_reasons": [
+        "Ottawa is explicitly a preferred location",
+        "technical support role bridges customer-facing work with computing background",
+        "API/web/integration exposure is relevant",
+        "published salary range CAD 70,000-80,000"
+      ],
+      "known_requirements": [
+        "1-3 years technical support, CX operations, incident management, QA support, or related experience",
+        "technical exposure to data, code concepts, integrations, APIs, or web technologies",
+        "cross-functional communication and troubleshooting"
+      ],
+      "owner_or_policy_answers_required_before_selection": [
+        "application location choice",
+        "current location",
+        "source/how-heard question"
+      ],
+      "fit_gaps_or_risks": [],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 3,
+      "site": "getmaple",
+      "posting_id": "e8df92c9-23ed-4688-9b2c-4e5db504d24b",
+      "employer": "Maple",
+      "role": "Client Success Associate (Bilingual, French/English)",
+      "location": "Remote within Canada / Toronto hybrid optional",
+      "workplace": "remote",
+      "commitment": "full_time",
+      "canonical_url": "https://jobs.lever.co/getmaple/e8df92c9-23ed-4688-9b2c-4e5db504d24b",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "high",
+      "fit_reasons": [
+        "full bilingual French/English is required",
+        "client success/account operations scope matches transferable banking service experience",
+        "remote within Canada",
+        "published pay range CAD 68,000-79,000 plus variable pay"
+      ],
+      "known_requirements": [
+        "3+ years client-facing, client success, account management, or operations experience",
+        "professional French and English",
+        "CRM/data/reporting comfort",
+        "occasional Canada travel"
+      ],
+      "owner_or_policy_answers_required_before_selection": [
+        "legal authorization to work in Canada",
+        "current/future sponsorship requirement",
+        "province of residence",
+        "salary expectations",
+        "personal Why Maple response",
+        "pronouns/name-pronunciation fields if the owner elects to answer them"
+      ],
+      "fit_gaps_or_risks": [],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 4,
+      "site": "caseware",
+      "posting_id": "4d0b119c-3cf5-4716-a343-276831f9cc74",
+      "employer": "Caseware",
+      "role": "Bilingual Customer Service Representative",
+      "location": "Canada / Toronto, ON listing",
+      "workplace": "remote",
+      "commitment": "full_time_permanent",
+      "canonical_url": "https://jobs.lever.co/caseware/4d0b119c-3cf5-4716-a343-276831f9cc74",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "high",
+      "fit_reasons": [
+        "French and English fluency required",
+        "fully remote for applicants residing and eligible to work in Canada",
+        "fintech/audit/accounting software customer support",
+        "published salary range CAD 50,000-60,000"
+      ],
+      "known_requirements": [
+        "post-secondary education",
+        "French and English fluency",
+        "strong written/verbal customer communication",
+        "software-sector customer-service experience is an asset"
+      ],
+      "owner_or_policy_answers_required_before_selection": [
+        "Canadian work eligibility if requested by the application form"
+      ],
+      "fit_gaps_or_risks": [],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 5,
+      "site": "PocketHealth",
+      "posting_id": "decfbac4-51d6-41d2-8c6a-33d07778729c",
+      "employer": "PocketHealth",
+      "role": "Bilingual Patient Experience Representative (French)",
+      "location": "Greater Toronto Area / remote",
+      "workplace": "remote",
+      "commitment": "full_time",
+      "canonical_url": "https://jobs.lever.co/PocketHealth/decfbac4-51d6-41d2-8c6a-33d07778729c",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "high",
+      "fit_reasons": [
+        "French and English required",
+        "phone/email customer support requirement",
+        "technical-support experience is an asset",
+        "remote role"
+      ],
+      "known_requirements": [
+        "2-3 years customer service over phone/email",
+        "French and English communication",
+        "Monday-Friday EST availability"
+      ],
+      "owner_or_policy_answers_required_before_selection": [],
+      "fit_gaps_or_risks": [
+        "published salary CAD 48,000-50,000 is lower than several other queue candidates"
+      ],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 6,
+      "site": "numeris",
+      "posting_id": "629ceb95-2fa6-49ff-99e9-d60ba333aea8",
+      "employer": "Numeris",
+      "role": "Customer Success Coordinator | Coordonnateur, Réussite client (Bilingue/Bilingual)",
+      "location": "Canada - Remote",
+      "workplace": "remote",
+      "commitment": "full_time",
+      "canonical_url": "https://jobs.lever.co/numeris/629ceb95-2fa6-49ff-99e9-d60ba333aea8",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "medium_high",
+      "fit_reasons": [
+        "English/French communication required",
+        "Canada-remote client-service coordination",
+        "onboarding, account administration, technical communication, and issue escalation",
+        "published salary CAD 53,000-63,000"
+      ],
+      "known_requirements": [
+        "degree/diploma or equivalent experience",
+        "2+ years client success, marketing coordination, or technical communications",
+        "1-3 years advertising/broadcasting industry listed",
+        "English/French professional communication"
+      ],
+      "owner_or_policy_answers_required_before_selection": [],
+      "fit_gaps_or_risks": [
+        "advertising/broadcasting industry experience requirement may reduce fit"
+      ],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 7,
+      "site": "thesalesfactory",
+      "posting_id": "4a2b0af6-e161-4c1a-86fe-dd4ecbf68f5c",
+      "employer": "The Sales Factory",
+      "role": "Business Development Representative (Remote) - Bilingual",
+      "location": "All Canada (Remote)",
+      "workplace": "remote",
+      "commitment": "full_time",
+      "canonical_url": "https://jobs.lever.co/thesalesfactory/4a2b0af6-e161-4c1a-86fe-dd4ecbf68f5c",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "medium_high",
+      "fit_reasons": [
+        "French/English bilingual candidates explicitly preferred",
+        "Canada-wide remote",
+        "post-secondary education required",
+        "no prior sales expertise required and training is provided",
+        "clients include technology and banking companies"
+      ],
+      "known_requirements": [
+        "professional English",
+        "French strongly preferred",
+        "post-secondary education",
+        "outbound prospecting/cold-call work"
+      ],
+      "owner_or_policy_answers_required_before_selection": [
+        "legal authorization to work in Canada",
+        "start-date availability",
+        "corporate sales experience count",
+        "sales training/bootcamp history",
+        "optional demographic survey preference"
+      ],
+      "fit_gaps_or_risks": [
+        "role is sales-development rather than fraud/compliance/banking operations"
+      ],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 8,
+      "site": "tali-ai",
+      "posting_id": "30dc45bc-c96a-4ca2-a9f5-f8ce10446df0",
+      "employer": "Tali AI",
+      "role": "Bilingual Customer Success Specialist",
+      "location": "Toronto",
+      "workplace": "hybrid",
+      "commitment": "full_time",
+      "canonical_url": "https://jobs.lever.co/tali-ai/30dc45bc-c96a-4ca2-a9f5-f8ce10446df0",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "medium",
+      "fit_reasons": [
+        "French/English bilingualism required",
+        "technical customer workflows and Tier II support",
+        "CRM/ticketing and AI-product environment",
+        "published salary CAD 55,000-75,000"
+      ],
+      "known_requirements": [
+        "previous customer support including Tier II",
+        "French/English professional communication",
+        "Toronto hybrid work",
+        "two-hour take-home assessment in hiring process"
+      ],
+      "owner_or_policy_answers_required_before_selection": [
+        "willingness/ability to satisfy Toronto hybrid location requirement"
+      ],
+      "fit_gaps_or_risks": [
+        "Toronto hybrid requirement is a location decision",
+        "assessment is a permanent manual-handoff boundary and must never be automated"
+      ],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 9,
+      "site": "versapay",
+      "posting_id": "af496a99-b0d6-40a8-89ec-c485a91baf33",
+      "employer": "Versapay",
+      "role": "Customer Account Manager",
+      "location": "Canada (Remote)",
+      "workplace": "remote",
+      "commitment": "regular_full_time",
+      "canonical_url": "https://jobs.lever.co/versapay/af496a99-b0d6-40a8-89ec-c485a91baf33",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "stretch",
+      "fit_reasons": [
+        "Canadian remote fintech/payments environment",
+        "customer account ownership and finance-industry exposure"
+      ],
+      "known_requirements": [
+        "3-5 years B2B SaaS sales",
+        "account growth/retention experience",
+        "quota attainment and mid-market deal closing",
+        "CRM/sales-engagement tooling"
+      ],
+      "owner_or_policy_answers_required_before_selection": [],
+      "fit_gaps_or_risks": [
+        "strong SaaS-sales/quota requirements make this materially weaker than the first eight candidates"
+      ],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 10,
+      "site": "freebalance.com",
+      "posting_id": "19f6323d-df27-4295-b3f7-9309bf5f1e0e",
+      "employer": "FreeBalance",
+      "role": "Technical Services Consultant",
+      "location": "Ottawa, Ontario, Canada",
+      "workplace": "on_site",
+      "commitment": "full_time",
+      "canonical_url": "https://jobs.lever.co/freebalance.com/19f6323d-df27-4295-b3f7-9309bf5f1e0e",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "conditional",
+      "fit_reasons": [
+        "Ottawa location",
+        "English/French bilingual requirement",
+        "SQL, APIs, integrations, reporting and data-analysis technical scope",
+        "published salary CAD 65,000-105,000"
+      ],
+      "known_requirements": [
+        "ERP systems/data structures experience",
+        "data migration/ETL",
+        "SQL/data analysis",
+        "REST/SOAP integrations",
+        "Canadian citizenship and Secret Level I clearance eligibility stated by employer"
+      ],
+      "owner_or_policy_answers_required_before_selection": [
+        "Canadian citizenship",
+        "Government of Canada Secret Level I clearance eligibility"
+      ],
+      "fit_gaps_or_risks": [
+        "hard citizenship/clearance condition cannot be inferred",
+        "ERP/ETL experience requirement may be a fit gap",
+        "on-site Ottawa"
+      ],
+      "selected": false,
+      "preflight_status": "blocked_pending_owner_facts"
+    },
+    {
+      "rank": 11,
+      "site": "telesat",
+      "posting_id": "b4935c82-0210-4a1c-8dcd-11b916e0218c",
+      "employer": "Telesat",
+      "role": "Bilingual Technical Recruiter (French & English) 12 month contract",
+      "location": "Ottawa, Ontario",
+      "workplace": "hybrid",
+      "commitment": "temporary_12_month_full_time_hours",
+      "canonical_url": "https://jobs.lever.co/telesat/b4935c82-0210-4a1c-8dcd-11b916e0218c",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "stretch",
+      "fit_reasons": [
+        "Ottawa hybrid",
+        "French/English mandatory",
+        "computer-science education explicitly preferred among relevant degrees"
+      ],
+      "known_requirements": [
+        "3-5 years corporate or agency recruiting",
+        "full-cycle technical recruiting",
+        "ability to work in Canada and obtain Reliability Status"
+      ],
+      "owner_or_policy_answers_required_before_selection": [
+        "ability to work in Canada",
+        "Reliability Status eligibility"
+      ],
+      "fit_gaps_or_risks": [
+        "3-5 years recruiting requirement is a major experience mismatch unless separately supported by the profile"
+      ],
+      "selected": false,
+      "preflight_status": "not_materialized"
+    },
+    {
+      "rank": 12,
+      "site": "saviynt",
+      "posting_id": "99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8",
+      "employer": "Saviynt",
+      "role": "Customer Success Manager - IAM/IGA - French Speaking",
+      "location": "Remote Canada / Quebec / Toronto",
+      "workplace": "remote",
+      "commitment": "full_time",
+      "canonical_url": "https://jobs.lever.co/saviynt/99cf4fa0-a96e-4f8b-b46f-dde4c47aa9a8",
+      "source_observed": "2026-08-28",
+      "source_kind": "direct_employer_lever",
+      "fit_tier": "stretch_hold",
+      "fit_reasons": [
+        "French-speaking Canada remote role",
+        "identity security / governance / compliance domain is directionally relevant",
+        "technical cloud/IAM environment"
+      ],
+      "known_requirements": [
+        "5-8 years enterprise SaaS customer success/account management",
+        "IAM domain preferred",
+        "up to 50% travel"
+      ],
+      "owner_or_policy_answers_required_before_selection": [],
+      "fit_gaps_or_risks": [
+        "seniority requirement is high",
+        "posting text contains a contradictory regional line saying applications outside North Central US are not accepted despite the title/location stating Remote Canada; treat as unresolved employer-posting inconsistency until direct preflight revalidation"
+      ],
+      "selected": false,
+      "preflight_status": "hold_posting_inconsistency"
+    }
+  ],
+  "recommended_initial_owner_review_ranks": [1, 2, 3, 4, 5, 6, 7, 8],
+  "backup_or_conditional_ranks": [9, 10, 11, 12],
+  "next_safe_action": "revalidate_direct_posting_then_materialize_read_only_phase_b_dossier_for_owner-selected_candidates"
+}
