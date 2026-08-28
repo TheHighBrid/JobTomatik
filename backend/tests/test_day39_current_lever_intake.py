@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import httpx
+import pytest
+
 from app.models.application import Application, ApplicationEvent
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_integrity import SubmissionIdentityAlias
+from app.services import ats_lever
 from app.services import lever_phase_b_current_intake as intake_service
 
 
@@ -147,3 +151,100 @@ def test_current_lever_intake_rejects_forged_authority_fields(auth_client):
     }
     response = auth_client.post("/api/supervised-pilot/lever-candidates", json=payload)
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_hosted_metadata_fallback_is_strictly_404_scoped(monkeypatch):
+    posting_id = "a52e4915-8239-4581-8828-84661f070424"
+    hosted_url = f"https://jobs.lever.co/fullscript/{posting_id}"
+    apply_path = f"/fullscript/{posting_id}/apply"
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        if request.url.host == "api.lever.co":
+            return httpx.Response(
+                404,
+                request=request,
+                json={"ok": False, "error": "Document not found"},
+            )
+        assert request.url.host == "jobs.lever.co"
+        html = (
+            '<!doctype html><html><head><title>Fullscript - Technical Support Specialist</title></head>'
+            '<body><div class="posting-headline"><h2>Technical Support Specialist</h2></div>'
+            f'<a href="{apply_path}">Apply for this job</a></body></html>'
+        )
+        return httpx.Response(
+            200,
+            request=request,
+            headers={"content-type": "text/html; charset=utf-8"},
+            text=html,
+        )
+
+    transport = httpx.MockTransport(handler)
+    real_client = ats_lever.httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(ats_lever.httpx, "AsyncClient", client_factory)
+    payload = await ats_lever.fetch_lever_posting("fullscript", posting_id)
+
+    assert payload["id"] == posting_id
+    assert payload["text"] == "Technical Support Specialist"
+    assert payload["hostedUrl"] == hosted_url
+    assert payload["applyUrl"] == f"{hosted_url}/apply"
+    assert payload["_metadata_source"] == "hosted_page_404_fallback"
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_hosted_metadata_fallback_does_not_mask_non_404_api_failures(monkeypatch):
+    posting_id = "a52e4915-8239-4581-8828-84661f070424"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "api.lever.co"
+        return httpx.Response(403, request=request, text="forbidden")
+
+    transport = httpx.MockTransport(handler)
+    real_client = ats_lever.httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(ats_lever.httpx, "AsyncClient", client_factory)
+    with pytest.raises(httpx.HTTPStatusError):
+        await ats_lever.fetch_lever_posting("fullscript", posting_id)
+
+
+@pytest.mark.asyncio
+async def test_hosted_metadata_fallback_requires_exact_apply_route(monkeypatch):
+    posting_id = "a52e4915-8239-4581-8828-84661f070424"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.lever.co":
+            return httpx.Response(404, request=request, json={"ok": False})
+        html = (
+            '<!doctype html><html><body>'
+            '<div class="posting-headline"><h2>Technical Support Specialist</h2></div>'
+            '</body></html>'
+        )
+        return httpx.Response(
+            200,
+            request=request,
+            headers={"content-type": "text/html"},
+            text=html,
+        )
+
+    transport = httpx.MockTransport(handler)
+    real_client = ats_lever.httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(ats_lever.httpx, "AsyncClient", client_factory)
+    with pytest.raises(ValueError, match="exact apply route"):
+        await ats_lever.fetch_lever_posting("fullscript", posting_id)

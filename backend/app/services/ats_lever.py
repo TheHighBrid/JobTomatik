@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import unescape
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -79,6 +80,79 @@ def parse_lever_job_url(url: str) -> Tuple[Optional[str], Optional[str], str]:
     return site or None, posting_id or None, region
 
 
+def _clean_hosted_text(value: str) -> str:
+    without_tags = re.sub(r"<[^>]+>", " ", value or "")
+    return " ".join(unescape(without_tags).split())
+
+
+def _hosted_role_from_html(body: str) -> Optional[str]:
+    patterns = (
+        r'<div[^>]*class=["\'][^"\']*posting-headline[^"\']*["\'][^>]*>.*?<h2[^>]*>(.*?)</h2>',
+        r'<h2[^>]*>(.*?)</h2>',
+    )
+    for pattern in patterns:
+        match = re.search(pattern, body or "", flags=re.IGNORECASE | re.DOTALL)
+        if not match:
+            continue
+        role = _clean_hosted_text(match.group(1))
+        if role:
+            return role
+    return None
+
+
+async def _fetch_lever_hosted_posting(
+    client: httpx.AsyncClient,
+    site: str,
+    posting_id: str,
+    *,
+    region: str,
+) -> Dict[str, Any]:
+    jobs_host = LEVER_EU_JOBS_HOST if region == "eu" else LEVER_GLOBAL_JOBS_HOST
+    hosted_url = f"https://{jobs_host}/{site}/{posting_id}"
+    apply_url = f"{hosted_url}/apply"
+    response = await client.get(hosted_url)
+    response.raise_for_status()
+
+    final_url = str(response.url)
+    parsed = urlparse(final_url)
+    observed_site, observed_posting_id, observed_region = parse_lever_job_url(final_url)
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() != jobs_host
+        or parsed.path.rstrip("/") != f"/{site}/{posting_id}"
+        or parsed.query
+        or parsed.fragment
+        or observed_site != site
+        or observed_posting_id != posting_id
+        or observed_region != region
+    ):
+        raise ValueError("Lever hosted posting redirected away from the exact selected target.")
+
+    content_type = str(response.headers.get("content-type") or "").lower()
+    if "text/html" not in content_type:
+        raise ValueError("Lever hosted posting fallback did not return HTML.")
+
+    body = response.text
+    role = _hosted_role_from_html(body)
+    if not role:
+        raise ValueError("Lever hosted posting fallback did not expose an exact role title.")
+
+    apply_path = f"/{site}/{posting_id}/apply"
+    if apply_url not in body and apply_path not in body:
+        raise ValueError("Lever hosted posting fallback did not expose the exact apply route.")
+
+    return {
+        "id": posting_id,
+        "text": role,
+        "categories": {},
+        "description": "",
+        "descriptionPlain": "",
+        "hostedUrl": hosted_url,
+        "applyUrl": apply_url,
+        "_metadata_source": "hosted_page_404_fallback",
+    }
+
+
 async def fetch_lever_posting(
     site: str,
     posting_id: str,
@@ -90,6 +164,13 @@ async def fetch_lever_posting(
     url = f"https://{host}/v0/postings/{site}/{posting_id}"
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         response = await client.get(url, params={"mode": "json"})
+        if response.status_code == 404:
+            return await _fetch_lever_hosted_posting(
+                client,
+                site,
+                posting_id,
+                region=region,
+            )
         response.raise_for_status()
         payload = response.json()
     if not isinstance(payload, dict):
