@@ -35,12 +35,17 @@ jobs:
           path = Path("evidence/lever-phase-b-candidate-review-2026-08-28.json")
           queue = json.loads(path.read_text(encoding="utf-8"))
           candidates = list(queue.get("candidates") or [])
+          recommended = set(queue.get("recommended_initial_owner_review_ranks") or [])
+          backups = set(queue.get("backup_or_conditional_ranks") or [])
 
           assert queue["schema_version"] == "lever-phase-b-candidate-review-v1"
           assert queue["purpose"] == "owner_review_before_supervised_phase_b_selection"
           assert queue["required_confirmed_phase_b_submissions"] == 10
           assert queue["prepared_candidate_count"] == len(candidates) >= 12
           assert queue["distinct_lever_site_count"] == len({str(item["site"]).casefold() for item in candidates})
+          assert recommended
+          assert recommended.isdisjoint(backups)
+          assert recommended | backups == set(range(1, len(candidates) + 1))
 
           for key in (
               "selected_by_user",
@@ -55,13 +60,23 @@ jobs:
               assert queue[key] is False
           assert queue["owner_selection_required"] is True
 
+          allowed_statuses = {
+              "not_materialized",
+              "blocked_pending_owner_facts",
+              "hold_posting_inconsistency",
+          }
           posting_ids = []
           sites = []
           for rank, item in enumerate(candidates, start=1):
               assert item["rank"] == rank
               assert item["source_kind"] == "direct_employer_lever"
               assert item["selected"] is False
-              assert item["preflight_status"] == "not_materialized"
+              assert item["preflight_status"] in allowed_statuses
+              if rank in recommended:
+                  assert item["preflight_status"] == "not_materialized"
+              if item["preflight_status"] != "not_materialized":
+                  assert rank in backups
+                  assert item.get("fit_gaps_or_risks")
               assert str(item["posting_id"]).strip()
               assert str(item["site"]).strip()
               assert str(item["employer"]).strip()
