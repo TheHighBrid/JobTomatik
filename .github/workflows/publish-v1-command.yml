@@ -189,7 +189,7 @@ jobs:
           assert metadata.get('apk_sha256') == os.environ['APPROVED_APK_SHA256']
           assert int(metadata.get('workflow_run_id') or 0) == int(os.environ['CANDIDATE_RUN_ID'])
           assert metadata.get('publication_authorized') is False
-          assert metadata.get('signing_mode') in {'release', 'development'}
+          assert metadata.get('signing_mode') in {'release_signed', 'development_signed'}
           PY
 
       - name: Prepare immutable release bundle from approved candidate
