@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/day42-publish-readiness-tooling-gate.yml'
       - '.github/workflows/android-apk.yml'
+      - '.github/workflows/build-v2-release-candidate.yml'
       - '.github/workflows/publish-v1-command.yml'
       - 'backend/app/services/day42_publish_readiness.py'
       - 'backend/scripts/build_day42_publish_readiness.py'
@@ -77,11 +78,14 @@ jobs:
               'real_followup_send_enabled': False,
               'requires_real_day41_audit': True,
               'requires_exact_final_commit_matrix': True,
+              'requires_exact_prebuilt_candidate': True,
+              'requires_exact_candidate_run_id': True,
               'requires_exact_apk_identity': True,
               'requires_truthful_maturity_manifest': True,
               'requires_separate_owner_publication_authorization': True,
               'requires_separate_hardened_publisher': True,
               'publisher_is_workflow_dispatch_only': True,
+              'publisher_rebuilds_approved_apk': False,
               'pr_apk_build_is_read_only': True,
           }
           Path('day42-publish-readiness-tooling.json').write_text(
@@ -95,6 +99,7 @@ jobs:
           assert payload['github_release_created'] is False
           assert payload['main_modified'] is False
           assert payload['publisher_is_workflow_dispatch_only'] is True
+          assert payload['publisher_rebuilds_approved_apk'] is False
           assert payload['pr_apk_build_is_read_only'] is True
           PY
       - name: Upload Day 42 tooling evidence
