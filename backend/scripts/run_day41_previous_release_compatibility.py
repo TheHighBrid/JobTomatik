@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Exercise a frozen v1 SQLite database against the current candidate migrations.
+"""Exercise a real frozen-v1 runtime schema against the current candidate startup path.
 
-This drill never opens the live JobTomatik database. It creates a temporary database from
-the frozen v1 source, inserts one synthetic user sentinel, migrates the database with the
-candidate source, and verifies schema/data/ORM compatibility.
+JobTomatik v1.00 did not ship Alembic revision files. Its real database bootstrap was
+``Base.metadata.create_all`` followed by ``_safe_migrate``. This drill reproduces that
+exact historical behavior in an isolated temporary SQLite database, inserts one synthetic
+user sentinel, runs the current candidate's real startup schema path against the same
+database, and verifies old-data preservation plus full current-ORM schema compatibility.
+
+The live JobTomatik database is never opened, copied, or mutated.
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from typing import Any
 
 from app.services.day41_previous_release_compatibility import (
     DAY41_FROZEN_PREVIOUS_RELEASE,
+    DAY41_RUNTIME_SCHEMA_BOOTSTRAP,
     build_day41_previous_release_compatibility_report,
 )
 
@@ -33,13 +38,7 @@ SENTINEL = {
 
 
 def _python_executable_path(raw: str) -> Path:
-    """Return an absolute executable path without dereferencing virtualenv symlinks.
-
-    ``venv/bin/python`` is commonly a symlink to the base interpreter. ``Path.resolve()``
-    follows that symlink and silently discards the virtualenv's ``pyvenv.cfg`` context,
-    causing subprocesses to lose the environment's installed packages. ``abspath`` keeps
-    the invocation path intact while still removing relative-path ambiguity.
-    """
+    """Return an absolute executable path without dereferencing virtualenv symlinks."""
 
     return Path(os.path.abspath(os.path.expanduser(raw)))
 
@@ -48,6 +47,17 @@ def _git_revision(checkout: Path) -> str:
     return subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=checkout, text=True
     ).strip().lower()
+
+
+def _alembic_revision_count(backend: Path) -> int:
+    versions = backend / "alembic" / "versions"
+    if not versions.is_dir():
+        return 0
+    return sum(
+        1
+        for path in versions.glob("*.py")
+        if path.name != "__init__.py" and path.is_file()
+    )
 
 
 def _run_python(
@@ -76,52 +86,69 @@ def _run_python(
     return json.loads(text[-1])
 
 
-def _migration_probe(
+def _runtime_schema_bootstrap(
     python_executable: Path,
     backend: Path,
     *,
     database_url: str,
     env: dict[str, str],
 ) -> dict[str, Any]:
-    # Import Alembic while cwd is outside ``backend`` and without an inherited
-    # PYTHONPATH so neither checkout's local ``backend/alembic`` migration
-    # directory can shadow the installed Alembic package.
     code = r'''
 import json
-import os
-import sys
-from pathlib import Path
-from alembic import command
-from alembic.config import Config
-from alembic.runtime.migration import MigrationContext
-from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine
+from app.database import Base, engine
+from app.models import *  # noqa: F401,F403
+from app.main import _safe_migrate
 
-backend = Path(os.environ["COMPAT_BACKEND"]).resolve()
-url = os.environ["COMPAT_DATABASE_URL"]
-sys.path.insert(0, str(backend))
-cfg = Config(str(backend / "alembic.ini"))
-cfg.set_main_option("script_location", str(backend / "alembic"))
-cfg.set_main_option("sqlalchemy.url", url)
-command.upgrade(cfg, "head")
-script = ScriptDirectory.from_config(cfg)
-script_heads = sorted(script.get_heads())
-engine = create_engine(url)
-with engine.connect() as connection:
-    database_heads = sorted(MigrationContext.configure(connection).get_current_heads())
-print(json.dumps({"script_heads": script_heads, "database_heads": database_heads}, sort_keys=True))
+try:
+    Base.metadata.create_all(bind=engine)
+    _safe_migrate(engine)
+except Exception as exc:
+    print(json.dumps({"ok": False, "error_type": type(exc).__name__}, sort_keys=True))
+else:
+    print(json.dumps({"ok": True, "dialect": engine.dialect.name}, sort_keys=True))
 '''
     probe_env = dict(env)
-    probe_env.pop("PYTHONPATH", None)
-    probe_env["COMPAT_BACKEND"] = str(backend)
-    probe_env["COMPAT_DATABASE_URL"] = database_url
+    probe_env["PYTHONPATH"] = str(backend)
     probe_env["DATABASE_URL"] = database_url
     return _run_python(
         python_executable,
-        cwd=backend.parent,
+        cwd=backend,
         code=code,
         env=probe_env,
     )
+
+
+def _candidate_expected_schema(
+    python_executable: Path,
+    backend: Path,
+    *,
+    database_url: str,
+    env: dict[str, str],
+) -> dict[str, list[str]]:
+    code = r'''
+import json
+from app.database import Base
+from app.models import *  # noqa: F401,F403
+
+schema = {
+    table.name: sorted(column.name for column in table.columns)
+    for table in Base.metadata.sorted_tables
+}
+print(json.dumps(schema, sort_keys=True))
+'''
+    probe_env = dict(env)
+    probe_env["PYTHONPATH"] = str(backend)
+    probe_env["DATABASE_URL"] = database_url
+    result = _run_python(
+        python_executable,
+        cwd=backend,
+        code=code,
+        env=probe_env,
+    )
+    return {
+        str(table): [str(column) for column in columns]
+        for table, columns in result.items()
+    }
 
 
 def _schema_snapshot(connection: sqlite3.Connection) -> dict[str, list[str]]:
@@ -185,7 +212,9 @@ def _seed_previous_release(database: Path) -> tuple[dict[str, list[str]], dict[s
         connection.close()
 
 
-def _post_migration_probe(database: Path) -> tuple[dict[str, list[str]], dict[str, Any], bool, bool]:
+def _post_upgrade_probe(
+    database: Path,
+) -> tuple[dict[str, list[str]], dict[str, Any], bool, bool]:
     connection = sqlite3.connect(database)
     try:
         schema = _schema_snapshot(connection)
@@ -209,21 +238,25 @@ import json
 from app.database import SessionLocal
 from app.models import User
 
-db = SessionLocal()
 try:
-    row = db.query(User).filter(User.id == 987654321).one_or_none()
-    passed = bool(
-        row is not None
-        and row.email == "day41-v1-compatibility@example.invalid"
-        and row.hashed_password == "synthetic-day41-compatibility-hash"
-        and row.full_name == "Day41 Compatibility Sentinel"
-        and row.is_active is True
-    )
-finally:
-    db.close()
+    db = SessionLocal()
+    try:
+        row = db.query(User).filter(User.id == 987654321).one_or_none()
+        passed = bool(
+            row is not None
+            and row.email == "day41-v1-compatibility@example.invalid"
+            and row.hashed_password == "synthetic-day41-compatibility-hash"
+            and row.full_name == "Day41 Compatibility Sentinel"
+            and row.is_active is True
+        )
+    finally:
+        db.close()
+except Exception:
+    passed = False
 print(json.dumps({"passed": passed}))
 '''
     probe_env = dict(env)
+    probe_env["PYTHONPATH"] = str(backend)
     probe_env["DATABASE_URL"] = database_url
     result = _run_python(
         python_executable,
@@ -264,6 +297,9 @@ def main() -> int:
     if f"Frozen release source commit: {DAY41_FROZEN_PREVIOUS_RELEASE}" not in source_manifest:
         raise RuntimeError("Current RELEASE_SOURCE.txt does not attest the frozen v1 source commit")
 
+    previous_alembic_revision_count = _alembic_revision_count(previous_backend)
+    candidate_alembic_revision_count = _alembic_revision_count(candidate_backend)
+
     base_env = dict(os.environ)
     base_env.update(
         {
@@ -281,21 +317,26 @@ def main() -> int:
         database = Path(tmp) / "v1-to-v2.sqlite3"
         database_url = f"sqlite:///{database.as_posix()}"
 
-        previous_probe = _migration_probe(
+        previous_bootstrap = _runtime_schema_bootstrap(
             previous_python,
             previous_backend,
             database_url=database_url,
             env=base_env,
         )
         previous_schema, sentinel_before = _seed_previous_release(database)
-
-        candidate_probe = _migration_probe(
+        candidate_expected_schema = _candidate_expected_schema(
             candidate_python,
             candidate_backend,
             database_url=database_url,
             env=base_env,
         )
-        migrated_schema, sentinel_after, integrity_ok, foreign_keys_ok = _post_migration_probe(
+        candidate_upgrade = _runtime_schema_bootstrap(
+            candidate_python,
+            candidate_backend,
+            database_url=database_url,
+            env=base_env,
+        )
+        migrated_schema, sentinel_after, integrity_ok, foreign_keys_ok = _post_upgrade_probe(
             database
         )
         orm_probe_ok = _orm_probe(
@@ -308,11 +349,15 @@ def main() -> int:
     report = build_day41_previous_release_compatibility_report(
         previous_revision=previous_revision,
         candidate_revision=candidate_revision,
-        previous_database_heads=previous_probe.get("database_heads"),
-        candidate_script_heads=candidate_probe.get("script_heads"),
-        candidate_database_heads=candidate_probe.get("database_heads"),
+        previous_bootstrap_method=DAY41_RUNTIME_SCHEMA_BOOTSTRAP,
+        candidate_upgrade_method=DAY41_RUNTIME_SCHEMA_BOOTSTRAP,
+        previous_alembic_revision_count=previous_alembic_revision_count,
+        candidate_alembic_revision_count=candidate_alembic_revision_count,
+        previous_bootstrap_ok=previous_bootstrap.get("ok") is True,
+        candidate_upgrade_ok=candidate_upgrade.get("ok") is True,
         previous_schema=previous_schema,
         migrated_schema=migrated_schema,
+        candidate_expected_schema=candidate_expected_schema,
         sentinel_before=sentinel_before,
         sentinel_after=sentinel_after,
         sqlite_integrity_ok=integrity_ok,
@@ -331,6 +376,11 @@ def main() -> int:
                 "passed": report.get("passed"),
                 "previous_release_revision": report.get("previous_release_revision"),
                 "candidate_revision": report.get("candidate_revision"),
+                "previous_table_count": report.get("previous_table_count"),
+                "migrated_table_count": report.get("migrated_table_count"),
+                "candidate_expected_table_count": report.get("candidate_expected_table_count"),
+                "missing_candidate_tables": report.get("missing_candidate_tables"),
+                "missing_candidate_columns": report.get("missing_candidate_columns"),
                 "report_sha256": report.get("report_sha256"),
                 "output": str(output),
             },
