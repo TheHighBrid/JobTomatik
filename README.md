@@ -2,7 +2,7 @@
 
 **A bounded-autonomy job-search and application system with evidence-backed submission, fail-closed recovery, and exact-artifact release controls.**
 
-> **Release-candidate source.** The repository can contain v2.00 candidate code before the `v2.0.0` GitHub release exists. A published v2.00 release is valid only after the Day 41 release audit, Day 42 exact-artifact readiness gate, owner publication authorization, and immutable `v2.0.0` release all pass on the same exact source revision.
+> **Release-candidate source.** The repository can contain v2.00 candidate code before the `v2.0.0` GitHub release exists. A published v2.00 release is valid only after the Day 41 release audit, Day 42 exact-artifact readiness gate, owner publication authorization, and immutable `v2.0.0` release all pass on the same exact source revision. The v2.0.0 release exists only after those publication steps complete successfully; candidate source or green CI alone is not a published release.
 
 JobTomatik discovers and ranks jobs, prepares truthful application materials, resolves employer/ATS targets, fills supported forms, preserves retained-browser handoffs, records submission evidence, prevents duplicate attempts, schedules policy-bounded work, and tracks follow-up activity.
 
@@ -175,6 +175,8 @@ ALLOW_REAL_FOLLOWUP_SEND=false
 AUTOPILOT_ENABLED=false
 DEV_MOCK_JOBS=false
 ```
+
+Platform pilot settings remain available to configuration regression tests. Their presence in test configuration does not authorize a production pilot or change the retained adapter maturity state.
 
 Real submission authority is not derived from one environment variable. The active adapter maturity, runtime identity, production policy, kill-switch state, circuit breakers, and any required persisted live authorization are independently revalidated.
 
