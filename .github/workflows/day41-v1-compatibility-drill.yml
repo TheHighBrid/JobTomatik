@@ -1,0 +1,127 @@
+name: Day 41 frozen-v1 compatibility drill
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/day41-v1-compatibility-drill.yml'
+      - 'RELEASE_SOURCE.txt'
+      - 'backend/alembic/**'
+      - 'backend/alembic.ini'
+      - 'backend/app/models/**'
+      - 'backend/app/services/day41_previous_release_compatibility.py'
+      - 'backend/scripts/run_day41_previous_release_compatibility.py'
+      - 'backend/tests/test_day41_previous_release_compatibility.py'
+      - 'backend/requirements.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-v1-compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact candidate head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+          fetch-depth: 1
+
+      - name: Check out frozen v1 source
+        uses: actions/checkout@v7
+        with:
+          ref: 6f7f9fa6a7d3c63516cde381410ac188364dba36
+          path: previous
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install isolated current and frozen-v1 dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .venv-current
+          python -m venv .venv-v1
+          .venv-current/bin/python -m pip install -q --disable-pip-version-check -r candidate/backend/requirements.txt
+          .venv-v1/bin/python -m pip install -q --disable-pip-version-check -r previous/backend/requirements.txt
+
+      - name: Compile and unit-test compatibility tooling
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/candidate/backend
+          DATABASE_URL: sqlite:///./day41-v1-compatibility-unit.db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: day41-v1-compatibility-ci-only-secret-key
+          AI_PROVIDER: template
+          DEV_MOCK_JOBS: 'false'
+          ALLOW_REAL_APPLICATION_SUBMIT: 'false'
+          ALLOW_REAL_FOLLOWUP_SEND: 'false'
+          AUTOPILOT_ENABLED: 'false'
+        run: |
+          set -euo pipefail
+          .venv-current/bin/python -m compileall -q \
+            candidate/backend/app/services/day41_previous_release_compatibility.py \
+            candidate/backend/scripts/run_day41_previous_release_compatibility.py \
+            candidate/backend/tests/test_day41_previous_release_compatibility.py
+          cd candidate/backend
+          ../../.venv-current/bin/python -m pytest -q --tb=short -ra \
+            tests/test_day41_previous_release_compatibility.py
+
+      - name: Run real frozen-v1 to candidate migration drill
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/candidate/backend
+          DATABASE_URL: sqlite:///./day41-v1-compatibility-runner.db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: day41-v1-compatibility-ci-only-secret-key
+          AI_PROVIDER: template
+          DEV_MOCK_JOBS: 'false'
+          ALLOW_REAL_APPLICATION_SUBMIT: 'false'
+          ALLOW_REAL_FOLLOWUP_SEND: 'false'
+          AUTOPILOT_ENABLED: 'false'
+        run: |
+          set -euo pipefail
+          cd candidate/backend
+          ../../.venv-current/bin/python scripts/run_day41_previous_release_compatibility.py \
+            --previous-checkout "${{ github.workspace }}/previous" \
+            --candidate-checkout "${{ github.workspace }}/candidate" \
+            --previous-python "${{ github.workspace }}/.venv-v1/bin/python" \
+            --candidate-python "${{ github.workspace }}/.venv-current/bin/python" \
+            --output evidence/day41-previous-release-compatibility.json
+
+      - name: Prove drill is synthetic and non-destructive
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(
+              Path('candidate/backend/evidence/day41-previous-release-compatibility.json').read_text(encoding='utf-8')
+          )
+          assert report['passed'] is True
+          assert report['previous_release_revision'] == '6f7f9fa6a7d3c63516cde381410ac188364dba36'
+          assert report['live_database_touched'] is False
+          assert report['synthetic_data_only'] is True
+          assert report['row_contents_retained_in_report'] is False
+          assert len(report['report_sha256']) == 64
+          print(json.dumps({
+              'passed': report['passed'],
+              'previous_release_revision': report['previous_release_revision'],
+              'candidate_revision': report['candidate_revision'],
+              'report_sha256': report['report_sha256'],
+          }, sort_keys=True))
+          PY
+
+      - name: Upload compatibility evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: day41-frozen-v1-compatibility-${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate/backend/evidence/day41-previous-release-compatibility.json
+          if-no-files-found: error
+          retention-days: 90
