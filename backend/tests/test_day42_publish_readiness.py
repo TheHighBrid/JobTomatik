@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from app.services.day42_publish_readiness import (
+    DAY42_CANDIDATE_WORKFLOW_PATH,
     DAY42_REQUIRED_WORKFLOWS,
     EXPECTED_ADAPTER_SCOPE,
     build_day42_publish_readiness,
@@ -11,6 +12,7 @@ from app.services.day42_publish_readiness import (
 REVISION = "a" * 40
 APK_SHA = "b" * 64
 OTHER_SHA = "c" * 64
+CANDIDATE_RUN_ID = 424242
 
 
 def _inputs():
@@ -34,10 +36,15 @@ def _inputs():
         "build_identity_sha256": OTHER_SHA,
         "signing_certificate_sha256": OTHER_SHA,
         "signing_mode": "development_signed",
+        "workflow_run_id": CANDIDATE_RUN_ID,
+        "workflow_path": DAY42_CANDIDATE_WORKFLOW_PATH,
+        "workflow_conclusion": "success",
         "reproducible_build": True,
         "source_commit_file_present": True,
         "checksums_file_present": True,
         "build_info_present": True,
+        "candidate_metadata_present": True,
+        "publication_authorized": False,
     }
     adapters = {
         name: {
@@ -76,6 +83,7 @@ def _inputs():
         "release_tag": "v2.0.0",
         "approved_for_commit": REVISION,
         "approved_apk_sha256": APK_SHA,
+        "approved_candidate_run_id": CANDIDATE_RUN_ID,
         "acknowledgment": expected_day42_publication_acknowledgment(
             revision=REVISION,
             apk_sha256=APK_SHA,
@@ -99,10 +107,12 @@ def _result(**overrides):
     return build_day42_publish_readiness(**values)
 
 
-def test_day42_clean_exact_commit_is_eligible_but_not_published():
+def test_day42_clean_exact_artifact_is_eligible_but_not_published():
     result = _result()
 
     assert result["publication_eligible"] is True
+    assert result["candidate_run_id"] == CANDIDATE_RUN_ID
+    assert result["candidate_workflow_path"] == DAY42_CANDIDATE_WORKFLOW_PATH
     assert result["publication_executed"] is False
     assert result["release_tag_created"] is False
     assert result["github_release_created"] is False
@@ -134,12 +144,12 @@ def test_day42_requires_final_exact_head_matrix():
 
 def test_day42_requires_every_final_workflow():
     _, matrix, *_ = _inputs()
-    matrix["workflows"]["Day 41 release-audit tooling gate"] = "failure"
+    matrix["workflows"]["Day 42 publish-readiness tooling gate"] = "failure"
 
     result = _result(final_release_matrix=matrix)
 
     assert result["publication_eligible"] is False
-    assert "final_release_matrix.workflow:Day 41 release-audit tooling gate" in result["blockers"]
+    assert "final_release_matrix.workflow:Day 42 publish-readiness tooling gate" in result["blockers"]
 
 
 def test_day42_requires_exact_apk_and_build_provenance():
@@ -156,12 +166,39 @@ def test_day42_requires_exact_apk_and_build_provenance():
 
 def test_day42_requires_truthful_explicit_signing_mode():
     _, _, artifact, *_ = _inputs()
-    artifact["signing_mode"] = "unknown"
+    artifact["signing_mode"] = "development"
 
     result = _result(candidate_artifact=artifact)
 
     assert result["publication_eligible"] is False
     assert "candidate_artifact.signing_mode_truthful" in result["blockers"]
+
+
+def test_day42_requires_successful_exact_candidate_workflow():
+    _, _, artifact, *_ = _inputs()
+    artifact["workflow_run_id"] = 0
+    artifact["workflow_path"] = ".github/workflows/android-apk.yml"
+    artifact["workflow_conclusion"] = "failure"
+
+    result = _result(candidate_artifact=artifact)
+
+    assert result["publication_eligible"] is False
+    assert "candidate_artifact.candidate_run_id_valid" in result["blockers"]
+    assert "candidate_artifact.candidate_workflow_exact" in result["blockers"]
+    assert "candidate_artifact.candidate_workflow_succeeded" in result["blockers"]
+
+
+def test_day42_rejects_candidate_that_pre_authorizes_publication():
+    _, _, artifact, *_ = _inputs()
+    artifact["publication_authorized"] = True
+
+    result = _result(candidate_artifact=artifact)
+
+    assert result["publication_eligible"] is False
+    assert (
+        "candidate_artifact.publication_not_pre_authorized_in_candidate"
+        in result["blockers"]
+    )
 
 
 def test_day42_rejects_adapter_scope_drift():
@@ -211,16 +248,18 @@ def test_day42_requires_readme_and_changelog_updated_before_publish():
     assert "release_documents.changelog_updated_for_release" in result["blockers"]
 
 
-def test_day42_owner_authorization_is_exact_commit_and_apk_bound():
+def test_day42_owner_authorization_is_exact_commit_apk_and_run_bound():
     *_, owner = _inputs()
     owner["approved_for_commit"] = "d" * 40
     owner["approved_apk_sha256"] = "e" * 64
+    owner["approved_candidate_run_id"] = CANDIDATE_RUN_ID + 1
 
     result = _result(owner_authorization=owner)
 
     assert result["publication_eligible"] is False
     assert "owner_authorization.owner_commit_exact" in result["blockers"]
     assert "owner_authorization.owner_apk_sha256_exact" in result["blockers"]
+    assert "owner_authorization.owner_candidate_run_exact" in result["blockers"]
 
 
 def test_day42_owner_acknowledgment_must_be_exact():
