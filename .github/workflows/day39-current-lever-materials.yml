@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/day39-current-lever-materials
+      - codex/fix-current-lever-materials-cli
   pull_request:
     paths:
       - backend/app/services/lever_phase_b_current_materials.py
@@ -30,6 +31,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt
+
+      - name: Prove direct operator CLI imports from backend
+        working-directory: backend
+        run: |
+          python scripts/current_lever_phase_b_materials.py --help >/tmp/current-lever-materials-help.txt
+          grep -q "Operate the preparation-only current Lever Phase B material boundary" /tmp/current-lever-materials-help.txt
 
       - name: Run current Lever intake and material regressions
         working-directory: backend
