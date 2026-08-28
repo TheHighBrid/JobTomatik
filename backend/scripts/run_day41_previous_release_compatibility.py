@@ -71,17 +71,24 @@ def _migration_probe(
     database_url: str,
     env: dict[str, str],
 ) -> dict[str, Any]:
+    # Import Alembic while cwd is outside ``backend`` so the repository's local
+    # ``backend/alembic`` migration directory cannot shadow the installed package.
     code = r'''
 import json
 import os
+import sys
+from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine
 
+backend = Path(os.environ["COMPAT_BACKEND"]).resolve()
 url = os.environ["COMPAT_DATABASE_URL"]
-cfg = Config("alembic.ini")
+sys.path.insert(0, str(backend))
+cfg = Config(str(backend / "alembic.ini"))
+cfg.set_main_option("script_location", str(backend / "alembic"))
 cfg.set_main_option("sqlalchemy.url", url)
 command.upgrade(cfg, "head")
 script = ScriptDirectory.from_config(cfg)
@@ -92,11 +99,12 @@ with engine.connect() as connection:
 print(json.dumps({"script_heads": script_heads, "database_heads": database_heads}, sort_keys=True))
 '''
     probe_env = dict(env)
+    probe_env["COMPAT_BACKEND"] = str(backend)
     probe_env["COMPAT_DATABASE_URL"] = database_url
     probe_env["DATABASE_URL"] = database_url
     return _run_python(
         python_executable,
-        cwd=backend,
+        cwd=backend.parent,
         code=code,
         env=probe_env,
     )
