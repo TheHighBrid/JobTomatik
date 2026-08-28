@@ -32,6 +32,18 @@ SENTINEL = {
 }
 
 
+def _python_executable_path(raw: str) -> Path:
+    """Return an absolute executable path without dereferencing virtualenv symlinks.
+
+    ``venv/bin/python`` is commonly a symlink to the base interpreter. ``Path.resolve()``
+    follows that symlink and silently discards the virtualenv's ``pyvenv.cfg`` context,
+    causing subprocesses to lose the environment's installed packages. ``abspath`` keeps
+    the invocation path intact while still removing relative-path ambiguity.
+    """
+
+    return Path(os.path.abspath(os.path.expanduser(raw)))
+
+
 def _git_revision(checkout: Path) -> str:
     return subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=checkout, text=True
@@ -238,8 +250,8 @@ def main() -> int:
     candidate_checkout = Path(args.candidate_checkout).resolve()
     previous_backend = previous_checkout / "backend"
     candidate_backend = candidate_checkout / "backend"
-    previous_python = Path(args.previous_python).resolve()
-    candidate_python = Path(args.candidate_python).resolve()
+    previous_python = _python_executable_path(args.previous_python)
+    candidate_python = _python_executable_path(args.candidate_python)
 
     previous_revision = _git_revision(previous_checkout)
     candidate_revision = _git_revision(candidate_checkout)
