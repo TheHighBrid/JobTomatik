@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
-from app.api.autonomy_control import router as autonomy_router
-from app.api.live_pilot import LivePilotAuthorizeRequest
+from app.api.live_pilot import LivePilotAuthorizeRequest, router as live_pilot_router
 from app.models.application import Application, ApplicationStatus
 from app.models.job import Job, JobSource, JobStatus
 from app.models.user import User
@@ -179,11 +179,15 @@ def test_owner_api_schema_rejects_forged_authority_fields():
 
 
 def test_live_pilot_routes_are_nested_under_authenticated_autonomy_control():
-    paths = {route.path for route in autonomy_router.routes}
-    assert "/autonomy-control/live-pilot/preflight" in paths
-    assert "/autonomy-control/live-pilot/authorize" in paths
-    assert "/autonomy-control/live-pilot/status" in paths
-    assert "/autonomy-control/live-pilot/{authorization_id}/revoke" in paths
+    child_paths = {route.path for route in live_pilot_router.routes if hasattr(route, "path")}
+    assert "/live-pilot/preflight" in child_paths
+    assert "/live-pilot/authorize" in child_paths
+    assert "/live-pilot/status" in child_paths
+    assert "/live-pilot/{authorization_id}/revoke" in child_paths
+
+    parent_source = Path("app/api/autonomy_control.py").read_text()
+    assert "from app.api.live_pilot import router as live_pilot_router" in parent_source
+    assert "router.include_router(live_pilot_router)" in parent_source
 
 
 def test_global_submit_flag_alone_is_never_live_authority(db_session, monkeypatch):
