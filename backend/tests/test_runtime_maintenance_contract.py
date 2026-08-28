@@ -85,9 +85,9 @@ def test_web_package_and_android_release_tracks_are_consistent():
 
     assert android_name is not None
     assert android_code is not None
-    assert web_version == "1.0.0"
+    assert web_version == "2.0.0"
     assert package["version"] == web_version
     assert package_lock["version"] == web_version
     assert package_lock["packages"][""]["version"] == web_version
-    assert android_name.group(1) == "2.0.0"
+    assert android_name.group(1) == web_version
     assert android_code.group(1) == "200"
