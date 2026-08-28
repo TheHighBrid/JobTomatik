@@ -1,9 +1,11 @@
 from copy import deepcopy
+from pathlib import Path
 
 from app.services.day41_previous_release_compatibility import (
     DAY41_FROZEN_PREVIOUS_RELEASE,
     build_day41_previous_release_compatibility_report,
 )
+from scripts.run_day41_previous_release_compatibility import _python_executable_path
 
 
 CANDIDATE = "a" * 40
@@ -51,6 +53,21 @@ def _report(**overrides):
     values = _inputs()
     values.update(overrides)
     return build_day41_previous_release_compatibility_report(**values)
+
+
+def test_python_executable_path_preserves_virtualenv_symlink(tmp_path: Path):
+    real_python = tmp_path / "base-python"
+    real_python.write_text("", encoding="utf-8")
+    venv_bin = tmp_path / ".venv-v1" / "bin"
+    venv_bin.mkdir(parents=True)
+    venv_python = venv_bin / "python"
+    venv_python.symlink_to(real_python)
+
+    selected = _python_executable_path(str(venv_python))
+
+    assert selected == venv_python.absolute()
+    assert selected != real_python.resolve()
+    assert selected.is_symlink()
 
 
 def test_clean_frozen_v1_to_candidate_migration_passes():
