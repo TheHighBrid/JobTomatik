@@ -6,6 +6,8 @@ from app.models.material import ApplicationMaterial, ApplicationMaterialEvidence
 from app.models.user import User
 from app.services.material_generation import (
     _clean_material_statement,
+    _cover_letter_content,
+    _resume_summary_content,
     _usable_narrative_unit,
     generate_application_material,
     validate_claims,
@@ -71,17 +73,40 @@ def _complete_profile(user: User):
     }
 
 
-def _narrative_unit(statement: str, unit_id: int = 1):
+def _unit(
+    statement: str,
+    unit_id: int = 1,
+    *,
+    kind: str = "employment",
+    organization: str | None = None,
+    role: str | None = None,
+    confidence: float = 0.85,
+):
     return SimpleNamespace(
         id=unit_id,
-        kind="employment",
-        label="Resume experience",
+        kind=kind,
+        label="Resume evidence",
         statement=statement,
-        organization=None,
-        role=None,
+        organization=organization,
+        role=role,
         source_hash=f"hash-{unit_id}",
         verification_status="source_backed",
-        confidence=0.85,
+        confidence=confidence,
+    )
+
+
+def _narrative_unit(statement: str, unit_id: int = 1):
+    return _unit(statement, unit_id)
+
+
+def _simple_job():
+    return SimpleNamespace(
+        title="Technical Support Specialist",
+        company="Example Co",
+        location="Ottawa, ON",
+        description="Investigate fraud issues, troubleshoot systems, and document cases.",
+        requirements="Fraud investigation, troubleshooting, and case documentation.",
+        skills=["Fraud Investigation", "Troubleshooting"],
     )
 
 
@@ -237,3 +262,69 @@ def test_validator_blocks_pre_fix_material_with_pdf_glyph_and_fragment():
 
     assert any("unsafe PDF bullet glyph" in error for error in errors)
     assert any("likely incomplete narrative" in error for error in errors)
+
+
+def test_complete_short_narrative_evidence_is_preserved():
+    for statement in ("Won MVP award.", "Built JobTomatik."):
+        assert _usable_narrative_unit(_narrative_unit(statement)) is True
+
+
+def test_cleaner_preserves_signed_metrics_and_nix_terms():
+    assert _clean_material_statement("-10% error rate") == "-10% error rate"
+    assert _clean_material_statement("*nix administration") == "*nix administration"
+    assert _clean_material_statement("- Reduced error rate") == "Reduced error rate"
+
+
+def test_cover_letter_only_claims_structured_roles_that_are_rendered():
+    units = [
+        _unit("First complete role record.", 1, organization="Bank A", role="Analyst A"),
+        _unit("Second complete role record.", 2, organization="Bank B", role="Analyst B"),
+        _unit("Third complete role record.", 3, organization="Bank C", role="Analyst C"),
+    ]
+
+    content, claims, _ = _cover_letter_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        units,
+    )
+
+    employment_claims = [claim for claim in claims if claim["category"] == "employment"]
+    assert [claim["evidence_unit_ids"] for claim in employment_claims] == [[1], [2]]
+    assert "Analyst A" in content
+    assert "Analyst B" in content
+    assert "Analyst C" not in content
+    assert all(3 not in claim["evidence_unit_ids"] for claim in claims)
+
+
+def test_employment_alignment_is_applicant_fact_and_only_uses_supporting_units():
+    relevant = _unit("Investigated fraud alerts and documented cases.", 1, confidence=0.5)
+    unrelated = _unit("Supported retail customers with account questions.", 2)
+
+    _, claims, _ = _cover_letter_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [relevant, unrelated],
+    )
+
+    alignment_claims = [claim for claim in claims if claim["category"] == "job_alignment"]
+    assert alignment_claims
+    assert all(claim["applicant_fact"] is True for claim in alignment_claims)
+    assert any(claim["evidence_unit_ids"] == [1] for claim in alignment_claims)
+    assert all(2 not in claim["evidence_unit_ids"] for claim in alignment_claims)
+
+
+def test_resume_summary_attaches_employment_only_when_rendered_alignment_uses_it():
+    role = _unit("Credit Officer", 1, kind="role")
+    relevant = _unit("Investigated fraud alerts and documented cases.", 2)
+    unrelated = _unit("Supported retail customers with account questions.", 3)
+
+    _, claims, _ = _resume_summary_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [role, relevant, unrelated],
+    )
+
+    summary_claim = next(claim for claim in claims if claim["category"] == "career_summary")
+    assert 1 in summary_claim["evidence_unit_ids"]
+    assert 2 in summary_claim["evidence_unit_ids"]
+    assert 3 not in summary_claim["evidence_unit_ids"]
