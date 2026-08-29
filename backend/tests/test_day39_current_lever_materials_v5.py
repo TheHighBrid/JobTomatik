@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from app.models.application import Application, ApplicationAutomationState
-from app.models.job import Job
 from app.models.material import ApplicationMaterial, EvidenceUnit
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_integrity import SubmissionAttempt
@@ -215,7 +214,8 @@ def test_current_lever_v5_prepare_renders_support_story_and_keeps_submission_loc
 
     assert "bilingual customer care experience" in cover
     assert "Supported clients across multiple communication channels." in cover
-    assert "technical skills in Bilingual, Linux, Debian, AI Tools, Data Analysis, Microsoft Office" in cover
+    assert "technical skills in Linux, Debian, AI Tools, Data Analysis, Microsoft Office" in cover
+    assert "technical skills in Bilingual" not in combined
     assert "Credit Officer" not in combined
     assert "Fraud Officer" not in combined
     assert "Monitored account" not in combined
