@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from app.services.evidence_ledger import normalize_statement, resume_text_candidates
 from app.services.material_generation import (
     _as_sentence,
     _cover_letter_content,
@@ -109,3 +110,19 @@ def test_sentence_punctuation_is_added_outside_unpunctuated_closing_quote():
     assert _as_sentence('Known for being a "customer advocate."') == (
         'Known for being a "customer advocate."'
     )
+
+
+def test_evidence_normalization_preserves_signed_metrics_before_rendering():
+    assert normalize_statement("-10% error rate") == "-10% error rate"
+    assert normalize_statement("- Reduced error rate") == "Reduced error rate"
+    assert normalize_statement("• Reduced error rate") == "Reduced error rate"
+
+    candidates = resume_text_candidates(
+        "ACHIEVEMENTS\n-10% error rate\n- Reduced processing errors",
+        source_ref="resume:signed-metric-test.pdf",
+    )
+    statements = [candidate["statement"] for candidate in candidates]
+
+    assert "-10% error rate" in statements
+    assert "Reduced processing errors" in statements
+    assert "10% error rate" not in statements
