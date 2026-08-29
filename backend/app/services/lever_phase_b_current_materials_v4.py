@@ -21,6 +21,7 @@ from app.services.material_generation_v4 import generate_application_material
 
 show_current_lever_materials = base.show_current_lever_materials
 review_current_lever_materials = base.review_current_lever_materials
+_fetch_current_hosted_posting = base._fetch_current_hosted_posting
 
 
 def prepare_current_lever_materials(
@@ -37,7 +38,7 @@ def prepare_current_lever_materials(
     )
     posting_snapshot, posting_sha256 = base._posting_snapshot(
         candidate,
-        base._fetch_current_hosted_posting(candidate),
+        _fetch_current_hosted_posting(candidate),
     )
 
     refreshed_at = base._utcnow()
