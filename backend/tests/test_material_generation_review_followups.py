@@ -302,3 +302,106 @@ def test_structured_employment_rejects_malformed_role_field():
         "likely incomplete employment role in evidence unit 80" in warning
         for warning in validate_claims([stale_claim], [employment])
     )
+
+
+def test_serial_and_strong_narrative_is_preserved_while_known_fragments_stay_blocked():
+    valid = _unit(
+        "Maintained controls that were reliable, effective, and strong.",
+        90,
+        kind="achievement",
+    )
+    observed_strong_fragment = _unit(
+        "Resolved client issues using authentication procedures, analytical troubleshooting, clear bilingual communication, and strong",
+        91,
+        kind="employment",
+    )
+    observed_internal_fragment = _unit(
+        "Assess hardship scenarios and arrange payment solutions aligned with client affordability, account status, and internal",
+        92,
+        kind="employment",
+    )
+
+    assert _usable_narrative_unit(valid) is True
+    assert _usable_narrative_unit(observed_strong_fragment) is False
+    assert _usable_narrative_unit(observed_internal_fragment) is False
+
+    valid_claim = {
+        "text": valid.statement,
+        "category": "achievement",
+        "applicant_fact": True,
+        "evidence_unit_ids": [valid.id],
+        "evidence_hashes": [valid.source_hash],
+    }
+    assert validate_claims([valid_claim], [valid]) == []
+
+
+def test_role_phrase_rejects_dangling_preposition_but_narrative_preposition_remains_valid():
+    role = _unit("Fraud Analyst with", 100, kind="role")
+    employment = _unit(
+        "Yahoo! | Fraud Analyst with | Investigated fraud alerts.",
+        101,
+        kind="employment",
+        organization="Yahoo!",
+        role="Fraud Analyst with",
+    )
+    narrative = _unit(
+        "Built the reporting tool customers asked for.",
+        102,
+        kind="achievement",
+    )
+
+    assert _usable_narrative_unit(role) is False
+    assert _usable_narrative_unit(employment) is False
+    assert _usable_narrative_unit(narrative) is True
+
+    role_claim = {
+        "text": "Background includes experience as Fraud Analyst with.",
+        "category": "career_summary",
+        "applicant_fact": True,
+        "evidence_unit_ids": [role.id],
+        "evidence_hashes": [role.source_hash],
+    }
+    employment_claim = {
+        "text": "My experience includes work as Fraud Analyst with with Yahoo!",
+        "category": "employment",
+        "applicant_fact": True,
+        "evidence_unit_ids": [employment.id],
+        "evidence_hashes": [employment.source_hash],
+    }
+
+    assert any(
+        "likely incomplete role evidence unit 100" in warning
+        for warning in validate_claims([role_claim], [role])
+    )
+    assert any(
+        "likely incomplete employment role in evidence unit 101" in warning
+        for warning in validate_claims([employment_claim], [employment])
+    )
+
+
+def test_experience_phrase_rejects_dangling_preposition_before_material_composition():
+    bad_years = _unit("4 to", 110, kind="experience")
+    role = _unit("Fraud Analyst", 111, kind="role")
+    user = SimpleNamespace(full_name=None)
+
+    assert _usable_narrative_unit(bad_years) is False
+
+    cover, cover_claims, _ = _cover_letter_content(user, _job(), [role, bad_years])
+    summary, summary_claims, _ = _resume_summary_content(user, _job(), [role, bad_years])
+
+    assert "4 to years" not in cover
+    assert "4 to years" not in summary
+    assert all(bad_years.id not in claim["evidence_unit_ids"] for claim in cover_claims)
+    assert all(bad_years.id not in claim["evidence_unit_ids"] for claim in summary_claims)
+
+    stale_claim = {
+        "text": "Fraud Analyst with 4 to years of experience.",
+        "category": "career_summary",
+        "applicant_fact": True,
+        "evidence_unit_ids": [bad_years.id],
+        "evidence_hashes": [bad_years.source_hash],
+    }
+    assert any(
+        "likely incomplete experience evidence unit 110" in warning
+        for warning in validate_claims([stale_claim], [bad_years])
+    )
