@@ -237,3 +237,68 @@ def test_structured_employment_preserves_organization_terminal_punctuation():
     )
     assert "with Yahoo!" in employment_claim["text"]
     assert employment_claim["evidence_hashes"] == [employment.source_hash]
+
+
+def test_complete_phrase_ending_in_and_strong_remains_usable():
+    valid = _unit(
+        "Maintained controls that were effective and strong.",
+        70,
+        kind="achievement",
+    )
+    known_fragment = _unit(
+        "Resolved client issues using authentication procedures, analytical troubleshooting, clear bilingual communication, and strong",
+        71,
+        kind="employment",
+    )
+
+    assert _usable_narrative_unit(valid) is True
+    assert _usable_narrative_unit(known_fragment) is False
+
+    valid_claim = {
+        "text": valid.statement,
+        "category": "achievement",
+        "applicant_fact": True,
+        "evidence_unit_ids": [valid.id],
+        "evidence_hashes": [valid.source_hash],
+    }
+    assert validate_claims([valid_claim], [valid]) == []
+
+
+def test_structured_employment_rejects_malformed_role_field():
+    employment = _unit(
+        "Yahoo! | Fraud Analyst and | Investigated fraud alerts.",
+        80,
+        kind="employment",
+        organization="Yahoo!",
+        role="Fraud Analyst and",
+    )
+
+    assert _usable_narrative_unit(employment) is False
+
+    cover, cover_claims, _ = _cover_letter_content(
+        SimpleNamespace(full_name=None),
+        _job(),
+        [employment],
+    )
+    summary, summary_claims, _ = _resume_summary_content(
+        SimpleNamespace(full_name=None),
+        _job(),
+        [employment],
+    )
+
+    assert "Fraud Analyst and with" not in cover
+    assert "Fraud Analyst and" not in summary
+    assert all(employment.id not in claim["evidence_unit_ids"] for claim in cover_claims)
+    assert all(employment.id not in claim["evidence_unit_ids"] for claim in summary_claims)
+
+    stale_claim = {
+        "text": "My experience includes work as Fraud Analyst and with Yahoo!",
+        "category": "employment",
+        "applicant_fact": True,
+        "evidence_unit_ids": [employment.id],
+        "evidence_hashes": [employment.source_hash],
+    }
+    assert any(
+        "likely incomplete employment role in evidence unit 80" in warning
+        for warning in validate_claims([stale_claim], [employment])
+    )
