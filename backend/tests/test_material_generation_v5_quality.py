@@ -3,9 +3,12 @@ from types import SimpleNamespace
 from app.services.material_generation_v5 import (
     GENERATOR_VERSION,
     _cover_letter_content,
+    _header_support_phrase,
     _paraphrase_support_detail,
     _resume_summary_content,
     _target_alignment_sentence,
+    _technical_skill_units,
+    _v4_compatible_quality_warnings,
     _v5_quality_warnings,
 )
 from app.services.material_generation_v4 import _curated_ranked
@@ -103,8 +106,9 @@ def test_v5_renders_fullscript_cover_as_support_plus_technical_story():
     assert "bilingual customer care experience" in cover
     assert "technical skills in Linux, Debian, AI Tools, Data Analysis, Microsoft Office" in cover
     assert "technical skills in Bilingual" not in cover
+    assert "technical skills in De-escalation" not in cover
+    assert "technical skills in Time Management" not in cover
     assert "Supported clients across multiple communication channels." in cover
-    assert "Provided clear guidance on digital account and security concerns." in cover
     assert "issue investigation, documentation, and cross-functional collaboration" in cover
 
     assert "Credit Officer" not in cover
@@ -137,8 +141,7 @@ def test_v5_resume_separates_employer_headers_from_unattributed_support_details(
     )
     support = summary.split("RELEVANT SUPPORT EXPERIENCE\n", 1)[1].split("\n\n", 1)[0]
     support_lines = support.splitlines()
-    assert support_lines[0] == "• Supported clients across multiple communication channels"
-    assert support_lines[1] == "• Provided clear guidance on digital account and security concerns"
+    assert support_lines == ["• Supported clients across multiple communication channels"]
     assert "RELEVANT EXPERIENCE\n" not in summary
 
     assert "CORE SKILLS\nBilingual, Linux, Debian, AI Tools, Data Analysis, Microsoft Office" in summary
@@ -152,6 +155,9 @@ def test_v5_resume_separates_employer_headers_from_unattributed_support_details(
     employment_claims = [claim for claim in claims if claim["category"] == "employment"]
     assert employment_claims[0]["text"].startswith("Customer Care Officer (Bilingual)")
 
+    unit_by_id = {unit.id: unit for unit in ranked}
+    assert _v4_compatible_quality_warnings(summary, claims, job, unit_by_id) == []
+
 
 def test_v5_does_not_infer_client_support_from_channel_phrase_alone():
     unit = _unit(
@@ -159,6 +165,31 @@ def test_v5_does_not_infer_client_support_from_channel_phrase_alone():
         90,
     )
     assert _paraphrase_support_detail(unit) == unit.statement
+
+
+def test_v5_preserves_customer_education_subject_instead_of_widening_it():
+    unit = _unit("Educated customers about account fees.", 91)
+    assert _paraphrase_support_detail(unit) == "Educated customers about account fees."
+
+
+def test_v5_non_support_employment_header_gets_neutral_wording():
+    header = _unit(
+        "Software Engineer | Acme Inc. | January 2020 - April 2024",
+        92,
+        organization="Acme Inc.",
+        role="Software Engineer",
+    )
+    assert _header_support_phrase(header) == "documented professional experience"
+
+
+def test_v5_only_calls_explicit_hard_skill_labels_technical():
+    skills = [
+        _unit("Linux", 93, kind="skill", source_type="profile"),
+        _unit("De-escalation", 94, kind="skill", source_type="profile"),
+        _unit("Time Management", 95, kind="skill", source_type="profile"),
+        _unit("Bilingual", 96, kind="skill", source_type="profile"),
+    ]
+    assert [unit.statement for unit in _technical_skill_units(skills)] == ["Linux"]
 
 
 def test_v5_target_alignment_is_derived_from_each_posting():
@@ -187,3 +218,6 @@ def test_v5_quality_gate_rejects_legacy_cover_mixed_experience_and_skill_labelin
 
     mislabeled = "My background includes technical skills in Bilingual, Linux."
     assert any("mislabeled" in item for item in _v5_quality_warnings(mislabeled, "cover_letter"))
+
+    soft_mislabeled = "My background includes technical skills in De-escalation."
+    assert any("mislabeled" in item for item in _v5_quality_warnings(soft_mislabeled, "cover_letter"))
