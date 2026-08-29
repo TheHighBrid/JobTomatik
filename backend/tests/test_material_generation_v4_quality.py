@@ -7,6 +7,10 @@ from app.services.material_generation_v4 import (
     _looks_like_section_heading_text,
     _quality_warnings,
 )
+from app.services.material_generation_v4_policy import (
+    FILTERED_ROLE_WARNING,
+    _normalize_intentional_filter_warnings,
+)
 
 
 def _unit(
@@ -125,8 +129,44 @@ def test_v4_curates_fullscript_materials_toward_support_evidence():
     unit_by_id = {unit.id: unit for unit in curated}
     assert _quality_warnings(cover, cover_claims, job, unit_by_id) == []
     assert _quality_warnings(summary, summary_claims, job, unit_by_id) == []
-    assert not cover_warnings
+    assert cover_warnings == [FILTERED_ROLE_WARNING]
     assert not summary_warnings
+
+
+def test_v4_intentional_role_filter_warning_is_non_blocking_with_aligned_employment():
+    material = SimpleNamespace(
+        warnings=[FILTERED_ROLE_WARNING],
+        status="needs_review",
+        claims=[
+            {
+                "category": "job_alignment",
+                "evidence_unit_ids": [64],
+            }
+        ],
+    )
+
+    _normalize_intentional_filter_warnings(material)
+
+    assert material.warnings == []
+    assert material.status == "verified"
+
+
+def test_v4_intentional_role_filter_warning_remains_blocking_without_aligned_evidence():
+    material = SimpleNamespace(
+        warnings=[FILTERED_ROLE_WARNING],
+        status="needs_review",
+        claims=[
+            {
+                "category": "identity",
+                "evidence_unit_ids": [1],
+            }
+        ],
+    )
+
+    _normalize_intentional_filter_warnings(material)
+
+    assert material.warnings == [FILTERED_ROLE_WARNING]
+    assert material.status == "needs_review"
 
 
 def test_v4_quality_gate_fails_closed_on_section_heading_claim():
