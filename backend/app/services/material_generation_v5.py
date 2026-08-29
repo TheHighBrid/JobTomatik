@@ -54,6 +54,14 @@ def _skill_units(ranked: Iterable[EvidenceUnit], job: Job, *, limit: int = 6) ->
     return [unit for _, _, unit in scored[:limit]]
 
 
+def _narrative_skill_units(skills: Iterable[EvidenceUnit]) -> list[EvidenceUnit]:
+    return [
+        unit
+        for unit in skills
+        if base._display_skill(unit.statement).casefold() != "bilingual"
+    ]
+
+
 def _employment_units(ranked: Iterable[EvidenceUnit]) -> tuple[list[EvidenceUnit], list[EvidenceUnit]]:
     employment = [unit for unit in ranked if unit.kind == "employment" and base._usable_narrative_unit(unit)]
     headers = [unit for unit in employment if base._looks_like_employment_header(unit)]
@@ -108,6 +116,7 @@ def _cover_letter_content(
     headers, details = _employment_units(ranked)
     support_details = _support_details(details, job, limit=2)
     skills = _skill_units(ranked, job, limit=6)
+    narrative_skills = _narrative_skill_units(skills)
 
     background_parts: list[str] = []
     background_units: list[EvidenceUnit] = []
@@ -118,13 +127,15 @@ def _cover_letter_content(
         background_parts.append("My background includes customer-facing support experience")
         background_units.extend(support_details[:1])
 
-    if skills:
-        skill_text = ", ".join(base._display_skill(unit.statement) for unit in skills)
+    if narrative_skills:
+        skill_text = ", ".join(base._display_skill(unit.statement) for unit in narrative_skills)
         if background_parts:
-            background_parts[-1] += f", supported by technical skills in {skill_text}."
+            background_parts[-1] += f" and technical skills in {skill_text}."
         else:
             background_parts.append(f"My documented technical skills include {skill_text}.")
-        background_units.extend(skills)
+        background_units.extend(narrative_skills)
+    elif background_parts:
+        background_parts[-1] += "."
 
     if background_parts:
         background = " ".join(background_parts)
@@ -186,6 +197,7 @@ def _resume_summary_content(
     headers, details = _employment_units(ranked)
     support_details = _support_details(details, job, limit=2)
     skills = _skill_units(ranked, job, limit=6)
+    narrative_skills = _narrative_skill_units(skills)
 
     summary_units: list[EvidenceUnit] = []
     summary_parts: list[str] = []
@@ -196,10 +208,10 @@ def _resume_summary_content(
         summary_parts.append("Customer-facing support professional")
         summary_units.extend(support_details[:1])
 
-    if skills:
-        skill_text = ", ".join(base._display_skill(unit.statement) for unit in skills)
+    if narrative_skills:
+        skill_text = ", ".join(base._display_skill(unit.statement) for unit in narrative_skills)
         summary_parts[-1] += f" and documented technical skills in {skill_text}."
-        summary_units.extend(skills)
+        summary_units.extend(narrative_skills)
     else:
         summary_parts[-1] += "."
 
@@ -249,6 +261,8 @@ def _v5_quality_warnings(content: str, material_type: str) -> list[str]:
         warnings.append("Generated material leaked a résumé section heading")
     if material_type == "cover_letter" and "My documented experience relevant to this role includes:" in content:
         warnings.append("Cover letter used the legacy evidence-dump rendering pattern")
+    if "technical skills in Bilingual" in content:
+        warnings.append("Bilingual capability was mislabeled as a technical skill")
     return warnings
 
 
