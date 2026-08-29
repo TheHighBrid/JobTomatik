@@ -25,7 +25,7 @@ TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9+.#/-]{1,}", re.IGNORECASE)
 LEADING_BULLET_RE = re.compile(r"^\s*(?:[•·▪◦\uf0b7]\s*|[-*–]\s+)")
 MALFORMED_PUNCTUATION_RE = re.compile(r"[,;:]\s*\.")
 TRAILING_FRAGMENT_RE = re.compile(
-    r"(?:[,;:]|\b(?:and|or|with|when|while|because|including|for|to|of|the|a|an|internal|strong))\s*$",
+    r"(?:[,;:]|\b(?:and|or|with|when|while|because|including|for|to|of|the|a|an)|\band\s+(?:internal|strong))\s*[.!?\"'”’]*\s*$",
     re.IGNORECASE,
 )
 GENERIC_ALIGNMENT_TERMS = {
@@ -69,6 +69,23 @@ KIND_WEIGHT = {
     "location": 0.5,
 }
 NARRATIVE_KINDS = {"employment", "achievement", "project", "summary"}
+FRAGMENT_SENSITIVE_KINDS = NARRATIVE_KINDS | {
+    "skill",
+    "credential",
+    "education",
+    "language",
+    "role",
+}
+FRAGMENT_SENSITIVE_CATEGORIES = {
+    "employment",
+    "career_summary",
+    "achievement",
+    "project",
+    "skill",
+    "credential",
+    "education",
+    "language",
+}
 
 
 class MaterialGenerationError(RuntimeError):
@@ -156,7 +173,7 @@ def _narrative_fragment_reason(
 
 
 def _usable_narrative_unit(unit: EvidenceUnit) -> bool:
-    if unit.kind not in NARRATIVE_KINDS:
+    if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
         return True
     return _narrative_fragment_reason(unit.statement, reject_pdf_bullet=False) is None
 
@@ -431,7 +448,7 @@ def _resume_summary_content(
         unit
         for unit in ranked
         if unit.kind in {"role", "experience", "summary"}
-        and (unit.kind not in NARRATIVE_KINDS or _usable_narrative_unit(unit))
+        and (unit.kind not in FRAGMENT_SENSITIVE_KINDS or _usable_narrative_unit(unit))
     ][:3]
     employment = _clean_units(ranked, {"employment"}, limit=5)
     if summary_units:
@@ -495,7 +512,11 @@ def _resume_summary_content(
     else:
         warnings.append("No source-backed employment evidence was available")
 
-    skills = [unit for unit in ranked if unit.kind == "skill"][:12]
+    skills = [
+        unit
+        for unit in ranked
+        if unit.kind == "skill" and _usable_narrative_unit(unit)
+    ][:12]
     if skills:
         line = ", ".join(_display_skill(unit.statement) for unit in skills)
         sections.append(f"CORE SKILLS\n{line}")
@@ -557,7 +578,7 @@ def validate_claims(
             warnings.append(f"Claim {index} contains an unsafe PDF bullet glyph")
         if MALFORMED_PUNCTUATION_RE.search(text):
             warnings.append(f"Claim {index} contains malformed punctuation")
-        if claim.get("category") in {"employment", "career_summary", "achievement", "project"}:
+        if claim.get("category") in FRAGMENT_SENSITIVE_CATEGORIES:
             reason = _narrative_fragment_reason(text)
             if reason:
                 warnings.append(f"Claim {index} contains a likely incomplete narrative: {reason}")
