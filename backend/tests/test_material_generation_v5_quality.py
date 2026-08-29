@@ -99,7 +99,8 @@ def test_v5_renders_fullscript_cover_as_support_plus_technical_story():
     assert GENERATOR_VERSION == "verified-material-v5"
     assert warnings == []
     assert "bilingual customer care experience" in cover
-    assert "technical skills in Bilingual, Linux, Debian, AI Tools, Data Analysis, Microsoft Office" in cover
+    assert "technical skills in Linux, Debian, AI Tools, Data Analysis, Microsoft Office" in cover
+    assert "technical skills in Bilingual" not in cover
     assert "Supported clients across multiple communication channels." in cover
     assert "Provided clear guidance on digital account and security concerns." in cover
     assert "issue investigation, documentation, and cross-functional collaboration" in cover
@@ -126,6 +127,8 @@ def test_v5_resume_puts_employment_header_before_support_details_and_limits_skil
     summary, claims, warnings = _resume_summary_content(user, job, ranked)
 
     assert warnings == []
+    assert "documented technical skills in Linux, Debian, AI Tools, Data Analysis, Microsoft Office" in summary
+    assert "technical skills in Bilingual" not in summary
     experience = summary.split("RELEVANT EXPERIENCE\n", 1)[1].split("\n\n", 1)[0]
     lines = experience.splitlines()
     assert lines[0].startswith("• Customer Care Officer (Bilingual) | TD Canada Trust Bank")
@@ -144,7 +147,7 @@ def test_v5_resume_puts_employment_header_before_support_details_and_limits_skil
     assert employment_claims[0]["text"].startswith("Customer Care Officer (Bilingual)")
 
 
-def test_v5_quality_gate_rejects_legacy_cover_dump_and_bad_resume_order():
+def test_v5_quality_gate_rejects_legacy_cover_dump_bad_resume_order_and_skill_labeling():
     cover = (
         "Dear Hiring Manager,\n\n"
         "My documented experience relevant to this role includes: Supported clients.\n"
@@ -157,3 +160,6 @@ def test_v5_quality_gate_rejects_legacy_cover_dump_and_bad_resume_order():
         "• Customer Care Officer (Bilingual) | TD Canada Trust Bank | November 2018 - April 2022\n"
     )
     assert any("employment header before detail bullets" in item for item in _v5_quality_warnings(resume, "resume_summary"))
+
+    mislabeled = "My background includes technical skills in Bilingual, Linux."
+    assert any("mislabeled" in item for item in _v5_quality_warnings(mislabeled, "cover_letter"))
