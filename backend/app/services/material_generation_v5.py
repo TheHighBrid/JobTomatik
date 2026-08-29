@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timezone
+import re
 from typing import Any, Iterable
 
 from sqlalchemy.orm import Session
@@ -93,11 +94,60 @@ def _header_support_phrase(header: EvidenceUnit | None) -> str:
 def _paraphrase_support_detail(unit: EvidenceUnit) -> str:
     text = _clean(unit.statement)
     lowered = text.casefold()
-    if "multiple communication channels" in lowered:
+    explicitly_client_support = bool(
+        re.search(r"\b(?:support(?:ed|ing)?|assist(?:ed|ing)?|help(?:ed|ing)?)\b", lowered)
+        and re.search(r"\b(?:client|clients|customer|customers)\b", lowered)
+    )
+    if explicitly_client_support and "multiple communication channels" in lowered:
         return "Supported clients across multiple communication channels."
-    if "educated clients" in lowered and ("account" in lowered or "banking" in lowered or "security" in lowered):
+    explicitly_client_education = bool(
+        re.search(r"\beducat(?:e|ed|ing)\b", lowered)
+        and re.search(r"\b(?:client|clients|customer|customers)\b", lowered)
+    )
+    if explicitly_client_education and ("account" in lowered or "banking" in lowered or "security" in lowered):
         return "Provided clear guidance on digital account and security concerns."
     return base._as_sentence(text)
+
+
+def _job_focus_items(job: Job) -> list[str]:
+    text = " ".join(
+        _clean(value).casefold()
+        for value in (
+            job.title,
+            job.description,
+            job.requirements,
+            " ".join(job.skills or []),
+        )
+        if value
+    )
+    items: list[str] = []
+    if re.search(r"\b(?:investigat|troubleshoot|reproduc|technical issue|technical issues)\w*", text):
+        items.append("issue investigation")
+    if re.search(r"\b(?:document|documentation|case notes?|repro steps?|logs?)\w*", text):
+        items.append("documentation")
+    if re.search(r"\b(?:cross-functional|engineering|partner(?:ing)? with|collaborat)\w*", text):
+        items.append("cross-functional collaboration")
+    if re.search(r"\b(?:api|apis|integration|integrations|web technolog|web technologies)\w*", text):
+        items.append("technical troubleshooting")
+    return items[:3]
+
+
+def _joined_focus(items: list[str]) -> str:
+    if not items:
+        return "the responsibilities described in the posting"
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{items[0]}, {items[1]}, and {items[2]}"
+
+
+def _target_alignment_sentence(job: Job) -> str:
+    focus = _joined_focus(_job_focus_items(job))
+    return (
+        "I am interested in applying that combination of customer communication and technical literacy "
+        f"to {job.company}'s {job.title} role, with particular interest in {focus}."
+    )
 
 
 def _cover_letter_content(
@@ -149,11 +199,7 @@ def _cover_letter_content(
     else:
         warnings.append("No source-backed customer-support detail was available for the cover letter")
 
-    alignment = (
-        "I am interested in applying that combination of customer communication and technical literacy "
-        f"to {job.company}'s {job.title} role, where accurate issue investigation, documentation, and "
-        "cross-functional collaboration are central to the work."
-    )
+    alignment = _target_alignment_sentence(job)
     paragraphs.append(alignment)
     claims.append(base._claim(alignment, category="target_alignment", applicant_fact=False))
 
@@ -223,20 +269,19 @@ def _resume_summary_content(
     sections.append(f"PROFESSIONAL SUMMARY\n{summary}")
     claims.append(base._claim(summary, summary_units, category="career_summary"))
 
-    experience_lines: list[str] = []
-    experience_units: list[EvidenceUnit] = []
     if headers:
-        experience_lines.append(f"• {_clean(headers[0].statement)}")
-        experience_units.append(headers[0])
-    for unit in support_details:
-        experience_lines.append(f"• {_paraphrase_support_detail(unit).rstrip('.')}")
-        experience_units.append(unit)
+        header_lines = [f"• {_clean(unit.statement)}" for unit in headers[:2]]
+        sections.append("EMPLOYMENT HISTORY\n" + "\n".join(header_lines))
+        for unit in headers[:2]:
+            claims.append(base._claim(_clean(unit.statement), [unit], category="employment"))
 
-    if experience_lines:
-        sections.append("RELEVANT EXPERIENCE\n" + "\n".join(experience_lines))
-        for unit, line in zip(experience_units, experience_lines):
+    if support_details:
+        support_lines = [f"• {_paraphrase_support_detail(unit).rstrip('.')}" for unit in support_details]
+        sections.append("RELEVANT SUPPORT EXPERIENCE\n" + "\n".join(support_lines))
+        for unit, line in zip(support_details, support_lines):
             claims.append(base._claim(line.removeprefix("• "), [unit], category="employment"))
-    else:
+
+    if not headers and not support_details:
         warnings.append("No source-backed relevant employment evidence was available")
 
     if skills:
@@ -251,18 +296,14 @@ def _resume_summary_content(
 
 def _v5_quality_warnings(content: str, material_type: str) -> list[str]:
     warnings: list[str] = []
-    if material_type == "resume_summary" and "RELEVANT EXPERIENCE\n" in content:
-        experience = content.split("RELEVANT EXPERIENCE\n", 1)[1].split("\n\n", 1)[0]
-        lines = [line.strip() for line in experience.splitlines() if line.strip()]
-        dated_indexes = [index for index, line in enumerate(lines) if base.YEAR_RE.search(line) and "|" in line]
-        if dated_indexes and dated_indexes[0] != 0:
-            warnings.append("Relevant experience must render the employment header before detail bullets")
     if "EDUCATION & TECHNICAL SKILLS" in content:
         warnings.append("Generated material leaked a résumé section heading")
     if material_type == "cover_letter" and "My documented experience relevant to this role includes:" in content:
         warnings.append("Cover letter used the legacy evidence-dump rendering pattern")
     if "technical skills in Bilingual" in content:
         warnings.append("Bilingual capability was mislabeled as a technical skill")
+    if material_type == "resume_summary" and "RELEVANT EXPERIENCE\n" in content:
+        warnings.append("Resume used the legacy mixed-employer relevant-experience section")
     return warnings
 
 
@@ -351,7 +392,7 @@ def generate_application_material(
             ],
             "evidence_rebuild": rebuild_result,
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "quality_policy": "role-aware-rendering-v2",
+            "quality_policy": "role-aware-rendering-v3",
         },
         generator_version=GENERATOR_VERSION,
         supersedes_material_id=previous.id if previous else None,
