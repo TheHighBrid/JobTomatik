@@ -265,7 +265,7 @@ def test_validator_blocks_pre_fix_material_with_pdf_glyph_and_fragment():
 
 
 def test_complete_short_narrative_evidence_is_preserved():
-    for statement in ("Won MVP award.", "Built JobTomatik."):
+    for statement in ("Won MVP award.", "Built JobTomatik.", "Controls remain strong."):
         assert _usable_narrative_unit(_narrative_unit(statement)) is True
 
 
@@ -328,3 +328,40 @@ def test_resume_summary_attaches_employment_only_when_rendered_alignment_uses_it
     assert 1 in summary_claim["evidence_unit_ids"]
     assert 2 in summary_claim["evidence_unit_ids"]
     assert 3 not in summary_claim["evidence_unit_ids"]
+
+
+def test_dangling_skill_fragment_is_filtered_and_stale_skill_claim_is_blocked():
+    skill = _unit("Risk management, data analysis, and", 1, kind="skill")
+
+    assert _usable_narrative_unit(skill) is False
+    content, _, _ = _resume_summary_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [skill],
+    )
+    assert "Risk management" not in content
+
+    stale_claim = {
+        "text": "Risk management, data analysis, and.",
+        "category": "skill",
+        "applicant_fact": True,
+        "evidence_unit_ids": [skill.id],
+        "evidence_hashes": [skill.source_hash],
+    }
+    errors = validate_claims([stale_claim], [skill])
+    assert any("likely incomplete narrative" in error for error in errors)
+
+
+def test_stale_v1_dangling_fragment_with_terminal_period_is_blocked():
+    unit = _unit("Resolved cases and", 1)
+    claim = {
+        "text": "My employment record includes: Resolved cases and.",
+        "category": "employment",
+        "applicant_fact": True,
+        "evidence_unit_ids": [unit.id],
+        "evidence_hashes": [unit.source_hash],
+    }
+
+    errors = validate_claims([claim], [unit])
+
+    assert any("likely incomplete narrative" in error for error in errors)
