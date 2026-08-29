@@ -17,7 +17,7 @@ from app.models.user import User
 from app.services import lever_phase_b_current_materials as base
 from app.services.application_state import normalize_state
 from app.services.evidence_ledger import eligible_evidence_query, rebuild_user_evidence
-from app.services.material_generation_v5 import generate_application_material
+from app.services.material_generation_v5_policy import generate_application_material
 
 
 show_current_lever_materials = base.show_current_lever_materials
