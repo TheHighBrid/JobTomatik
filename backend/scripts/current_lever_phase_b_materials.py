@@ -19,7 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.database import SessionLocal
 from app.models.user import User
-from app.services.lever_phase_b_current_materials_v4 import (
+from app.services.lever_phase_b_current_materials_v5 import (
     prepare_current_lever_materials,
     review_current_lever_materials,
     show_current_lever_materials,
