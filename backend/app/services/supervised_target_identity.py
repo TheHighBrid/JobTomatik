@@ -10,8 +10,11 @@ import hashlib
 import json
 import re
 from datetime import datetime
+from html import unescape
 from typing import Any, Dict, Mapping, Optional
 from urllib.parse import urlparse
+
+import httpx
 
 from app.models.job import Job
 from app.services.ats_lever import (
@@ -66,6 +69,104 @@ def _safe_official_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _clean_hosted_text(value: str) -> str:
+    without_tags = re.sub(r"<[^>]+>", " ", value or "")
+    return " ".join(unescape(without_tags).split())
+
+
+def _hosted_role_from_html(body: str) -> Optional[str]:
+    patterns = (
+        r'<div[^>]*class=["\'][^"\']*posting-headline[^"\']*["\'][^>]*>.*?<h2[^>]*>(.*?)</h2>',
+        r'<h2[^>]*>(.*?)</h2>',
+    )
+    for pattern in patterns:
+        match = re.search(pattern, body or "", flags=re.IGNORECASE | re.DOTALL)
+        if not match:
+            continue
+        role = _clean_hosted_text(match.group(1))
+        if role:
+            return role
+    return None
+
+
+async def _fetch_supervised_lever_posting(
+    site: str,
+    posting_id: str,
+    *,
+    region: str,
+    timeout: float = 15.0,
+) -> Dict[str, Any]:
+    """Read Lever metadata without modifying the frozen Phase A adapter.
+
+    The historical adapter remains API-only. Current supervised targets may use the
+    exact hosted posting only when the public Lever API returns 404 for that same
+    posting identity. Other API failures remain fail-closed.
+    """
+
+    try:
+        return await fetch_lever_posting(
+            site,
+            posting_id,
+            region=region,
+            timeout=timeout,
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 404:
+            raise
+
+    jobs_host = "jobs.eu.lever.co" if region == "eu" else "jobs.lever.co"
+    hosted_url = f"https://{jobs_host}/{site}/{posting_id}"
+    apply_url = f"{hosted_url}/apply"
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        response = await client.get(hosted_url)
+        response.raise_for_status()
+
+    final_url = str(response.url)
+    parsed = urlparse(final_url)
+    observed_site, observed_posting_id, observed_region = parse_lever_job_url(final_url)
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() != jobs_host
+        or parsed.path.rstrip("/") != f"/{site}/{posting_id}"
+        or parsed.query
+        or parsed.fragment
+        or observed_site != site
+        or observed_posting_id != posting_id
+        or observed_region != region
+    ):
+        raise ValueError(
+            "Lever hosted posting redirected away from the exact selected target."
+        )
+
+    content_type = str(response.headers.get("content-type") or "").lower()
+    if "text/html" not in content_type:
+        raise ValueError("Lever hosted posting fallback did not return HTML.")
+
+    body = response.text
+    role = _hosted_role_from_html(body)
+    if not role:
+        raise ValueError(
+            "Lever hosted posting fallback did not expose an exact role title."
+        )
+
+    apply_path = f"/{site}/{posting_id}/apply"
+    if apply_url not in body and apply_path not in body:
+        raise ValueError(
+            "Lever hosted posting fallback did not expose the exact apply route."
+        )
+
+    return {
+        "id": posting_id,
+        "text": role,
+        "categories": {},
+        "description": "",
+        "descriptionPlain": "",
+        "hostedUrl": hosted_url,
+        "applyUrl": apply_url,
+        "_metadata_source": "supervised_hosted_page_404_fallback",
+    }
+
+
 def _invalid_lever_identity(
     *,
     target_url: str,
@@ -114,7 +215,11 @@ async def resolve_supervised_target_metadata(job: Job) -> Dict[str, Any]:
         )
 
     try:
-        official = await fetch_lever_posting(site, posting_id, region=region)
+        official = await _fetch_supervised_lever_posting(
+            site,
+            posting_id,
+            region=region,
+        )
     except Exception as exc:
         return _invalid_lever_identity(
             target_url=target_url,
@@ -227,7 +332,7 @@ async def verify_supervised_browser_target(
     observed_metadata_hash = None
     if refresh_official_metadata and not blockers:
         try:
-            official = await fetch_lever_posting(
+            official = await _fetch_supervised_lever_posting(
                 expected_site,
                 expected_posting_id,
                 region=expected_region,
