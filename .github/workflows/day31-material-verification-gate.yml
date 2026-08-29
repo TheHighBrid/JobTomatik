@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "backend/app/services/autonomous_material_verification.py"
+      - "backend/app/services/evidence_ledger.py"
       - "backend/app/services/material_generation.py"
       - "backend/app/services/material_task_integration.py"
       - "backend/app/services/answer_policy.py"
