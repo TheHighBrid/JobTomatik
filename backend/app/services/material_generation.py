@@ -25,8 +25,11 @@ TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9+.#/-]{1,}", re.IGNORECASE)
 LEADING_BULLET_RE = re.compile(r"^\s*(?:[•·▪◦\uf0b7]\s*|[-*–]\s+)")
 MALFORMED_PUNCTUATION_RE = re.compile(r"[,;:]\s*\.")
 TRAILING_FRAGMENT_RE = re.compile(
-    r"(?:[,;:]|\b(?:and|or|when|while|because|including|the|a|an)|\band\s+(?:internal|strong))\s*[.!?\"'”’]*\s*$",
+    r"(?:[,;:]|\b(?:and|or|when|while|because|including)|\band\s+(?:internal|strong))\s*[.!?\"'”’]*\s*$",
     re.IGNORECASE,
+)
+TRAILING_LOWERCASE_ARTICLE_RE = re.compile(
+    r"\b(?:the|a|an)\s*[.!?\"'”’]*\s*$"
 )
 GENERIC_ALIGNMENT_TERMS = {
     "data",
@@ -75,6 +78,7 @@ FRAGMENT_SENSITIVE_KINDS = NARRATIVE_KINDS | {
     "education",
     "language",
     "role",
+    "experience",
 }
 FRAGMENT_SENSITIVE_CATEGORIES = {
     "employment",
@@ -168,6 +172,8 @@ def _narrative_fragment_reason(
     if MALFORMED_PUNCTUATION_RE.search(text):
         return "malformed punctuation"
     if TRAILING_FRAGMENT_RE.search(text):
+        return "truncated or dangling ending"
+    if TRAILING_LOWERCASE_ARTICLE_RE.search(text):
         return "truncated or dangling ending"
     return None
 
@@ -274,8 +280,22 @@ def _cover_letter_content(
     claims.append(_claim(opening, category="target_role", applicant_fact=False))
     opening_parts = [opening]
 
-    current_role = _first(ranked, "role")
-    years = _first(ranked, "experience")
+    current_role = next(
+        (
+            unit
+            for unit in ranked
+            if unit.kind == "role" and _usable_narrative_unit(unit)
+        ),
+        None,
+    )
+    years = next(
+        (
+            unit
+            for unit in ranked
+            if unit.kind == "experience" and _usable_narrative_unit(unit)
+        ),
+        None,
+    )
     if current_role and years:
         sentence = (
             f"My background includes {_as_phrase(years.statement)} years of "
@@ -308,9 +328,9 @@ def _cover_letter_content(
         detail_units: list[EvidenceUnit] = []
         for unit in employment:
             if unit.organization and unit.role:
-                sentence = (
+                sentence = _as_sentence(
                     f"My experience includes work as {_as_phrase(unit.role)} "
-                    f"with {_as_phrase(unit.organization)}."
+                    f"with {_clean_material_statement(unit.organization)}"
                 )
                 if sentence not in {item[0] for item in role_items}:
                     role_items.append((sentence, unit))
@@ -604,18 +624,19 @@ def validate_claims(
                     warnings.append(
                         f"Claim {index} item {item_index} contains a likely incomplete narrative: {reason}"
                     )
-            for unit_id in ids:
-                unit = unit_by_id[unit_id]
-                if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
-                    continue
-                reason = _narrative_fragment_reason(
-                    unit.statement,
-                    reject_pdf_bullet=False,
+
+        for unit_id in ids:
+            unit = unit_by_id[unit_id]
+            if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
+                continue
+            reason = _narrative_fragment_reason(
+                unit.statement,
+                reject_pdf_bullet=False,
+            )
+            if reason:
+                warnings.append(
+                    f"Claim {index} references likely incomplete {unit.kind} evidence unit {unit_id}: {reason}"
                 )
-                if reason:
-                    warnings.append(
-                        f"Claim {index} references likely incomplete {unit.kind} evidence unit {unit_id}: {reason}"
-                    )
     return warnings
 
 
