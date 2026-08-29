@@ -6,6 +6,7 @@ from app.services.material_generation_v5 import (
     _header_support_phrase,
     _paraphrase_support_detail,
     _resume_summary_content,
+    _support_details,
     _target_alignment_sentence,
     _technical_skill_units,
     _v4_compatible_quality_warnings,
@@ -167,6 +168,22 @@ def test_v5_does_not_infer_client_support_from_channel_phrase_alone():
     assert _paraphrase_support_detail(unit) == unit.statement
 
 
+def test_v5_support_section_rejects_zero_support_signal_even_with_job_overlap():
+    data_job = SimpleNamespace(
+        id=2000,
+        title="Data Engineer",
+        company="ExampleCo",
+        location="Remote",
+        url="https://example.com/jobs/data-engineer",
+        updated_at=None,
+        description="Build Python data pipelines and analytics systems.",
+        requirements="Python data pipelines analytics.",
+        skills=["Python", "Data"],
+    )
+    unit = _unit("Built Python data pipelines for analytics.", 97)
+    assert _support_details([unit], data_job, limit=1) == []
+
+
 def test_v5_preserves_customer_education_subject_instead_of_widening_it():
     unit = _unit("Educated customers about account fees.", 91)
     assert _paraphrase_support_detail(unit) == "Educated customers about account fees."
@@ -192,7 +209,7 @@ def test_v5_only_calls_explicit_hard_skill_labels_technical():
     assert [unit.statement for unit in _technical_skill_units(skills)] == ["Linux"]
 
 
-def test_v5_target_alignment_is_derived_from_each_posting():
+def test_v5_target_alignment_is_posting_only_and_does_not_assert_capabilities():
     unrelated = SimpleNamespace(
         title="Office Coordinator",
         company="ExampleCo",
@@ -204,6 +221,31 @@ def test_v5_target_alignment_is_derived_from_each_posting():
     assert "issue investigation" not in text
     assert "cross-functional collaboration" not in text
     assert "responsibilities described in the posting" in text
+    assert "technical literacy" not in text
+    assert "customer communication" not in text
+
+
+def test_v5_retains_relevant_source_backed_role_without_employment_rows():
+    job = _job()
+    role = _unit(
+        "Technical Support Specialist",
+        98,
+        kind="role",
+        source_type="profile",
+    )
+    linux = _unit("Linux", 99, kind="skill", source_type="profile")
+    ranked = _curated_ranked([role, linux], job)
+    user = SimpleNamespace(full_name="Mohamed Alem")
+
+    cover, _, cover_warnings = _cover_letter_content(user, job, ranked)
+    summary, _, summary_warnings = _resume_summary_content(user, job, ranked)
+
+    assert cover_warnings == []
+    assert summary_warnings == []
+    assert "experience as Technical Support Specialist" in cover
+    assert "documented experience as Technical Support Specialist" in summary
+    assert "technical skills in Linux" in cover
+    assert "RELEVANT SUPPORT EXPERIENCE" not in summary
 
 
 def test_v5_quality_gate_rejects_legacy_cover_mixed_experience_and_skill_labeling():
