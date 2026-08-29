@@ -76,6 +76,21 @@ def _technical_skill_units(skills: Iterable[EvidenceUnit]) -> list[EvidenceUnit]
     ]
 
 
+def _role_units(ranked: Iterable[EvidenceUnit]) -> list[EvidenceUnit]:
+    return [
+        unit
+        for unit in ranked
+        if unit.kind == "role" and base._usable_narrative_unit(unit)
+    ]
+
+
+def _support_role(roles: Iterable[EvidenceUnit]) -> EvidenceUnit | None:
+    return next(
+        (unit for unit in roles if v4._support_signal_count(v4._unit_text(unit)) > 0),
+        None,
+    )
+
+
 def _employment_units(ranked: Iterable[EvidenceUnit]) -> tuple[list[EvidenceUnit], list[EvidenceUnit]]:
     employment = [unit for unit in ranked if unit.kind == "employment" and base._usable_narrative_unit(unit)]
     headers = [unit for unit in employment if base._looks_like_employment_header(unit)]
@@ -87,10 +102,26 @@ def _support_details(details: Iterable[EvidenceUnit], job: Job, *, limit: int = 
     ranked: list[tuple[int, int, EvidenceUnit]] = []
     for index, unit in enumerate(details):
         support = v4._support_signal_count(v4._unit_text(unit))
+        if support <= 0:
+            continue
         overlap = v4._job_overlap_count(unit, job)
         ranked.append((-(support * 100 + overlap * 50), index, unit))
     ranked.sort(key=lambda item: (item[0], item[1]))
     return [unit for _, _, unit in ranked[:limit]]
+
+
+def _job_is_support_focused(job: Job) -> bool:
+    text = " ".join(
+        _clean(value)
+        for value in (
+            job.title,
+            job.description,
+            job.requirements,
+            " ".join(job.skills or []),
+        )
+        if value
+    )
+    return v4._support_signal_count(text) > 0
 
 
 def _header_support_phrase(header: EvidenceUnit | None) -> str:
@@ -121,9 +152,6 @@ def _paraphrase_support_detail(unit: EvidenceUnit) -> str:
     if explicitly_client_support and "multiple communication channels" in lowered:
         return "Supported clients across multiple communication channels."
 
-    # Customer-education statements are preserved rather than semantically widened.
-    # Evidence validation proves the source line exists, not that a broader paraphrase
-    # is entailed by it.
     if re.search(r"\beducat(?:e|ed|ing)\b", lowered) and re.search(
         r"\b(?:client|clients|customer|customers)\b", lowered
     ):
@@ -168,8 +196,7 @@ def _joined_focus(items: list[str]) -> str:
 def _target_alignment_sentence(job: Job) -> str:
     focus = _joined_focus(_job_focus_items(job))
     return (
-        "I am interested in applying that combination of customer communication and technical literacy "
-        f"to {job.company}'s {job.title} role, with particular interest in {focus}."
+        f"I am particularly interested in {job.company}'s {job.title} role and its focus on {focus}."
     )
 
 
@@ -186,6 +213,8 @@ def _cover_letter_content(
     paragraphs.append(opening)
     claims.append(base._claim(opening, category="target_role", applicant_fact=False))
 
+    roles = _role_units(ranked)
+    support_role = _support_role(roles)
     headers, details = _employment_units(ranked)
     support_details = _support_details(details, job, limit=1)
     skills = _skill_units(ranked, job, limit=6)
@@ -196,6 +225,16 @@ def _cover_letter_content(
     if headers:
         background_parts.append(f"My background includes {_header_support_phrase(headers[0])}")
         background_units.append(headers[0])
+    elif support_role:
+        background_parts.append(
+            f"My background includes experience as {base._as_phrase(support_role.statement)}"
+        )
+        background_units.append(support_role)
+    elif roles:
+        background_parts.append(
+            f"My background includes experience as {base._as_phrase(roles[0].statement)}"
+        )
+        background_units.append(roles[0])
     elif support_details:
         background_parts.append("My background includes customer-facing support experience")
         background_units.extend(support_details[:1])
@@ -219,8 +258,10 @@ def _cover_letter_content(
         detail_text = " ".join(_paraphrase_support_detail(unit) for unit in support_details)
         paragraphs.append(detail_text)
         claims.append(base._claim(detail_text, support_details, category="job_alignment"))
-    else:
-        warnings.append("No source-backed customer-support detail was available for the cover letter")
+    elif _job_is_support_focused(job) and not support_role and not any(
+        _header_establishes_support(header) for header in headers
+    ):
+        warnings.append("No source-backed customer-support evidence was available for the cover letter")
 
     alignment = _target_alignment_sentence(job)
     paragraphs.append(alignment)
@@ -263,6 +304,8 @@ def _resume_summary_content(
     sections.append(f"TARGET ROLE\n{target}")
     claims.append(base._claim(target, category="target_role", applicant_fact=False))
 
+    roles = _role_units(ranked)
+    support_role = _support_role(roles)
     headers, details = _employment_units(ranked)
     support_details = _support_details(details, job, limit=1)
     skills = _skill_units(ranked, job, limit=6)
@@ -275,6 +318,11 @@ def _resume_summary_content(
             f"Customer-facing support professional with {_header_support_phrase(headers[0])}"
         )
         summary_units.append(headers[0])
+    elif support_role:
+        summary_parts.append(
+            f"Professional with documented experience as {base._as_phrase(support_role.statement)}"
+        )
+        summary_units.append(support_role)
     elif support_details:
         summary_parts.append("Customer-facing support professional with documented professional experience")
         summary_units.extend(support_details[:1])
@@ -283,6 +331,11 @@ def _resume_summary_content(
     elif headers:
         summary_parts.append("Professional with documented employment experience")
         summary_units.append(headers[0])
+    elif roles:
+        summary_parts.append(
+            f"Professional with documented experience as {base._as_phrase(roles[0].statement)}"
+        )
+        summary_units.append(roles[0])
     else:
         summary_parts.append("Professional")
 
@@ -313,8 +366,8 @@ def _resume_summary_content(
         for unit, line in zip(support_details, support_lines):
             claims.append(base._claim(line.removeprefix("• "), [unit], category="employment"))
 
-    if not headers and not support_details:
-        warnings.append("No source-backed relevant employment evidence was available")
+    if not headers and not support_details and not roles:
+        warnings.append("No source-backed relevant employment or role evidence was available")
 
     if skills:
         line = ", ".join(base._display_skill(unit.statement) for unit in skills)
@@ -441,7 +494,7 @@ def generate_application_material(
             ],
             "evidence_rebuild": rebuild_result,
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "quality_policy": "role-aware-rendering-v4",
+            "quality_policy": "role-aware-rendering-v5",
         },
         generator_version=GENERATOR_VERSION,
         supersedes_material_id=previous.id if previous else None,
