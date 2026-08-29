@@ -99,7 +99,9 @@ def test_unstructured_employment_alignment_is_emitted_once():
     alignment_claims = [claim for claim in claims if claim["category"] == "job_alignment"]
     assert len(alignment_claims) == 1
     assert alignment_claims[0]["evidence_unit_ids"] == [employment.id]
-    assert content.count("My documented employment history also covers") == 1
+    assert content.count("My documented experience relevant to this role includes:") == 1
+    assert employment.statement in content
+    assert "My documented employment history also covers" not in content
     assert "Together, this background overlaps" not in content
 
 
