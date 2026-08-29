@@ -261,7 +261,7 @@ def test_validator_blocks_pre_fix_material_with_pdf_glyph_and_fragment():
     errors = validate_claims([claim], [unit])
 
     assert any("unsafe PDF bullet glyph" in error for error in errors)
-    assert any("likely incomplete narrative" in error for error in errors)
+    assert any("likely incomplete" in error for error in errors)
 
 
 def test_complete_short_narrative_evidence_is_preserved():
@@ -349,7 +349,7 @@ def test_dangling_skill_fragment_is_filtered_and_stale_skill_claim_is_blocked():
         "evidence_hashes": [skill.source_hash],
     }
     errors = validate_claims([stale_claim], [skill])
-    assert any("likely incomplete narrative" in error for error in errors)
+    assert any("likely incomplete" in error for error in errors)
 
 
 def test_stale_v1_dangling_fragment_with_terminal_period_is_blocked():
@@ -364,4 +364,35 @@ def test_stale_v1_dangling_fragment_with_terminal_period_is_blocked():
 
     errors = validate_claims([claim], [unit])
 
-    assert any("likely incomplete narrative" in error for error in errors)
+    assert any("likely incomplete" in error for error in errors)
+
+
+def test_stale_combined_claim_validates_every_delimited_item_and_evidence_unit():
+    broken = _unit("Risk management, data analysis, and", 1, kind="skill")
+    clean = _unit("Python", 2, kind="skill")
+    claim = {
+        "text": "Risk management, data analysis, and; Python.",
+        "category": "skill",
+        "applicant_fact": True,
+        "evidence_unit_ids": [broken.id, clean.id],
+        "evidence_hashes": [broken.source_hash, clean.source_hash],
+    }
+
+    errors = validate_claims([claim], [broken, clean])
+
+    assert any("item 0" in error and "likely incomplete" in error for error in errors)
+    assert any("evidence unit 1" in error and "likely incomplete" in error for error in errors)
+
+
+def test_clean_combined_claim_does_not_gain_fragment_warnings():
+    first = _unit("Risk Management", 1, kind="skill")
+    second = _unit("Python", 2, kind="skill")
+    claim = {
+        "text": "Risk Management; Python.",
+        "category": "skill",
+        "applicant_fact": True,
+        "evidence_unit_ids": [first.id, second.id],
+        "evidence_hashes": [first.source_hash, second.source_hash],
+    }
+
+    assert validate_claims([claim], [first, second]) == []
