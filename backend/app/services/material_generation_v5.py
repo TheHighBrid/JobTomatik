@@ -1,0 +1,373 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from datetime import datetime, timezone
+from typing import Any, Iterable
+
+from sqlalchemy.orm import Session
+
+from app.models.application import Application
+from app.models.job import Job
+from app.models.material import ApplicationMaterial, ApplicationMaterialEvidence, EvidenceUnit
+from app.models.user import User
+from app.services import material_generation as base
+from app.services import material_generation_v4 as v4
+from app.services.evidence_ledger import eligible_evidence_query, rebuild_user_evidence
+
+
+GENERATOR_VERSION = "verified-material-v5"
+SUPPORTED_MATERIAL_TYPES = base.SUPPORTED_MATERIAL_TYPES
+
+SKILL_ORDER = {
+    "bilingual": 100,
+    "linux": 95,
+    "debian": 90,
+    "ai tools": 85,
+    "data analysis": 80,
+    "microsoft office": 75,
+    "de-escalation": 60,
+    "time management": 40,
+}
+
+
+class MaterialGenerationV5Error(base.MaterialGenerationError):
+    pass
+
+
+def _clean(value: Any) -> str:
+    return base._clean_material_statement(value)
+
+
+def _skill_units(ranked: Iterable[EvidenceUnit], job: Job, *, limit: int = 6) -> list[EvidenceUnit]:
+    skills = [unit for unit in ranked if unit.kind == "skill" and base._usable_narrative_unit(unit)]
+    scored: list[tuple[int, int, EvidenceUnit]] = []
+    for index, unit in enumerate(skills):
+        display = base._display_skill(unit.statement).casefold()
+        priority = SKILL_ORDER.get(display)
+        if priority is None:
+            v4_priority = v4._skill_priority(unit, job)
+            if v4_priority is None:
+                continue
+            priority = max(1, v4_priority)
+        scored.append((-priority, index, unit))
+    scored.sort(key=lambda item: (item[0], item[1]))
+    return [unit for _, _, unit in scored[:limit]]
+
+
+def _employment_units(ranked: Iterable[EvidenceUnit]) -> tuple[list[EvidenceUnit], list[EvidenceUnit]]:
+    employment = [unit for unit in ranked if unit.kind == "employment" and base._usable_narrative_unit(unit)]
+    headers = [unit for unit in employment if base._looks_like_employment_header(unit)]
+    details = [unit for unit in employment if not base._looks_like_employment_header(unit)]
+    return headers, details
+
+
+def _support_details(details: Iterable[EvidenceUnit], job: Job, *, limit: int = 2) -> list[EvidenceUnit]:
+    ranked: list[tuple[int, int, EvidenceUnit]] = []
+    for index, unit in enumerate(details):
+        support = v4._support_signal_count(v4._unit_text(unit))
+        overlap = v4._job_overlap_count(unit, job)
+        ranked.append((-(support * 100 + overlap * 50), index, unit))
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [unit for _, _, unit in ranked[:limit]]
+
+
+def _header_support_phrase(header: EvidenceUnit | None) -> str:
+    if header is None:
+        return "customer-facing support experience"
+    text = _clean(header.statement).casefold()
+    if "bilingual" in text and ("customer" in text or "care" in text or "support" in text):
+        return "bilingual customer care experience"
+    if "customer" in text or "care" in text or "support" in text:
+        return "customer support experience"
+    return "customer-facing support experience"
+
+
+def _paraphrase_support_detail(unit: EvidenceUnit) -> str:
+    text = _clean(unit.statement)
+    lowered = text.casefold()
+    if "multiple communication channels" in lowered:
+        return "Supported clients across multiple communication channels."
+    if "educated clients" in lowered and ("account" in lowered or "banking" in lowered or "security" in lowered):
+        return "Provided clear guidance on digital account and security concerns."
+    return base._as_sentence(text)
+
+
+def _cover_letter_content(
+    user: User,
+    job: Job,
+    ranked: list[EvidenceUnit],
+) -> tuple[str, list[dict[str, Any]], list[str]]:
+    warnings: list[str] = []
+    claims: list[dict[str, Any]] = []
+    paragraphs = ["Dear Hiring Manager,"]
+
+    opening = f"I am applying for the {job.title} position at {job.company}."
+    paragraphs.append(opening)
+    claims.append(base._claim(opening, category="target_role", applicant_fact=False))
+
+    headers, details = _employment_units(ranked)
+    support_details = _support_details(details, job, limit=2)
+    skills = _skill_units(ranked, job, limit=6)
+
+    background_parts: list[str] = []
+    background_units: list[EvidenceUnit] = []
+    if headers:
+        background_parts.append(f"My background includes {_header_support_phrase(headers[0])}")
+        background_units.append(headers[0])
+    elif support_details:
+        background_parts.append("My background includes customer-facing support experience")
+        background_units.extend(support_details[:1])
+
+    if skills:
+        skill_text = ", ".join(base._display_skill(unit.statement) for unit in skills)
+        if background_parts:
+            background_parts[-1] += f", supported by technical skills in {skill_text}."
+        else:
+            background_parts.append(f"My documented technical skills include {skill_text}.")
+        background_units.extend(skills)
+
+    if background_parts:
+        background = " ".join(background_parts)
+        paragraphs.append(background)
+        claims.append(base._claim(background, background_units, category="career_summary"))
+
+    if support_details:
+        detail_text = " ".join(_paraphrase_support_detail(unit) for unit in support_details)
+        paragraphs.append(detail_text)
+        claims.append(base._claim(detail_text, support_details, category="job_alignment"))
+    else:
+        warnings.append("No source-backed customer-support detail was available for the cover letter")
+
+    alignment = (
+        "I am interested in applying that combination of customer communication and technical literacy "
+        f"to {job.company}'s {job.title} role, where accurate issue investigation, documentation, and "
+        "cross-functional collaboration are central to the work."
+    )
+    paragraphs.append(alignment)
+    claims.append(base._claim(alignment, category="target_alignment", applicant_fact=False))
+
+    paragraphs.append(
+        "Thank you for considering my application. I would welcome the opportunity to discuss how my experience could support your team and customers."
+    )
+
+    name, name_unit = base._identity_name(ranked, user)
+    if name:
+        paragraphs.append(f"Best regards,\n{name}")
+        if name_unit:
+            claims.append(base._claim(name, [name_unit], category="identity"))
+    else:
+        paragraphs.append("Best regards")
+        warnings.append("No source-backed applicant name was available")
+
+    return "\n\n".join(paragraphs).strip() + "\n", claims, warnings
+
+
+def _resume_summary_content(
+    user: User,
+    job: Job,
+    ranked: list[EvidenceUnit],
+) -> tuple[str, list[dict[str, Any]], list[str]]:
+    warnings: list[str] = []
+    claims: list[dict[str, Any]] = []
+    sections: list[str] = []
+
+    name, name_unit = base._identity_name(ranked, user)
+    if name:
+        sections.append(name)
+        if name_unit:
+            claims.append(base._claim(name, [name_unit], category="identity"))
+    else:
+        warnings.append("No source-backed applicant name was available")
+
+    target = f"{job.title} | {job.company}"
+    sections.append(f"TARGET ROLE\n{target}")
+    claims.append(base._claim(target, category="target_role", applicant_fact=False))
+
+    headers, details = _employment_units(ranked)
+    support_details = _support_details(details, job, limit=2)
+    skills = _skill_units(ranked, job, limit=6)
+
+    summary_units: list[EvidenceUnit] = []
+    summary_parts: list[str] = []
+    if headers:
+        summary_parts.append(f"Customer-facing support professional with {_header_support_phrase(headers[0])}")
+        summary_units.append(headers[0])
+    else:
+        summary_parts.append("Customer-facing support professional")
+        summary_units.extend(support_details[:1])
+
+    if skills:
+        skill_text = ", ".join(base._display_skill(unit.statement) for unit in skills)
+        summary_parts[-1] += f" and documented technical skills in {skill_text}."
+        summary_units.extend(skills)
+    else:
+        summary_parts[-1] += "."
+
+    if support_details:
+        summary_parts.append(" ".join(_paraphrase_support_detail(unit) for unit in support_details))
+        summary_units.extend(support_details)
+
+    summary = " ".join(summary_parts)
+    sections.append(f"PROFESSIONAL SUMMARY\n{summary}")
+    claims.append(base._claim(summary, summary_units, category="career_summary"))
+
+    experience_lines: list[str] = []
+    experience_units: list[EvidenceUnit] = []
+    if headers:
+        experience_lines.append(f"• {_clean(headers[0].statement)}")
+        experience_units.append(headers[0])
+    for unit in support_details:
+        experience_lines.append(f"• {_paraphrase_support_detail(unit).rstrip('.')}")
+        experience_units.append(unit)
+
+    if experience_lines:
+        sections.append("RELEVANT EXPERIENCE\n" + "\n".join(experience_lines))
+        for unit, line in zip(experience_units, experience_lines):
+            claims.append(base._claim(line.removeprefix("• "), [unit], category="employment"))
+    else:
+        warnings.append("No source-backed relevant employment evidence was available")
+
+    if skills:
+        line = ", ".join(base._display_skill(unit.statement) for unit in skills)
+        sections.append(f"CORE SKILLS\n{line}")
+        claims.append(base._claim(line, skills, category="skill"))
+    else:
+        warnings.append("No source-backed target-relevant skill evidence was available")
+
+    return "\n\n".join(sections).strip() + "\n", claims, warnings
+
+
+def _v5_quality_warnings(content: str, material_type: str) -> list[str]:
+    warnings: list[str] = []
+    if material_type == "resume_summary" and "RELEVANT EXPERIENCE\n" in content:
+        experience = content.split("RELEVANT EXPERIENCE\n", 1)[1].split("\n\n", 1)[0]
+        lines = [line.strip() for line in experience.splitlines() if line.strip()]
+        dated_indexes = [index for index, line in enumerate(lines) if base.YEAR_RE.search(line) and "|" in line]
+        if dated_indexes and dated_indexes[0] != 0:
+            warnings.append("Relevant experience must render the employment header before detail bullets")
+    if "EDUCATION & TECHNICAL SKILLS" in content:
+        warnings.append("Generated material leaked a résumé section heading")
+    if material_type == "cover_letter" and "My documented experience relevant to this role includes:" in content:
+        warnings.append("Cover letter used the legacy evidence-dump rendering pattern")
+    return warnings
+
+
+def generate_application_material(
+    db: Session,
+    application: Application,
+    user: User,
+    job: Job,
+    *,
+    material_type: str = "cover_letter",
+    rebuild_evidence: bool = True,
+) -> ApplicationMaterial:
+    if material_type not in SUPPORTED_MATERIAL_TYPES:
+        raise MaterialGenerationV5Error(f"Unsupported material type: {material_type}")
+
+    rebuild_result = rebuild_user_evidence(db, user) if rebuild_evidence else None
+    eligible = eligible_evidence_query(db, user.id).all()
+    ranked = v4._curated_ranked(eligible, job)
+
+    if material_type == "cover_letter":
+        content, claims, warnings = _cover_letter_content(user, job, ranked)
+    else:
+        content, claims, warnings = _resume_summary_content(user, job, ranked)
+
+    warnings.extend(base.validate_claims(claims, eligible))
+    unit_by_id = {unit.id: unit for unit in eligible}
+    warnings.extend(v4._quality_warnings(content, claims, job, unit_by_id))
+    warnings.extend(_v5_quality_warnings(content, material_type))
+
+    substantive = [
+        claim
+        for claim in claims
+        if claim.get("applicant_fact", True)
+        and claim.get("category") != "identity"
+        and claim.get("evidence_unit_ids")
+    ]
+    if not substantive:
+        warnings.append("No substantive applicant claim could be supported by active evidence")
+
+    status = "verified" if not warnings else "needs_review"
+    previous = (
+        db.query(ApplicationMaterial)
+        .filter(
+            ApplicationMaterial.application_id == application.id,
+            ApplicationMaterial.material_type == material_type,
+        )
+        .order_by(ApplicationMaterial.version.desc())
+        .first()
+    )
+    version = base._next_version(db, application.id, material_type)
+    used_ids = sorted(
+        {
+            int(unit_id)
+            for claim in claims
+            for unit_id in (claim.get("evidence_unit_ids") or [])
+        }
+    )
+
+    material = ApplicationMaterial(
+        user_id=user.id,
+        application_id=application.id,
+        material_type=material_type,
+        version=version,
+        status=status,
+        content=content,
+        claims=claims,
+        warnings=sorted(set(warnings)),
+        source_snapshot={
+            "job": {
+                "id": job.id,
+                "title": job.title,
+                "company": job.company,
+                "url": job.url,
+                "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+            },
+            "evidence_units": [
+                {
+                    "id": unit_id,
+                    "source_hash": unit_by_id[unit_id].source_hash,
+                    "source_type": unit_by_id[unit_id].source_type,
+                    "source_ref": unit_by_id[unit_id].source_ref,
+                    "verification_status": unit_by_id[unit_id].verification_status,
+                }
+                for unit_id in used_ids
+                if unit_id in unit_by_id
+            ],
+            "evidence_rebuild": rebuild_result,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "quality_policy": "role-aware-rendering-v2",
+        },
+        generator_version=GENERATOR_VERSION,
+        supersedes_material_id=previous.id if previous else None,
+    )
+    db.add(material)
+    db.flush()
+
+    claim_indexes_by_unit: dict[int, list[int]] = defaultdict(list)
+    for claim_index, claim in enumerate(claims):
+        for unit_id in claim.get("evidence_unit_ids") or []:
+            claim_indexes_by_unit[int(unit_id)].append(claim_index)
+
+    now = datetime.now(timezone.utc)
+    for unit_id, claim_indexes in claim_indexes_by_unit.items():
+        if unit_id not in unit_by_id:
+            continue
+        db.add(
+            ApplicationMaterialEvidence(
+                material_id=material.id,
+                evidence_unit_id=unit_id,
+                usage="supporting_claim",
+                claim_indexes=claim_indexes,
+            )
+        )
+        unit_by_id[unit_id].last_used_at = now
+
+    if material_type == "cover_letter":
+        application.cover_letter = content
+    elif material_type == "resume_summary":
+        application.resume_path = application.resume_path or user.resume_path
+
+    db.flush()
+    return material
