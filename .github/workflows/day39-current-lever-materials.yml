@@ -7,8 +7,20 @@ on:
   pull_request:
     paths:
       - backend/app/services/lever_phase_b_current_materials.py
+      - backend/app/services/lever_phase_b_current_materials_v4.py
+      - backend/app/services/lever_phase_b_current_materials_v5.py
+      - backend/app/services/material_generation_v4.py
+      - backend/app/services/material_generation_v4_policy.py
+      - backend/app/services/material_generation_v5.py
+      - backend/app/services/material_generation_v5_policy.py
       - backend/scripts/current_lever_phase_b_materials.py
       - backend/tests/test_day39_current_lever_materials.py
+      - backend/tests/test_day39_current_lever_materials_v4.py
+      - backend/tests/test_day39_current_lever_materials_v5.py
+      - backend/tests/test_material_generation_v4_quality.py
+      - backend/tests/test_material_generation_v5_quality.py
+      - backend/tests/test_material_generation_v5_policy.py
+      - backend/tests/test_current_lever_cli_v4_contract.py
       - .github/workflows/day39-current-lever-materials.yml
 
 permissions:
@@ -42,7 +54,13 @@ jobs:
         run: |
           pytest -q \
             tests/test_day39_current_lever_intake.py \
-            tests/test_day39_current_lever_materials.py
+            tests/test_day39_current_lever_materials.py \
+            tests/test_day39_current_lever_materials_v4.py \
+            tests/test_day39_current_lever_materials_v5.py \
+            tests/test_material_generation_v4_quality.py \
+            tests/test_material_generation_v5_quality.py \
+            tests/test_material_generation_v5_policy.py \
+            tests/test_current_lever_cli_v4_contract.py
 
       - name: Assert operator boundary has no submission authority
         run: |
@@ -50,6 +68,8 @@ jobs:
           from pathlib import Path
           paths = [
               Path('backend/app/services/lever_phase_b_current_materials.py'),
+              Path('backend/app/services/lever_phase_b_current_materials_v4.py'),
+              Path('backend/app/services/lever_phase_b_current_materials_v5.py'),
               Path('backend/scripts/current_lever_phase_b_materials.py'),
           ]
           forbidden = [
