@@ -579,9 +579,29 @@ def validate_claims(
         if MALFORMED_PUNCTUATION_RE.search(text):
             warnings.append(f"Claim {index} contains malformed punctuation")
         if claim.get("category") in FRAGMENT_SENSITIVE_CATEGORIES:
-            reason = _narrative_fragment_reason(text)
-            if reason:
-                warnings.append(f"Claim {index} contains a likely incomplete narrative: {reason}")
+            claim_items = [
+                item.strip()
+                for item in re.split(r"[;\n]+", text)
+                if item.strip()
+            ]
+            for item_index, item in enumerate(claim_items):
+                reason = _narrative_fragment_reason(item)
+                if reason:
+                    warnings.append(
+                        f"Claim {index} item {item_index} contains a likely incomplete narrative: {reason}"
+                    )
+            for unit_id in ids:
+                unit = unit_by_id[unit_id]
+                if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
+                    continue
+                reason = _narrative_fragment_reason(
+                    unit.statement,
+                    reject_pdf_bullet=False,
+                )
+                if reason:
+                    warnings.append(
+                        f"Claim {index} references likely incomplete {unit.kind} evidence unit {unit_id}: {reason}"
+                    )
     return warnings
 
 
