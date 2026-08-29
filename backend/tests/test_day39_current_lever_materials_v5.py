@@ -216,6 +216,8 @@ def test_current_lever_v5_prepare_renders_support_story_and_keeps_submission_loc
     assert "Supported clients across multiple communication channels." in cover
     assert "technical skills in Linux, Debian, AI Tools, Data Analysis, Microsoft Office" in cover
     assert "technical skills in Bilingual" not in combined
+    assert "issue investigation" in cover
+    assert "documentation" in cover
     assert "Credit Officer" not in combined
     assert "Fraud Officer" not in combined
     assert "Monitored account" not in combined
@@ -224,9 +226,11 @@ def test_current_lever_v5_prepare_renders_support_story_and_keeps_submission_loc
     assert "Risk Management" not in combined
     assert "Time Management" not in combined
 
-    experience = summary.split("RELEVANT EXPERIENCE\n", 1)[1].split("\n\n", 1)[0].splitlines()
-    assert experience[0].startswith("• Customer Care Officer (Bilingual) | TD Canada Trust Bank")
-    assert experience[1] == "• Supported clients across multiple communication channels"
+    employment = summary.split("EMPLOYMENT HISTORY\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert employment[0].startswith("• Customer Care Officer (Bilingual) | TD Canada Trust Bank")
+    support = summary.split("RELEVANT SUPPORT EXPERIENCE\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert support[0] == "• Supported clients across multiple communication channels"
+    assert "RELEVANT EXPERIENCE\n" not in summary
 
     application = db_session.query(Application).filter(Application.id == application_id).one()
     assert application.automation_state == ApplicationAutomationState.needs_review.value
