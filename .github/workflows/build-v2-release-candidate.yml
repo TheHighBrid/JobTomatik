@@ -1,0 +1,180 @@
+name: Build JobTomatik v2 exact-commit release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact 40-character current main commit to build as the v2.00 candidate
+        required: true
+        type: string
+      day41_audit_reference:
+        description: Day 41 release-audit reference for this candidate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-jobtomatik-v2-candidate
+  cancel-in-progress: false
+
+env:
+  SOURCE_COMMIT: ${{ inputs.source_commit }}
+  DAY41_AUDIT_REFERENCE: ${{ inputs.day41_audit_reference }}
+  APK_NAME: JobTomatik-v2.00.apk
+  VITE_JOBTOMATIK_RUNTIME_REVISION: ${{ inputs.source_commit }}
+
+jobs:
+  build-exact-candidate:
+    if: github.actor == 'TheHighBrid'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact current main source
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test -n "$DAY41_AUDIT_REFERENCE"
+          git fetch origin main --no-tags
+          test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
+          git cat-file -e "$SOURCE_COMMIT^{commit}"
+          git checkout --detach "$SOURCE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android platform
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Build frontend and synchronize Capacitor
+        run: npm run android:prepare
+
+      - name: Select explicit signing mode
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.JOBTOMATIK_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.JOBTOMATIK_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.JOBTOMATIK_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.JOBTOMATIK_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            KEYSTORE_PATH="$RUNNER_TEMP/jobtomatik-release.jks"
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+            test -s "$KEYSTORE_PATH"
+            echo "JOBTOMATIK_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+            echo "JOBTOMATIK_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "JOBTOMATIK_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "JOBTOMATIK_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "APK_VARIANT=release" >> "$GITHUB_ENV"
+            echo "SIGNING_MODE=release_signed" >> "$GITHUB_ENV"
+          else
+            echo "APK_VARIANT=debug" >> "$GITHUB_ENV"
+            echo "SIGNING_MODE=development_signed" >> "$GITHUB_ENV"
+          fi
+
+      - name: Lint and assemble candidate APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          cd android
+          ./gradlew --no-daemon lintDebug
+          if [ "$APK_VARIANT" = "release" ]; then
+            ./gradlew --no-daemon assembleRelease
+          else
+            ./gradlew --no-daemon assembleDebug
+          fi
+
+      - name: Package and attest exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$APK_VARIANT" = "release" ]; then
+            SOURCE_APK="android/app/build/outputs/apk/release/app-release.apk"
+          else
+            SOURCE_APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          fi
+          test -s "$SOURCE_APK"
+          mkdir -p release-candidate
+          cp "$SOURCE_APK" "release-candidate/$APK_NAME"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "release-candidate/$APK_NAME" | tee release-candidate/APK-BADGING.txt
+          grep -q "package: name='ca.jobtomatik.app'" release-candidate/APK-BADGING.txt
+          grep -q "versionCode='200'" release-candidate/APK-BADGING.txt
+          grep -q "versionName='2.0.0'" release-candidate/APK-BADGING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "release-candidate/$APK_NAME" | tee release-candidate/APK-SIGNING.txt
+          sha256sum "release-candidate/$APK_NAME" > release-candidate/JobTomatik-v2.00.sha256
+          APK_SHA256="$(cut -d' ' -f1 release-candidate/JobTomatik-v2.00.sha256)"
+          [[ "$APK_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          printf '%s\n' "$SOURCE_COMMIT" > release-candidate/SOURCE-COMMIT.txt
+          cat > release-candidate/BUILD-INFO.txt <<EOF
+          JobTomatik v2.00 prepublication candidate
+          Technical version: 2.0.0
+          Android application ID: ca.jobtomatik.app
+          Android version code: 200
+          Signing mode: $SIGNING_MODE
+          Source commit: $SOURCE_COMMIT
+          APK SHA-256: $APK_SHA256
+          Day 41 audit reference: $DAY41_AUDIT_REFERENCE
+          Publication authorized: false
+          Candidate workflow run: $GITHUB_RUN_ID
+          EOF
+          python - <<PY
+          import json
+          from pathlib import Path
+          payload = {
+              "version": "jobtomatik-v2-release-candidate-v1",
+              "source_revision": "$SOURCE_COMMIT",
+              "apk_sha256": "$APK_SHA256",
+              "signing_mode": "$SIGNING_MODE",
+              "day41_audit_reference": "$DAY41_AUDIT_REFERENCE",
+              "workflow_run_id": int("$GITHUB_RUN_ID"),
+              "publication_authorized": False,
+          }
+          Path("release-candidate/CANDIDATE-METADATA.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload immutable prepublication candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: JobTomatik-v2.00-candidate-${{ inputs.source_commit }}
+          path: frontend/release-candidate/*
+          if-no-files-found: error
+          retention-days: 90
