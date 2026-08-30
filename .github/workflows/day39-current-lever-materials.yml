@@ -29,6 +29,7 @@ on:
       - backend/tests/test_current_lever_roster.py
       - frontend/src/App.jsx
       - frontend/src/components/CurrentLeverOperatorPanel.jsx
+      - frontend/src/components/CurrentLeverTargetForm.jsx
       - frontend/src/components/Layout.jsx
       - frontend/src/components/MobileNav.jsx
       - frontend/src/pages/CurrentLeverOperator.jsx
@@ -102,6 +103,7 @@ jobs:
               Path('backend/app/services/lever_phase_b_current_roster.py'),
               Path('backend/scripts/current_lever_phase_b_materials.py'),
               Path('frontend/src/components/CurrentLeverOperatorPanel.jsx'),
+              Path('frontend/src/components/CurrentLeverTargetForm.jsx'),
           ]
           forbidden = [
               'submit_application_task.delay',
