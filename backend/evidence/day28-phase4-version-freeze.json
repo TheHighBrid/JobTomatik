@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "phase": "day28_phase4_gate",
-  "freeze_source_commit": "98c3c742c11797bba6dc05125e72223a7085fada",
+  "freeze_source_commit": "4f774e7a1e159f8b2c033c23cad391e14a498dfd",
   "candidate": {
     "adapter": "lever",
     "selection_scope": "unattended_pilot_preparation_only",
