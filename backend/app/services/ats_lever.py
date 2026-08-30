@@ -331,7 +331,7 @@ class LeverAdapter(ATSAdapter):
             "fingerprint_changed": fingerprint_changed,
             "submit_control_present": submit_control_present,
         }
-        if strong_match and url_changed:
+        if strong_match and confirmation_url and url_changed and not submit_control_present:
             return [ConfirmationEvidence(
                 evidence_type="success_banner",
                 is_sufficient=True,
@@ -339,7 +339,7 @@ class LeverAdapter(ATSAdapter):
                 confirmation_text=strong_match,
                 metadata={
                     **common_metadata,
-                    "confirmation_basis": "strong_phrase_plus_url_change",
+                    "confirmation_basis": "strong_phrase_plus_confirmation_route",
                 },
             )]
         if weak_match and confirmation_url and url_changed and not submit_control_present:
@@ -353,7 +353,12 @@ class LeverAdapter(ATSAdapter):
                     "confirmation_basis": "weak_phrase_plus_confirmation_route",
                 },
             )]
-        if confirmation_url and url_changed and "application" in normalized:
+        if (
+            confirmation_url
+            and url_changed
+            and not submit_control_present
+            and "application" in normalized
+        ):
             return [ConfirmationEvidence(
                 evidence_type="confirmation_page",
                 is_sufficient=True,
