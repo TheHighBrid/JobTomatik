@@ -1,3 +1,4 @@
+import json
 import re
 import subprocess
 
@@ -29,7 +30,7 @@ def _gate():
 def test_phase4_gate_selects_lever_from_retained_evidence_without_promotion():
     gate = _gate()
 
-    assert gate["gate_passed"] is True
+    assert gate["gate_passed"] is True, json.dumps(gate, sort_keys=True)
     assert gate["drift"] == []
     assert gate["candidate"]["adapter"] == "lever"
     assert gate["candidate"]["selection_scope"] == "unattended_pilot_preparation_only"
