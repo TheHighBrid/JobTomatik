@@ -46,15 +46,16 @@ def _owned_records(
     db: Session,
     application_id: int,
     user_id: int,
+    *,
+    lock: bool = False,
 ) -> tuple[Application, User, Job]:
-    application = (
-        db.query(Application)
-        .filter(
-            Application.id == application_id,
-            Application.user_id == user_id,
-        )
-        .first()
+    query = db.query(Application).filter(
+        Application.id == application_id,
+        Application.user_id == user_id,
     )
+    if lock:
+        query = query.with_for_update()
+    application = query.first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
     user = db.query(User).filter(User.id == user_id).first()
@@ -270,7 +271,16 @@ async def queue_supervised_submission(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    application, user, job = _owned_records(db, application_id, current_user.id)
+    # Hold the same application-row lock used by current Lever material mutation.
+    # This keeps the final fresh approval validation and durable attempt reservation
+    # atomic with respect to material regeneration/review, so a bundle cannot change
+    # between preflight and reservation.
+    application, user, job = _owned_records(
+        db,
+        application_id,
+        current_user.id,
+        lock=True,
+    )
     _require_open_submission(application)
 
     existing_attempt = db.query(SubmissionAttempt).filter(
