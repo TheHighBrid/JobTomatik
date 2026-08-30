@@ -26,6 +26,7 @@ from app.models.intelligence import (
     RecruiterInteraction,
     SelectorStrategy,
 )
+from app.models.live_pilot import LivePilotAttemptReservation, LivePilotAuthorization
 from app.models.material import (
     ApplicationMaterial,
     ApplicationMaterialEvidence,
@@ -64,6 +65,8 @@ __all__ = [
     "SelectorStrategy",
     "AgentRun",
     "AgentTask",
+    "LivePilotAuthorization",
+    "LivePilotAttemptReservation",
     "EvidenceUnit",
     "ApplicationMaterial",
     "ApplicationMaterialEvidence",
