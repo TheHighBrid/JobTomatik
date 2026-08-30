@@ -6,6 +6,7 @@ from app.services.ats_maturity import (
     derive_adapter_maturity,
 )
 from app.services.autonomy_release_contract import (
+    AUTONOMY_RELEASE_SCHEMA_VERSION,
     AUTONOMY_SIGNATURE_METHOD,
     MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
     MIN_RELIABILITY_ATTEMPTS,
@@ -20,7 +21,7 @@ TEST_SIGNING_KEY = "jobtomatik-day27-test-signing-key-0001"
 
 def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40):
     manifest = {
-        "schema_version": "autonomy_release_v1",
+        "schema_version": AUTONOMY_RELEASE_SCHEMA_VERSION,
         "adapter": {"name": name, "version": version},
         "source": {
             "release_commit": release_commit,
@@ -67,13 +68,13 @@ def _autonomy_manifest(name="example", version="1.0.0", release_commit="a" * 40)
         "shadow_runs": {check: True for check in REQUIRED_SHADOW_CHECKS},
         "approval": {
             "approved": True,
-            "approval_reference": "day27-owner-approval",
+            "approval_reference": "day39-owner-approval",
             "approved_for_commit": release_commit,
         },
         "integrity": {"algorithm": "sha256", "manifest_digest": ""},
         "attestation": {
             "method": AUTONOMY_SIGNATURE_METHOD,
-            "key_id": "test-day27-key",
+            "key_id": "test-day39-key",
             "signature": "",
         },
     }
@@ -156,7 +157,7 @@ def test_autonomous_promotion_requires_gates_manifest_shadow_runs_and_trusted_si
     assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
 
     release["approved"] = True
-    release["approval_reference"] = "controlled-pilot-2026-07"
+    release["approval_reference"] = "controlled-pilot-2026-09"
     assert derive_adapter_maturity(manifest) is AdapterMaturity.DRY_RUN
 
     release["certification_manifest"] = _autonomy_manifest()
@@ -198,7 +199,7 @@ def test_tampered_wrong_version_or_wrong_signature_cannot_promote():
     release.update(
         {
             "approved": True,
-            "approval_reference": "day27-test",
+            "approval_reference": "day39-test",
             "certification_manifest": _autonomy_manifest(),
         }
     )

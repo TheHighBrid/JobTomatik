@@ -1,7 +1,19 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "phase": "day28_phase4_gate",
   "freeze_source_commit": "0e11c23045827f5fb7b0fd031bd0f03ac35c4399",
+  "fixture_digest_migration": {
+    "migration": "day39_cross_phase_contract_regate_v1",
+    "reason": "The original Day 28 fixture digest combined adapter-specific regressions with global autonomy-contract tests. Day 39 correctly evolved the global contract from autonomy_release_v1 to autonomy_release_v2 without changing adapter implementations or adapter-specific regressions. The retained Day 28 hashes are preserved below and were independently revalidated against the original freeze commit before accepting the new combined hashes.",
+    "validated_current_commit": "f8c1bc93625db07c73a2321741d3b7bbd1d490b3",
+    "diagnostic_workflow_run_id": 33076673763,
+    "diagnostic_artifact_sha256": "5ee37d57b8e36fc6e4df74d7673b3d984b06608fa439b18a85b298adc929d1c6",
+    "legacy_day28_hashes_match_original_freeze_commit": true,
+    "adapter_scoped_regressions_unchanged_since_day28": true,
+    "adapter_source_changes_observed": false,
+    "adapter_maturity_changes_authorized": false,
+    "real_submission_enablement_changed": false
+  },
   "candidate": {
     "adapter": "lever",
     "selection_scope": "unattended_pilot_preparation_only",
@@ -14,7 +26,9 @@
       "version": "1.1.0",
       "digests": {
         "adapter_source_sha256": "c678bf46b5ecff82e1bd5179e72bc8707ff7bd72c6d1424a0d639714b9d362bf",
-        "fixture_regression_sha256": "9efbc84683ad852b64ab146718eb64bda01ab915e8c2bd9b7acda404651c481f",
+        "fixture_regression_sha256": "e707dea42fb93ae9617742780cee9a6669357cd7fb0fd05e0ccd9288c36981b9",
+        "legacy_day28_fixture_regression_sha256": "9efbc84683ad852b64ab146718eb64bda01ab915e8c2bd9b7acda404651c481f",
+        "adapter_scoped_fixture_regression_sha256": "b57e10a9886b185a841f8993ca9b98cd42b0271f1d986ec0d964a553ba373582",
         "retained_evidence_sha256": "50b25afa82c85c94378bb2440806334fff33de6b68fbf0a58168ae131266b4f3",
         "manifest_live_evidence_sha256": "5c9fd39fca5e3180589a42b9d4ec4d6ec38b856fb59d64e5078592849d89ff86"
       }
@@ -24,7 +38,9 @@
       "version": "1.1.1",
       "digests": {
         "adapter_source_sha256": "ba681cce098df523d7087803f22548dffe726664a2234e662c4534469c87032f",
-        "fixture_regression_sha256": "16a8b320168f8c67e3fbdba925649e4b534d3ae13976f70ddabe91bb7250041d",
+        "fixture_regression_sha256": "8a78b53d7efa1853612c8d3c42714b55b53fe764873953c252277e91d2a6cc68",
+        "legacy_day28_fixture_regression_sha256": "16a8b320168f8c67e3fbdba925649e4b534d3ae13976f70ddabe91bb7250041d",
+        "adapter_scoped_fixture_regression_sha256": "4f8536884388a0155000fd3f7f27847a88f17f1dede720d3d7dbbb46a52ec794",
         "retained_evidence_sha256": "2317cb1397b70fac70d239f631748c1a06533820db6d495cabc32a71e4764e56",
         "manifest_live_evidence_sha256": "ac24bf8677181a4486b394e58aebb4cc173861904493e197ec06b5067a837df4"
       }
@@ -34,7 +50,9 @@
       "version": "1.1.0",
       "digests": {
         "adapter_source_sha256": "217538f34398d3b8799bfb6bcb743cf02bb623964eb7f066ce8e0dfd01dc803e",
-        "fixture_regression_sha256": "f60bbbdcd8df3ec2e053525db30502ab13f24c30b900767958013ebacb1cd872",
+        "fixture_regression_sha256": "a53548fdc01970d2baa35c1d42dc58f8a82f53b154aab577ad1ad100618f9d37",
+        "legacy_day28_fixture_regression_sha256": "f60bbbdcd8df3ec2e053525db30502ab13f24c30b900767958013ebacb1cd872",
+        "adapter_scoped_fixture_regression_sha256": "f4ab1096a53fcc110307194f4fc75aa0c32c43bf9ad54efef81030d1ecdcca3c",
         "retained_evidence_sha256": "1ffe75765fdb5c98c086e9b8e373acecaf7a1ed088a9ee276b353723a17012a3",
         "manifest_live_evidence_sha256": "e4e5ba427d4477621fa976c3b65b8d0c33c90f0d52bf6a04100dd7548e43ba31"
       }
@@ -44,7 +62,9 @@
       "version": "1.1.0",
       "digests": {
         "adapter_source_sha256": "9602930a694df30ae6a35a800e0e305852e172aed20da2600943233ed9318055",
-        "fixture_regression_sha256": "cf3b9104d820417d99ebe4da5d4a735424e5287f744ff3103fb7be28bf017dee",
+        "fixture_regression_sha256": "fac6e5072e357aa644af4e736d3e4ad3c45c246aef1ff8a3744b9f20e25a5e03",
+        "legacy_day28_fixture_regression_sha256": "cf3b9104d820417d99ebe4da5d4a735424e5287f744ff3103fb7be28bf017dee",
+        "adapter_scoped_fixture_regression_sha256": "5846cd068eaae7966d441a3eb15f1c2b464c74e727e655637048cdee853416b0",
         "retained_evidence_sha256": null,
         "manifest_live_evidence_sha256": "76bbd4ffc77ec6266907050ba4e75dc8b19154e07f750e40a48d7152ced94d28"
       }
@@ -54,7 +74,9 @@
       "version": "1.1.0",
       "digests": {
         "adapter_source_sha256": "e29b887ffe539cfd30a97f0b9d0bfe190a7b5cba4db28ac7ff2b20e9788a79e6",
-        "fixture_regression_sha256": "1c8d2cef930b02517b1394a908b532252ba3ac53d03f23b3dd90ac37c26bb791",
+        "fixture_regression_sha256": "6b87b7c63292140e3aadbf6ba4aaf794e09f615fa0a63e734fee654f206359de",
+        "legacy_day28_fixture_regression_sha256": "1c8d2cef930b02517b1394a908b532252ba3ac53d03f23b3dd90ac37c26bb791",
+        "adapter_scoped_fixture_regression_sha256": "0a233d98e3ca786590285d8b891d9e575aa3f7b97e96540d7cdda6eb09897362",
         "retained_evidence_sha256": null,
         "manifest_live_evidence_sha256": "8b1b60eadc7d934e642787fdf689fc1231b55b2fb6a3c3968cc03812a7c75dd4"
       }
@@ -122,6 +144,9 @@
     "adapter_version_change_requires_phase4_regate": true,
     "adapter_source_or_fixture_digest_change_requires_phase4_regate": true,
     "retained_evidence_digest_change_requires_phase4_regate": true,
+    "cross_phase_contract_fixture_change_requires_recorded_regate": true,
+    "legacy_day28_fixture_hashes_preserved": true,
+    "adapter_scoped_fixture_hashes_preserved": true,
     "maturity_promotion_is_out_of_scope": true,
     "real_submission_enablement_is_out_of_scope": true,
     "autopilot_enablement_is_out_of_scope": true

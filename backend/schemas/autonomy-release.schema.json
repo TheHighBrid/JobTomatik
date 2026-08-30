@@ -19,7 +19,7 @@
     "attestation"
   ],
   "properties": {
-    "schema_version": {"const": "autonomy_release_v1"},
+    "schema_version": {"const": "autonomy_release_v2"},
     "adapter": {
       "type": "object",
       "additionalProperties": false,
@@ -125,7 +125,9 @@
         "stale_posting_rejected",
         "ambiguous_question_held",
         "quiet_hour_transition_verified",
-        "daily_cap_reset_verified",
+        "production_policy_diagnostics_non_authoritative",
+        "rolling_24h_semantics_verified",
+        "rolling_24h_membership_rollover_verified",
         "zero_policy_escapes",
         "zero_unexplained_records",
         "zero_duplicate_tasks",
@@ -143,7 +145,9 @@
         "stale_posting_rejected": {"const": true},
         "ambiguous_question_held": {"const": true},
         "quiet_hour_transition_verified": {"const": true},
-        "daily_cap_reset_verified": {"const": true},
+        "production_policy_diagnostics_non_authoritative": {"const": true},
+        "rolling_24h_semantics_verified": {"const": true},
+        "rolling_24h_membership_rollover_verified": {"const": true},
         "zero_policy_escapes": {"const": true},
         "zero_unexplained_records": {"const": true},
         "zero_duplicate_tasks": {"const": true},
