@@ -1,63 +1,32 @@
-# JobTomatik v1.00
+# JobTomatik v2.00
 
-**An AI-powered job-search and application system built toward fully autonomous, evidence-backed real submission.**
+**A bounded-autonomy job-search and application system with evidence-backed submission, fail-closed recovery, and exact-artifact release controls.**
 
-JobTomatik searches and scores roles, organizes an application queue, prepares tailored materials, fills supported application forms, handles retained-browser sessions, records submission evidence, and tracks follow-ups.
+> **Release-candidate source.** The repository can contain v2.00 candidate code before the `v2.0.0` GitHub release exists. A published v2.00 release is valid only after the Day 41 release audit, Day 42 exact-artifact readiness gate, owner publication authorization, and immutable `v2.0.0` release all pass on the same exact source revision. The v2.0.0 release exists only after those publication steps complete successfully; candidate source or green CI alone is not a published release.
 
-## Product direction
+JobTomatik discovers and ranks jobs, prepares truthful application materials, resolves employer/ATS targets, fills supported forms, preserves retained-browser handoffs, records submission evidence, prevents duplicate attempts, schedules policy-bounded work, and tracks follow-up activity.
 
-The final product goal is a fully autonomous job-hunt agent that can:
+## Bounded autonomy
 
-- discover and rank suitable roles;
-- prepare truthful, tailored application materials;
-- resolve job-board listings into employer or ATS application targets;
-- complete supported forms and upload the correct documents;
-- make policy-bounded decisions using the applicant's approved profile and answer rules;
-- submit real applications without routine human operation;
-- verify employer confirmation before recording an application as submitted;
-- recover from failures, prevent duplicates, and continue operating within configured limits.
+JobTomatik v2.00 is designed for hands-off operation where the exact adapter, runtime, policy, and retained certification evidence permit it. Autonomous operation remains bounded by:
 
-JobTomatik v1 is the supervised foundation of that system, not its permanent ceiling. Current release controls let each adapter progress through detection, dry-run, reviewed submission, and autonomous certification as implementation evidence matures.
+- adapter maturity and exact adapter version;
+- approved applicant profile and answer policies;
+- exact runtime revision;
+- duplicate and idempotency protection;
+- rolling application caps and quiet hours;
+- employer/platform exclusions and rate limits;
+- global and platform kill switches;
+- circuit breakers;
+- bounded live-window authorization when required;
+- strong employer confirmation evidence;
+- fail-closed handling of ambiguous or uncertain outcomes.
 
-JobTomatik does not attempt to evade CAPTCHA, MFA, identity verification, or other third-party security controls. When a site explicitly requires a human action, the system may pause, request that action, and resume afterward.
+JobTomatik does not attempt to bypass CAPTCHA, MFA, anti-bot challenges, identity verification, assessments, or other third-party security controls. When a genuine human action is required, the system pauses and may resume only when the retained session remains valid and bound to the same target.
 
-## Download
+## v2.00 adapter scope
 
-The Android client is published on the repository's **Releases** page:
-
-- [Download the latest JobTomatik APK](https://github.com/TheHighBrid/JobTomatik/releases/latest)
-- Technical version: `1.0.0`
-- Release title: **JobTomatik v1.00**
-- Android application ID: `ca.jobtomatik.app`
-- Minimum Android SDK: 23
-- Target Android SDK: 35
-
-The APK is the user interface. The FastAPI backend, Redis, Celery worker, database, and Playwright browser runtime run locally or on a trusted server.
-
-> Check `BUILD-INFO.txt` in the release before upgrading. When permanent Android signing secrets are not configured, CI publishes a development-signed APK intended for personal or local installation. A differently signed future APK may require uninstalling the previous build first.
-
-## Current v1 capabilities
-
-| Area | Current state |
-|---|---|
-| Authentication, profile, résumé | Working |
-| Job search and scoring | Working with best-effort public sources |
-| Review and application queue | Working |
-| Cover-letter generation | Local template by default; optional Anthropic provider |
-| Answer Policy Vault | Working, encrypted at rest |
-| Listing-to-employer target resolution | In active development |
-| Greenhouse form filling | Dry-run and retained-handoff verified |
-| Retained browser handoff | CAPTCHA, anti-bot, login, MFA, and navigation interaction supported |
-| Expired-code recovery | Replace-and-submit, request new code, back, reload, and restart controls |
-| Submission confirmation | Explicit confirmation evidence closes successful applications |
-| Duplicate protection | Confirmed records hide further submission controls |
-| Adapter health and notifications | Working |
-| Follow-up scheduling | Working; SendGrid optional |
-| Fully autonomous real submission | Product target, promoted adapter by adapter through release evidence |
-
-## Adapter maturity and autonomy roadmap
-
-Adapter maturity is an operational progression, not a permanent restriction:
+Adapter maturity is an operational certification state, not a marketing label:
 
 ```text
 unsupported
@@ -67,18 +36,38 @@ unsupported
 → certified_autonomous
 ```
 
-The current v1 evidence boundary is:
+The v2.00 release contract allows the following maximum scope:
 
-| Adapter | Current maturity | Current operating boundary |
-|---|---|---|
-| Greenhouse | `dry_run` | Form preparation, retained handoff, and confirmation evidence |
-| Lever | `dry_run` | Form preparation through pre-submit or manual challenge |
-| Ashby | `dry_run` | Form preparation through pre-submit or manual challenge |
-| SmartRecruiters | `detect_only` | Metadata detection and handoff |
-| Workday | `detect_only` | Account and login handoff |
-| Generic sites | `unsupported` | Target resolution or manual review |
+| Adapter | Version | v2.00 release boundary | Autonomous real submission |
+| --- | --- | --- | --- |
+| Lever | 1.1.0 | `certified_autonomous` only after the strict retained Day 39 promotion gate passes on the exact release lineage | Only while current production policy and bounded live authorization permit it |
+| Greenhouse | 1.1.1 | `dry_run` | No |
+| Ashby | 1.1.0 | `dry_run` | No |
+| SmartRecruiters | 1.1.0 | `detect_only` | No |
+| Workday | 1.1.0 | `detect_only` | No |
+| Generic sites | n/a | `unsupported` or manual handoff | No |
 
-Each adapter is intended to advance toward `certified_autonomous` after its real-world reliability, duplicate prevention, confirmation evidence, recovery behavior, and incident controls meet the repository's release criteria.
+If final retained evidence supports a lower maturity, the lower maturity is authoritative and this table must be reconciled before publication. Publishing a release never promotes an adapter by itself.
+
+## Core v2.00 capabilities
+
+| Area | v2.00 capability |
+| --- | --- |
+| Authentication, profile, résumé | Applicant profile and document management |
+| Job discovery and scoring | Continuous/public-source discovery with queue prioritization |
+| Answer Policy Vault | Approved reusable answers with provenance and fail-closed ambiguity handling |
+| Material preparation | Truthful tailored material generation from approved applicant data |
+| Employer/ATS target resolution | Source listing separated from canonical employer application target |
+| Retained browser handoff | CAPTCHA, MFA, login, identity, and other unavoidable human boundaries |
+| Duplicate prevention | Durable canonical-target and idempotency controls across retries/restarts |
+| Submission evidence | Strong employer evidence required before successful terminal state |
+| Uncertain outcomes | `submission_uncertain` remains non-retryable until explicit review |
+| Autonomy scheduler | Caps, quiet hours, exclusions, rate limits, circuit breakers, queue policy |
+| Runtime attestation | Exact API/worker/Beat/frontend/browser/queue/runtime revision verification |
+| Shadow certification | Strict physical Android endurance evidence, including 24-hour policy transitions |
+| Live authorization | Exact-revision, exact-adapter, bounded, durable authorization and attempt reservation |
+| Follow-up planning | Scheduling and review independently gated from real outbound sending |
+| Release provenance | Exact-commit prebuilt APK candidate and owner-only exact-artifact publisher |
 
 ## Architecture
 
@@ -92,126 +81,217 @@ React + Capacitor client
 FastAPI backend ─── SQLite/PostgreSQL
         │
         ├── Redis
-        ├── Celery worker
-        └── Playwright Chromium retained-browser sessions
+        ├── Celery worker + Beat
+        └── Playwright / Chromium retained-browser runtime
 ```
 
-The application-target architecture keeps the original discovery listing separate from the real employer or ATS form:
+Application-target flow:
 
 ```text
 source listing
-→ target resolution
-→ employer application target
-→ ATS adapter or bounded browser agent
+→ canonical target resolution
+→ employer / ATS application target
+→ certified adapter or bounded browser agent
 → confirmation evidence
+→ audited application state
 ```
 
-## Fast Android / Termux start
+## Android runtime
 
-The complete guide is in **[docs/SETUP_TUTORIAL.md](docs/SETUP_TUTORIAL.md)**.
+The reference Android execution model uses Termux plus Ubuntu PRoot. The canonical managed backend checkout is `/root/JobTomatik` inside Ubuntu PRoot. Do not treat a second native Termux checkout as the authoritative backend runtime.
 
-- Regular Termux runs the React development client when needed.
-- Ubuntu PRoot runs Python, Redis, FastAPI, Celery, and Playwright.
-- The installed APK connects to `http://127.0.0.1:8010`.
-- Do not append `/api` to the URL entered in JobTomatik.
+The installed Android client normally talks to:
 
-### Ubuntu backend terminal
+```text
+http://127.0.0.1:8010
+```
+
+The complete setup guide is in [docs/SETUP_TUTORIAL.md](docs/SETUP_TUTORIAL.md).
+
+### Managed backend shell
 
 ```bash
-proot-distro login ubuntu
+proot-distro login ubuntu --shared-tmp
 cd /root/JobTomatik/backend
 source .venv/bin/activate
-redis-server --daemonize yes 2>/dev/null || true
-redis-cli ping
-uvicorn app.main:app --host 127.0.0.1 --port 8010 --log-level info
 ```
 
-### Ubuntu Celery terminal
+Use the repository's managed Android stack and runtime-acceptance commands for normal startup and certification. Manual process commands are primarily for diagnosis because runtime admission depends on exact process identity, queue ownership, browser/CDP state, and source-revision attestation.
 
-```bash
-proot-distro login ubuntu
-cd /root/JobTomatik/backend
-source .venv/bin/activate
-celery -A app.celery_app worker \
-  --loglevel=info \
-  --pool=solo \
-  -Q applications,celery,scraping,followup
-```
+## Runtime safety rules
 
-`--pool=solo` is recommended on Android/PRoot because one retained Chromium controller is more reliable than multiple forked workers.
+A successful frontend build or reachable API is not enough to authorize unattended work. Relevant release/campaign gates may require verification of:
 
-### Optional browser frontend
+- API process identity;
+- Celery worker identity and application queue ownership;
+- Celery Beat identity;
+- Redis application database/queue behavior;
+- frontend source revision;
+- Chromium/CDP availability;
+- managed Android runtime fingerprint;
+- exact source revision;
+- no stale/foreign PID ownership;
+- no live safety switch escape.
 
-Run outside Ubuntu in regular Termux:
+A runtime acceptance receipt from an older source revision is stale after an update.
 
-```bash
-cd ~/JobTomatik/frontend
-npm ci
-VITE_API_URL=http://127.0.0.1:8010 npm run dev
-```
+## Submission safety
 
-Open `http://127.0.0.1:3000`.
+A click is not a submission result. JobTomatik records a successful submission only after accepted confirmation evidence.
 
-## Current v1 workflow
+When evidence is missing or ambiguous:
 
-1. Register or sign in.
-2. Complete **Profile** and upload the current résumé PDF.
-3. Review the **Answer Policy Vault** and approve truthful reusable answers.
-4. Search for jobs and approve an exact posting.
-5. Open its application record and review the generated material.
-6. Press **Dry Run (Preview)**.
-7. Review filled answers and uploaded files.
-8. Complete any unavoidable third-party verification through **Open secure handoff**.
-9. Allow JobTomatik to resume and verify the employer confirmation page.
-10. JobTomatik records the evidence and updates the application state.
+- the application remains fail closed;
+- an uncertain live attempt is not silently retried;
+- a consumed or reserved authorization slot is not automatically reclaimed;
+- duplicate protection remains active;
+- operator review must reconcile employer-side evidence before state changes.
 
-Do not repeat an application after the employer has displayed a received or thank-you confirmation.
+Never manually convert an uncertain application into a retryable state merely to restore throughput.
 
-## Development and rollout controls
+## Human-review boundaries
 
-The repository ships conservative development defaults while autonomous capabilities are being tested and promoted:
+JobTomatik pauses rather than guessing when it encounters:
+
+- CAPTCHA or anti-bot challenge;
+- MFA or applicant-controlled verification code;
+- identity/document verification;
+- employer assessment;
+- ambiguous required control;
+- missing sensitive/legal answer policy;
+- conflicting applicant data;
+- unsupported required form state;
+- uncertain employer confirmation.
+
+See [docs/KNOWN_BOUNDARIES_v2.00.md](docs/KNOWN_BOUNDARIES_v2.00.md) for the complete release boundary.
+
+## Production controls
+
+Conservative defaults remain important even in a bounded-autonomy release:
 
 ```env
 ALLOW_REAL_APPLICATION_SUBMIT=false
-GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
+ALLOW_REAL_FOLLOWUP_SEND=false
 AUTOPILOT_ENABLED=false
-ENABLE_RESUMABLE_HANDOFFS=false
 DEV_MOCK_JOBS=false
 ```
 
-These are configurable release gates, not a statement that the product must remain supervised. An autonomous release can enable the relevant controls after its adapters, policies, duplicate protection, recovery paths, and confirmation evidence satisfy the operator's chosen readiness criteria.
+Platform pilot settings remain available to configuration regression tests. Their presence in test configuration does not authorize a production pilot or change the retained adapter maturity state.
 
-Dry runs may retain human-verification sessions automatically. `ENABLE_RESUMABLE_HANDOFFS` extends that capability to approved non-dry runs; it does not bypass a third-party challenge.
+Real submission authority is not derived from one environment variable. The active adapter maturity, runtime identity, production policy, kill-switch state, circuit breakers, and any required persisted live authorization are independently revalidated.
 
-## Configuration
+Real follow-up sending is separately gated from application submission.
 
-Copy the example file and use a strong secret:
+## Verification
+
+The canonical toolchain is declared in `.jobtomatik-toolchain.env` and enforced by `scripts/verify.sh`.
+
+Bootstrap a clean checkout:
 
 ```bash
-cp .env.example backend/.env
+bash scripts/verify.sh bootstrap
 ```
 
-Recommended Android/Termux development values:
+Fast gate:
 
-```env
-DATABASE_URL=sqlite:///./jobtomatik.db
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=replace-with-a-long-random-value
-ANSWER_VAULT_KEY=
-AI_PROVIDER=template
-SENDGRID_API_KEY=
-UPLOAD_DIR=uploads
-DEV_MOCK_JOBS=false
-ALLOW_REAL_APPLICATION_SUBMIT=false
-GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
-AUTOPILOT_ENABLED=false
-ENABLE_RESUMABLE_HANDOFFS=false
-CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://localhost,http://localhost,capacitor://localhost
+```bash
+bash scripts/verify.sh fast
 ```
 
-Keep `SECRET_KEY` and `ANSWER_VAULT_KEY` stable after encrypted answer policies are created.
+Subsystem gates:
 
-## Docker quick start
+```bash
+bash scripts/verify.sh backend
+bash scripts/verify.sh frontend
+bash scripts/verify.sh dependencies
+bash scripts/verify.sh deployment
+bash scripts/verify.sh android
+```
+
+Full deterministic verification:
+
+```bash
+bash scripts/verify.sh full
+```
+
+The canonical release toolchain uses Python 3.11, Node.js 20, Temurin Java 21, Gradle 9.5.1, Android Gradle Plugin 8.13.2, Android API 35, and Build Tools 35.0.0.
+
+## v2.00 release process
+
+The final Android release deliberately separates build, readiness, and publication.
+
+### 1. Exact-commit candidate build
+
+`.github/workflows/build-v2-release-candidate.yml` builds one prepublication candidate from an exact current `main` commit and records:
+
+- APK SHA-256;
+- source commit;
+- APK package/version identity;
+- signing certificate identity;
+- canonical signing mode (`release_signed` or `development_signed`);
+- Day 41 audit reference;
+- candidate workflow run ID;
+- `publication_authorized=false`.
+
+It cannot publish a GitHub release.
+
+### 2. Day 42 read-only readiness
+
+The Day 42 evaluator binds the exact candidate to:
+
+- strict Day 41 audit;
+- final exact-head workflow matrix;
+- truthful maturity manifest;
+- current repository/tag state;
+- final release documents;
+- separate owner authorization for the exact source commit, APK SHA-256, and candidate run ID.
+
+A passing report may set `publication_eligible=true`; it still records that publication has not occurred.
+
+### 3. Owner-only exact-artifact publication
+
+`.github/workflows/publish-v1-command.yml` downloads the exact prebuilt candidate from the approved workflow run, verifies its bytes and provenance, rechecks `main` and immutable tag state, and publishes those exact bytes.
+
+The publisher does **not** rebuild the APK after owner approval.
+
+Final release bundle:
+
+```text
+JobTomatik-v2.00.apk
+JobTomatik-v2.00.sha256
+SOURCE-COMMIT.txt
+BUILD-INFO.txt
+APK-BADGING.txt
+APK-SIGNING.txt
+CANDIDATE-METADATA.json
+DAY42-READINESS-SHA256.txt
+```
+
+See [docs/operations/DAY_42_V2_RELEASE.md](docs/operations/DAY_42_V2_RELEASE.md) and [docs/RELEASE_CHECKLIST_v2.00.md](docs/RELEASE_CHECKLIST_v2.00.md).
+
+## Download and signing verification
+
+Use the repository **Releases** page for published artifacts:
+
+- https://github.com/TheHighBrid/JobTomatik/releases
+
+For v2.00, verify that tag `v2.0.0`, release target commit, `SOURCE-COMMIT.txt`, APK checksum, candidate workflow metadata, and signing certificate all agree before installing.
+
+A `development_signed` APK is valid only when described as development-signed. An APK signed by a different key may not upgrade in place over an existing installation.
+
+## Operations and recovery
+
+Primary operating documents:
+
+- [v2.00 operator guide](docs/OPERATOR_GUIDE_v2.00.md)
+- [v2.00 known boundaries](docs/KNOWN_BOUNDARIES_v2.00.md)
+- [recovery and incident response](docs/operations/recovery-incident-response.md)
+- [Day 41 release audit](docs/operations/DAY_41_RELEASE_CANDIDATE_AUDIT.md)
+- [Day 42 release procedure](docs/operations/DAY_42_V2_RELEASE.md)
+
+For a suspected duplicate, wrong target, unexpected live submission, guessed required answer, policy escape, or critical clustered defect, disable real submission and autopilot first, preserve evidence, and follow the incident runbook. Do not delete application state or evidence as part of containment.
+
+## Docker development start
 
 ```bash
 cp .env.example .env
@@ -222,9 +302,9 @@ docker compose up --build
 - Backend: `http://localhost:8000`
 - API docs: `http://localhost:8000/docs`
 
-Local-CDP retained-browser handoffs require the API and browser worker to share reachable browser-session affinity. The Android/Ubuntu single-node setup is the reference v1 configuration.
+Local-CDP retained-browser handoffs require the API and browser worker to share reachable session affinity. The managed Android/Ubuntu single-node runtime is the reference physical certification environment.
 
-## Build the Android APK
+## Android APK development build
 
 ```bash
 cd frontend
@@ -232,13 +312,7 @@ npm ci
 npm run build:apk:debug
 ```
 
-Output:
-
-```text
-frontend/android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-A release build requires a private keystore supplied outside source control:
+A release build requires signing material supplied outside source control:
 
 ```bash
 export JOBTOMATIK_KEYSTORE_PATH=/secure/path/jobtomatik-release.jks
@@ -248,84 +322,31 @@ export JOBTOMATIK_KEY_PASSWORD='...'
 npm run build:apk:release
 ```
 
-No keystore path, key, or password is committed to this repository.
-
-## Test and verify
-
-The canonical toolchain is declared in `.jobtomatik-toolchain.env` and enforced by `scripts/verify.sh`.
-
-From a clean checkout, install dependencies once:
-
-```bash
-bash scripts/verify.sh bootstrap
-```
-
-Run the fast pre-commit gate:
-
-```bash
-bash scripts/verify.sh fast
-```
-
-Run one subsystem:
-
-```bash
-bash scripts/verify.sh backend
-bash scripts/verify.sh frontend
-bash scripts/verify.sh dependencies
-bash scripts/verify.sh deployment
-bash scripts/verify.sh android
-```
-
-Run the complete release verification path in deterministic dependency order:
-
-```bash
-bash scripts/verify.sh full
-```
-
-Use `--install` to install dependencies immediately before a selected mode, for example:
-
-```bash
-bash scripts/verify.sh full --install
-```
-
-The reproducible CI gate runs the same subsystem modes independently and requires every lane to pass. The canonical contract is Python 3.11, Node.js 20, Temurin Java 21, Gradle 9.5.1, Android Gradle Plugin 8.13.2, Android API 35, and Build Tools 35.0.0.
-
-Verification keeps real submission, scheduled autopilot, and live resumable handoffs disabled. Platform pilot settings remain available to configuration regression tests, then the dedicated safety gate explicitly verifies both pilots are off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `200`, and version name `2.0.0`.
-
-The repository root `VERSION` and published download metadata continue to describe the latest v1.00 release until v2.00 is actually cut. The Android project already uses the reserved v2.00 candidate identity so development APKs cannot be mistaken for the v1.00 release artifact.
+No private keystore, signing key, or signing password belongs in the repository.
 
 ## Repository guide
 
 ```text
-backend/                 FastAPI, Celery, Playwright, policies, evidence, tests
-frontend/                React client and Capacitor Android project
-scripts/verify.sh        Canonical local and CI verification entry point
-docs/SETUP_TUTORIAL.md   Complete installation and operating tutorial
-evidence/                Pilot and certification records
-.github/workflows/       CI, Android build, stabilization, and release automation
-CHANGELOG.md              Version history
-SECURITY.md               Secrets, local-data, and vulnerability guidance
+backend/                         FastAPI, Celery, policies, evidence, migrations, tests
+frontend/                        React client and Capacitor Android project
+scripts/verify.sh                Canonical local/CI verification entry point
+docs/SETUP_TUTORIAL.md           Installation guide
+docs/OPERATOR_GUIDE_v2.00.md     v2 operator procedures
+docs/KNOWN_BOUNDARIES_v2.00.md   v2 operating limits
+docs/RELEASE_NOTES_v2.00.md      v2 release notes
+docs/RELEASE_CHECKLIST_v2.00.md  Evidence-bound release checklist
+evidence/                        Certification and campaign evidence
+.github/workflows/               CI, runtime, candidate-build, and release automation
+CHANGELOG.md                      Version history
+SECURITY.md                       Security and secret-handling policy
 ```
 
 ## API reference
 
-Interactive OpenAPI documentation is available at `/docs` on the running backend. Common routes include:
-
-| Method | Route | Purpose |
-|---|---|---|
-| POST | `/api/auth/register` | Create an account |
-| POST | `/api/auth/login` | Receive an access token |
-| GET/PATCH | `/api/profile` | Read or update the applicant profile |
-| POST | `/api/profile/resume` | Upload the résumé |
-| POST | `/api/jobs/search` | Queue a job search |
-| GET | `/api/jobs/queue` | Review job candidates |
-| POST | `/api/applications` | Create an application record |
-| POST | `/api/applications/{id}/submit?dry_run=true` | Start a preview application attempt |
-| GET | `/api/handoffs/application/{id}/sessions` | List retained handoffs |
-| POST | `/api/handoffs/{public_id}/complete` | Verify and resume a completed handoff |
-| GET | `/api/applications/{id}/evidence` | Read submission evidence |
-| GET | `/api/system/operations-readiness` | Inspect current automation and release gates |
+Interactive OpenAPI documentation is available at `/docs` on the running backend. Common routes include authentication/profile, job discovery, application state, handoffs, evidence review, and operations readiness. Runtime and promotion endpoints remain bounded by their exact gate contracts rather than README instructions.
 
 ## Release history
 
-See **[CHANGELOG.md](CHANGELOG.md)**. JobTomatik v1.00 establishes the supervised foundation, retained-browser recovery, confirmation evidence, portable Android builds, and the adapter-maturity system used to progress toward autonomous operation.
+See [CHANGELOG.md](CHANGELOG.md).
+
+JobTomatik v1.00 established the supervised retained-browser and evidence foundation. JobTomatik v2.00 adds bounded-autonomy scheduling, stronger exact-revision runtime safety, physical shadow certification, bounded live authorization, and exact-artifact release provenance.

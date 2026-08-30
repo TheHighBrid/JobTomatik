@@ -1,32 +1,62 @@
 #!/usr/bin/env bash
-# JobTomatik APK builder
-# Requires: Node 18+, Java 17+, Android SDK, Capacitor CLI
+# JobTomatik Android project preparer.
+# Canonical toolchain versions live in .jobtomatik-toolchain.env.
+# This helper prepares the Capacitor Android project; it does not publish an APK.
 
 set -euo pipefail
 
-FRONTEND_DIR="$(cd "$(dirname "$0")/frontend" && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOLCHAIN_FILE="$ROOT_DIR/.jobtomatik-toolchain.env"
+FRONTEND_DIR="$ROOT_DIR/frontend"
+
+if [[ ! -f "$TOOLCHAIN_FILE" ]]; then
+  echo "Missing canonical toolchain file: $TOOLCHAIN_FILE" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+source "$TOOLCHAIN_FILE"
+
+command -v node >/dev/null 2>&1 || { echo "Node.js is required." >&2; exit 1; }
+command -v npm >/dev/null 2>&1 || { echo "npm is required." >&2; exit 1; }
+command -v java >/dev/null 2>&1 || { echo "Java is required." >&2; exit 1; }
+
+echo "==> Canonical JobTomatik Android toolchain"
+echo "    Node:          >= ${JOBTOMATIK_NODE_MIN_VERSION} within major ${JOBTOMATIK_NODE_MAJOR}"
+echo "    Java:          ${JOBTOMATIK_JAVA_MAJOR}"
+echo "    Gradle:        ${JOBTOMATIK_GRADLE_VERSION}"
+echo "    Android API:   ${JOBTOMATIK_ANDROID_API}"
+echo "    Build tools:   ${JOBTOMATIK_ANDROID_BUILD_TOOLS}"
+echo ""
+echo "==> Detected"
+echo "    Node: $(node --version)"
+echo "    npm:  $(npm --version)"
+echo "    Java: $(java -version 2>&1 | head -n 1)"
+echo ""
+
 cd "$FRONTEND_DIR"
 
-echo "==> Installing frontend dependencies..."
-npm install
+echo "==> Installing locked frontend dependencies with npm ci..."
+npm ci
 
-echo "==> Building React app..."
-npm run build
-
-echo "==> Syncing to Capacitor Android..."
-npx cap sync android
+echo "==> Building React and synchronizing Capacitor Android..."
+npm run android:prepare
 
 echo ""
-echo "==> Build complete. Choose how to finish:"
+echo "==> Android project prepared. Choose an assembly path:"
 echo ""
-echo "  Option A — Android Studio (recommended first time):"
-echo "    npx cap open android"
-echo "    Then in Android Studio: Build > Generate Signed Bundle/APK"
+echo "  Development APK:"
+echo "    cd frontend && npm run build:apk:debug"
+echo "    Output: frontend/android/app/build/outputs/apk/debug/app-debug.apk"
 echo ""
-echo "  Option B — Gradle command line (CI/headless):"
-echo "    cd android && ./gradlew assembleDebug"
-echo "    APK will be at: android/app/build/outputs/apk/debug/app-debug.apk"
+echo "  Android lint:"
+echo "    cd frontend && npm run android:lint"
 echo ""
-echo "  Option C — Release APK (needs keystore):"
-echo "    cd android && ./gradlew assembleRelease"
+echo "  Release variant (external signing material may be required):"
+echo "    cd frontend && npm run build:apk:release"
+echo "    Output: frontend/android/app/build/outputs/apk/release/"
 echo ""
+echo "  Android Studio:"
+echo "    cd frontend && npm run android:open"
+echo ""
+echo "This helper does not publish, tag, or authorize real submission."
