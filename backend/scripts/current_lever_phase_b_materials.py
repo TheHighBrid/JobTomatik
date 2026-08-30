@@ -4,12 +4,13 @@
 This is a debug/emergency operator fallback. The normal workflow lives in the
 JobTomatik UI. It never issues submission approval, changes live flags, queues a
 submission worker, or submits an application. Mutations use the same server-side
-uncertain-attempt quarantine and exact-bundle binding as the UI/API.
+active-attempt quarantine and exact-bundle binding as the UI/API.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 from pathlib import Path
 import sys
@@ -87,6 +88,31 @@ def _displayed_bundle_binding(shown: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _encode_bundle_token(binding: dict[str, Any]) -> str:
+    payload = json.dumps(
+        binding,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_bundle_token(token: str) -> dict[str, Any]:
+    encoded = str(token or "").strip()
+    if not encoded:
+        raise RuntimeError(
+            "MATERIAL_BUNDLE_STALE --bundle-token from the earlier show command is required"
+        )
+    try:
+        padding = "=" * (-len(encoded) % 4)
+        value = json.loads(base64.urlsafe_b64decode(encoded + padding).decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("MATERIAL_BUNDLE_STALE invalid --bundle-token") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("MATERIAL_BUNDLE_STALE invalid --bundle-token payload")
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Operate the preparation-only current Lever Phase B material boundary."
@@ -100,13 +126,21 @@ def main() -> int:
         help="Read the current owner-selected Lever Phase B roster without mutation or ranking.",
     )
     sub.add_parser("prepare", help="Generate evidence-backed materials and open review.")
-    sub.add_parser("show", help="Read the exact latest material bundle without mutation.")
+    sub.add_parser(
+        "show",
+        help="Read the exact latest material bundle and emit its review binding token.",
+    )
 
     review = sub.add_parser("review", help="Record the owner's explicit material decision.")
     decision = review.add_mutually_exclusive_group(required=True)
     decision.add_argument("--approve", action="store_true")
     decision.add_argument("--reject", action="store_true")
     review.add_argument("--notes", default=None)
+    review.add_argument(
+        "--bundle-token",
+        required=True,
+        help="Exact review_binding_token emitted by the earlier show command.",
+    )
     review.add_argument(
         "--acknowledgment",
         default=None,
@@ -137,6 +171,12 @@ def main() -> int:
                 user,
                 application_id=args.application_id,
             )
+            result = {
+                **result,
+                "review_binding_token": _encode_bundle_token(
+                    _displayed_bundle_binding(result)
+                ),
+            }
             db.rollback()
         else:
             approved = bool(args.approve)
@@ -147,12 +187,7 @@ def main() -> int:
                         "MATERIAL_APPROVAL_BLOCKED exact owner acknowledgment required: "
                         + expected
                     )
-            shown = show_current_lever_operator_materials(
-                db,
-                user,
-                application_id=args.application_id,
-            )
-            bundle = _displayed_bundle_binding(shown)
+            bundle = _decode_bundle_token(args.bundle_token)
             result = review_current_lever_operator_materials(
                 db,
                 user,
