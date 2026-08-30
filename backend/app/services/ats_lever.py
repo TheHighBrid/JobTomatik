@@ -307,6 +307,22 @@ class LeverAdapter(ATSAdapter):
             "thanks for your interest",
             "thank you for your interest",
         )
+        negative_confirmation_terms = (
+            "error",
+            "failed",
+            "failure",
+            "invalid",
+            "not submitted",
+            "could not submit",
+            "unable to submit",
+            "please correct",
+            "try again",
+            "problem processing",
+            "problem submitting",
+        )
+        body_has_negative_confirmation = any(
+            term in normalized for term in negative_confirmation_terms
+        )
         current_path = urlparse(current_url).path
         confirmation_url = bool(
             re.search(
@@ -322,6 +338,7 @@ class LeverAdapter(ATSAdapter):
             "url_changed": url_changed,
             "fingerprint_changed": fingerprint_changed,
             "submit_control_present": submit_control_present,
+            "negative_confirmation_copy": body_has_negative_confirmation,
         }
 
         selectors = (
@@ -333,17 +350,6 @@ class LeverAdapter(ATSAdapter):
             '[class*="posting-confirmation" i]',
             '[data-qa*="confirmation" i]',
             '[data-testid*="confirmation" i]',
-        )
-        negative_confirmation_terms = (
-            "error",
-            "failed",
-            "failure",
-            "invalid",
-            "not submitted",
-            "could not submit",
-            "unable to submit",
-            "please correct",
-            "try again",
         )
         for selector in selectors:
             try:
@@ -361,9 +367,7 @@ class LeverAdapter(ATSAdapter):
                     ),
                     "",
                 )
-                settled_transition = bool(
-                    fingerprint_changed or (confirmation_url and url_changed)
-                )
+                settled_transition = bool(confirmation_url and url_changed)
                 if container_match and settled_transition and not submit_control_present:
                     return [ConfirmationEvidence(
                         evidence_type="confirmation_page",
@@ -388,7 +392,13 @@ class LeverAdapter(ATSAdapter):
             (phrase for phrase in weak_phrases if phrase in normalized),
             "",
         )
-        if strong_match and confirmation_url and url_changed and not submit_control_present:
+        if (
+            strong_match
+            and confirmation_url
+            and url_changed
+            and not submit_control_present
+            and not body_has_negative_confirmation
+        ):
             return [ConfirmationEvidence(
                 evidence_type="success_banner",
                 is_sufficient=True,
@@ -399,7 +409,13 @@ class LeverAdapter(ATSAdapter):
                     "confirmation_basis": "strong_phrase_plus_confirmation_route",
                 },
             )]
-        if weak_match and confirmation_url and url_changed and not submit_control_present:
+        if (
+            weak_match
+            and confirmation_url
+            and url_changed
+            and not submit_control_present
+            and not body_has_negative_confirmation
+        ):
             return [ConfirmationEvidence(
                 evidence_type="success_banner",
                 is_sufficient=True,
@@ -409,19 +425,6 @@ class LeverAdapter(ATSAdapter):
                     **common_metadata,
                     "confirmation_basis": "weak_phrase_plus_confirmation_route",
                 },
-            )]
-        if (
-            confirmation_url
-            and url_changed
-            and not submit_control_present
-            and "application" in normalized
-        ):
-            return [ConfirmationEvidence(
-                evidence_type="confirmation_page",
-                is_sufficient=True,
-                final_url=current_url,
-                confirmation_text="Lever confirmation route and application text detected after submit.",
-                metadata=common_metadata,
             )]
 
         return [ConfirmationEvidence(
