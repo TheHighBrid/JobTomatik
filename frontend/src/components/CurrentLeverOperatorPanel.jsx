@@ -65,7 +65,9 @@ function CandidateCard({ candidate }) {
     queryKey: ['current-lever-materials', String(applicationId)],
     queryFn: () => api.get(`/supervised-pilot/current-lever/${applicationId}/materials`),
     select: (response) => response.data,
-    enabled: expanded && !quarantined,
+    // Quarantine blocks mutation, never inspection. Frozen evidence must remain
+    // readable while an active/uncertain attempt is being reconciled.
+    enabled: expanded,
     retry: false,
   })
 
@@ -116,7 +118,8 @@ function CandidateCard({ candidate }) {
   )
   const warningCount = (cover?.warnings?.length || 0) + (resume?.warnings?.length || 0)
   const reviewEligible = Boolean(
-    cover
+    !quarantined
+    && cover
     && resume
     && bundleBinding
     && criticalErrors.length === 0
@@ -139,6 +142,9 @@ function CandidateCard({ candidate }) {
 
   const reviewMutation = useMutation({
     mutationFn: ({ approved }) => {
+      if (quarantined) {
+        return Promise.reject(new Error('This application is quarantined. Material decisions are read-only until the active submission attempt is reconciled.'))
+      }
       if (!bundleBinding) {
         return Promise.reject(new Error('The displayed material bundle identity is incomplete. Refresh materials before reviewing.'))
       }
@@ -206,186 +212,190 @@ function CandidateCard({ candidate }) {
         </a>
       </div>
 
-      {quarantined ? (
+      {quarantined && (
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-white p-3 text-xs leading-relaxed text-red-800">
           <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div>
-            This application has {candidate.uncertain_submission_attempt_count} uncertain live submission attempt{candidate.uncertain_submission_attempt_count === 1 ? '' : 's'}. It is locked against preparation and retry until independent reconciliation evidence exists.
+            This application has {candidate.uncertain_submission_attempt_count} uncertain live submission attempt{candidate.uncertain_submission_attempt_count === 1 ? '' : 's'}. It is locked against preparation and retry until independent reconciliation evidence exists. Existing materials remain readable below for recovery and evidence review.
           </div>
         </div>
-      ) : (
-        <>
-          {candidate.eligibility_blockers?.length > 0 && (
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
-              {candidate.eligibility_blockers.map(humanize).join(' · ')}
+      )}
+
+      {!quarantined && candidate.eligibility_blockers?.length > 0 && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+          {candidate.eligibility_blockers.map(humanize).join(' · ')}
+        </div>
+      )}
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          disabled={!eligible || prepareMutation.isPending}
+          onClick={() => prepareMutation.mutate()}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {prepareMutation.isPending
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <RefreshCw className="h-3.5 w-3.5" />}
+          Prepare / refresh materials
+        </button>
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+        >
+          <FileCheck2 className="h-3.5 w-3.5" />
+          {expanded ? 'Hide material review' : quarantined ? 'Inspect frozen materials' : 'Review materials'}
+          {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="mt-4 space-y-3">
+          {quarantined && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
+              Read-only evidence view. Prepare, approve, and reject actions remain disabled while the submission attempt is active or uncertain.
             </div>
           )}
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              disabled={!eligible || prepareMutation.isPending}
-              onClick={() => prepareMutation.mutate()}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {prepareMutation.isPending
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <RefreshCw className="h-3.5 w-3.5" />}
-              Prepare / refresh materials
-            </button>
-            <button
-              type="button"
-              onClick={() => setExpanded((value) => !value)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-            >
-              <FileCheck2 className="h-3.5 w-3.5" />
-              {expanded ? 'Hide material review' : 'Review materials'}
-              {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
-          </div>
+          {materialsQuery.isLoading && (
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading latest material bundle…
+            </div>
+          )}
 
-          {expanded && (
-            <div className="mt-4 space-y-3">
-              {materialsQuery.isLoading && (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading latest material bundle…
+          {materialsQuery.isError && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              {getApiErrorMessage(
+                materialsQuery.error,
+                'No current material bundle is available yet. Prepare it first.',
+              )}
+            </div>
+          )}
+
+          {materials && (
+            <>
+              <MaterialBlock title="Cover letter" material={cover} />
+              <MaterialBlock title="Résumé summary" material={resume} />
+
+              {!bundleIdentityComplete && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                  The two displayed materials do not share a complete posting/evidence identity. Refresh the bundle before recording a review decision.
                 </div>
               )}
 
-              {materialsQuery.isError && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                  {getApiErrorMessage(
-                    materialsQuery.error,
-                    'No current material bundle is available yet. Prepare it first.',
-                  )}
-                </div>
-              )}
-
-              {materials && (
-                <>
-                  <MaterialBlock title="Cover letter" material={cover} />
-                  <MaterialBlock title="Résumé summary" material={resume} />
-
-                  {!bundleIdentityComplete && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
-                      The two displayed materials do not share a complete posting/evidence identity. Refresh the bundle before recording a review decision.
+              {bundleAlreadyApproved && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-700" />
+                    <div>
+                      <div className="text-xs font-semibold text-emerald-900">This exact material bundle is already approved.</div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-emerald-800">
+                        {materialsQuery.data?.open_review_count > 0
+                          ? `${materialsQuery.data.open_review_count} other review blocker${materialsQuery.data.open_review_count === 1 ? '' : 's'} remain. Material approval will not be repeated.`
+                          : 'No additional material decision is required.'}
+                      </p>
                     </div>
-                  )}
-
-                  {bundleAlreadyApproved && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-700" />
-                        <div>
-                          <div className="text-xs font-semibold text-emerald-900">This exact material bundle is already approved.</div>
-                          <p className="mt-1 text-[11px] leading-relaxed text-emerald-800">
-                            {materialsQuery.data?.open_review_count > 0
-                              ? `${materialsQuery.data.open_review_count} other review blocker${materialsQuery.data.open_review_count === 1 ? '' : 's'} remain. Material approval will not be repeated.`
-                              : 'No additional material decision is required.'}
-                          </p>
-                        </div>
-                      </div>
-                      {candidate.automation_state !== 'ready_to_apply' && materialsQuery.data?.open_review_count > 0 && (
-                        <Link
-                          to={`/applications/${applicationId}`}
-                          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-900 hover:underline"
-                        >
-                          Review remaining application blocker <ArrowUpRight className="h-3.5 w-3.5" />
-                        </Link>
-                      )}
-                    </div>
-                  )}
-
-                  {candidate.automation_state === 'needs_review' && !bundleAlreadyApproved && (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="flex items-start gap-2">
-                        <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-700" />
-                        <div>
-                          <div className="text-xs font-semibold text-slate-900">Owner material decision</div>
-                          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
-                            Approval is bound to the exact material IDs, versions, posting digest, and evidence digest displayed above. It does not issue a submission approval, queue work, enable live flags, or click submit.
-                          </p>
-                          {warningCount > 0 && criticalErrors.length === 0 && (
-                            <p className="mt-1 text-[11px] font-medium text-amber-800">
-                              {warningCount} visible non-critical warning{warningCount === 1 ? '' : 's'} will be recorded as explicitly accepted if you approve this bundle.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {criticalErrors.length > 0 && (
-                        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-[11px] text-red-900">
-                          Approval is blocked by {criticalErrors.length} critical source-validation error{criticalErrors.length === 1 ? '' : 's'}.
-                        </div>
-                      )}
-
-                      {confirmingApproval ? (
-                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                          <div className="text-xs font-semibold text-amber-900">
-                            Approve this displayed bundle for application {applicationId}?
-                          </div>
-                          <p className="mt-1 text-[11px] text-amber-800">
-                            If the bundle changes in another tab before this request reaches the server, the approval is rejected as stale instead of applying to newer content.
-                          </p>
-                          <div className="mt-3 flex gap-2">
-                            <button
-                              type="button"
-                              disabled={!reviewEligible || reviewMutation.isPending}
-                              onClick={() => reviewMutation.mutate({ approved: true })}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
-                            >
-                              {reviewMutation.isPending
-                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                : <CheckCircle2 className="h-3.5 w-3.5" />}
-                              Confirm material approval
-                            </button>
-                            <button
-                              type="button"
-                              disabled={reviewMutation.isPending}
-                              onClick={() => setConfirmingApproval(false)}
-                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                          <button
-                            type="button"
-                            disabled={!reviewEligible || reviewMutation.isPending}
-                            onClick={() => setConfirmingApproval(true)}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Approve displayed bundle
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!bundleBinding || reviewMutation.isPending}
-                            onClick={() => reviewMutation.mutate({ approved: false })}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                          >
-                            <XCircle className="h-3.5 w-3.5" /> Reject displayed bundle
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {candidate.automation_state === 'ready_to_apply' && (
+                  </div>
+                  {candidate.automation_state !== 'ready_to_apply' && materialsQuery.data?.open_review_count > 0 && !quarantined && (
                     <Link
                       to={`/applications/${applicationId}`}
-                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-900 hover:underline"
                     >
-                      <ShieldCheck className="h-3.5 w-3.5" /> Open fresh runtime preflight
-                      <ArrowUpRight className="h-3.5 w-3.5" />
+                      Review remaining application blocker <ArrowUpRight className="h-3.5 w-3.5" />
                     </Link>
                   )}
-                </>
+                </div>
               )}
-            </div>
+
+              {candidate.automation_state === 'needs_review' && !bundleAlreadyApproved && !quarantined && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-700" />
+                    <div>
+                      <div className="text-xs font-semibold text-slate-900">Owner material decision</div>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
+                        Approval is bound to the exact material IDs, versions, posting digest, and evidence digest displayed above. It does not issue a submission approval, queue work, enable live flags, or click submit.
+                      </p>
+                      {warningCount > 0 && criticalErrors.length === 0 && (
+                        <p className="mt-1 text-[11px] font-medium text-amber-800">
+                          {warningCount} visible non-critical warning{warningCount === 1 ? '' : 's'} will be recorded as explicitly accepted if you approve this bundle.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {criticalErrors.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-[11px] text-red-900">
+                      Approval is blocked by {criticalErrors.length} critical source-validation error{criticalErrors.length === 1 ? '' : 's'}.
+                    </div>
+                  )}
+
+                  {confirmingApproval ? (
+                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <div className="text-xs font-semibold text-amber-900">
+                        Approve this displayed bundle for application {applicationId}?
+                      </div>
+                      <p className="mt-1 text-[11px] text-amber-800">
+                        If the bundle changes in another tab before this request reaches the server, the approval is rejected as stale instead of applying to newer content.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          disabled={!reviewEligible || reviewMutation.isPending}
+                          onClick={() => reviewMutation.mutate({ approved: true })}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                        >
+                          {reviewMutation.isPending
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          Confirm material approval
+                        </button>
+                        <button
+                          type="button"
+                          disabled={reviewMutation.isPending}
+                          onClick={() => setConfirmingApproval(false)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        disabled={!reviewEligible || reviewMutation.isPending}
+                        onClick={() => setConfirmingApproval(true)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Approve displayed bundle
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!bundleBinding || reviewMutation.isPending}
+                        onClick={() => reviewMutation.mutate({ approved: false })}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <XCircle className="h-3.5 w-3.5" /> Reject displayed bundle
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {candidate.automation_state === 'ready_to_apply' && !quarantined && (
+                <Link
+                  to={`/applications/${applicationId}`}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" /> Open fresh runtime preflight
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
+              )}
+            </>
           )}
-        </>
+        </div>
       )}
     </article>
   )
