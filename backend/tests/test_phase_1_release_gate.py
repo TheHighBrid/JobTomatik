@@ -16,6 +16,7 @@ ROADMAP_PATH = ROOT / "docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md"
 BASELINE_PATH = ROOT / "backend/evidence/lever-phase-a-baseline.csv"
 READINESS_PATH = ROOT / "backend/evidence/lever-pilot-readiness.json"
 SUPERSESSION_PATH = ROOT / "backend/evidence/lever-phase-a-supersessions.json"
+PHASE_1_FREEZE_SOURCE_COMMIT = "8406a5a9bf638c180851fdd625a941f8adef8935"
 
 
 def _json(path: Path):
@@ -119,32 +120,36 @@ def test_lever_phase_2_freeze_keeps_launch_snapshot_separate_from_current_progre
     assert freeze["promotion"]["real_submission_allowed"] is False
 
 
-def test_frozen_lever_inputs_remain_reproducible_historical_git_blobs():
+def test_frozen_lever_inputs_match_canonical_historical_snapshot():
     freeze = _json(FREEZE_PATH)
     locked = freeze["locked_input_blobs"]
+    freeze_source_commit = str(freeze.get("freeze_source_commit") or "")
 
+    assert freeze_source_commit == PHASE_1_FREEZE_SOURCE_COMMIT
+    assert re.fullmatch(r"[0-9a-f]{40}", freeze_source_commit)
     assert set(locked) == set(freeze["canonical_inputs"])
     assert all(re.fullmatch(r"[0-9a-f]{40}", sha) for sha in locked.values())
 
+    subprocess.run(
+        ["git", "cat-file", "-e", f"{freeze_source_commit}^{{commit}}"],
+        cwd=ROOT,
+        check=True,
+    )
     for relative_path, expected_sha in locked.items():
         source = ROOT / relative_path
         assert source.is_file(), relative_path
+        snapshot_sha = subprocess.check_output(
+            ["git", "rev-parse", f"{freeze_source_commit}:{relative_path}"],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+        assert snapshot_sha == expected_sha, relative_path
         object_type = subprocess.check_output(
             ["git", "cat-file", "-t", expected_sha],
             cwd=ROOT,
             text=True,
         ).strip()
         assert object_type == "blob", relative_path
-        historical_bytes = subprocess.check_output(
-            ["git", "cat-file", "blob", expected_sha],
-            cwd=ROOT,
-        )
-        reproduced_sha = subprocess.check_output(
-            ["git", "hash-object", "--stdin"],
-            cwd=ROOT,
-            input=historical_bytes,
-        ).decode("utf-8").strip()
-        assert reproduced_sha == expected_sha, relative_path
 
 
 def test_phase_2_daily_targets_restart_from_zero_without_phantom_credit():
