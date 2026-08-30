@@ -11,6 +11,7 @@ from app.models.user import User
 from app.schemas.lever_phase_b_current_intake import (
     CurrentLeverPhaseBImportIn,
     CurrentLeverPhaseBImportOut,
+    CurrentLeverPhaseBMaterialReviewIn,
 )
 from app.schemas.supervised_pilot_dossier import SupervisedPilotDossierOut
 from app.schemas.supervised_pilot_roster import (
@@ -31,12 +32,21 @@ from app.services.lever_phase_b_current_intake import (
     CurrentLeverPhaseBIntakeError,
     import_current_lever_phase_b_candidate,
 )
+from app.services.lever_phase_b_current_materials import LeverPhaseBReviewedMaterialsError
+from app.services.lever_phase_b_current_materials_v5 import (
+    prepare_current_lever_materials,
+    review_current_lever_materials,
+    show_current_lever_materials,
+)
+from app.services.lever_phase_b_current_roster import (
+    list_current_lever_phase_b_candidates,
+)
 from app.services.lever_phase_b_launch import LeverPhaseBLaunchError
 from app.services.lever_phase_b_preparation import (
     enrich_lever_phase_b_preparation_status,
 )
 from app.services.lever_phase_b_reviewed_materials import (
-    LeverPhaseBReviewedMaterialsError,
+    LeverPhaseBReviewedMaterialsError as RetainedLeverPhaseBReviewedMaterialsError,
     prepare_retained_lever_materials,
     review_retained_lever_materials,
 )
@@ -161,6 +171,89 @@ async def import_current_lever_phase_b_application_candidate(
     return result
 
 
+@router.get("/current-lever")
+def current_lever_phase_b_roster(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Read the owner-selected current Lever workspace without ranking or mutation."""
+
+    result = list_current_lever_phase_b_candidates(db, current_user)
+    db.rollback()
+    return result
+
+
+@router.get("/current-lever/{application_id}/materials")
+def current_lever_phase_b_materials(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = show_current_lever_materials(
+            db,
+            current_user,
+            application_id=application_id,
+        )
+    except LeverPhaseBReviewedMaterialsError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    db.rollback()
+    return result
+
+
+@router.post("/current-lever/{application_id}/prepare-materials")
+def prepare_current_lever_phase_b_materials(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = prepare_current_lever_materials(
+            db,
+            current_user,
+            application_id=application_id,
+        )
+    except LeverPhaseBReviewedMaterialsError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    db.commit()
+    return result
+
+
+@router.post("/current-lever/{application_id}/review-materials")
+def review_current_lever_phase_b_materials(
+    application_id: int,
+    data: CurrentLeverPhaseBMaterialReviewIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if data.approved:
+        expected = f"APPROVE LEVER MATERIALS {application_id}"
+        if str(data.acknowledgment or "").strip() != expected:
+            raise HTTPException(
+                status_code=409,
+                detail="MATERIAL_APPROVAL_BLOCKED exact application-bound acknowledgment required",
+            )
+
+    try:
+        result = review_current_lever_materials(
+            db,
+            current_user,
+            application_id=application_id,
+            approved=data.approved,
+            notes=data.notes,
+        )
+    except LeverPhaseBReviewedMaterialsError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    db.commit()
+    return result
+
+
 @router.get(
     "/lever-launch",
     response_model=LeverPhaseBLaunchOut,
@@ -218,7 +311,7 @@ def prepare_lever_phase_b_launch_materials(
             current_user,
             review_id=review_id,
         )
-    except (LeverPhaseBLaunchError, LeverPhaseBReviewedMaterialsError) as exc:
+    except (LeverPhaseBLaunchError, RetainedLeverPhaseBReviewedMaterialsError) as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -244,7 +337,7 @@ def review_lever_phase_b_launch_materials(
             approved=data.approved,
             notes=data.notes,
         )
-    except (LeverPhaseBLaunchError, LeverPhaseBReviewedMaterialsError) as exc:
+    except (LeverPhaseBLaunchError, RetainedLeverPhaseBReviewedMaterialsError) as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
