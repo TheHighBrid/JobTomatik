@@ -8,6 +8,10 @@ hold for every mutating operator surface:
 2. a material review decision is bound to the exact bundle the owner inspected;
 3. an already-approved exact bundle cannot be approved twice.
 
+Read-only inspection is intentionally broader than mutation eligibility. Frozen
+materials remain inspectable after execution begins or an attempt becomes uncertain,
+without reopening preparation, review, approval, or submission authority.
+
 The wrapper never issues submission approval, queues work, opens a browser, changes
 runtime flags, or submits an application.
 """
@@ -19,6 +23,7 @@ from typing import Any, Dict, Mapping, Optional
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
+from app.models.job import Job
 from app.models.submission_integrity import (
     ACTIVE_SUBMISSION_ATTEMPT_STATUSES,
     SubmissionAttempt,
@@ -26,9 +31,44 @@ from app.models.submission_integrity import (
 from app.models.user import User
 from app.services import lever_phase_b_current_materials as base
 from app.services import lever_phase_b_current_materials_v5 as v5
+from app.services.application_state import normalize_state
+from app.services.lever_phase_b_current_intake import INTAKE_SOURCE
+from app.services.lever_phase_b_runtime import canonical_lever_application_url
+from app.services.supervised_target_identity import persisted_supervised_target_metadata
 
 
 QUARANTINE_BLOCKER = "submission_attempt_active_no_material_mutation"
+
+
+def _owned_current_application(
+    db: Session,
+    user: User,
+    application_id: int,
+    *,
+    lock: bool,
+) -> tuple[Application, Job]:
+    query = db.query(Application).filter(
+        Application.id == int(application_id),
+        Application.user_id == user.id,
+    )
+    if lock:
+        query = query.with_for_update()
+    application = query.first()
+    if application is None:
+        raise base.LeverPhaseBReviewedMaterialsError(
+            "Current Lever application was not found"
+        )
+
+    job = db.query(Job).filter(Job.id == application.job_id).first()
+    if job is None:
+        raise base.LeverPhaseBReviewedMaterialsError(
+            "Current Lever application job is missing"
+        )
+    if str((job.raw_data or {}).get("selection_source") or "") != INTAKE_SOURCE:
+        raise base.LeverPhaseBReviewedMaterialsError(
+            "Application is not a current owner-selected Lever Phase B target"
+        )
+    return application, job
 
 
 def _lock_and_assert_mutation_allowed(
@@ -36,19 +76,12 @@ def _lock_and_assert_mutation_allowed(
     user: User,
     application_id: int,
 ) -> Application:
-    application = (
-        db.query(Application)
-        .filter(
-            Application.id == int(application_id),
-            Application.user_id == user.id,
-        )
-        .with_for_update()
-        .first()
+    application, _job = _owned_current_application(
+        db,
+        user,
+        application_id,
+        lock=True,
     )
-    if application is None:
-        raise base.LeverPhaseBReviewedMaterialsError(
-            "Current Lever application was not found"
-        )
 
     active_attempt = (
         db.query(SubmissionAttempt.id, SubmissionAttempt.status)
@@ -90,13 +123,53 @@ def show_current_lever_operator_materials(
     *,
     application_id: int,
 ) -> Dict[str, Any]:
-    """Read materials even for quarantined applications; this never mutates state."""
+    """Inspect the frozen latest bundle without requiring a mutable local state."""
 
-    return v5.show_current_lever_materials(
+    application, job = _owned_current_application(
         db,
         user,
-        application_id=application_id,
+        application_id,
+        lock=False,
     )
+    target = persisted_supervised_target_metadata(job)
+    if target.get("verified") is not True or target.get("blockers"):
+        raise base.LeverPhaseBReviewedMaterialsError(
+            "Current Lever application exact target identity is not verified"
+        )
+    application_url = canonical_lever_application_url(
+        str(target.get("canonical_application_url") or job.url or "")
+    )
+
+    materials: Dict[str, Any] = {}
+    for material_type in base.MATERIAL_TYPES:
+        material = base._latest_material(db, application.id, material_type)
+        if material is None:
+            materials[material_type] = None
+            continue
+        snapshot = material.source_snapshot or {}
+        materials[material_type] = {
+            "id": material.id,
+            "version": material.version,
+            "status": material.status,
+            "content": material.content,
+            "warnings": list(material.warnings or []),
+            "claims": list(material.claims or []),
+            "preparation": dict(snapshot.get("lever_phase_b_preparation") or {}),
+            "user_review": dict(snapshot.get("user_review") or {}),
+        }
+
+    return {
+        "application_id": application.id,
+        "job_id": job.id,
+        "employer": str(job.company or "").strip(),
+        "role": str(job.title or "").strip(),
+        "application_url": application_url,
+        "automation_state": normalize_state(application.automation_state),
+        "open_review_count": base._open_review_count(db, application.id),
+        "posting_sha256": (job.raw_data or {}).get("lever_official_posting_sha256"),
+        "materials": materials,
+        "read_only": True,
+    }
 
 
 def _required_bundle_mapping(
