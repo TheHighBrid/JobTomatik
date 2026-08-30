@@ -32,10 +32,20 @@ LEVER_POSTING_FIELDS = {
     "hostedUrl",
     "applyUrl",
 }
+LEVER_SUBMIT_SELECTORS = (
+    'button[type="submit"]:has-text("Submit application")',
+    'button[type="submit"]:has-text("Submit your application")',
+    '.application-submit button[type="submit"]',
+    '.postings-btn[type="submit"]',
+    'button[type="submit"]',
+    'input[type="submit"]',
+    '[data-qa*="submit" i]',
+    '[data-testid*="submit" i]',
+)
 
 
 def is_lever_host(host: str) -> bool:
-    normalized = (host or "").lower().split(":", 1)[0]
+    normalized = (host or "").lower().split(":,", 1)[0]
     return normalized in {
         LEVER_GLOBAL_JOBS_HOST,
         LEVER_EU_JOBS_HOST,
@@ -205,18 +215,33 @@ class LeverAdapter(ATSAdapter):
     async def find_submit_button(self, surface: Any) -> Any:
         return await find_first_action(
             surface,
-            (
-                'button[type="submit"]:has-text("Submit application")',
-                'button[type="submit"]:has-text("Submit your application")',
-                '.application-submit button[type="submit"]',
-                '.postings-btn[type="submit"]',
-                'button[type="submit"]',
-                'input[type="submit"]',
-                '[data-qa*="submit" i]',
-                '[data-testid*="submit" i]',
-            ),
+            LEVER_SUBMIT_SELECTORS,
             reject_terms=("linkedin",),
         )
+
+    async def visible_submit_control_present(self, surface: Any) -> bool:
+        """Detect a visible submit control even while it is temporarily disabled."""
+        for selector in LEVER_SUBMIT_SELECTORS:
+            try:
+                control = await surface.query_selector(selector)
+                if not control or not await control.is_visible():
+                    continue
+                label = ""
+                try:
+                    label = normalize_text(await control.inner_text())
+                except Exception:
+                    pass
+                if not label:
+                    try:
+                        label = normalize_text(await control.get_attribute("value") or "")
+                    except Exception:
+                        pass
+                if "linkedin" in label:
+                    continue
+                return True
+            except Exception:
+                continue
+        return False
 
     async def extract_validation_errors(self, surface: Any) -> List[ValidationIssue]:
         return await collect_validation_issues(
@@ -250,9 +275,9 @@ class LeverAdapter(ATSAdapter):
         except Exception:
             after_fingerprint = ""
         try:
-            submit_control_present = bool(await self.find_submit_button(surface))
+            submit_control_present = await self.visible_submit_control_present(surface)
         except Exception:
-            submit_control_present = False
+            submit_control_present = True
 
         url_changed = bool(current_url and current_url != before_url)
         fingerprint_changed = bool(
