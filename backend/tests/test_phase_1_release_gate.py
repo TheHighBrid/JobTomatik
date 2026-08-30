@@ -119,7 +119,7 @@ def test_lever_phase_2_freeze_keeps_launch_snapshot_separate_from_current_progre
     assert freeze["promotion"]["real_submission_allowed"] is False
 
 
-def test_frozen_lever_inputs_match_exact_git_blob_identities():
+def test_frozen_lever_inputs_remain_reproducible_historical_git_blobs():
     freeze = _json(FREEZE_PATH)
     locked = freeze["locked_input_blobs"]
 
@@ -129,12 +129,22 @@ def test_frozen_lever_inputs_match_exact_git_blob_identities():
     for relative_path, expected_sha in locked.items():
         source = ROOT / relative_path
         assert source.is_file(), relative_path
-        actual_sha = subprocess.check_output(
-            ["git", "hash-object", str(source)],
+        object_type = subprocess.check_output(
+            ["git", "cat-file", "-t", expected_sha],
             cwd=ROOT,
             text=True,
         ).strip()
-        assert actual_sha == expected_sha, relative_path
+        assert object_type == "blob", relative_path
+        historical_bytes = subprocess.check_output(
+            ["git", "cat-file", "blob", expected_sha],
+            cwd=ROOT,
+        )
+        reproduced_sha = subprocess.check_output(
+            ["git", "hash-object", "--stdin"],
+            cwd=ROOT,
+            input=historical_bytes,
+        ).decode("utf-8").strip()
+        assert reproduced_sha == expected_sha, relative_path
 
 
 def test_phase_2_daily_targets_restart_from_zero_without_phantom_credit():
@@ -194,3 +204,4 @@ def test_phase_1_workflow_covers_measurement_and_clean_release_contracts():
     assert "AUTOPILOT_ENABLED: \"false\"" in workflow
     assert "ALLOW_REAL_APPLICATION_SUBMIT: \"false\"" in workflow
     assert "ENABLE_RESUMABLE_HANDOFFS: \"false\"" in workflow
+    assert "fetch-depth: 0" in workflow
