@@ -34,6 +34,27 @@ def _env_example():
     return values
 
 
+def _git_commit_available(commit: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _repository_is_shallow() -> bool:
+    value = subprocess.check_output(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=ROOT,
+        text=True,
+    ).strip()
+    assert value in {"true", "false"}
+    return value == "true"
+
+
 def test_phase_1_manifest_covers_every_completed_control_day():
     gate = _json(PHASE_GATE_PATH)
 
@@ -130,11 +151,15 @@ def test_frozen_lever_inputs_match_canonical_historical_snapshot():
     assert set(locked) == set(freeze["canonical_inputs"])
     assert all(re.fullmatch(r"[0-9a-f]{40}", sha) for sha in locked.values())
 
-    subprocess.run(
-        ["git", "cat-file", "-e", f"{freeze_source_commit}^{{commit}}"],
-        cwd=ROOT,
-        check=True,
-    )
+    if not _git_commit_available(freeze_source_commit):
+        # Broad CI intentionally uses depth-1 checkouts. Only accept the
+        # metadata-only branch when Git itself proves history is shallow.
+        # The dedicated Phase 1 release gate uses fetch-depth: 0 and therefore
+        # must execute the exact historical commit/blob verification below.
+        assert _repository_is_shallow() is True
+        return
+
+    assert _repository_is_shallow() is False
     for relative_path, expected_sha in locked.items():
         source = ROOT / relative_path
         assert source.is_file(), relative_path
