@@ -13,12 +13,14 @@ on:
       - "backend/app/services/workday_popup_boundaries.py"
       - "backend/app/services/workday_port_integration.py"
       - "backend/app/services/phase4_candidate_gate.py"
+      - "backend/app/services/phase4_freeze_provenance.py"
       - "backend/app/services/autonomy_release_contract.py"
       - "backend/evidence/greenhouse-phase-a-readiness.json"
       - "backend/evidence/lever-pilot-readiness.json"
       - "backend/evidence/ashby-certification-dossier.json"
       - "backend/evidence/day28-phase4-version-freeze.json"
       - "backend/scripts/build_phase4_candidate_gate.py"
+      - "backend/scripts/verify_phase4_freeze_provenance.py"
       - "backend/tests/test_greenhouse*.py"
       - "backend/tests/test_lever*.py"
       - "backend/tests/test_ashby*.py"
@@ -60,6 +62,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -77,6 +80,10 @@ jobs:
 
       - name: Install backend dependencies
         run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Verify Phase 4 frozen source provenance
+        working-directory: backend
+        run: PYTHONPATH=. python scripts/verify_phase4_freeze_provenance.py
 
       - name: Install frontend dependencies
         working-directory: frontend
