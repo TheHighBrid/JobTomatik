@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from app.models.application import Application, ApplicationAutomationState
 from app.models.material import ApplicationMaterial, EvidenceUnit
 from app.models.submission_approval import SubmissionApproval
-from app.models.submission_integrity import SubmissionAttempt
+from app.models.submission_integrity import SubmissionAttempt, SubmissionAttemptStatus
 from app.models.user import User
 from app.services import lever_phase_b_current_intake as intake_service
 from app.services import lever_phase_b_current_materials_v5 as current_materials
@@ -184,6 +186,42 @@ def test_current_lever_v5_prepare_renders_support_story_and_keeps_submission_loc
     )
     monkeypatch.setattr(current_materials, "_fetch_current_hosted_posting", lambda _candidate: _official_posting())
 
+    uncertain_attempt = SubmissionAttempt(
+        reference="attempt-current-lever-v5-uncertain",
+        application_id=application_id,
+        user_id=user.id,
+        approval_reference="approval-current-lever-v5-uncertain",
+        attempt_number=1,
+        task_id="task-current-lever-v5-uncertain",
+        status=SubmissionAttemptStatus.uncertain.value,
+        binding_hash="c" * 64,
+        identity_digest="d" * 64,
+        combined_payload_hash="e" * 64,
+        adapter_version="1.1.0",
+    )
+    db_session.add(uncertain_attempt)
+    db_session.commit()
+
+    with pytest.raises(
+        current_materials.base.LeverPhaseBReviewedMaterialsError,
+        match="unresolved uncertain submission attempt",
+    ):
+        current_materials.prepare_current_lever_materials(
+            db_session,
+            user,
+            application_id=application_id,
+        )
+    assert (
+        db_session.query(ApplicationMaterial)
+        .filter(ApplicationMaterial.application_id == application_id)
+        .count()
+        == 0
+    )
+
+    uncertain_attempt.status = SubmissionAttemptStatus.blocked.value
+    db_session.add(uncertain_attempt)
+    db_session.commit()
+
     prepared = current_materials.prepare_current_lever_materials(
         db_session,
         user,
@@ -235,4 +273,4 @@ def test_current_lever_v5_prepare_renders_support_story_and_keeps_submission_loc
     application = db_session.query(Application).filter(Application.id == application_id).one()
     assert application.automation_state == ApplicationAutomationState.needs_review.value
     assert db_session.query(SubmissionApproval).count() == 0
-    assert db_session.query(SubmissionAttempt).count() == 0
+    assert db_session.query(SubmissionAttempt).count() == 1
