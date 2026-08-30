@@ -23,20 +23,29 @@ function humanize(value) {
 
 function MaterialBlock({ title, material }) {
   if (!material) return null
+  const criticalErrors = material.preparation?.critical_errors || []
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold text-slate-800">{title}</div>
-        <div className="text-[10px] font-semibold text-emerald-700">
+        <div className={`text-[10px] font-semibold ${
+          criticalErrors.length ? 'text-red-700' : 'text-emerald-700'
+        }`}>
           {material.status || 'unknown'} · v{material.version || '—'}
         </div>
       </div>
       <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-700">
         {material.content || 'No material content available.'}
       </pre>
+      {criticalErrors.length > 0 && (
+        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-[11px] text-red-900">
+          Critical source validation: {criticalErrors.join(' · ')}
+        </div>
+      )}
       {material.warnings?.length > 0 && (
         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-900">
-          {material.warnings.join(' · ')}
+          Non-critical review warning: {material.warnings.join(' · ')}
         </div>
       )}
     </div>
@@ -69,6 +78,51 @@ function CandidateCard({ candidate }) {
     ])
   }
 
+  const materials = materialsQuery.data?.materials
+  const cover = materials?.cover_letter
+  const resume = materials?.resume_summary
+  const coverCritical = cover?.preparation?.critical_errors || []
+  const resumeCritical = resume?.preparation?.critical_errors || []
+  const criticalErrors = [...coverCritical, ...resumeCritical]
+  const coverEvidenceDigest = cover?.preparation?.evidence_digest || ''
+  const resumeEvidenceDigest = resume?.preparation?.evidence_digest || ''
+  const postingSha256 = materialsQuery.data?.posting_sha256 || ''
+  const bundleIdentityComplete = Boolean(
+    cover?.id
+    && resume?.id
+    && cover?.version
+    && resume?.version
+    && postingSha256
+    && coverEvidenceDigest
+    && coverEvidenceDigest === resumeEvidenceDigest
+  )
+  const bundleBinding = bundleIdentityComplete
+    ? {
+        material_ids: {
+          cover_letter: cover.id,
+          resume_summary: resume.id,
+        },
+        material_versions: {
+          cover_letter: cover.version,
+          resume_summary: resume.version,
+        },
+        posting_sha256: postingSha256,
+        evidence_digest: coverEvidenceDigest,
+      }
+    : null
+  const bundleAlreadyApproved = Boolean(
+    cover?.user_review?.status === 'approved'
+    && resume?.user_review?.status === 'approved'
+  )
+  const warningCount = (cover?.warnings?.length || 0) + (resume?.warnings?.length || 0)
+  const reviewEligible = Boolean(
+    cover
+    && resume
+    && bundleBinding
+    && criticalErrors.length === 0
+    && !bundleAlreadyApproved
+  )
+
   const prepareMutation = useMutation({
     mutationFn: () => api.post(
       `/supervised-pilot/current-lever/${applicationId}/prepare-materials`,
@@ -84,39 +138,37 @@ function CandidateCard({ candidate }) {
   })
 
   const reviewMutation = useMutation({
-    mutationFn: ({ approved }) => api.post(
-      `/supervised-pilot/current-lever/${applicationId}/review-materials`,
-      approved
-        ? {
-            approved: true,
-            acknowledgment: `APPROVE LEVER MATERIALS ${applicationId}`,
-            notes: 'Reviewed in JobTomatik current Lever operator UI',
-          }
-        : {
-            approved: false,
-            notes: 'Rejected in JobTomatik current Lever operator UI',
-          },
-    ),
-    onSuccess: async (response) => {
+    mutationFn: ({ approved }) => {
+      if (!bundleBinding) {
+        return Promise.reject(new Error('The displayed material bundle identity is incomplete. Refresh materials before reviewing.'))
+      }
+      return api.post(
+        `/supervised-pilot/current-lever/${applicationId}/review-materials`,
+        {
+          approved,
+          ...(approved
+            ? { acknowledgment: `APPROVE LEVER MATERIALS ${applicationId}` }
+            : {}),
+          notes: approved
+            ? 'Reviewed in JobTomatik current Lever operator UI'
+            : 'Rejected in JobTomatik current Lever operator UI',
+          ...bundleBinding,
+        },
+      )
+    },
+    onSuccess: async (_response, variables) => {
       setConfirmingApproval(false)
       await refreshAll()
-      if (response.data?.approved === false) {
-        toast.success('Material bundle rejected. Application remains blocked for revision.')
-      } else {
+      if (variables.approved) {
         toast.success('Material bundle approved. Fresh runtime preflight is the next gate.')
+      } else {
+        toast.success('Material bundle rejected. Application remains blocked for revision.')
       }
     },
     onError: (error) => toast.error(
       getApiErrorMessage(error, 'Could not record the material review decision.'),
     ),
   })
-
-  const materials = materialsQuery.data?.materials
-  const reviewEligible = materials
-    && materials.cover_letter?.status === 'verified'
-    && materials.resume_summary?.status === 'verified'
-    && (materials.cover_letter?.warnings?.length || 0) === 0
-    && (materials.resume_summary?.warnings?.length || 0) === 0
 
   return (
     <article className={`rounded-xl border p-4 ${
@@ -196,7 +248,7 @@ function CandidateCard({ candidate }) {
             <div className="mt-4 space-y-3">
               {materialsQuery.isLoading && (
                 <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading latest verified bundle…
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading latest material bundle…
                 </div>
               )}
 
@@ -211,33 +263,74 @@ function CandidateCard({ candidate }) {
 
               {materials && (
                 <>
-                  <MaterialBlock title="Cover letter" material={materials.cover_letter} />
-                  <MaterialBlock title="Résumé summary" material={materials.resume_summary} />
+                  <MaterialBlock title="Cover letter" material={cover} />
+                  <MaterialBlock title="Résumé summary" material={resume} />
 
-                  {candidate.automation_state === 'needs_review' && (
+                  {!bundleIdentityComplete && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                      The two displayed materials do not share a complete posting/evidence identity. Refresh the bundle before recording a review decision.
+                    </div>
+                  )}
+
+                  {bundleAlreadyApproved && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                      <div className="flex items-start gap-2">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-700" />
+                        <div>
+                          <div className="text-xs font-semibold text-emerald-900">This exact material bundle is already approved.</div>
+                          <p className="mt-1 text-[11px] leading-relaxed text-emerald-800">
+                            {materialsQuery.data?.open_review_count > 0
+                              ? `${materialsQuery.data.open_review_count} other review blocker${materialsQuery.data.open_review_count === 1 ? '' : 's'} remain. Material approval will not be repeated.`
+                              : 'No additional material decision is required.'}
+                          </p>
+                        </div>
+                      </div>
+                      {candidate.automation_state !== 'ready_to_apply' && materialsQuery.data?.open_review_count > 0 && (
+                        <Link
+                          to={`/applications/${applicationId}`}
+                          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-900 hover:underline"
+                        >
+                          Review remaining application blocker <ArrowUpRight className="h-3.5 w-3.5" />
+                        </Link>
+                      )}
+                    </div>
+                  )}
+
+                  {candidate.automation_state === 'needs_review' && !bundleAlreadyApproved && (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="flex items-start gap-2">
                         <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-700" />
                         <div>
                           <div className="text-xs font-semibold text-slate-900">Owner material decision</div>
                           <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
-                            Approval only accepts this exact application and latest verified bundle. It does not issue a submission approval, queue work, enable live flags, or click submit.
+                            Approval is bound to the exact material IDs, versions, posting digest, and evidence digest displayed above. It does not issue a submission approval, queue work, enable live flags, or click submit.
                           </p>
+                          {warningCount > 0 && criticalErrors.length === 0 && (
+                            <p className="mt-1 text-[11px] font-medium text-amber-800">
+                              {warningCount} visible non-critical warning{warningCount === 1 ? '' : 's'} will be recorded as explicitly accepted if you approve this bundle.
+                            </p>
+                          )}
                         </div>
                       </div>
+
+                      {criticalErrors.length > 0 && (
+                        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-[11px] text-red-900">
+                          Approval is blocked by {criticalErrors.length} critical source-validation error{criticalErrors.length === 1 ? '' : 's'}.
+                        </div>
+                      )}
 
                       {confirmingApproval ? (
                         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                           <div className="text-xs font-semibold text-amber-900">
-                            Approve materials for application {applicationId}?
+                            Approve this displayed bundle for application {applicationId}?
                           </div>
                           <p className="mt-1 text-[11px] text-amber-800">
-                            This records only the material review and advances to fresh runtime preflight.
+                            If the bundle changes in another tab before this request reaches the server, the approval is rejected as stale instead of applying to newer content.
                           </p>
                           <div className="mt-3 flex gap-2">
                             <button
                               type="button"
-                              disabled={reviewMutation.isPending}
+                              disabled={!reviewEligible || reviewMutation.isPending}
                               onClick={() => reviewMutation.mutate({ approved: true })}
                               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
                             >
@@ -264,15 +357,15 @@ function CandidateCard({ candidate }) {
                             onClick={() => setConfirmingApproval(true)}
                             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Approve verified bundle
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Approve displayed bundle
                           </button>
                           <button
                             type="button"
-                            disabled={reviewMutation.isPending}
+                            disabled={!bundleBinding || reviewMutation.isPending}
                             onClick={() => reviewMutation.mutate({ approved: false })}
                             className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
                           >
-                            <XCircle className="h-3.5 w-3.5" /> Reject for revision
+                            <XCircle className="h-3.5 w-3.5" /> Reject displayed bundle
                           </button>
                         </div>
                       )}
@@ -345,7 +438,7 @@ export default function CurrentLeverOperatorPanel() {
               <h2 className="font-semibold text-slate-950">Current Lever operator</h2>
             </div>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
-              The owner-selected supervised Lever workspace. Prepare, inspect, and review here. Terminal commands are not part of the normal workflow.
+              The owner-selected supervised Lever workspace. Add exact targets, prepare, inspect, and review here. Terminal commands are not part of the normal workflow.
             </p>
           </div>
           <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
