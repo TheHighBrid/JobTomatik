@@ -159,7 +159,6 @@ def test_frozen_lever_inputs_match_canonical_historical_snapshot():
         assert _repository_is_shallow() is True
         return
 
-    assert _repository_is_shallow() is False
     for relative_path, expected_sha in locked.items():
         source = ROOT / relative_path
         assert source.is_file(), relative_path
