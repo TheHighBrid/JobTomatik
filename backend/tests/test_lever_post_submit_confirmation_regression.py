@@ -216,6 +216,76 @@ async def test_visible_submit_probe_counts_disabled_control():
 
 
 @pytest.mark.asyncio
+async def test_observed_same_page_confirmation_container_transition_certifies():
+    adapter = _TestLeverAdapter(
+        after_fingerprint="after",
+        submit_control_present=False,
+    )
+    before_surface = _Surface(
+        url="https://jobs.lever.co/example/posting/apply",
+        body="Submit application",
+    )
+    await adapter.capture_pre_submit_confirmation_state(before_surface)
+    after_surface = _Surface(
+        url=before_surface.url,
+        body="Thank you for applying. Your application has been submitted.",
+        selectors={
+            ".application-confirmation": (
+                "Thank you for applying. Your application has been submitted."
+            ),
+        },
+    )
+
+    evidence = await adapter.detect_confirmation(
+        after_surface,
+        before_url=before_surface.url,
+        before_fingerprint="before",
+    )
+
+    assert len(evidence) == 1
+    item = evidence[0]
+    assert item.is_sufficient is True
+    assert item.evidence_type == "confirmation_page"
+    assert item.metadata["confirmation_basis"] == (
+        "observed_same_page_confirmation_transition"
+    )
+    assert item.metadata["confirmation_container_changed"] is True
+    assert item.metadata["pre_submit_confirmation_state_captured"] is True
+
+
+@pytest.mark.asyncio
+async def test_preexisting_same_page_confirmation_container_never_certifies():
+    adapter = _TestLeverAdapter(
+        after_fingerprint="after",
+        submit_control_present=False,
+    )
+    confirmation = "Thank you for applying. Your application has been submitted."
+    before_surface = _Surface(
+        url="https://jobs.lever.co/example/posting/apply",
+        body=confirmation,
+        selectors={".application-confirmation": confirmation},
+    )
+    await adapter.capture_pre_submit_confirmation_state(before_surface)
+    after_surface = _Surface(
+        url=before_surface.url,
+        body=confirmation,
+        selectors={".application-confirmation": confirmation},
+    )
+
+    evidence = await adapter.detect_confirmation(
+        after_surface,
+        before_url=before_surface.url,
+        before_fingerprint="before",
+    )
+
+    assert len(evidence) == 1
+    item = evidence[0]
+    assert item.is_sufficient is False
+    assert item.evidence_type == "post_submit_diagnostic"
+    assert item.metadata["pre_submit_confirmation_state_captured"] is True
+
+
+@pytest.mark.asyncio
 async def test_preexisting_application_sent_copy_never_certifies_same_url():
     adapter = _TestLeverAdapter(
         after_fingerprint="after",
@@ -272,6 +342,7 @@ async def test_confirmation_miss_returns_durable_structured_diagnostic():
         "fingerprint_changed": True,
         "submit_control_present": True,
         "negative_confirmation_copy": False,
+        "pre_submit_confirmation_state_captured": False,
         "post_submit_diagnostic": True,
         "submit_clicked": True,
         "before_url": surface.url,
@@ -283,7 +354,7 @@ async def test_confirmation_miss_returns_durable_structured_diagnostic():
 
 
 @pytest.mark.asyncio
-async def test_visible_confirmation_selector_same_url_remains_uncertain():
+async def test_visible_confirmation_selector_same_url_without_snapshot_remains_uncertain():
     adapter = _TestLeverAdapter(
         after_fingerprint="after",
         submit_control_present=False,
@@ -307,6 +378,7 @@ async def test_visible_confirmation_selector_same_url_remains_uncertain():
     assert evidence[0].evidence_type == "post_submit_diagnostic"
     assert evidence[0].metadata["confirmation_url"] is False
     assert evidence[0].metadata["fingerprint_changed"] is True
+    assert evidence[0].metadata["pre_submit_confirmation_state_captured"] is False
 
 
 @pytest.mark.asyncio
