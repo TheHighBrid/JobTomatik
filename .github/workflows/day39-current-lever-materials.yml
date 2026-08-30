@@ -11,6 +11,7 @@ on:
       - backend/app/services/lever_phase_b_current_materials.py
       - backend/app/services/lever_phase_b_current_materials_v4.py
       - backend/app/services/lever_phase_b_current_materials_v5.py
+      - backend/app/services/lever_phase_b_current_operator.py
       - backend/app/services/lever_phase_b_current_roster.py
       - backend/app/services/material_generation_v4.py
       - backend/app/services/material_generation_v4_policy.py
@@ -26,6 +27,7 @@ on:
       - backend/tests/test_material_generation_v5_policy.py
       - backend/tests/test_current_lever_cli_v4_contract.py
       - backend/tests/test_current_lever_operator_api.py
+      - backend/tests/test_current_lever_operator_service.py
       - backend/tests/test_current_lever_roster.py
       - frontend/src/App.jsx
       - frontend/src/components/CurrentLeverOperatorPanel.jsx
@@ -62,7 +64,7 @@ jobs:
           python scripts/current_lever_phase_b_materials.py --help >/tmp/current-lever-materials-help.txt
           grep -q "Operate the preparation-only current Lever Phase B material boundary" /tmp/current-lever-materials-help.txt
 
-      - name: Run current Lever intake, API, and material regressions
+      - name: Run current Lever intake, API, service, and material regressions
         working-directory: backend
         run: |
           pytest -q \
@@ -75,6 +77,7 @@ jobs:
             tests/test_material_generation_v5_policy.py \
             tests/test_current_lever_cli_v4_contract.py \
             tests/test_current_lever_operator_api.py \
+            tests/test_current_lever_operator_service.py \
             tests/test_current_lever_roster.py
 
       - name: Set up Node
@@ -100,6 +103,7 @@ jobs:
               Path('backend/app/services/lever_phase_b_current_materials.py'),
               Path('backend/app/services/lever_phase_b_current_materials_v4.py'),
               Path('backend/app/services/lever_phase_b_current_materials_v5.py'),
+              Path('backend/app/services/lever_phase_b_current_operator.py'),
               Path('backend/app/services/lever_phase_b_current_roster.py'),
               Path('backend/scripts/current_lever_phase_b_materials.py'),
               Path('frontend/src/components/CurrentLeverOperatorPanel.jsx'),
