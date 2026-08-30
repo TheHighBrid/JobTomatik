@@ -89,20 +89,29 @@ def _binding(materials):
     }
 
 
-def test_uncertain_attempt_blocks_prepare_and_review_before_delegate(
+@pytest.mark.parametrize(
+    "attempt_status",
+    [
+        SubmissionAttemptStatus.queued.value,
+        SubmissionAttemptStatus.in_progress.value,
+        SubmissionAttemptStatus.uncertain.value,
+    ],
+)
+def test_active_attempt_blocks_prepare_and_review_before_delegate(
     auth_client,
     db_session,
     monkeypatch,
+    attempt_status,
 ):
     user, application = _application(db_session)
     attempt = SubmissionAttempt(
-        reference="attempt-current-lever-operator-uncertain",
+        reference=f"attempt-current-lever-operator-{attempt_status}",
         application_id=application.id,
         user_id=user.id,
-        approval_reference="approval-current-lever-operator-uncertain",
+        approval_reference=f"approval-current-lever-operator-{attempt_status}",
         attempt_number=1,
-        task_id="task-current-lever-operator-uncertain",
-        status=SubmissionAttemptStatus.uncertain.value,
+        task_id=f"task-current-lever-operator-{attempt_status}",
+        status=attempt_status,
         binding_hash="c" * 64,
         identity_digest="d" * 64,
         combined_payload_hash="e" * 64,
@@ -144,6 +153,45 @@ def test_uncertain_attempt_blocks_prepare_and_review_before_delegate(
         )
 
     assert calls == []
+
+
+def test_terminal_attempt_allows_material_mutation_delegate(
+    auth_client,
+    db_session,
+    monkeypatch,
+):
+    user, application = _application(db_session)
+    attempt = SubmissionAttempt(
+        reference="attempt-current-lever-operator-blocked",
+        application_id=application.id,
+        user_id=user.id,
+        approval_reference="approval-current-lever-operator-blocked",
+        attempt_number=1,
+        task_id="task-current-lever-operator-blocked",
+        status=SubmissionAttemptStatus.blocked.value,
+        binding_hash="c" * 64,
+        identity_digest="d" * 64,
+        combined_payload_hash="e" * 64,
+        adapter_version="1.1.0",
+    )
+    db_session.add(attempt)
+    db_session.commit()
+
+    calls = []
+
+    def prepare(_db, _user, *, application_id):
+        calls.append(application_id)
+        return {"application_id": application_id, "submission_queued": False}
+
+    monkeypatch.setattr(operator.v5, "prepare_current_lever_materials", prepare)
+    result = operator.prepare_current_lever_operator_materials(
+        db_session,
+        user,
+        application_id=application.id,
+    )
+
+    assert calls == [application.id]
+    assert result["submission_queued"] is False
 
 
 def test_review_rejects_stale_displayed_bundle_before_delegate(
