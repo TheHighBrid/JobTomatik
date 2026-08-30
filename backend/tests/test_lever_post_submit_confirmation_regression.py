@@ -274,3 +274,36 @@ async def test_visible_confirmation_selector_remains_sufficient_on_same_url():
     assert evidence[0].is_sufficient is True
     assert evidence[0].evidence_type == "confirmation_page"
     assert evidence[0].selector == "#application-confirmation"
+    assert evidence[0].metadata["confirmation_basis"] == (
+        "validated_confirmation_container"
+    )
+
+
+@pytest.mark.asyncio
+async def test_confirmation_error_container_never_certifies():
+    adapter = _TestLeverAdapter(
+        after_fingerprint="after",
+        submit_control_present=False,
+    )
+    surface = _Surface(
+        url="https://jobs.lever.co/example/posting/apply?attempt=2",
+        body="Please correct the application and try again.",
+        selectors={
+            '[class*="application-confirmation" i]': (
+                "Application confirmation error. Please correct the required fields and try again."
+            ),
+        },
+    )
+
+    evidence = await adapter.detect_confirmation(
+        surface,
+        before_url="https://jobs.lever.co/example/posting/apply?attempt=1",
+        before_fingerprint="before",
+    )
+
+    assert len(evidence) == 1
+    item = evidence[0]
+    assert item.is_sufficient is False
+    assert item.evidence_type == "post_submit_diagnostic"
+    assert item.metadata["url_changed"] is True
+    assert item.metadata["fingerprint_changed"] is True
