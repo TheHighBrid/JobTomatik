@@ -6,6 +6,8 @@ on:
       - codex/day39-current-lever-materials
   pull_request:
     paths:
+      - backend/app/api/supervised_pilot_roster.py
+      - backend/app/schemas/lever_phase_b_current_intake.py
       - backend/app/services/lever_phase_b_current_materials.py
       - backend/app/services/lever_phase_b_current_materials_v4.py
       - backend/app/services/lever_phase_b_current_materials_v5.py
@@ -15,6 +17,7 @@ on:
       - backend/app/services/material_generation_v5.py
       - backend/app/services/material_generation_v5_policy.py
       - backend/scripts/current_lever_phase_b_materials.py
+      - backend/tests/test_day39_current_lever_intake.py
       - backend/tests/test_day39_current_lever_materials.py
       - backend/tests/test_day39_current_lever_materials_v4.py
       - backend/tests/test_day39_current_lever_materials_v5.py
@@ -22,7 +25,14 @@ on:
       - backend/tests/test_material_generation_v5_quality.py
       - backend/tests/test_material_generation_v5_policy.py
       - backend/tests/test_current_lever_cli_v4_contract.py
+      - backend/tests/test_current_lever_operator_api.py
       - backend/tests/test_current_lever_roster.py
+      - frontend/src/App.jsx
+      - frontend/src/components/CurrentLeverOperatorPanel.jsx
+      - frontend/src/components/Layout.jsx
+      - frontend/src/components/MobileNav.jsx
+      - frontend/src/pages/CurrentLeverOperator.jsx
+      - frontend/test/current-lever-operator.test.js
       - .github/workflows/day39-current-lever-materials.yml
 
 permissions:
@@ -51,7 +61,7 @@ jobs:
           python scripts/current_lever_phase_b_materials.py --help >/tmp/current-lever-materials-help.txt
           grep -q "Operate the preparation-only current Lever Phase B material boundary" /tmp/current-lever-materials-help.txt
 
-      - name: Run current Lever intake and material regressions
+      - name: Run current Lever intake, API, and material regressions
         working-directory: backend
         run: |
           pytest -q \
@@ -63,18 +73,35 @@ jobs:
             tests/test_material_generation_v5_quality.py \
             tests/test_material_generation_v5_policy.py \
             tests/test_current_lever_cli_v4_contract.py \
+            tests/test_current_lever_operator_api.py \
             tests/test_current_lever_roster.py
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Test commandless current Lever operator UI
+        working-directory: frontend
+        run: |
+          npm ci
+          node --test test/current-lever-operator.test.js
+          npm run build
 
       - name: Assert operator boundary has no submission authority
         run: |
           python - <<'PY'
           from pathlib import Path
           paths = [
+              Path('backend/app/api/supervised_pilot_roster.py'),
               Path('backend/app/services/lever_phase_b_current_materials.py'),
               Path('backend/app/services/lever_phase_b_current_materials_v4.py'),
               Path('backend/app/services/lever_phase_b_current_materials_v5.py'),
               Path('backend/app/services/lever_phase_b_current_roster.py'),
               Path('backend/scripts/current_lever_phase_b_materials.py'),
+              Path('frontend/src/components/CurrentLeverOperatorPanel.jsx'),
           ]
           forbidden = [
               'submit_application_task.delay',
@@ -82,6 +109,8 @@ jobs:
               'SubmissionApproval(',
               'ALLOW_REAL_APPLICATION_SUBMIT=true',
               'LEVER_SUPERVISED_PILOT_ENABLED=true',
+              '/approvals',
+              '/submit',
           ]
           text = '\n'.join(path.read_text(encoding='utf-8') for path in paths)
           found = [token for token in forbidden if token in text]
