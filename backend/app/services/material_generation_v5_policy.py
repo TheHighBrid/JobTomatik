@@ -102,14 +102,18 @@ def _job_text(job: Job) -> str:
     )
 
 
+def _contains_signal(text: str, signal: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(signal)}(?!\w)", text) is not None
+
+
 def _is_client_success_job(job: Job) -> bool:
     text = _job_text(job)
-    return any(signal in text for signal in _CLIENT_SUCCESS_SIGNALS)
+    return any(_contains_signal(text, signal) for signal in _CLIENT_SUCCESS_SIGNALS)
 
 
 def _is_technical_support_job(job: Job) -> bool:
     text = _job_text(job)
-    return any(signal in text for signal in _TECHNICAL_SUPPORT_SIGNALS)
+    return any(_contains_signal(text, signal) for signal in _TECHNICAL_SUPPORT_SIGNALS)
 
 
 def _role_aware_ranked(
