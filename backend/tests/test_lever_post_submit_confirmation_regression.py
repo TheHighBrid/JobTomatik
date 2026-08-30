@@ -12,15 +12,24 @@ class _BodyLocator:
 
 
 class _Element:
-    def __init__(self, text: str, *, visible: bool = True):
+    def __init__(self, text: str, *, visible: bool = True, enabled: bool = True):
         self._text = text
         self._visible = visible
+        self._enabled = enabled
 
     async def is_visible(self):
         return self._visible
 
+    async def is_enabled(self):
+        return self._enabled
+
     async def inner_text(self):
         return self._text
+
+    async def get_attribute(self, name: str):
+        if name == "value":
+            return self._text
+        return None
 
 
 class _Surface:
@@ -34,8 +43,10 @@ class _Surface:
         return _BodyLocator(self._body)
 
     async def query_selector(self, selector: str):
-        text = self._selectors.get(selector)
-        return _Element(text) if text is not None else None
+        value = self._selectors.get(selector)
+        if isinstance(value, _Element):
+            return value
+        return _Element(value) if value is not None else None
 
 
 class _TestLeverAdapter(LeverAdapter):
@@ -47,7 +58,11 @@ class _TestLeverAdapter(LeverAdapter):
         return self._after_fingerprint
 
     async def find_submit_button(self, surface):
-        return object() if self._submit_control_present else None
+        # Confirmation safety must not depend on whether the control is clickable.
+        return None
+
+    async def visible_submit_control_present(self, surface):
+        return self._submit_control_present
 
 
 @pytest.mark.asyncio
@@ -158,7 +173,7 @@ async def test_weak_phrase_requires_confirmation_route_and_submit_control_absenc
 async def test_weak_phrase_does_not_certify_disabled_inflight_submit_state():
     adapter = _TestLeverAdapter(
         after_fingerprint="after",
-        submit_control_present=False,
+        submit_control_present=True,
     )
     surface = _Surface(
         url="https://jobs.lever.co/example/posting/apply",
@@ -175,13 +190,28 @@ async def test_weak_phrase_does_not_certify_disabled_inflight_submit_state():
     item = evidence[0]
     assert item.is_sufficient is False
     assert item.evidence_type == "post_submit_diagnostic"
-    assert item.metadata["submit_control_present"] is False
+    assert item.metadata["submit_control_present"] is True
     assert item.metadata["fingerprint_changed"] is True
     assert item.metadata["url_changed"] is False
     assert item.metadata["weak_confirmation_phrase"] in {
         "we'll be in touch",
         "thank you for your interest",
     }
+
+
+@pytest.mark.asyncio
+async def test_visible_submit_probe_counts_disabled_control():
+    adapter = LeverAdapter()
+    selector = 'button[type="submit"]:has-text("Submit application")'
+    surface = _Surface(
+        url="https://jobs.lever.co/example/posting/apply",
+        body="",
+        selectors={
+            selector: _Element("Submit application", enabled=False),
+        },
+    )
+
+    assert await adapter.visible_submit_control_present(surface) is True
 
 
 @pytest.mark.asyncio
