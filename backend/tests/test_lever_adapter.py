@@ -333,19 +333,24 @@ async def test_lever_validation_error_maps_back_to_approved_source_answer(page):
 
 @pytest.mark.asyncio
 async def test_lever_submit_requires_explicit_confirmation(page):
-    await page.set_content(
-        """
+    html = """
         <form class="application-form" action="https://jobs.lever.co/acme/posting/apply">
           <button type="submit">Submit application</button>
         </form>
         <script>
           document.querySelector('.application-form').onsubmit = (event) => {
             event.preventDefault();
+            history.pushState({}, '', '/acme/posting/confirmation');
             document.body.innerHTML = '<main class="application-confirmation">Thank you for applying. Your application has been submitted.</main>';
           };
         </script>
-        """
-    )
+    """
+
+    async def serve_lever_fixture(route):
+        await route.fulfill(status=200, content_type="text/html", body=html)
+
+    await page.route("https://jobs.lever.co/**", serve_lever_fixture)
+    await page.goto("https://jobs.lever.co/acme/posting/apply")
     adapter = LeverAdapter()
 
     async def empty_fill(surface, step_number):
@@ -362,6 +367,8 @@ async def test_lever_submit_requires_explicit_confirmation(page):
     assert result.success is True
     assert result.confirmation_evidence[0]["is_sufficient"] is True
     assert result.confirmation_evidence[0]["evidence_type"] == "confirmation_page"
+    assert result.confirmation_evidence[0]["metadata"]["confirmation_url"] is True
+    assert result.confirmation_evidence[0]["metadata"]["url_changed"] is True
 
 
 @pytest.mark.asyncio
