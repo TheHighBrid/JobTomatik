@@ -45,7 +45,7 @@ LEVER_SUBMIT_SELECTORS = (
 
 
 def is_lever_host(host: str) -> bool:
-    normalized = (host or "").lower().split(":,", 1)[0]
+    normalized = (host or "").lower().split(":", 1)[0]
     return normalized in {
         LEVER_GLOBAL_JOBS_HOST,
         LEVER_EU_JOBS_HOST,
