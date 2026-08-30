@@ -286,7 +286,6 @@ class LeverAdapter(ATSAdapter):
             and after_fingerprint
             and after_fingerprint != before_fingerprint
         )
-        structural_change = url_changed or fingerprint_changed
 
         strong_phrases = (
             "thank you for applying",
@@ -295,7 +294,6 @@ class LeverAdapter(ATSAdapter):
             "thanks for your application",
             "application submitted",
             "application received",
-            "application sent",
             "your application has been submitted",
             "your application was submitted",
             "your application was already submitted",
@@ -333,15 +331,18 @@ class LeverAdapter(ATSAdapter):
             "fingerprint_changed": fingerprint_changed,
             "submit_control_present": submit_control_present,
         }
-        if strong_match:
+        if strong_match and url_changed:
             return [ConfirmationEvidence(
                 evidence_type="success_banner",
                 is_sufficient=True,
                 final_url=current_url,
                 confirmation_text=strong_match,
-                metadata=common_metadata,
+                metadata={
+                    **common_metadata,
+                    "confirmation_basis": "strong_phrase_plus_url_change",
+                },
             )]
-        if weak_match and structural_change and not submit_control_present:
+        if weak_match and confirmation_url and url_changed and not submit_control_present:
             return [ConfirmationEvidence(
                 evidence_type="success_banner",
                 is_sufficient=True,
@@ -349,7 +350,7 @@ class LeverAdapter(ATSAdapter):
                 confirmation_text=weak_match,
                 metadata={
                     **common_metadata,
-                    "confirmation_basis": "weak_phrase_plus_structural_change",
+                    "confirmation_basis": "weak_phrase_plus_confirmation_route",
                 },
             )]
         if confirmation_url and url_changed and "application" in normalized:
@@ -375,6 +376,7 @@ class LeverAdapter(ATSAdapter):
                 "before_url": before_url,
                 "before_fingerprint": before_fingerprint,
                 "after_fingerprint": after_fingerprint,
+                "strong_confirmation_phrase": strong_match or None,
                 "weak_confirmation_phrase": weak_match or None,
             },
         )]
