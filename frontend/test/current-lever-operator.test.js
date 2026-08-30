@@ -6,6 +6,10 @@ const panel = readFileSync(
   new URL('../src/components/CurrentLeverOperatorPanel.jsx', import.meta.url),
   'utf8',
 )
+const targetForm = readFileSync(
+  new URL('../src/components/CurrentLeverTargetForm.jsx', import.meta.url),
+  'utf8',
+)
 const app = readFileSync(
   new URL('../src/App.jsx', import.meta.url),
   'utf8',
@@ -34,6 +38,15 @@ test('operator handles current roster, materials, preparation, and review withou
   assert.equal(panel.includes('--application-id'), false)
 })
 
+test('owner can add an exact Lever target in the app without a terminal intake command', () => {
+  assert.equal(targetForm.includes("api.post('/supervised-pilot/lever-candidates'"), true)
+  assert.equal(targetForm.includes('Verify and add target'), true)
+  assert.equal(targetForm.includes('Owner-selected in JobTomatik current Lever operator UI'), true)
+  assert.equal(targetForm.includes('does not approve or submit the application'), true)
+  assert.equal(targetForm.includes('--owner-email'), false)
+  assert.equal(targetForm.includes('proot-distro'), false)
+})
+
 test('material approval remains exact-application bound and deliberate', () => {
   assert.equal(
     panel.includes('acknowledgment: `APPROVE LEVER MATERIALS ${applicationId}`'),
@@ -50,10 +63,11 @@ test('uncertain live attempts are quarantined and cannot be prepared or reviewed
 })
 
 test('current Lever operator has no submission-authority endpoint', () => {
-  assert.equal(panel.includes('/approvals'), false)
-  assert.equal(panel.includes('/submit'), false)
-  assert.equal(panel.includes('queueSupervisedSubmission'), false)
-  assert.equal(panel.includes('createSupervisedSubmissionApproval'), false)
+  const combined = panel + targetForm
+  assert.equal(combined.includes('/approvals'), false)
+  assert.equal(combined.includes('/submit'), false)
+  assert.equal(combined.includes('queueSupervisedSubmission'), false)
+  assert.equal(combined.includes('createSupervisedSubmissionApproval'), false)
   assert.equal(
     panel.includes('It does not issue a submission approval, queue work, enable live flags, or click submit.'),
     true,
