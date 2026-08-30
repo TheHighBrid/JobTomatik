@@ -17,6 +17,7 @@ def _write_env(path: Path, **overrides: str) -> None:
         "ALLOW_REAL_FOLLOWUP_SEND": "false",
         "GREENHOUSE_SUPERVISED_PILOT_ENABLED": "false",
         "LEVER_SUPERVISED_PILOT_ENABLED": "false",
+        "AUTOPILOT_ENABLED": "false",
         "REDIS_URL": "redis://localhost:6379/1",
         "CUSTOM_OPERATOR_SETTING": "preserve-me",
     }
@@ -29,53 +30,67 @@ def _write_env(path: Path, **overrides: str) -> None:
     )
 
 
-def test_arm_enables_only_supervised_lever_switches_and_preserves_unrelated_config(tmp_path):
+def test_preflight_arm_keeps_persisted_submit_switches_off_and_preserves_config(tmp_path):
     env_file = tmp_path / ".env"
     _write_env(env_file)
 
-    status = pilot_runtime.arm(env_file)
-    content = env_file.read_text(encoding="utf-8")
+    before = env_file.read_text(encoding="utf-8")
+    result = pilot_runtime.preflight_arm(env_file)
+    after = env_file.read_text(encoding="utf-8")
 
-    assert status["lever_supervised_armed"] is True
-    assert status["allow_real_application_submit"] is True
-    assert status["lever_supervised_pilot_enabled"] is True
-    assert status["greenhouse_supervised_pilot_enabled"] is False
-    assert status["allow_real_followup_send"] is False
-    assert status["one_time_application_approval_still_required"] is True
-    assert status["submission_queued"] is False
-    assert status["final_submit_clicked"] is False
-    assert "CUSTOM_OPERATOR_SETTING=preserve-me" in content
-    assert "REDIS_URL=redis://localhost:6379/1" in content
-    assert content.count("ALLOW_REAL_APPLICATION_SUBMIT=") == 1
-    assert content.count("LEVER_SUPERVISED_PILOT_ENABLED=") == 1
+    assert result["persisted_fail_safe"] is True
+    assert result["persisted_allow_real_application_submit"] is False
+    assert result["persisted_lever_supervised_pilot_enabled"] is False
+    assert result["persisted_autopilot_enabled"] is False
+    assert result["configuration_valid"] is True
+    assert result["secret_key_safe_for_sensitive_runtime"] is True
+    assert result["one_time_application_approval_still_required"] is True
+    assert result["live_process_mode_observed"] is False
+    assert result["live_submission_state_observed"] is False
+    assert result["ephemeral_runtime_overrides_required"] == {
+        "ALLOW_REAL_APPLICATION_SUBMIT": True,
+        "LEVER_SUPERVISED_PILOT_ENABLED": True,
+        "ALLOW_REAL_FOLLOWUP_SEND": False,
+        "AUTOPILOT_ENABLED": False,
+    }
+    assert after == before
+    assert "CUSTOM_OPERATOR_SETTING=preserve-me" in after
+    assert "REDIS_URL=redis://localhost:6379/1" in after
 
 
-def test_arm_rejects_placeholder_secret_without_enabling_any_switch(tmp_path):
+def test_preflight_arm_rejects_placeholder_secret_without_enabling_any_switch(tmp_path):
     env_file = tmp_path / ".env"
     _write_env(env_file, SECRET_KEY="supersecretkey-change-in-production")
 
     with pytest.raises(RuntimeError, match="SECRET_KEY"):
-        pilot_runtime.arm(env_file)
+        pilot_runtime.preflight_arm(env_file)
 
     content = env_file.read_text(encoding="utf-8")
     assert "ALLOW_REAL_APPLICATION_SUBMIT=false" in content
     assert "LEVER_SUPERVISED_PILOT_ENABLED=false" in content
 
 
-def test_arm_rejects_followup_sending_and_other_platform_pilot(tmp_path):
+def test_preflight_arm_rejects_followup_other_platform_and_autopilot_conflicts(tmp_path):
     env_file = tmp_path / ".env"
+
     _write_env(env_file, ALLOW_REAL_FOLLOWUP_SEND="true")
     with pytest.raises(RuntimeError, match="follow-up"):
-        pilot_runtime.arm(env_file)
+        pilot_runtime.preflight_arm(env_file)
     assert "ALLOW_REAL_APPLICATION_SUBMIT=false" in env_file.read_text(encoding="utf-8")
 
     _write_env(env_file, GREENHOUSE_SUPERVISED_PILOT_ENABLED="true")
     with pytest.raises(RuntimeError, match="Greenhouse"):
-        pilot_runtime.arm(env_file)
+        pilot_runtime.preflight_arm(env_file)
+    assert "LEVER_SUPERVISED_PILOT_ENABLED=false" in env_file.read_text(encoding="utf-8")
+
+    _write_env(env_file, AUTOPILOT_ENABLED="true")
+    with pytest.raises(RuntimeError, match="AUTOPILOT_ENABLED"):
+        pilot_runtime.preflight_arm(env_file)
+    assert "ALLOW_REAL_APPLICATION_SUBMIT=false" in env_file.read_text(encoding="utf-8")
     assert "LEVER_SUPERVISED_PILOT_ENABLED=false" in env_file.read_text(encoding="utf-8")
 
 
-def test_disarm_persists_safe_switches_off(tmp_path):
+def test_persist_safe_forces_consequential_switches_off_without_parsing_unrelated_settings(tmp_path):
     env_file = tmp_path / ".env"
     _write_env(
         env_file,
@@ -83,16 +98,20 @@ def test_disarm_persists_safe_switches_off(tmp_path):
         LEVER_SUPERVISED_PILOT_ENABLED="true",
     )
 
-    status = pilot_runtime.disarm(env_file)
+    result = pilot_runtime.persist_safe(env_file)
+    content = env_file.read_text(encoding="utf-8")
 
-    assert status["lever_supervised_armed"] is False
-    assert status["allow_real_application_submit"] is False
-    assert status["lever_supervised_pilot_enabled"] is False
-    assert "ALLOW_REAL_APPLICATION_SUBMIT=false" in env_file.read_text(encoding="utf-8")
-    assert "LEVER_SUPERVISED_PILOT_ENABLED=false" in env_file.read_text(encoding="utf-8")
+    assert result["persisted_fail_safe"] is True
+    assert result["persisted_allow_real_application_submit"] is False
+    assert result["persisted_lever_supervised_pilot_enabled"] is False
+    assert result["live_process_mode_observed"] is False
+    assert result["live_submission_state_observed"] is False
+    assert "ALLOW_REAL_APPLICATION_SUBMIT=false" in content
+    assert "LEVER_SUPERVISED_PILOT_ENABLED=false" in content
+    assert "CUSTOM_OPERATOR_SETTING=preserve-me" in content
 
 
-def test_target_key_duplicates_are_collapsed_deterministically(tmp_path):
+def test_target_key_duplicates_are_collapsed_deterministically_by_safe_persist(tmp_path):
     env_file = tmp_path / ".env"
     env_file.write_text(
         "SECRET_KEY=" + ("s" * 48) + "\n"
@@ -101,11 +120,12 @@ def test_target_key_duplicates_are_collapsed_deterministically(tmp_path):
         "ALLOW_REAL_FOLLOWUP_SEND=false\n"
         "GREENHOUSE_SUPERVISED_PILOT_ENABLED=false\n"
         "LEVER_SUPERVISED_PILOT_ENABLED=false\n"
-        "LEVER_SUPERVISED_PILOT_ENABLED=true\n",
+        "LEVER_SUPERVISED_PILOT_ENABLED=true\n"
+        "AUTOPILOT_ENABLED=false\n",
         encoding="utf-8",
     )
 
-    pilot_runtime.disarm(env_file)
+    pilot_runtime.persist_safe(env_file)
     content = env_file.read_text(encoding="utf-8")
 
     assert content.count("ALLOW_REAL_APPLICATION_SUBMIT=") == 1
@@ -114,7 +134,20 @@ def test_target_key_duplicates_are_collapsed_deterministically(tmp_path):
     assert "LEVER_SUPERVISED_PILOT_ENABLED=false" in content
 
 
-def test_native_pilot_wrapper_rolls_back_failed_arm_and_never_grants_application_approval():
+def test_status_does_not_claim_unobserved_queue_or_submit_outcomes(tmp_path):
+    env_file = tmp_path / ".env"
+    _write_env(env_file)
+
+    result = pilot_runtime.status(env_file)
+
+    assert result["persisted_fail_safe"] is True
+    assert result["live_process_mode_observed"] is False
+    assert result["live_submission_state_observed"] is False
+    assert "submission_queued" not in result
+    assert "final_submit_clicked" not in result
+
+
+def test_native_pilot_wrapper_uses_ephemeral_arm_and_fail_safe_rollback_contract():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_pilot_wrapper.sh").read_text(
         encoding="utf-8"
     )
@@ -122,14 +155,19 @@ def test_native_pilot_wrapper_rolls_back_failed_arm_and_never_grants_application
         BACKEND_ROOT / "scripts/install_android_native_browser_launcher.sh"
     ).read_text(encoding="utf-8")
 
-    assert "run_pilot_mode arm" in wrapper
+    assert "run_pilot_mode persist-safe" in wrapper
+    assert "run_pilot_mode preflight-arm" in wrapper
     assert "rollback_to_safe_mode" in wrapper
-    assert "run_pilot_mode disarm" in wrapper
+    assert "PENDING_MARKER" in wrapper
+    assert "ACTIVE_MARKER" in wrapper
+    assert "trap 'arm_exit $?' EXIT INT TERM HUP" in wrapper
+    assert "JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME=1" in wrapper
     assert '"$STACK_COMMAND" restart' in wrapper
-    assert "run_pilot_mode verify-armed" in wrapper
-    assert "run_pilot_mode verify-disarmed" in wrapper
-    assert "JOBTOMATIK_LEVER_PILOT_ARMED" in wrapper
+    assert "JOBTOMATIK_LEVER_PILOT_ARMED_EPHEMERAL" in wrapper
+    assert "Persisted submit flags remain OFF" in wrapper
     assert "One-time exact application approval is still required" in wrapper
+    assert "run_pilot_mode persist-safe; then" in wrapper
+    assert '"$STACK_COMMAND" stop || true' in wrapper
     assert "submission approval" not in wrapper.casefold()
     assert "queue" not in wrapper.casefold()
     assert "click submit" not in wrapper.casefold()
