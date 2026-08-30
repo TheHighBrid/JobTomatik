@@ -74,20 +74,26 @@ test('already-approved bundles do not offer duplicate material approval', () => 
   assert.equal(panel.includes('This exact material bundle is already approved.'), true)
   assert.equal(panel.includes('Material approval will not be repeated.'), true)
   assert.equal(
-    panel.includes("candidate.automation_state === 'needs_review' && !bundleAlreadyApproved"),
+    panel.includes("candidate.automation_state === 'needs_review' && !bundleAlreadyApproved && !mutationLocked"),
     true,
   )
 })
 
-test('uncertain live attempts quarantine mutations but preserve read-only evidence inspection', () => {
-  assert.equal(panel.includes('Quarantined · no retry'), true)
+test('every active submission attempt locks mutation while preserving frozen inspection', () => {
+  assert.equal(panel.includes('active_submission_attempt_count'), true)
   assert.equal(panel.includes('uncertain_submission_attempt_count'), true)
-  assert.equal(panel.includes('locked against preparation and retry'), true)
+  assert.equal(panel.includes('const mutationLocked = activeSubmission'), true)
+  assert.equal(panel.includes('Quarantined · no retry'), true)
+  assert.equal(panel.includes('Submission active · locked'), true)
   assert.equal(panel.includes('enabled: expanded,'), true)
-  assert.equal(panel.includes('enabled: expanded && !quarantined'), false)
   assert.equal(panel.includes('Inspect frozen materials'), true)
   assert.equal(panel.includes('Read-only evidence view.'), true)
-  assert.equal(panel.includes('&& !quarantined'), true)
+  assert.equal(panel.includes('!mutationLocked'), true)
+})
+
+test('material preparation does not inherit the global 20-second axios timeout', () => {
+  assert.equal(panel.includes('{ timeout: 0 }'), true)
+  assert.equal(panel.includes('global 20s axios timeout'), true)
 })
 
 test('current Lever operator has no submission-authority endpoint', () => {
