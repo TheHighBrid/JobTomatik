@@ -33,8 +33,8 @@
       "maturity": "dry_run",
       "version": "1.1.0",
       "digests": {
-        "adapter_source_sha256": "c1a74c4dfc8f1849f7eec61fc64d977e9e412ee21670e2561ec5b2f8d3441800",
-        "fixture_regression_sha256": "f62e943474be163e19ccf476446c104cef8cca25e4389435501d2d4fd91c89fb",
+        "adapter_source_sha256": "fa959504e647c331a9efc25b27c5e62f3e8b431953973054b3bf3681d3285b5d",
+        "fixture_regression_sha256": "65b4bedbd8597e7c22b79201259bc0eaeb0b3cd8ce0a422493bd75511b4d22c5",
         "retained_evidence_sha256": "1ffe75765fdb5c98c086e9b8e373acecaf7a1ed088a9ee276b353723a17012a3",
         "manifest_live_evidence_sha256": "e4e5ba427d4477621fa976c3b65b8d0c33c90f0d52bf6a04100dd7548e43ba31"
       }
