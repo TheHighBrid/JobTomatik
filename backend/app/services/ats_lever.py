@@ -244,32 +244,6 @@ class LeverAdapter(ATSAdapter):
         current_url = getattr(surface, "url", "") or ""
         body = await safe_body_text(surface)
         normalized = normalize_text(body)
-        selectors = (
-            '.application-confirmation',
-            '#application-confirmation',
-            '.posting-confirmation',
-            '.confirmation',
-            '[class*="application-confirmation" i]',
-            '[class*="posting-confirmation" i]',
-            '[data-qa*="confirmation" i]',
-            '[data-testid*="confirmation" i]',
-        )
-        for selector in selectors:
-            try:
-                element = await surface.query_selector(selector)
-                if element and await element.is_visible():
-                    text = normalize_text(await element.inner_text())
-                    if text:
-                        return [ConfirmationEvidence(
-                            evidence_type="confirmation_page",
-                            is_sufficient=True,
-                            final_url=current_url,
-                            confirmation_text=text[:500],
-                            selector=selector,
-                            metadata={"adapter": self.name, "adapter_version": self.version},
-                        )]
-            except Exception:
-                continue
 
         try:
             after_fingerprint = await self.step_fingerprint(surface)
@@ -302,19 +276,11 @@ class LeverAdapter(ATSAdapter):
             "we have received your application",
             "we've received your application",
         )
-        strong_match = next(
-            (phrase for phrase in strong_phrases if phrase in normalized),
-            "",
-        )
         weak_phrases = (
             "we'll be in touch",
             "we will be in touch",
             "thanks for your interest",
             "thank you for your interest",
-        )
-        weak_match = next(
-            (phrase for phrase in weak_phrases if phrase in normalized),
-            "",
         )
         current_path = urlparse(current_url).path
         confirmation_url = bool(
@@ -332,6 +298,71 @@ class LeverAdapter(ATSAdapter):
             "fingerprint_changed": fingerprint_changed,
             "submit_control_present": submit_control_present,
         }
+
+        selectors = (
+            '.application-confirmation',
+            '#application-confirmation',
+            '.posting-confirmation',
+            '.confirmation',
+            '[class*="application-confirmation" i]',
+            '[class*="posting-confirmation" i]',
+            '[data-qa*="confirmation" i]',
+            '[data-testid*="confirmation" i]',
+        )
+        negative_confirmation_terms = (
+            "error",
+            "failed",
+            "failure",
+            "invalid",
+            "not submitted",
+            "could not submit",
+            "unable to submit",
+            "please correct",
+            "try again",
+        )
+        for selector in selectors:
+            try:
+                element = await surface.query_selector(selector)
+                if not element or not await element.is_visible():
+                    continue
+                text = normalize_text(await element.inner_text())
+                if not text or any(term in text for term in negative_confirmation_terms):
+                    continue
+                container_match = next(
+                    (
+                        phrase
+                        for phrase in (*strong_phrases, *weak_phrases)
+                        if phrase in text
+                    ),
+                    "",
+                )
+                settled_transition = bool(
+                    fingerprint_changed or (confirmation_url and url_changed)
+                )
+                if container_match and settled_transition and not submit_control_present:
+                    return [ConfirmationEvidence(
+                        evidence_type="confirmation_page",
+                        is_sufficient=True,
+                        final_url=current_url,
+                        confirmation_text=text[:500],
+                        selector=selector,
+                        metadata={
+                            **common_metadata,
+                            "confirmation_basis": "validated_confirmation_container",
+                            "confirmation_phrase": container_match,
+                        },
+                    )]
+            except Exception:
+                continue
+
+        strong_match = next(
+            (phrase for phrase in strong_phrases if phrase in normalized),
+            "",
+        )
+        weak_match = next(
+            (phrase for phrase in weak_phrases if phrase in normalized),
+            "",
+        )
         if strong_match and confirmation_url and url_changed and not submit_control_present:
             return [ConfirmationEvidence(
                 evidence_type="success_banner",
