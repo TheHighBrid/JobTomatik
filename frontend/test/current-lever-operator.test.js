@@ -47,13 +47,36 @@ test('owner can add an exact Lever target in the app without a terminal intake c
   assert.equal(targetForm.includes('proot-distro'), false)
 })
 
-test('material approval remains exact-application bound and deliberate', () => {
+test('material decision is exact-application and exact-displayed-bundle bound', () => {
   assert.equal(
     panel.includes('acknowledgment: `APPROVE LEVER MATERIALS ${applicationId}`'),
     true,
   )
+  assert.equal(panel.includes('material_ids:'), true)
+  assert.equal(panel.includes('material_versions:'), true)
+  assert.equal(panel.includes('posting_sha256: postingSha256'), true)
+  assert.equal(panel.includes('evidence_digest: coverEvidenceDigest'), true)
   assert.equal(panel.includes('Confirm material approval'), true)
-  assert.equal(panel.includes('Approve verified bundle'), true)
+  assert.equal(panel.includes('Approve displayed bundle'), true)
+  assert.equal(panel.includes('rejected as stale'), true)
+})
+
+test('non-critical warnings remain visible but do not disable owner approval', () => {
+  assert.equal(panel.includes('Non-critical review warning:'), true)
+  assert.equal(panel.includes('visible non-critical warning'), true)
+  assert.equal(panel.includes('criticalErrors.length === 0'), true)
+  assert.equal(panel.includes("cover?.warnings?.length || 0"), true)
+  assert.equal(panel.includes("resume?.warnings?.length || 0"), true)
+})
+
+test('already-approved bundles do not offer duplicate material approval', () => {
+  assert.equal(panel.includes('bundleAlreadyApproved'), true)
+  assert.equal(panel.includes('This exact material bundle is already approved.'), true)
+  assert.equal(panel.includes('Material approval will not be repeated.'), true)
+  assert.equal(
+    panel.includes("candidate.automation_state === 'needs_review' && !bundleAlreadyApproved"),
+    true,
+  )
 })
 
 test('uncertain live attempts are quarantined and cannot be prepared or reviewed', () => {
