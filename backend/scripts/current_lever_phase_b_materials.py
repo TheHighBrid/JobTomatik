@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare, inspect, and explicitly review current Lever Phase B materials.
+"""List, prepare, inspect, and explicitly review current Lever Phase B materials.
 
 This operator tool never issues submission approval, changes live flags, queues a
 submission worker, or submits an application.
@@ -23,6 +23,9 @@ from app.services.lever_phase_b_current_materials_v5 import (
     prepare_current_lever_materials,
     review_current_lever_materials,
     show_current_lever_materials,
+)
+from app.services.lever_phase_b_current_roster import (
+    list_current_lever_phase_b_candidates,
 )
 
 
@@ -50,9 +53,13 @@ def main() -> int:
         description="Operate the preparation-only current Lever Phase B material boundary."
     )
     parser.add_argument("--owner-email", required=True)
-    parser.add_argument("--application-id", required=True, type=int)
+    parser.add_argument("--application-id", type=int)
     sub = parser.add_subparsers(dest="command", required=True)
 
+    sub.add_parser(
+        "list",
+        help="Read the current owner-selected Lever Phase B roster without mutation or ranking.",
+    )
     sub.add_parser("prepare", help="Generate evidence-backed materials and open review.")
     sub.add_parser("show", help="Read the exact latest material bundle without mutation.")
 
@@ -68,11 +75,17 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    if args.command != "list" and args.application_id is None:
+        parser.error("--application-id is required for prepare, show, and review")
+
     db = SessionLocal()
     write_operation = args.command in {"prepare", "review"}
     try:
         user = _owner(db, args.owner_email)
-        if args.command == "prepare":
+        if args.command == "list":
+            result = list_current_lever_phase_b_candidates(db, user)
+            db.rollback()
+        elif args.command == "prepare":
             result = prepare_current_lever_materials(
                 db,
                 user,
