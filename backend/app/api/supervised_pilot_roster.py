@@ -33,10 +33,10 @@ from app.services.lever_phase_b_current_intake import (
     import_current_lever_phase_b_candidate,
 )
 from app.services.lever_phase_b_current_materials import LeverPhaseBReviewedMaterialsError
-from app.services.lever_phase_b_current_materials_v5 import (
-    prepare_current_lever_materials,
-    review_current_lever_materials,
-    show_current_lever_materials,
+from app.services.lever_phase_b_current_operator import (
+    prepare_current_lever_operator_materials,
+    review_current_lever_operator_materials,
+    show_current_lever_operator_materials,
 )
 from app.services.lever_phase_b_current_roster import (
     list_current_lever_phase_b_candidates,
@@ -190,7 +190,7 @@ def current_lever_phase_b_materials(
     db: Session = Depends(get_db),
 ):
     try:
-        result = show_current_lever_materials(
+        result = show_current_lever_operator_materials(
             db,
             current_user,
             application_id=application_id,
@@ -210,7 +210,7 @@ def prepare_current_lever_phase_b_materials(
     db: Session = Depends(get_db),
 ):
     try:
-        result = prepare_current_lever_materials(
+        result = prepare_current_lever_operator_materials(
             db,
             current_user,
             application_id=application_id,
@@ -239,12 +239,16 @@ def review_current_lever_phase_b_materials(
             )
 
     try:
-        result = review_current_lever_materials(
+        result = review_current_lever_operator_materials(
             db,
             current_user,
             application_id=application_id,
             approved=data.approved,
             notes=data.notes,
+            material_ids=data.material_ids,
+            material_versions=data.material_versions,
+            posting_sha256=data.posting_sha256,
+            evidence_digest=data.evidence_digest,
         )
     except LeverPhaseBReviewedMaterialsError as exc:
         db.rollback()
