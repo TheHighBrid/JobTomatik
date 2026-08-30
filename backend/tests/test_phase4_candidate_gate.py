@@ -26,16 +26,6 @@ def _gate():
     return build_phase4_candidate_gate(verification_commit=SHA)
 
 
-def test__temporary_phase4_lever_digest_probe():
-    gate = _gate()
-    lever = next(row for row in gate["adapter_freeze"] if row["adapter"] == "lever")
-    raise AssertionError(
-        "PHASE4_LEVER_FINAL_DIGEST_PROBE "
-        f"source={lever['digests']['adapter_source_sha256']} "
-        f"fixture={lever['digests']['fixture_regression_sha256']}"
-    )
-
-
 def test_phase4_gate_selects_lever_from_retained_evidence_without_promotion():
     gate = _gate()
 
