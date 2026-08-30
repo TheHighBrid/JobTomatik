@@ -412,7 +412,8 @@ class LeverAdapter(ATSAdapter):
                     and observed_container_transition
                 )
                 sufficient_container = bool(
-                    not submit_control_present
+                    not body_has_negative_confirmation
+                    and not submit_control_present
                     and (
                         (strong_container_match and (route_transition or same_page_transition))
                         or (weak_container_match and route_transition)
