@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -41,6 +42,20 @@ LEVER_SUBMIT_SELECTORS = (
     'input[type="submit"]',
     '[data-qa*="submit" i]',
     '[data-testid*="submit" i]',
+)
+LEVER_CONFIRMATION_SELECTORS = (
+    '.application-confirmation',
+    '#application-confirmation',
+    '.posting-confirmation',
+    '.confirmation',
+    '[class*="application-confirmation" i]',
+    '[class*="posting-confirmation" i]',
+    '[data-qa*="confirmation" i]',
+    '[data-testid*="confirmation" i]',
+)
+_LEVER_PRE_SUBMIT_CONFIRMATION_STATE: ContextVar[Optional[Dict[str, str]]] = ContextVar(
+    "lever_pre_submit_confirmation_state",
+    default=None,
 )
 
 
@@ -212,12 +227,38 @@ class LeverAdapter(ATSAdapter):
             reject_terms=("submit", "apply", "linkedin", "finish"),
         )
 
+    async def confirmation_container_snapshot(self, surface: Any) -> Dict[str, str]:
+        """Capture visible confirmation-container text before the submit action."""
+        snapshot: Dict[str, str] = {}
+        for selector in LEVER_CONFIRMATION_SELECTORS:
+            try:
+                element = await surface.query_selector(selector)
+                if not element or not await element.is_visible():
+                    continue
+                text = normalize_text(await element.inner_text())
+                if text:
+                    snapshot[selector] = text
+            except Exception:
+                continue
+        return snapshot
+
+    async def capture_pre_submit_confirmation_state(self, surface: Any) -> Dict[str, str]:
+        """Store a flow-local pre-submit snapshot without mutating the singleton adapter."""
+        snapshot = await self.confirmation_container_snapshot(surface)
+        _LEVER_PRE_SUBMIT_CONFIRMATION_STATE.set(snapshot)
+        return snapshot
+
     async def find_submit_button(self, surface: Any) -> Any:
-        return await find_first_action(
+        submit = await find_first_action(
             surface,
             LEVER_SUBMIT_SELECTORS,
             reject_terms=("linkedin",),
         )
+        if submit:
+            await self.capture_pre_submit_confirmation_state(surface)
+        else:
+            _LEVER_PRE_SUBMIT_CONFIRMATION_STATE.set(None)
+        return submit
 
     async def visible_submit_control_present(self, surface: Any) -> bool:
         """Detect a visible submit control even while it is temporarily disabled."""
@@ -269,6 +310,8 @@ class LeverAdapter(ATSAdapter):
         current_url = getattr(surface, "url", "") or ""
         body = await safe_body_text(surface)
         normalized = normalize_text(body)
+        before_confirmation_state = _LEVER_PRE_SUBMIT_CONFIRMATION_STATE.get()
+        _LEVER_PRE_SUBMIT_CONFIRMATION_STATE.set(None)
 
         try:
             after_fingerprint = await self.step_fingerprint(surface)
@@ -339,19 +382,10 @@ class LeverAdapter(ATSAdapter):
             "fingerprint_changed": fingerprint_changed,
             "submit_control_present": submit_control_present,
             "negative_confirmation_copy": body_has_negative_confirmation,
+            "pre_submit_confirmation_state_captured": before_confirmation_state is not None,
         }
 
-        selectors = (
-            '.application-confirmation',
-            '#application-confirmation',
-            '.posting-confirmation',
-            '.confirmation',
-            '[class*="application-confirmation" i]',
-            '[class*="posting-confirmation" i]',
-            '[data-qa*="confirmation" i]',
-            '[data-testid*="confirmation" i]',
-        )
-        for selector in selectors:
+        for selector in LEVER_CONFIRMATION_SELECTORS:
             try:
                 element = await surface.query_selector(selector)
                 if not element or not await element.is_visible():
@@ -359,16 +393,33 @@ class LeverAdapter(ATSAdapter):
                 text = normalize_text(await element.inner_text())
                 if not text or any(term in text for term in negative_confirmation_terms):
                     continue
-                container_match = next(
-                    (
-                        phrase
-                        for phrase in (*strong_phrases, *weak_phrases)
-                        if phrase in text
-                    ),
+                strong_container_match = next(
+                    (phrase for phrase in strong_phrases if phrase in text),
                     "",
                 )
-                settled_transition = bool(confirmation_url and url_changed)
-                if container_match and settled_transition and not submit_control_present:
+                weak_container_match = next(
+                    (phrase for phrase in weak_phrases if phrase in text),
+                    "",
+                )
+                route_transition = bool(confirmation_url and url_changed)
+                observed_container_transition = bool(
+                    before_confirmation_state is not None
+                    and before_confirmation_state.get(selector) != text
+                )
+                same_page_transition = bool(
+                    not url_changed
+                    and fingerprint_changed
+                    and observed_container_transition
+                )
+                sufficient_container = bool(
+                    not submit_control_present
+                    and (
+                        (strong_container_match and (route_transition or same_page_transition))
+                        or (weak_container_match and route_transition)
+                    )
+                )
+                if sufficient_container:
+                    confirmation_phrase = strong_container_match or weak_container_match
                     return [ConfirmationEvidence(
                         evidence_type="confirmation_page",
                         is_sufficient=True,
@@ -377,8 +428,13 @@ class LeverAdapter(ATSAdapter):
                         selector=selector,
                         metadata={
                             **common_metadata,
-                            "confirmation_basis": "validated_confirmation_container",
-                            "confirmation_phrase": container_match,
+                            "confirmation_basis": (
+                                "observed_same_page_confirmation_transition"
+                                if same_page_transition
+                                else "validated_confirmation_container"
+                            ),
+                            "confirmation_phrase": confirmation_phrase,
+                            "confirmation_container_changed": observed_container_transition,
                         },
                     )]
             except Exception:
