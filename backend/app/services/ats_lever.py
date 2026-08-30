@@ -316,10 +316,11 @@ class LeverAdapter(ATSAdapter):
             (phrase for phrase in weak_phrases if phrase in normalized),
             "",
         )
+        current_path = urlparse(current_url).path
         confirmation_url = bool(
             re.search(
-                r"/(?:thanks|thank-you|confirmation|application-submitted)(?:[/?#]|$)",
-                current_url,
+                r"/(?:thanks|thank-you|confirmation|application-submitted)(?:/|$)",
+                current_path,
                 re.I,
             )
         )
