@@ -51,7 +51,7 @@ class _TestLeverAdapter(LeverAdapter):
 
 
 @pytest.mark.asyncio
-async def test_strong_phrase_requires_url_transition_when_not_in_confirmation_selector():
+async def test_strong_phrase_requires_settled_confirmation_route():
     adapter = _TestLeverAdapter(
         after_fingerprint="after",
         submit_control_present=False,
@@ -71,7 +71,63 @@ async def test_strong_phrase_requires_url_transition_when_not_in_confirmation_se
     assert evidence[0].is_sufficient is True
     assert evidence[0].evidence_type == "success_banner"
     assert evidence[0].confirmation_text == "thanks for applying"
-    assert evidence[0].metadata["confirmation_basis"] == "strong_phrase_plus_url_change"
+    assert evidence[0].metadata["confirmation_basis"] == (
+        "strong_phrase_plus_confirmation_route"
+    )
+
+
+@pytest.mark.asyncio
+async def test_preexisting_strong_copy_plus_nonconfirmation_url_change_never_certifies():
+    adapter = _TestLeverAdapter(
+        after_fingerprint="after",
+        submit_control_present=False,
+    )
+    surface = _Surface(
+        url="https://jobs.lever.co/example/posting/apply?attempt=1",
+        body=(
+            "Thank you for applying to Example in the past. "
+            "Please correct the highlighted fields and submit this application."
+        ),
+    )
+
+    evidence = await adapter.detect_confirmation(
+        surface,
+        before_url="https://jobs.lever.co/example/posting/apply",
+        before_fingerprint="before",
+    )
+
+    assert len(evidence) == 1
+    item = evidence[0]
+    assert item.is_sufficient is False
+    assert item.evidence_type == "post_submit_diagnostic"
+    assert item.metadata["confirmation_url"] is False
+    assert item.metadata["url_changed"] is True
+    assert item.metadata["strong_confirmation_phrase"] == "thank you for applying"
+
+
+@pytest.mark.asyncio
+async def test_strong_copy_on_confirmation_route_requires_submit_control_absence():
+    adapter = _TestLeverAdapter(
+        after_fingerprint="after",
+        submit_control_present=True,
+    )
+    surface = _Surface(
+        url="https://jobs.lever.co/example/posting/thanks",
+        body="Thank you for applying. Submit application",
+    )
+
+    evidence = await adapter.detect_confirmation(
+        surface,
+        before_url="https://jobs.lever.co/example/posting/apply",
+        before_fingerprint="before",
+    )
+
+    assert len(evidence) == 1
+    item = evidence[0]
+    assert item.is_sufficient is False
+    assert item.metadata["confirmation_url"] is True
+    assert item.metadata["submit_control_present"] is True
+    assert item.metadata["strong_confirmation_phrase"] == "thank you for applying"
 
 
 @pytest.mark.asyncio
