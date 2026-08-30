@@ -8,9 +8,18 @@ target-version = "py311"
 ignore = ["E402", "E712"]
 
 [tool.ruff.lint.per-file-ignores]
-# These compatibility facades re-export the underlying implementation at
-# runtime so existing monkeypatch and operational entrypoints remain stable.
+# Compatibility facades and operator scripts intentionally preserve imports or
+# dynamic names used by runtime monkeypatching and Android entrypoints.
 "app/services/lever_pilot_ledger_boundary.py" = ["F401"]
-"tests/test_phase_1_release_gate.py" = ["F401"]
 "scripts/android_runtime_acceptance.py" = ["F821"]
 "scripts/run_shadow_qualification_canary.py" = ["F821"]
+"tests/test_phase_1_release_gate.py" = ["F401"]
+
+# Keep the lint rollout from rewriting certification-sensitive or historical
+# evidence inputs. These should be cleaned in dedicated reviewed changes that
+# regenerate the corresponding evidence when necessary.
+"app/services/ats_base.py" = ["F401"]
+"scripts/day37_shadow_endurance.py" = ["F401"]
+"scripts/lever_phase_b_current_materials.py" = ["F401"]
+"tests/test_day37_shadow_endurance.py" = ["F401"]
+"tests/test_day39_current_lever_materials_v4.py" = ["F401"]
