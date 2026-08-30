@@ -10,6 +10,12 @@ def test_current_lever_cli_routes_mutations_through_fail_closed_operator_service
     assert "review_current_lever_operator_materials" in text
     assert "show_current_lever_operator_materials" in text
     assert "_displayed_bundle_binding" in text
+    assert "_encode_bundle_token" in text
+    assert "_decode_bundle_token" in text
+    assert '"--bundle-token"' in text
+    assert "review_binding_token" in text
+    assert "Exact review_binding_token emitted by the earlier show command." in text
+    assert "shown = show_current_lever_operator_materials" not in text
     assert "APPROVE LEVER MATERIALS <application_id>" in text
     assert "submission worker" in text
     assert "debug/emergency operator fallback" in text
