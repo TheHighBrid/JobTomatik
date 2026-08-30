@@ -1,11 +1,12 @@
 """Fail-closed operator boundary for current owner-selected Lever Phase B work.
 
-This module wraps the existing current-material services with two protections that
-must hold for every mutating operator surface:
+This module wraps the existing current-material services with protections that must
+hold for every mutating operator surface:
 
 1. an application with any durable uncertain live submission attempt is quarantined
    from further material mutation or retry preparation;
-2. a material review decision is bound to the exact bundle the owner inspected.
+2. a material review decision is bound to the exact bundle the owner inspected;
+3. an already-approved exact bundle cannot be approved twice.
 
 The wrapper never issues submission approval, queues work, opens a browser, changes
 runtime flags, or submits an application.
@@ -135,6 +136,7 @@ def review_current_lever_operator_materials(
             "MATERIAL_BUNDLE_STALE posting and evidence digests are required"
         )
 
+    matched_materials = []
     for material_type in base.MATERIAL_TYPES:
         material = base._latest_material(db, application.id, material_type)
         if material is None:
@@ -158,6 +160,16 @@ def review_current_lever_operator_materials(
             raise base.LeverPhaseBReviewedMaterialsError(
                 f"MATERIAL_BUNDLE_STALE {material_type} evidence changed after review"
             )
+        matched_materials.append(material)
+
+    if approved and all(
+        str((material.source_snapshot or {}).get("user_review", {}).get("status") or "")
+        == "approved"
+        for material in matched_materials
+    ):
+        raise base.LeverPhaseBReviewedMaterialsError(
+            "MATERIAL_BUNDLE_ALREADY_APPROVED exact displayed bundle was already approved"
+        )
 
     return v5.review_current_lever_materials(
         db,
