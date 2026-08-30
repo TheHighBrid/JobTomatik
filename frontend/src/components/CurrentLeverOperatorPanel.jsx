@@ -58,15 +58,17 @@ function CandidateCard({ candidate }) {
   const [confirmingApproval, setConfirmingApproval] = useState(false)
 
   const applicationId = candidate.application_id
-  const quarantined = (candidate.uncertain_submission_attempt_count || 0) > 0
-  const eligible = candidate.material_preparation_eligible === true && !quarantined
+  const uncertainSubmission = (candidate.uncertain_submission_attempt_count || 0) > 0
+  const activeSubmission = (candidate.active_submission_attempt_count || 0) > 0
+  const mutationLocked = activeSubmission
+  const eligible = candidate.material_preparation_eligible === true && !mutationLocked
 
   const materialsQuery = useQuery({
     queryKey: ['current-lever-materials', String(applicationId)],
     queryFn: () => api.get(`/supervised-pilot/current-lever/${applicationId}/materials`),
     select: (response) => response.data,
-    // Quarantine blocks mutation, never inspection. Frozen evidence must remain
-    // readable while an active/uncertain attempt is being reconciled.
+    // Active submission state blocks mutation, never inspection. Frozen evidence must
+    // remain readable while queued, in-progress, uncertain, or terminal reconciliation runs.
     enabled: expanded,
     retry: false,
   })
@@ -118,7 +120,7 @@ function CandidateCard({ candidate }) {
   )
   const warningCount = (cover?.warnings?.length || 0) + (resume?.warnings?.length || 0)
   const reviewEligible = Boolean(
-    !quarantined
+    !mutationLocked
     && cover
     && resume
     && bundleBinding
@@ -129,6 +131,11 @@ function CandidateCard({ candidate }) {
   const prepareMutation = useMutation({
     mutationFn: () => api.post(
       `/supervised-pilot/current-lever/${applicationId}/prepare-materials`,
+      null,
+      // Preparation has its own bounded server-side network timeout plus local evidence
+      // rebuild/generation. Do not let the global 20s axios timeout falsely release the
+      // button while the server can still commit the first request.
+      { timeout: 0 },
     ),
     onSuccess: async () => {
       setExpanded(true)
@@ -142,8 +149,8 @@ function CandidateCard({ candidate }) {
 
   const reviewMutation = useMutation({
     mutationFn: ({ approved }) => {
-      if (quarantined) {
-        return Promise.reject(new Error('This application is quarantined. Material decisions are read-only until the active submission attempt is reconciled.'))
+      if (mutationLocked) {
+        return Promise.reject(new Error('This application has an active submission attempt. Material decisions are read-only until it reaches an independently reconciled terminal state.'))
       }
       if (!bundleBinding) {
         return Promise.reject(new Error('The displayed material bundle identity is incomplete. Refresh materials before reviewing.'))
@@ -176,11 +183,26 @@ function CandidateCard({ candidate }) {
     ),
   })
 
+  const statusClasses = uncertainSubmission
+    ? 'border-red-200 bg-red-100 text-red-800'
+    : activeSubmission
+      ? 'border-amber-200 bg-amber-100 text-amber-900'
+      : eligible
+        ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
+        : 'border-amber-200 bg-amber-100 text-amber-800'
+  const statusLabel = uncertainSubmission
+    ? 'Quarantined · no retry'
+    : activeSubmission
+      ? 'Submission active · locked'
+      : humanize(candidate.automation_state)
+
   return (
     <article className={`rounded-xl border p-4 ${
-      quarantined
+      uncertainSubmission
         ? 'border-red-200 bg-red-50'
-        : 'border-slate-200 bg-white shadow-sm'
+        : activeSubmission
+          ? 'border-amber-200 bg-amber-50'
+          : 'border-slate-200 bg-white shadow-sm'
     }`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -188,14 +210,8 @@ function CandidateCard({ candidate }) {
             <span className="rounded-full bg-slate-950 px-2 py-0.5 text-[10px] font-semibold text-white">
               Application {applicationId}
             </span>
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-              quarantined
-                ? 'border-red-200 bg-red-100 text-red-800'
-                : eligible
-                  ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
-                  : 'border-amber-200 bg-amber-100 text-amber-800'
-            }`}>
-              {quarantined ? 'Quarantined · no retry' : humanize(candidate.automation_state)}
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusClasses}`}>
+              {statusLabel}
             </span>
           </div>
           <h3 className="mt-2 text-sm font-semibold text-slate-950">{candidate.role}</h3>
@@ -212,16 +228,23 @@ function CandidateCard({ candidate }) {
         </a>
       </div>
 
-      {quarantined && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-white p-3 text-xs leading-relaxed text-red-800">
+      {mutationLocked && (
+        <div className={`mt-3 flex items-start gap-2 rounded-lg border bg-white p-3 text-xs leading-relaxed ${
+          uncertainSubmission
+            ? 'border-red-200 text-red-800'
+            : 'border-amber-200 text-amber-900'
+        }`}>
           <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div>
-            This application has {candidate.uncertain_submission_attempt_count} uncertain live submission attempt{candidate.uncertain_submission_attempt_count === 1 ? '' : 's'}. It is locked against preparation and retry until independent reconciliation evidence exists. Existing materials remain readable below for recovery and evidence review.
+            {uncertainSubmission
+              ? `This application has ${candidate.uncertain_submission_attempt_count} uncertain live submission attempt${candidate.uncertain_submission_attempt_count === 1 ? '' : 's'}. It is locked against preparation and retry until independent reconciliation evidence exists.`
+              : `This application has ${candidate.active_submission_attempt_count} queued or in-progress live submission attempt${candidate.active_submission_attempt_count === 1 ? '' : 's'}. Material preparation and review are locked until the attempt reaches a terminal state.`}
+            {' '}Existing materials remain readable below for recovery and evidence review.
           </div>
         </div>
       )}
 
-      {!quarantined && candidate.eligibility_blockers?.length > 0 && (
+      {!mutationLocked && candidate.eligibility_blockers?.length > 0 && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
           {candidate.eligibility_blockers.map(humanize).join(' · ')}
         </div>
@@ -245,16 +268,16 @@ function CandidateCard({ candidate }) {
           className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
         >
           <FileCheck2 className="h-3.5 w-3.5" />
-          {expanded ? 'Hide material review' : quarantined ? 'Inspect frozen materials' : 'Review materials'}
+          {expanded ? 'Hide material review' : mutationLocked ? 'Inspect frozen materials' : 'Review materials'}
           {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         </button>
       </div>
 
       {expanded && (
         <div className="mt-4 space-y-3">
-          {quarantined && (
+          {mutationLocked && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
-              Read-only evidence view. Prepare, approve, and reject actions remain disabled while the submission attempt is active or uncertain.
+              Read-only evidence view. Prepare, approve, and reject actions remain disabled while a submission attempt is active or uncertain.
             </div>
           )}
 
@@ -297,7 +320,7 @@ function CandidateCard({ candidate }) {
                       </p>
                     </div>
                   </div>
-                  {candidate.automation_state !== 'ready_to_apply' && materialsQuery.data?.open_review_count > 0 && !quarantined && (
+                  {candidate.automation_state !== 'ready_to_apply' && materialsQuery.data?.open_review_count > 0 && !mutationLocked && (
                     <Link
                       to={`/applications/${applicationId}`}
                       className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-900 hover:underline"
@@ -308,7 +331,7 @@ function CandidateCard({ candidate }) {
                 </div>
               )}
 
-              {candidate.automation_state === 'needs_review' && !bundleAlreadyApproved && !quarantined && (
+              {candidate.automation_state === 'needs_review' && !bundleAlreadyApproved && !mutationLocked && (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-start gap-2">
                     <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-700" />
@@ -384,7 +407,7 @@ function CandidateCard({ candidate }) {
                 </div>
               )}
 
-              {candidate.automation_state === 'ready_to_apply' && !quarantined && (
+              {candidate.automation_state === 'ready_to_apply' && !mutationLocked && (
                 <Link
                   to={`/applications/${applicationId}`}
                   className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
