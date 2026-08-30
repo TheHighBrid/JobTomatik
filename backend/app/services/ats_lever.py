@@ -246,8 +246,11 @@ class LeverAdapter(ATSAdapter):
         normalized = normalize_text(body)
         selectors = (
             '.application-confirmation',
+            '#application-confirmation',
             '.posting-confirmation',
             '.confirmation',
+            '[class*="application-confirmation" i]',
+            '[class*="posting-confirmation" i]',
             '[data-qa*="confirmation" i]',
             '[data-testid*="confirmation" i]',
         )
@@ -268,40 +271,113 @@ class LeverAdapter(ATSAdapter):
             except Exception:
                 continue
 
-        phrases = (
+        try:
+            after_fingerprint = await self.step_fingerprint(surface)
+        except Exception:
+            after_fingerprint = ""
+        try:
+            submit_control_present = bool(await self.find_submit_button(surface))
+        except Exception:
+            submit_control_present = False
+
+        url_changed = bool(current_url and current_url != before_url)
+        fingerprint_changed = bool(
+            before_fingerprint
+            and after_fingerprint
+            and after_fingerprint != before_fingerprint
+        )
+        structural_change = url_changed or fingerprint_changed
+
+        strong_phrases = (
             "thank you for applying",
             "thank you for your application",
+            "thanks for applying",
+            "thanks for your application",
             "application submitted",
             "application received",
+            "application sent",
             "your application has been submitted",
+            "your application was submitted",
+            "your application was already submitted",
+            "application successfully submitted",
+            "successfully submitted your application",
             "we have received your application",
             "we've received your application",
         )
-        matched = next((phrase for phrase in phrases if phrase in normalized), "")
-        confirmation_url = bool(
-            re.search(r"/(?:thanks|thank-you|confirmation|application-submitted)(?:[/?#]|$)", current_url, re.I)
+        strong_match = next(
+            (phrase for phrase in strong_phrases if phrase in normalized),
+            "",
         )
-        if matched:
+        weak_phrases = (
+            "we'll be in touch",
+            "we will be in touch",
+            "thanks for your interest",
+            "thank you for your interest",
+        )
+        weak_match = next(
+            (phrase for phrase in weak_phrases if phrase in normalized),
+            "",
+        )
+        confirmation_url = bool(
+            re.search(
+                r"/(?:thanks|thank-you|confirmation|application-submitted)(?:[/?#]|$)",
+                current_url,
+                re.I,
+            )
+        )
+        common_metadata = {
+            "adapter": self.name,
+            "adapter_version": self.version,
+            "confirmation_url": confirmation_url,
+            "url_changed": url_changed,
+            "fingerprint_changed": fingerprint_changed,
+            "submit_control_present": submit_control_present,
+        }
+        if strong_match:
             return [ConfirmationEvidence(
                 evidence_type="success_banner",
                 is_sufficient=True,
                 final_url=current_url,
-                confirmation_text=matched,
+                confirmation_text=strong_match,
+                metadata=common_metadata,
+            )]
+        if weak_match and structural_change and not submit_control_present:
+            return [ConfirmationEvidence(
+                evidence_type="success_banner",
+                is_sufficient=True,
+                final_url=current_url,
+                confirmation_text=weak_match,
                 metadata={
-                    "adapter": self.name,
-                    "adapter_version": self.version,
-                    "confirmation_url": confirmation_url,
+                    **common_metadata,
+                    "confirmation_basis": "weak_phrase_plus_structural_change",
                 },
             )]
-        if confirmation_url and current_url != before_url and "application" in normalized:
+        if confirmation_url and url_changed and "application" in normalized:
             return [ConfirmationEvidence(
                 evidence_type="confirmation_page",
                 is_sufficient=True,
                 final_url=current_url,
                 confirmation_text="Lever confirmation route and application text detected after submit.",
-                metadata={"adapter": self.name, "adapter_version": self.version},
+                metadata=common_metadata,
             )]
-        return []
+
+        return [ConfirmationEvidence(
+            evidence_type="post_submit_diagnostic",
+            is_sufficient=False,
+            final_url=current_url,
+            confirmation_text=(
+                "Submit action occurred; explicit confirmation was not detected."
+            ),
+            metadata={
+                **common_metadata,
+                "post_submit_diagnostic": True,
+                "submit_clicked": True,
+                "before_url": before_url,
+                "before_fingerprint": before_fingerprint,
+                "after_fingerprint": after_fingerprint,
+                "weak_confirmation_phrase": weak_match or None,
+            },
+        )]
 
     def manifest(self) -> Dict[str, Any]:
         return {
