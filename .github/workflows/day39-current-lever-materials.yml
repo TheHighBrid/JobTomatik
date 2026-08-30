@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - backend/app/api/supervised_pilot_roster.py
+      - backend/app/api/supervised_submissions.py
       - backend/app/schemas/lever_phase_b_current_intake.py
       - backend/app/services/lever_phase_b_current_materials.py
       - backend/app/services/lever_phase_b_current_materials_v4.py
@@ -27,6 +28,7 @@ on:
       - backend/tests/test_material_generation_v5_policy.py
       - backend/tests/test_current_lever_cli_v4_contract.py
       - backend/tests/test_current_lever_operator_api.py
+      - backend/tests/test_current_lever_operator_execution_lock.py
       - backend/tests/test_current_lever_operator_service.py
       - backend/tests/test_current_lever_roster.py
       - frontend/src/App.jsx
@@ -77,6 +79,7 @@ jobs:
             tests/test_material_generation_v5_policy.py \
             tests/test_current_lever_cli_v4_contract.py \
             tests/test_current_lever_operator_api.py \
+            tests/test_current_lever_operator_execution_lock.py \
             tests/test_current_lever_operator_service.py \
             tests/test_current_lever_roster.py
 
