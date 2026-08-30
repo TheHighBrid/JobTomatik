@@ -3,7 +3,7 @@
 This module wraps the existing current-material services with protections that must
 hold for every mutating operator surface:
 
-1. an application with any durable uncertain live submission attempt is quarantined
+1. an application with any durable active live submission attempt is quarantined
    from further material mutation or retry preparation;
 2. a material review decision is bound to the exact bundle the owner inspected;
 3. an already-approved exact bundle cannot be approved twice.
@@ -19,13 +19,16 @@ from typing import Any, Dict, Mapping, Optional
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
-from app.models.submission_integrity import SubmissionAttempt, SubmissionAttemptStatus
+from app.models.submission_integrity import (
+    ACTIVE_SUBMISSION_ATTEMPT_STATUSES,
+    SubmissionAttempt,
+)
 from app.models.user import User
 from app.services import lever_phase_b_current_materials as base
 from app.services import lever_phase_b_current_materials_v5 as v5
 
 
-QUARANTINE_BLOCKER = "submission_attempt_uncertain_no_retry"
+QUARANTINE_BLOCKER = "submission_attempt_active_no_material_mutation"
 
 
 def _lock_and_assert_mutation_allowed(
@@ -47,18 +50,20 @@ def _lock_and_assert_mutation_allowed(
             "Current Lever application was not found"
         )
 
-    uncertain = (
-        db.query(SubmissionAttempt.id)
+    active_attempt = (
+        db.query(SubmissionAttempt.id, SubmissionAttempt.status)
         .filter(
             SubmissionAttempt.application_id == application.id,
-            SubmissionAttempt.status == SubmissionAttemptStatus.uncertain.value,
+            SubmissionAttempt.status.in_(ACTIVE_SUBMISSION_ATTEMPT_STATUSES),
         )
+        .order_by(SubmissionAttempt.id.desc())
         .first()
     )
-    if uncertain is not None:
+    if active_attempt is not None:
         raise base.LeverPhaseBReviewedMaterialsError(
-            "Current Lever application is quarantined because a prior live "
-            "submission attempt is uncertain; material mutation and retry are blocked"
+            "Current Lever application is quarantined because a live submission "
+            f"attempt is {active_attempt.status}; material mutation is blocked until "
+            "the attempt reaches an independently reconciled terminal state"
         )
     return application
 
@@ -69,7 +74,7 @@ def prepare_current_lever_operator_materials(
     *,
     application_id: int,
 ) -> Dict[str, Any]:
-    """Prepare current v5 materials only when no uncertain attempt exists."""
+    """Prepare current v5 materials only when no active attempt exists."""
 
     _lock_and_assert_mutation_allowed(db, user, application_id)
     return v5.prepare_current_lever_materials(
@@ -121,9 +126,9 @@ def review_current_lever_operator_materials(
 ) -> Dict[str, Any]:
     """Review only the exact latest bundle the owner was shown.
 
-    The application row remains locked from the quarantine check through the final
-    review call, so a concurrent prepare path cannot replace the bundle in between
-    the identity comparison and the recorded decision.
+    The application row remains locked from the active-attempt check through the
+    final review call, so neither a concurrent prepare path nor a newly reserved
+    submission attempt can coexist with a material mutation.
     """
 
     application = _lock_and_assert_mutation_allowed(db, user, application_id)
