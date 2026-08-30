@@ -34,3 +34,18 @@ class CurrentLeverPhaseBImportOut(BaseModel):
     submission_queued: bool = False
     approval_issued: bool = False
     runtime_flags_changed: bool = False
+
+
+class CurrentLeverPhaseBMaterialReviewIn(BaseModel):
+    """Explicit owner decision for the latest current Lever material bundle.
+
+    Approval remains intentionally fail-closed. The UI must submit the exact
+    application-bound acknowledgment string; a generic approve boolean is not
+    sufficient authority.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    approved: bool
+    notes: Optional[str] = Field(default=None, max_length=5000)
+    acknowledgment: Optional[str] = Field(default=None, max_length=200)
