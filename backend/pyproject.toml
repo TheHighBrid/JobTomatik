@@ -1,0 +1,16 @@
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# SQLAlchemy expressions intentionally compare instrumented attributes with
+# booleans, and several executable scripts establish sys.path before importing
+# the application package.
+ignore = ["E402", "E712"]
+
+[tool.ruff.lint.per-file-ignores]
+# These compatibility facades re-export the underlying implementation at
+# runtime so existing monkeypatch and operational entrypoints remain stable.
+"app/services/lever_pilot_ledger_boundary.py" = ["F401"]
+"tests/test_phase_1_release_gate.py" = ["F401"]
+"scripts/android_runtime_acceptance.py" = ["F821"]
+"scripts/run_shadow_qualification_canary.py" = ["F821"]

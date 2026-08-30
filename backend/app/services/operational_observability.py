@@ -17,7 +17,6 @@ from sqlalchemy.orm import joinedload
 from app.models.application import (
     Application,
     ApplicationAutomationState,
-    ManualReviewStatus,
 )
 from app.models.intelligence import AgentRun
 from app.models.material import ApplicationMaterial

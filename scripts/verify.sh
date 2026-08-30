@@ -150,6 +150,8 @@ bootstrap() {
 }
 
 backend_fast() {
+  step "Lint backend"
+  (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m ruff check app scripts tests)
   step "Compile backend"
   (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m compileall -q app tests)
   step "Run focused backend safety tests"
@@ -166,6 +168,8 @@ backend_full() {
   local report_path="$ROOT_DIR/backend/verification-pytest-output.txt"
   local status
 
+  step "Lint backend"
+  (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m ruff check app scripts tests)
   step "Compile backend"
   (cd "$ROOT_DIR/backend" && "$PYTHON_BIN" -m compileall -q app tests)
   step "Run full backend and browser suite"
