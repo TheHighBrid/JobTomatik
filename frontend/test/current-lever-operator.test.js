@@ -79,10 +79,15 @@ test('already-approved bundles do not offer duplicate material approval', () => 
   )
 })
 
-test('uncertain live attempts are quarantined and cannot be prepared or reviewed', () => {
+test('uncertain live attempts quarantine mutations but preserve read-only evidence inspection', () => {
   assert.equal(panel.includes('Quarantined · no retry'), true)
   assert.equal(panel.includes('uncertain_submission_attempt_count'), true)
   assert.equal(panel.includes('locked against preparation and retry'), true)
+  assert.equal(panel.includes('enabled: expanded,'), true)
+  assert.equal(panel.includes('enabled: expanded && !quarantined'), false)
+  assert.equal(panel.includes('Inspect frozen materials'), true)
+  assert.equal(panel.includes('Read-only evidence view.'), true)
+  assert.equal(panel.includes('&& !quarantined'), true)
 })
 
 test('current Lever operator has no submission-authority endpoint', () => {
