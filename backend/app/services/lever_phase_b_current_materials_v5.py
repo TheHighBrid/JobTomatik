@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.application import ApplicationEvent
 from app.models.material import ApplicationMaterial, EvidenceUnit
+from app.models.submission_integrity import SubmissionAttempt, SubmissionAttemptStatus
 from app.models.user import User
 from app.services import lever_phase_b_current_materials as base
 from app.services.application_state import normalize_state
@@ -23,6 +24,27 @@ from app.services.material_generation_v5_policy import generate_application_mate
 show_current_lever_materials = base.show_current_lever_materials
 review_current_lever_materials = base.review_current_lever_materials
 _fetch_current_hosted_posting = base._fetch_current_hosted_posting
+
+
+def _reject_uncertain_submission_attempts(
+    db: Session,
+    application_id: int,
+) -> None:
+    """Fail closed before preparing new materials for an unresolved live attempt."""
+
+    uncertain_attempt_count = (
+        db.query(SubmissionAttempt)
+        .filter(
+            SubmissionAttempt.application_id == int(application_id),
+            SubmissionAttempt.status == SubmissionAttemptStatus.uncertain.value,
+        )
+        .count()
+    )
+    if uncertain_attempt_count:
+        raise base.LeverPhaseBReviewedMaterialsError(
+            "Current Lever application has an unresolved uncertain submission attempt; "
+            "new material preparation is blocked until that attempt is independently reconciled"
+        )
 
 
 def prepare_current_lever_materials(
@@ -37,6 +59,7 @@ def prepare_current_lever_materials(
     candidate, application, job = base._current_candidate_records(
         db, user, application_id, lock=True
     )
+    _reject_uncertain_submission_attempts(db, application.id)
     posting_snapshot, posting_sha256 = base._posting_snapshot(
         candidate,
         _fetch_current_hosted_posting(candidate),
