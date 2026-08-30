@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.job import Job
+from app.models.submission_integrity import SubmissionAttempt, SubmissionAttemptStatus
 from app.models.user import User
 from app.services.application_state import normalize_state
 from app.services.lever_phase_b_current_intake import INTAKE_SOURCE, SELECTION_POLICY
@@ -34,6 +35,22 @@ def list_current_lever_phase_b_candidates(
         .all()
     )
 
+    application_ids = [application.id for application, _job in rows]
+    uncertain_attempt_counts: dict[int, int] = {}
+    if application_ids:
+        uncertain_attempt_rows = (
+            db.query(SubmissionAttempt.application_id)
+            .filter(
+                SubmissionAttempt.application_id.in_(application_ids),
+                SubmissionAttempt.status == SubmissionAttemptStatus.uncertain.value,
+            )
+            .all()
+        )
+        for (application_id,) in uncertain_attempt_rows:
+            uncertain_attempt_counts[int(application_id)] = (
+                uncertain_attempt_counts.get(int(application_id), 0) + 1
+            )
+
     candidates: list[Dict[str, Any]] = []
     for application, job in rows:
         raw = dict(job.raw_data or {})
@@ -47,11 +64,14 @@ def list_current_lever_phase_b_candidates(
             for item in target.get("blockers") or []
             if str(item).strip()
         ]
+        uncertain_attempt_count = uncertain_attempt_counts.get(int(application.id), 0)
         eligibility_blockers: list[str] = []
         if state not in SUPPORTED_LOCAL_STATES:
             eligibility_blockers.append(
                 "automation_state_not_material_preparation_eligible"
             )
+        if uncertain_attempt_count:
+            eligibility_blockers.append("submission_attempt_uncertain_no_retry")
         if target.get("verified") is not True:
             eligibility_blockers.append("target_identity_unverified")
         eligibility_blockers.extend(
@@ -82,6 +102,7 @@ def list_current_lever_phase_b_candidates(
                 "automation_state": state,
                 "target_identity_verified": target.get("verified") is True,
                 "target_identity_blockers": target_blockers,
+                "uncertain_submission_attempt_count": uncertain_attempt_count,
                 "material_preparation_eligible": not unique_blockers,
                 "eligibility_blockers": unique_blockers,
                 "created_at": (

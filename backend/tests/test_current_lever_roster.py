@@ -5,6 +5,7 @@ from app.models.application import (
     ApplicationAutomationState,
     ApplicationEvent,
 )
+from app.models.submission_integrity import SubmissionAttempt, SubmissionAttemptStatus
 from app.models.user import User
 from app.services import lever_phase_b_current_intake as intake_service
 from app.services.lever_phase_b_current_roster import (
@@ -91,12 +92,43 @@ def test_current_lever_roster_is_read_only_and_excludes_execution_states(
     assert candidate["automation_state"] == ApplicationAutomationState.preparing.value
     assert candidate["target_identity_verified"] is True
     assert candidate["target_identity_blockers"] == []
+    assert candidate["uncertain_submission_attempt_count"] == 0
     assert candidate["material_preparation_eligible"] is True
     assert candidate["eligibility_blockers"] == []
     assert db_session.query(ApplicationEvent).count() == event_count
 
+    uncertain_attempt = SubmissionAttempt(
+        reference="attempt-current-lever-roster-uncertain",
+        application_id=application.id,
+        user_id=user.id,
+        approval_reference="approval-current-lever-roster-uncertain",
+        attempt_number=1,
+        task_id="task-current-lever-roster-uncertain",
+        status=SubmissionAttemptStatus.uncertain.value,
+        binding_hash="c" * 64,
+        identity_digest="d" * 64,
+        combined_payload_hash="e" * 64,
+        adapter_version="1.1.0",
+    )
+    db_session.add(uncertain_attempt)
+    db_session.commit()
+    event_count = db_session.query(ApplicationEvent).count()
+
+    quarantined_roster = list_current_lever_phase_b_candidates(db_session, user)
+    assert quarantined_roster["candidate_count"] == 1
+    assert quarantined_roster["eligible_count"] == 0
+    quarantined = quarantined_roster["candidates"][0]
+    assert quarantined["application_id"] == application.id
+    assert quarantined["uncertain_submission_attempt_count"] == 1
+    assert quarantined["material_preparation_eligible"] is False
+    assert quarantined["eligibility_blockers"] == [
+        "submission_attempt_uncertain_no_retry"
+    ]
+    assert db_session.query(ApplicationEvent).count() == event_count
+
+    uncertain_attempt.status = SubmissionAttemptStatus.blocked.value
     application.automation_state = ApplicationAutomationState.confirmed.value
-    db_session.add(application)
+    db_session.add_all([uncertain_attempt, application])
     db_session.commit()
     event_count = db_session.query(ApplicationEvent).count()
 
@@ -106,6 +138,7 @@ def test_current_lever_roster_is_read_only_and_excludes_execution_states(
     terminal = terminal_roster["candidates"][0]
     assert terminal["application_id"] == application.id
     assert terminal["automation_state"] == ApplicationAutomationState.confirmed.value
+    assert terminal["uncertain_submission_attempt_count"] == 0
     assert terminal["material_preparation_eligible"] is False
     assert terminal["eligibility_blockers"] == [
         "automation_state_not_material_preparation_eligible"
