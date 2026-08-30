@@ -27,6 +27,7 @@ def _maple_job():
     return SimpleNamespace(
         title="Client Success Associate (Bilingual, French/English)",
         company="Maple",
+        location="Remote within Canada",
         description=(
             "Own the day-to-day success of a portfolio of channel partners. "
             "Lead bilingual partner communication, coordinate renewals, keep Salesforce "
@@ -44,6 +45,7 @@ def _fullscript_job():
     return SimpleNamespace(
         title="Technical Support Specialist",
         company="Fullscript",
+        location="Ottawa, ON",
         description=(
             "Investigate customer-reported technical issues, troubleshoot software, "
             "document reproduction steps, and partner with Engineering."
