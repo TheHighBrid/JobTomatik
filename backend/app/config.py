@@ -132,6 +132,28 @@ class Settings(BaseSettings):
                 "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
             )
 
+        # The Android supervised Lever window is intentionally ephemeral. The durable
+        # .env remains fail-safe; a marker is honored only while the exact native
+        # jobtomatik-pilot process that created it is still alive with the same Linux
+        # process start time. A stale file or recycled PID therefore cannot arm a later
+        # ordinary restart. This marker changes runtime capability only. It never
+        # creates the separate one-time exact-application approval required to submit.
+        from app.services.supervised_runtime_mode import (
+            lever_supervised_runtime_marker_active,
+        )
+
+        if lever_supervised_runtime_marker_active():
+            if self.greenhouse_supervised_pilot_enabled:
+                raise ValueError(
+                    "Greenhouse supervised pilot cannot be enabled during the ephemeral Lever window"
+                )
+            if self.allow_real_followup_send:
+                raise ValueError(
+                    "Real follow-up sending must remain disabled during the ephemeral Lever window"
+                )
+            self.allow_real_application_submit = True
+            self.lever_supervised_pilot_enabled = True
+
         sensitive_runtime = any(
             (
                 self.is_production,
