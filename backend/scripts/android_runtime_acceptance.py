@@ -30,6 +30,10 @@ from pydantic_settings import PydanticBaseSettingsSource  # noqa: E402
 
 from app.config import Settings  # noqa: E402
 from app.services.browser_runtime import probe_external_playwright_cdp  # noqa: E402
+from app.services.supervised_runtime_mode import (  # noqa: E402
+    DEFAULT_MARKER_PATH,
+    runtime_lease_status,
+)
 from scripts import android_runtime_acceptance_base as _base  # noqa: E402
 
 for _name in dir(_base):
@@ -219,6 +223,16 @@ def _base_settings_for_profile(
 def run_acceptance(profile: str = SHADOW_ACCEPTANCE_PROFILE) -> dict[str, Any]:
     """Run Runtime V2 acceptance against one authoritative backend config."""
 
+    if (
+        profile == SHADOW_ACCEPTANCE_PROFILE
+        and os.environ.get("JOBTOMATIK_RUNTIME_MODE") == "android_managed"
+    ):
+        lease = runtime_lease_status(DEFAULT_MARKER_PATH)
+        if lease.get("active"):
+            raise RuntimeError(
+                "Android shadow runtime acceptance is blocked while the supervised Lever lease is active"
+            )
+
     authoritative_settings = _backend_settings()
     base_settings, safety_override = _base_settings_for_profile(
         authoritative_settings,
@@ -274,6 +288,11 @@ def main() -> int:
     except Exception as exc:
         settings = _backend_settings()
         enabled_platforms = _enabled_supervised_platforms(settings)
+        lease = runtime_lease_status(DEFAULT_MARKER_PATH)
+        lease_active = bool(lease.get("active"))
+        configured_window = bool(
+            settings.allow_real_application_submit and len(enabled_platforms) == 1
+        )
         failure = {
             "version": 1,
             "status": "fail",
@@ -281,11 +300,13 @@ def main() -> int:
             "acceptance_profile": configured_profile or "auto",
             "error": str(exc)[:1800],
             "safety": {
-                "real_submission_disabled": settings.allow_real_application_submit is False,
-                "supervised_submission_window": bool(
-                    settings.allow_real_application_submit and len(enabled_platforms) == 1
+                "real_submission_disabled": not lease_active and settings.allow_real_application_submit is False,
+                "supervised_submission_window": lease_active or configured_window,
+                "supervised_platform": (
+                    "lever"
+                    if lease_active
+                    else enabled_platforms[0] if len(enabled_platforms) == 1 else None
                 ),
-                "supervised_platform": enabled_platforms[0] if len(enabled_platforms) == 1 else None,
                 "one_time_approval_required": True,
                 "final_submit_allowed": False,
                 "outreach_authorized": False,
