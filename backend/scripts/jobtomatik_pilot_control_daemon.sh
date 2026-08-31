@@ -4,21 +4,23 @@ set -uo pipefail
 PROOT_DISTRO="${JOBTOMATIK_PROOT_DISTRO:-ubuntu}"
 PROOT_REPO="${JOBTOMATIK_PROOT_REPO:-/root/JobTomatik}"
 PILOT_COMMAND="${JOBTOMATIK_PILOT_COMMAND:-jobtomatik-pilot}"
-CONTROL_DIR="${JOBTOMATIK_PILOT_CONTROL_DIR:-/tmp/jobtomatik-pilot-control}"
-HEARTBEAT_PATH="$CONTROL_DIR/controller-heartbeat"
+NATIVE_TMPDIR="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
+NATIVE_CONTROL_DIR="${JOBTOMATIK_PILOT_CONTROL_NATIVE_DIR:-$NATIVE_TMPDIR/jobtomatik-pilot-control}"
+GUEST_CONTROL_DIR="${JOBTOMATIK_PILOT_CONTROL_GUEST_DIR:-/tmp/jobtomatik-pilot-control}"
+HEARTBEAT_PATH="$NATIVE_CONTROL_DIR/controller-heartbeat"
 POLL_SECONDS="${JOBTOMATIK_PILOT_CONTROL_POLL_SECONDS:-1}"
 SELF_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SELF_DIGEST="$(sha256sum "$SELF_PATH" | awk '{print $1}')"
 
-mkdir -p "$CONTROL_DIR"
-chmod 700 "$CONTROL_DIR" 2>/dev/null || true
+mkdir -p "$NATIVE_CONTROL_DIR"
+chmod 700 "$NATIVE_CONTROL_DIR" 2>/dev/null || true
 
 run_bridge() {
   local action="$1"
   shift || true
   local command quoted arg
   printf -v command "set -e; cd %q; .venv/bin/python scripts/lever_supervised_pilot_control_bridge.py %q --control-dir %q" \
-    "$PROOT_REPO/backend" "$action" "$CONTROL_DIR"
+    "$PROOT_REPO/backend" "$action" "$GUEST_CONTROL_DIR"
   for arg in "$@"; do
     printf -v quoted "%q" "$arg"
     command+=" $quoted"
@@ -61,7 +63,10 @@ while true; do
   reload_if_replaced
   write_heartbeat
 
-  if [[ -f "$CONTROL_DIR/request.json" ]]; then
+  # Native Termux sees $TMPDIR while the --shared-tmp PRoot guest sees the same
+  # directory as /tmp. Inspect the native path here and pass the guest path only
+  # to the bridge running inside PRoot.
+  if [[ -f "$NATIVE_CONTROL_DIR/request.json" ]]; then
     claim_output=""
     if claim_output="$(run_bridge claim-request 2>&1)"; then
       request_id=""
