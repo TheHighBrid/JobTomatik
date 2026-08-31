@@ -92,6 +92,7 @@ def test_current_lever_roster_is_read_only_and_excludes_execution_states(
     assert candidate["automation_state"] == ApplicationAutomationState.preparing.value
     assert candidate["target_identity_verified"] is True
     assert candidate["target_identity_blockers"] == []
+    assert candidate["active_submission_attempt_count"] == 0
     assert candidate["uncertain_submission_attempt_count"] == 0
     assert candidate["material_preparation_eligible"] is True
     assert candidate["eligibility_blockers"] == []
@@ -119,10 +120,12 @@ def test_current_lever_roster_is_read_only_and_excludes_execution_states(
     assert quarantined_roster["eligible_count"] == 0
     quarantined = quarantined_roster["candidates"][0]
     assert quarantined["application_id"] == application.id
+    assert quarantined["active_submission_attempt_count"] == 1
     assert quarantined["uncertain_submission_attempt_count"] == 1
     assert quarantined["material_preparation_eligible"] is False
     assert quarantined["eligibility_blockers"] == [
-        "submission_attempt_uncertain_no_retry"
+        "submission_attempt_active_materials_locked",
+        "submission_attempt_uncertain_no_retry",
     ]
     assert db_session.query(ApplicationEvent).count() == event_count
 
@@ -138,6 +141,7 @@ def test_current_lever_roster_is_read_only_and_excludes_execution_states(
     terminal = terminal_roster["candidates"][0]
     assert terminal["application_id"] == application.id
     assert terminal["automation_state"] == ApplicationAutomationState.confirmed.value
+    assert terminal["active_submission_attempt_count"] == 0
     assert terminal["uncertain_submission_attempt_count"] == 0
     assert terminal["material_preparation_eligible"] is False
     assert terminal["eligibility_blockers"] == [
