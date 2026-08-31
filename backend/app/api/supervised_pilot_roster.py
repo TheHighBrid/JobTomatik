@@ -12,6 +12,7 @@ from app.schemas.lever_phase_b_current_intake import (
     CurrentLeverPhaseBImportIn,
     CurrentLeverPhaseBImportOut,
     CurrentLeverPhaseBMaterialReviewIn,
+    CurrentLeverRuntimeArmIn,
 )
 from app.schemas.supervised_pilot_dossier import SupervisedPilotDossierOut
 from app.schemas.supervised_pilot_roster import (
@@ -53,6 +54,12 @@ from app.services.lever_phase_b_reviewed_materials import (
 from app.services.lever_phase_b_runtime import (
     build_runtime_lever_phase_b_launch_status,
     materialize_runtime_lever_phase_b_candidate,
+)
+from app.services.lever_pilot_control_request import (
+    LeverPilotControlError,
+    request_runtime_arm,
+    request_runtime_disarm,
+    runtime_control_status,
 )
 from app.services.lever_pilot_ledger_boundary import (
     LeverPilotIngestionError,
@@ -181,6 +188,55 @@ def current_lever_phase_b_roster(
     result = list_current_lever_phase_b_candidates(db, current_user)
     db.rollback()
     return result
+
+
+@router.get("/current-lever/runtime-control")
+def current_lever_runtime_control_status(
+    current_user: User = Depends(get_current_user),
+):
+    """Read native controller + process-bound lease truth without mutation."""
+
+    return runtime_control_status(current_user)
+
+
+@router.post(
+    "/current-lever/{application_id}/runtime-control/arm",
+    status_code=202,
+)
+def request_current_lever_runtime_arm(
+    application_id: int,
+    data: CurrentLeverRuntimeArmIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = request_runtime_arm(
+            db,
+            current_user,
+            application_id=application_id,
+            acknowledgment=data.acknowledgment,
+        )
+    except LeverPilotControlError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    # The request file is the only mutation. Release the application row lock without
+    # changing database state or creating a submission approval/attempt.
+    db.rollback()
+    return result
+
+
+@router.post(
+    "/current-lever/runtime-control/disarm",
+    status_code=202,
+)
+def request_current_lever_runtime_disarm(
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return request_runtime_disarm(current_user)
+    except LeverPilotControlError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/current-lever/{application_id}/materials")
