@@ -11,6 +11,10 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import api, { getApiErrorMessage } from '../api/client'
+import {
+  nativeRuntimeBootstrapAvailable,
+  updateRuntimeViaNativeBootstrap,
+} from '../native/runtimeBootstrap'
 
 function formatExpiry(epochSeconds) {
   if (!epochSeconds) return 'unknown expiry'
@@ -56,6 +60,15 @@ export default function CurrentLeverRuntimeControl() {
     [workspaceQuery.data],
   )
 
+  const executingSubmissionCount = useMemo(
+    () => (workspaceQuery.data?.candidates || []).reduce((total, candidate) => {
+      const active = Number(candidate.active_submission_attempt_count || 0)
+      const uncertain = Number(candidate.uncertain_submission_attempt_count || 0)
+      return total + Math.max(0, active - uncertain)
+    }, 0),
+    [workspaceQuery.data],
+  )
+
   useEffect(() => {
     if (!selectedApplicationId && readyCandidates.length > 0) {
       setSelectedApplicationId(String(readyCandidates[0].application_id))
@@ -77,6 +90,26 @@ export default function CurrentLeverRuntimeControl() {
       queryClient.invalidateQueries({ queryKey: ['applications'] }),
     ])
   }
+
+  const runtime = runtimeQuery.data
+  const leaseActive = runtime?.lease_active === true
+  const canDisarm = runtime?.can_disarm === true
+  const transitionState = runtime?.transition_state || 'idle'
+  const transitionPending = transitionState === 'requested' || transitionState === 'inflight'
+  const uncertain = transitionState === 'uncertain_no_replay'
+  const controllerReady = runtime?.controller_available === true
+  const available = runtime?.available === true
+  const selectedCandidate = readyCandidates.find(
+    (candidate) => String(candidate.application_id) === selectedApplicationId,
+  )
+  const nativeBootstrapSafe = (
+    nativeRuntimeBootstrapAvailable()
+    && workspaceQuery.isSuccess
+    && runtimeQuery.isSuccess
+    && !leaseActive
+    && !transitionPending
+    && executingSubmissionCount === 0
+  )
 
   const armMutation = useMutation({
     mutationFn: (applicationId) => api.post(
@@ -112,32 +145,44 @@ export default function CurrentLeverRuntimeControl() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: () => api.post(
-      '/controller/android-runtime/update',
-      null,
-      { timeout: 15000 },
-    ),
-    onSuccess: async () => {
+    mutationFn: async () => {
+      try {
+        const response = await api.post(
+          '/controller/android-runtime/update',
+          null,
+          { timeout: 15000 },
+        )
+        return { mode: 'controller', result: response.data }
+      } catch (error) {
+        const status = error?.response?.status
+        const endpointMissing = status === 404 || status === 405
+        if (!endpointMissing) {
+          throw error
+        }
+        if (!nativeBootstrapSafe) {
+          throw new Error(
+            'The local backend is older than the in-app updater, but native bootstrap is blocked until runtime state is readable and no Lever submission is executing.',
+          )
+        }
+        const result = await updateRuntimeViaNativeBootstrap()
+        return { mode: 'native-bootstrap', result }
+      }
+    },
+    onSuccess: async (result) => {
       setConfirmingUpdate(false)
       await refreshControl()
-      toast.success('Android runtime update requested. JobTomatik will reconnect automatically after the verified restart.')
+      if (result?.mode === 'native-bootstrap') {
+        toast.success('Native Android bootstrap completed. JobTomatik is now on the verified in-app update path.')
+      } else {
+        toast.success('Android runtime update requested. JobTomatik will reconnect automatically after the verified restart.')
+      }
     },
     onError: (error) => toast.error(
-      getApiErrorMessage(error, 'Could not request the Android runtime update.'),
+      error?.message || getApiErrorMessage(error, 'Could not request the Android runtime update.'),
     ),
   })
 
-  const runtime = runtimeQuery.data
-  const leaseActive = runtime?.lease_active === true
-  const canDisarm = runtime?.can_disarm === true
-  const transitionState = runtime?.transition_state || 'idle'
-  const transitionPending = transitionState === 'requested' || transitionState === 'inflight'
-  const uncertain = transitionState === 'uncertain_no_replay'
-  const controllerReady = runtime?.controller_available === true
-  const available = runtime?.available === true
-  const selectedCandidate = readyCandidates.find(
-    (candidate) => String(candidate.application_id) === selectedApplicationId,
-  )
+  const updateControlAvailable = available || nativeBootstrapSafe
 
   return (
     <section className="card overflow-hidden border border-slate-200">
@@ -186,12 +231,23 @@ export default function CurrentLeverRuntimeControl() {
           </div>
         )}
 
-        {runtime && !controllerReady && (
+        {runtime && !controllerReady && !nativeBootstrapSafe && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <div>
                 Native runtime controller is offline. Arm, disarm, and update requests are blocked rather than left unclaimed.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {nativeBootstrapSafe && !controllerReady && (
+          <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+            <div className="flex items-start gap-2">
+              <RefreshCw className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div>
+                The installed Android app can perform the one-time native bootstrap because the supervised window is closed and no queued or in-progress Lever submission is executing. Quarantined uncertain applications remain untouched.
               </div>
             </div>
           </div>
@@ -227,7 +283,7 @@ export default function CurrentLeverRuntimeControl() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      disabled={!available || transitionPending || updateMutation.isPending}
+                      disabled={!updateControlAvailable || transitionPending || updateMutation.isPending}
                       onClick={() => updateMutation.mutate()}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-sky-800 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-900 disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -249,7 +305,7 @@ export default function CurrentLeverRuntimeControl() {
               ) : (
                 <button
                   type="button"
-                  disabled={!available || transitionPending}
+                  disabled={!updateControlAvailable || transitionPending}
                   onClick={() => setConfirmingUpdate(true)}
                   className="inline-flex min-w-fit items-center justify-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-950 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
