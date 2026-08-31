@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.config import Settings
 from app.services import supervised_runtime_mode
 from scripts import lever_supervised_pilot_runtime as pilot_runtime
 
@@ -189,7 +190,42 @@ def test_owner_bound_runtime_marker_rejects_unrecognized_creator(tmp_path, monke
     assert marker_path.exists() is False
 
 
-def test_native_pilot_wrapper_uses_owner_marker_and_fail_safe_rollback_contract():
+def _settings_with_safe_inputs() -> Settings:
+    return Settings(
+        _env_file=None,
+        secret_key="s" * 48,
+        allow_real_application_submit=False,
+        allow_real_followup_send=False,
+        greenhouse_supervised_pilot_enabled=False,
+        lever_supervised_pilot_enabled=False,
+    )
+
+
+def test_runtime_marker_override_requires_managed_android_static_runtime(monkeypatch):
+    monkeypatch.setattr(
+        supervised_runtime_mode,
+        "lever_supervised_runtime_marker_active",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.delenv("JOBTOMATIK_RUNTIME_MODE", raising=False)
+    monkeypatch.delenv("JOBTOMATIK_FRONTEND_RUNTIME_MODE", raising=False)
+
+    unmanaged = _settings_with_safe_inputs()
+    assert unmanaged.allow_real_application_submit is False
+    assert unmanaged.lever_supervised_pilot_enabled is False
+
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    runtime_mode_only = _settings_with_safe_inputs()
+    assert runtime_mode_only.allow_real_application_submit is False
+    assert runtime_mode_only.lever_supervised_pilot_enabled is False
+
+    monkeypatch.setenv("JOBTOMATIK_FRONTEND_RUNTIME_MODE", "static_artifact")
+    managed = _settings_with_safe_inputs()
+    assert managed.allow_real_application_submit is True
+    assert managed.lever_supervised_pilot_enabled is True
+
+
+def test_native_pilot_wrapper_uses_owner_marker_sanitized_restart_and_fail_safe_rollback_contract():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_pilot_wrapper.sh").read_text(
         encoding="utf-8"
     )
@@ -208,7 +244,14 @@ def test_native_pilot_wrapper_uses_owner_marker_and_fail_safe_rollback_contract(
     assert "ACTIVE_MARKER" in wrapper
     assert "trap 'arm_exit $?' EXIT INT TERM HUP" in wrapper
     assert "JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME=1" not in wrapper
-    assert '"$STACK_COMMAND" restart' in wrapper
+    assert "run_stack_sanitized restart" in wrapper
+    assert "unset JOBTOMATIK_OPERATIONS_ENV_FILE" in wrapper
+    assert "unset JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME" in wrapper
+    assert "export AUTOPILOT_ENABLED=false" in wrapper
+    assert "export ALLOW_REAL_APPLICATION_SUBMIT=false" in wrapper
+    assert "export ALLOW_REAL_FOLLOWUP_SEND=false" in wrapper
+    assert "export GREENHOUSE_SUPERVISED_PILOT_ENABLED=false" in wrapper
+    assert "export LEVER_SUPERVISED_PILOT_ENABLED=false" in wrapper
     assert "JOBTOMATIK_LEVER_PILOT_ARMED_EPHEMERAL" in wrapper
     assert "Persisted submit flags remain OFF" in wrapper
     assert "One-time exact application approval is still required" in wrapper
