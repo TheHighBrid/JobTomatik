@@ -1,27 +1,33 @@
 """Non-authorizing proof for one ephemeral supervised Lever runtime launch.
 
 The marker is deliberately bound to the exact native ``jobtomatik-pilot`` process
-that created it. A stale file cannot arm a later restart after that process exits or
-its PID is recycled. The marker never grants per-application submission approval.
+that created it, one cryptographically random restart token, and one repository
+revision. A stale file, recycled PID, unrelated process, or later restart cannot reuse
+it. The marker never grants per-application submission approval.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MARKER_PATH = BACKEND_ROOT / ".runtime" / "lever-supervised-pilot-runtime.json"
-MARKER_SCHEMA_VERSION = 1
+MARKER_SCHEMA_VERSION = 2
 MARKER_MODE = "lever_supervised_ephemeral"
 OWNER_CMDLINE_TOKENS = (
     "jobtomatik-pilot",
     "jobtomatik_pilot_wrapper.sh",
 )
+REVISION_RE = re.compile(r"^[0-9a-f]{7,64}$")
+MIN_LAUNCH_TOKEN_LENGTH = 32
 
 
 def _process_start_ticks(pid: int) -> int | None:
@@ -65,6 +71,20 @@ def _fsync_directory(path: Path) -> None:
         os.close(directory_fd)
 
 
+def _normalized_revision(value: str) -> str:
+    revision = str(value or "").strip().lower()
+    if not REVISION_RE.fullmatch(revision):
+        raise RuntimeError("LEVER_PILOT_MARKER_INVALID_RUNTIME_REVISION")
+    return revision
+
+
+def _launch_token_digest(value: str) -> str:
+    token = str(value or "")
+    if len(token) < MIN_LAUNCH_TOKEN_LENGTH:
+        raise RuntimeError("LEVER_PILOT_MARKER_LAUNCH_TOKEN_TOO_SHORT")
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def load_marker(path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -75,6 +95,9 @@ def load_marker(path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any] | None:
 
 def lever_supervised_runtime_marker_active(
     path: Path = DEFAULT_MARKER_PATH,
+    *,
+    expected_launch_token: str | None = None,
+    expected_revision: str | None = None,
 ) -> bool:
     marker = load_marker(path)
     if marker is None:
@@ -101,14 +124,40 @@ def lever_supervised_runtime_marker_active(
         return False
     if marker_token not in _process_cmdline(owner_pid):
         return False
+
+    marker_revision = str(marker.get("runtime_revision") or "").strip().lower()
+    if not REVISION_RE.fullmatch(marker_revision):
+        return False
+    marker_launch_digest = str(marker.get("launch_token_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", marker_launch_digest):
+        return False
+
+    if expected_revision is not None:
+        try:
+            normalized_expected_revision = _normalized_revision(expected_revision)
+        except RuntimeError:
+            return False
+        if marker_revision != normalized_expected_revision:
+            return False
+
+    if expected_launch_token is not None:
+        try:
+            expected_digest = _launch_token_digest(expected_launch_token)
+        except RuntimeError:
+            return False
+        if not hmac.compare_digest(marker_launch_digest, expected_digest):
+            return False
     return True
 
 
 def create_owner_bound_marker(
     owner_pid: int,
+    *,
+    launch_token: str,
+    runtime_revision: str,
     path: Path = DEFAULT_MARKER_PATH,
 ) -> dict[str, Any]:
-    """Create the runtime marker only for the currently alive native wrapper."""
+    """Create a capability marker bound to one owner, restart token, and revision."""
 
     owner_pid = int(owner_pid)
     if owner_pid <= 0:
@@ -120,6 +169,8 @@ def create_owner_bound_marker(
     if owner_cmdline_token is None:
         raise RuntimeError("LEVER_PILOT_MARKER_OWNER_IDENTITY_MISMATCH")
 
+    normalized_revision = _normalized_revision(runtime_revision)
+    launch_token_sha256 = _launch_token_digest(launch_token)
     marker = {
         "schema_version": MARKER_SCHEMA_VERSION,
         "mode": MARKER_MODE,
@@ -127,6 +178,8 @@ def create_owner_bound_marker(
         "owner_pid": owner_pid,
         "owner_start_ticks": owner_start_ticks,
         "owner_cmdline_token": owner_cmdline_token,
+        "runtime_revision": normalized_revision,
+        "launch_token_sha256": launch_token_sha256,
     }
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,7 +203,11 @@ def create_owner_bound_marker(
         if temporary.exists():
             temporary.unlink()
 
-    if not lever_supervised_runtime_marker_active(path):
+    if not lever_supervised_runtime_marker_active(
+        path,
+        expected_launch_token=launch_token,
+        expected_revision=normalized_revision,
+    ):
         clear_owner_bound_marker(path)
         raise RuntimeError("LEVER_PILOT_MARKER_ACTIVE_VERIFICATION_FAILED")
     return marker
@@ -170,6 +227,7 @@ __all__ = [
     "DEFAULT_MARKER_PATH",
     "MARKER_MODE",
     "MARKER_SCHEMA_VERSION",
+    "MIN_LAUNCH_TOKEN_LENGTH",
     "OWNER_CMDLINE_TOKENS",
     "clear_owner_bound_marker",
     "create_owner_bound_marker",
