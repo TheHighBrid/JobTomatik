@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import subprocess
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -24,6 +27,7 @@ def _paths(tmp_path: Path):
         control_dir / "request.json",
         control_dir / "inflight.json",
         control_dir / "status.json",
+        control_dir / "lease-owner.json",
         control_dir / "controller-heartbeat",
     )
 
@@ -34,7 +38,7 @@ def _patch_secret(monkeypatch):
 
 def test_signed_request_is_claimed_once_and_completed(tmp_path, monkeypatch):
     _patch_secret(monkeypatch)
-    request_path, inflight_path, status_path, _heartbeat = _paths(tmp_path)
+    request_path, inflight_path, status_path, owner_path, _heartbeat = _paths(tmp_path)
     user = SimpleNamespace(id=7)
     monkeypatch.setattr(control, "_now", lambda: 1000)
 
@@ -81,16 +85,79 @@ def test_signed_request_is_claimed_once_and_completed(tmp_path, monkeypatch):
         exit_code=0,
         inflight_path=inflight_path,
         status_path=status_path,
+        owner_path=owner_path,
     )
     assert result["outcome"] == "success"
     assert result["application_id"] == 247
     assert inflight_path.exists() is False
     assert control._record_signature_valid(result, SECRET) is True
 
+    owner = json.loads(owner_path.read_text(encoding="utf-8"))
+    assert owner["user_id"] == 7
+    assert owner["application_id"] == 247
+    assert owner["kind"] == "lever_supervised_lease_owner"
+    assert control._record_signature_valid(owner, SECRET) is True
+
+
+def test_request_publication_serializes_single_slot(tmp_path, monkeypatch):
+    _patch_secret(monkeypatch)
+    request_path, inflight_path, status_path, _owner_path, _heartbeat = _paths(tmp_path)
+    user = SimpleNamespace(id=7)
+    monkeypatch.setattr(control, "_now", lambda: 1000)
+
+    original_atomic_write = control._atomic_write_json
+    first_write_entered = threading.Event()
+    release_first_write = threading.Event()
+    call_lock = threading.Lock()
+    request_write_count = 0
+
+    def delayed_atomic_write(path, value):
+        nonlocal request_write_count
+        if path == request_path:
+            with call_lock:
+                request_write_count += 1
+                call_number = request_write_count
+            if call_number == 1:
+                first_write_entered.set()
+                assert release_first_write.wait(timeout=2)
+        return original_atomic_write(path, value)
+
+    monkeypatch.setattr(control, "_atomic_write_json", delayed_atomic_write)
+
+    def create(application_id):
+        return control._create_request(
+            action="arm",
+            user=user,
+            runtime_revision=REVISION,
+            application_id=application_id,
+            request_path=request_path,
+            inflight_path=inflight_path,
+            status_path=status_path,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(create, 247)
+        assert first_write_entered.wait(timeout=1)
+        second = executor.submit(create, 248)
+        time.sleep(0.05)
+        assert second.done() is False
+        release_first_write.set()
+
+        assert first.result(timeout=2)["application_id"] == 247
+        with pytest.raises(
+            control.LeverPilotControlError,
+            match="REQUEST_ALREADY_PENDING",
+        ):
+            second.result(timeout=2)
+
+    stored = json.loads(request_path.read_text(encoding="utf-8"))
+    assert stored["application_id"] == 247
+    assert request_write_count == 1
+
 
 def test_controller_restart_marks_inflight_uncertain_without_replay(tmp_path, monkeypatch):
     _patch_secret(monkeypatch)
-    request_path, inflight_path, status_path, _heartbeat = _paths(tmp_path)
+    request_path, inflight_path, status_path, _owner_path, _heartbeat = _paths(tmp_path)
     user = SimpleNamespace(id=7)
     monkeypatch.setattr(control, "_now", lambda: 1000)
     request = control._create_request(
@@ -124,7 +191,7 @@ def test_controller_restart_marks_inflight_uncertain_without_replay(tmp_path, mo
 
 def test_expired_unclaimed_request_is_never_executed(tmp_path, monkeypatch):
     _patch_secret(monkeypatch)
-    request_path, inflight_path, status_path, _heartbeat = _paths(tmp_path)
+    request_path, inflight_path, status_path, _owner_path, _heartbeat = _paths(tmp_path)
     user = SimpleNamespace(id=7)
     monkeypatch.setattr(control, "_now", lambda: 1000)
     control._create_request(
@@ -210,6 +277,115 @@ def test_arm_service_requires_exact_ack_controller_and_inactive_lease(monkeypatc
     assert result["persisted_runtime_flags_changed"] is False
 
 
+def test_disarm_requires_signed_current_lease_owner(tmp_path, monkeypatch):
+    _patch_secret(monkeypatch)
+    request_path, inflight_path, status_path, owner_path, _heartbeat = _paths(tmp_path)
+    owner = SimpleNamespace(id=7)
+    other_user = SimpleNamespace(id=8)
+    monkeypatch.setattr(control, "_runtime_revision_from_environment", lambda: REVISION)
+    monkeypatch.setattr(control, "_heartbeat_fresh", lambda: True)
+    monkeypatch.setattr(control, "runtime_lease_status", lambda **_kwargs: {"active": True})
+    monkeypatch.setattr(control, "_now", lambda: 1000)
+
+    control._write_owner_record(
+        {
+            "request_id": "pilot-control-owner",
+            "application_id": 247,
+            "user_id": owner.id,
+            "runtime_revision": REVISION,
+        },
+        owner_path=owner_path,
+        secret_key=SECRET,
+    )
+
+    with pytest.raises(control.LeverPilotControlError, match="DISARM_OWNER_REQUIRED"):
+        control.request_runtime_disarm(
+            other_user,
+            request_path=request_path,
+            inflight_path=inflight_path,
+            status_path=status_path,
+            owner_path=owner_path,
+        )
+
+    result = control.request_runtime_disarm(
+        owner,
+        request_path=request_path,
+        inflight_path=inflight_path,
+        status_path=status_path,
+        owner_path=owner_path,
+    )
+    assert result["accepted"] is True
+    assert result["request"]["action"] == "disarm"
+
+
+def test_successful_disarm_clears_owner_but_failed_disarm_preserves_it(tmp_path, monkeypatch):
+    _patch_secret(monkeypatch)
+    request_path, inflight_path, status_path, owner_path, _heartbeat = _paths(tmp_path)
+    user = SimpleNamespace(id=7)
+    monkeypatch.setattr(control, "_now", lambda: 1000)
+
+    control._write_owner_record(
+        {
+            "request_id": "pilot-control-arm-owner",
+            "application_id": 247,
+            "user_id": user.id,
+            "runtime_revision": REVISION,
+        },
+        owner_path=owner_path,
+        secret_key=SECRET,
+    )
+
+    failed = control._create_request(
+        action="disarm",
+        user=user,
+        runtime_revision=REVISION,
+        application_id=None,
+        request_path=request_path,
+        inflight_path=inflight_path,
+        status_path=status_path,
+    )
+    control.claim_control_request(
+        runtime_revision=REVISION,
+        request_path=request_path,
+        inflight_path=inflight_path,
+        status_path=status_path,
+    )
+    control.complete_control_request(
+        request_id=failed["request_id"],
+        outcome="failed",
+        exit_code=1,
+        inflight_path=inflight_path,
+        status_path=status_path,
+        owner_path=owner_path,
+    )
+    assert owner_path.exists() is True
+
+    succeeded = control._create_request(
+        action="disarm",
+        user=user,
+        runtime_revision=REVISION,
+        application_id=None,
+        request_path=request_path,
+        inflight_path=inflight_path,
+        status_path=status_path,
+    )
+    control.claim_control_request(
+        runtime_revision=REVISION,
+        request_path=request_path,
+        inflight_path=inflight_path,
+        status_path=status_path,
+    )
+    control.complete_control_request(
+        request_id=succeeded["request_id"],
+        outcome="success",
+        exit_code=0,
+        inflight_path=inflight_path,
+        status_path=status_path,
+        owner_path=owner_path,
+    )
+    assert owner_path.exists() is False
+
+
 def test_runtime_control_api_has_no_submission_authority(auth_client, db_session, monkeypatch):
     observed = []
 
@@ -221,6 +397,8 @@ def test_runtime_control_api_has_no_submission_authority(auth_client, db_session
             "controller_available": True,
             "runtime_revision": REVISION,
             "lease_active": False,
+            "lease_owned_by_current_user": False,
+            "can_disarm": False,
             "transition_state": "idle",
             "submission_approval_issued": False,
             "submission_queued": False,
@@ -291,6 +469,13 @@ def test_native_controller_scripts_are_syntax_valid_and_fail_closed():
     stack = scripts["stack"].read_text(encoding="utf-8")
 
     assert daemon.index("recover-inflight") < daemon.index("while true")
+    assert "NATIVE_TMPDIR=\"${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}\"" in daemon
+    assert "NATIVE_CONTROL_DIR=" in daemon
+    assert "GUEST_CONTROL_DIR=" in daemon
+    assert 'HEARTBEAT_PATH="$NATIVE_CONTROL_DIR/controller-heartbeat"' in daemon
+    assert '--control-dir %q' in daemon
+    assert '"$PROOT_REPO/backend" "$action" "$GUEST_CONTROL_DIR"' in daemon
+    assert '[[ -f "$NATIVE_CONTROL_DIR/request.json" ]]' in daemon
     assert "claim-request" in daemon
     assert "complete-request" in daemon
     assert "uncertain_no_replay" in (
