@@ -4,7 +4,12 @@ This module deliberately reuses the canonical pilot-control signer, request slot
 receipt format, and no-replay lifecycle. It does not add a shell executor. The only
 new native action is the fixed ``jobtomatik update`` operation, and it is allowed
 only while the supervised Lever lease is inactive and the authenticated owner has
-no queued, in-progress, or uncertain submission attempt.
+no queued or in-progress submission attempt.
+
+An ``uncertain`` attempt remains quarantined from material mutation and retry by the
+submission-integrity boundary, but it is not an executing process. Treating every
+historical uncertainty as a runtime-maintenance lock would permanently deadlock a
+safely quarantined application such as Fullscript 246.
 """
 
 from __future__ import annotations
@@ -16,10 +21,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.submission_integrity import (
-    ACTIVE_SUBMISSION_ATTEMPT_STATUSES,
-    SubmissionAttempt,
-)
+from app.models.submission_integrity import SubmissionAttempt, SubmissionAttemptStatus
 from app.models.user import User
 from app.services.lever_pilot_control_request import (
     CONTROL_SCHEMA_VERSION,
@@ -49,9 +51,13 @@ from app.services.supervised_runtime_mode import runtime_lease_status
 
 UPDATE_ACTION = "update"
 NATIVE_CONTROL_ACTIONS = frozenset({"arm", "disarm", UPDATE_ACTION})
+EXECUTING_SUBMISSION_ATTEMPT_STATUSES = (
+    SubmissionAttemptStatus.queued.value,
+    SubmissionAttemptStatus.in_progress.value,
+)
 
 
-def _owner_has_active_or_uncertain_submission_attempt(
+def _owner_has_executing_submission_attempt(
     db: Session,
     user: User,
 ) -> bool:
@@ -59,7 +65,7 @@ def _owner_has_active_or_uncertain_submission_attempt(
         db.query(SubmissionAttempt.id)
         .filter(
             SubmissionAttempt.user_id == user.id,
-            SubmissionAttempt.status.in_(ACTIVE_SUBMISSION_ATTEMPT_STATUSES),
+            SubmissionAttempt.status.in_(EXECUTING_SUBMISSION_ATTEMPT_STATUSES),
         )
         .count()
     )
@@ -73,9 +79,9 @@ def _assert_runtime_update_safe(
 ) -> None:
     if runtime_lease_status(expected_revision=runtime_revision).get("active"):
         raise LeverPilotControlError("ANDROID_RUNTIME_UPDATE_SUPERVISED_WINDOW_ACTIVE")
-    if _owner_has_active_or_uncertain_submission_attempt(db, user):
+    if _owner_has_executing_submission_attempt(db, user):
         raise LeverPilotControlError(
-            "ANDROID_RUNTIME_UPDATE_ACTIVE_OR_UNCERTAIN_SUBMISSION_ATTEMPT"
+            "ANDROID_RUNTIME_UPDATE_EXECUTING_SUBMISSION_ATTEMPT"
         )
 
 
@@ -263,6 +269,7 @@ def claim_native_control_request(
 
 
 __all__ = [
+    "EXECUTING_SUBMISSION_ATTEMPT_STATUSES",
     "NATIVE_CONTROL_ACTIONS",
     "UPDATE_ACTION",
     "claim_native_control_request",
