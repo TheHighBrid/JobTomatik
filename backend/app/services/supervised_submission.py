@@ -35,9 +35,11 @@ from app.models.submission_approval import (
 from app.models.user import User
 from app.services.answer_policy import load_runtime_policies
 from app.services.ats_greenhouse import inspect_greenhouse_schema, parse_greenhouse_job_url
+from app.services.lever_form_readiness import lever_form_readiness_status
 from app.services.operations_policy import platform_key_for_url
 from app.services.supervised_platforms import (
     GREENHOUSE_PLATFORM_KEY,
+    LEVER_PLATFORM_KEY,
     SupervisedPlatformPolicy,
     get_supervised_platform_policy,
 )
@@ -372,7 +374,10 @@ def build_submission_snapshot(
         else original_target_url
     ).strip()
 
+    profile_data = dict(user.profile_data or {})
     profile_payload = {
+        **profile_data,
+        "profile_data": profile_data,
         "full_name": user.full_name,
         "email": user.email,
         "phone": user.phone,
@@ -380,7 +385,6 @@ def build_submission_snapshot(
         "linkedin_url": user.linkedin_url,
         "github_url": user.github_url,
         "portfolio_url": user.portfolio_url,
-        "profile_data": dict(user.profile_data or {}),
     }
     policies = load_runtime_policies(
         db,
@@ -438,6 +442,8 @@ def build_submission_snapshot(
         "target_identity": identity,
         "target_identity_hash": identity_hash,
         "target_identity_verified": bool(identity.get("verified")) if identity else False,
+        "_profile_payload": profile_payload,
+        "_answer_policies": policies,
     }
 
 
@@ -504,6 +510,19 @@ def build_supervised_preflight(
             blockers.append(liveness_blocker)
     if _should_probe_form_schema(job, snapshot["platform"]):
         form_schema = _greenhouse_form_schema_status(snapshot["application_url"])
+        schema_blocker = str(form_schema.get("blocker") or "").strip()
+        if schema_blocker:
+            blockers.append(schema_blocker)
+    if snapshot["platform"] == LEVER_PLATFORM_KEY:
+        form_schema = lever_form_readiness_status(
+            snapshot["application_url"],
+            profile=snapshot["_profile_payload"],
+            cover_letter=application.cover_letter or "",
+            policies=snapshot["_answer_policies"],
+            resume_path=user.resume_path or "",
+            cover_letter_path=str(snapshot["_profile_payload"].get("cover_letter_path") or ""),
+            portfolio_path=str(snapshot["_profile_payload"].get("portfolio_path") or ""),
+        )
         schema_blocker = str(form_schema.get("blocker") or "").strip()
         if schema_blocker:
             blockers.append(schema_blocker)
