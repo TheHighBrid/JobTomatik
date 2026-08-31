@@ -14,8 +14,9 @@ mkdir -p "$RUNTIME_DIR"
 
 run_pilot_mode() {
   local action="$1"
+  shift || true
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py '$action'"
+    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py '$action' $*"
 }
 
 generate_launch_token() {
@@ -30,20 +31,32 @@ create_runtime_marker() {
     "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py create-marker --owner-pid '$owner_pid' --launch-token '$launch_token'"
 }
 
-verify_runtime_marker() {
+verify_pending_runtime_marker() {
   local launch_token="$1"
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py verify-marker --launch-token '$launch_token'"
 }
 
+activate_runtime_marker() {
+  local launch_token="$1"
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py activate-marker --launch-token '$launch_token'"
+}
+
+verify_active_runtime_marker() {
+  local launch_token="$1"
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py verify-active-marker --launch-token '$launch_token'"
+}
+
 run_stack_sanitized() {
   local action="$1"
-  local launch_token="${2:-}"
   (
     # Process environment is authoritative for both Pydantic and operations policy.
     # Never let caller-shell values or an alternate operations env file widen this
-    # narrow supervised window. Only this managed restart's supervisor receives the
-    # random token; API/worker/Beat keep env -i and verify it through their real parent.
+    # narrow supervised window. The managed stack itself always starts from the
+    # ordinary fail-safe configuration; the separate process-bound lease is activated
+    # only after the restart has completed and been verified.
     unset JOBTOMATIK_OPERATIONS_ENV_FILE
     unset JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME
     unset JOBTOMATIK_LEVER_PILOT_LAUNCH_TOKEN
@@ -52,9 +65,6 @@ run_stack_sanitized() {
     export ALLOW_REAL_FOLLOWUP_SEND=false
     export GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
     export LEVER_SUPERVISED_PILOT_ENABLED=false
-    if [[ -n "$launch_token" ]]; then
-      export JOBTOMATIK_LEVER_PILOT_LAUNCH_TOKEN="$launch_token"
-    fi
     "$STACK_COMMAND" "$action"
   )
 }
@@ -65,6 +75,11 @@ write_pending_marker() {
   chmod 600 "$temporary"
   mv -f "$temporary" "$PENDING_MARKER"
   sync "$PENDING_MARKER" 2>/dev/null || sync
+}
+
+promote_native_transition_marker() {
+  mv -f "$PENDING_MARKER" "$ACTIVE_MARKER"
+  sync "$ACTIVE_MARKER" 2>/dev/null || sync
 }
 
 clear_transition_markers() {
@@ -115,8 +130,9 @@ arm_exit() {
 arm_pilot() {
   local launch_token
 
-  # Durable configuration always remains fail-safe. The temporary capability comes
-  # from one random token plus the owner/revision-bound marker for this exact restart.
+  # Revoke any stale prior lease before starting a new transition. Configuration
+  # remains persistently fail-safe throughout the entire arm operation.
+  clear_runtime_marker_or_contain
   run_pilot_mode persist-safe
   run_pilot_mode preflight-arm
   launch_token="$(generate_launch_token)"
@@ -130,34 +146,53 @@ arm_pilot() {
   ARM_TRANSITION_ACTIVE=1
   trap 'arm_exit $?' EXIT INT TERM HUP
 
+  # Pending state proves only that this exact native owner initiated the transition.
+  # It never enables the API or worker to submit.
   create_runtime_marker "$launch_token"
-  verify_runtime_marker "$launch_token"
+  verify_pending_runtime_marker "$launch_token"
 
-  if ! run_stack_sanitized restart "$launch_token"; then
-    echo "Lever supervised runtime failed validation; restoring the ordinary safe runtime." >&2
+  if ! run_stack_sanitized restart; then
+    echo "Lever supervised runtime restart failed; restoring the ordinary safe runtime." >&2
     rollback_to_safe_mode
     ARM_TRANSITION_ACTIVE=0
     trap - EXIT INT TERM HUP
     return 1
   fi
 
-  # The native owner is still alive, so owner/token/revision binding must survive the
-  # full managed restart. The wrapper never persists or prints the raw launch token.
-  if ! verify_runtime_marker "$launch_token"; then
-    echo "The exact Lever restart marker expired during restart; restoring the safe runtime." >&2
+  # The owner must still be alive after the normal fail-safe restart. If it died,
+  # pending state is invalid and can never be promoted into an active lease.
+  if ! verify_pending_runtime_marker "$launch_token"; then
+    echo "The Lever pilot owner or pending transition expired during restart; restoring safe mode." >&2
     rollback_to_safe_mode
     ARM_TRANSITION_ACTIVE=0
     trap - EXIT INT TERM HUP
     return 1
   fi
 
-  mv -f "$PENDING_MARKER" "$ACTIVE_MARKER"
-  sync "$ACTIVE_MARKER" 2>/dev/null || sync
+  # Record native completion before activating the backend lease. A hard kill before
+  # this point leaves only owner-bound pending state. Once this durable marker exists,
+  # activate-marker binds the lease to the already-running exact API and worker.
+  promote_native_transition_marker
+  if ! activate_runtime_marker "$launch_token"; then
+    echo "The managed runtime could not be bound to a supervised Lever lease; restoring safe mode." >&2
+    rollback_to_safe_mode
+    ARM_TRANSITION_ACTIVE=0
+    trap - EXIT INT TERM HUP
+    return 1
+  fi
+  if ! verify_active_runtime_marker "$launch_token"; then
+    echo "The supervised Lever lease failed post-activation verification; restoring safe mode." >&2
+    rollback_to_safe_mode
+    ARM_TRANSITION_ACTIVE=0
+    trap - EXIT INT TERM HUP
+    return 1
+  fi
+
   ARM_TRANSITION_ACTIVE=0
   trap - EXIT INT TERM HUP
 
   echo "JOBTOMATIK_LEVER_PILOT_ARMED_EPHEMERAL"
-  echo "Persisted submit flags remain OFF. One-time exact application approval is still required in JobTomatik."
+  echo "Persisted submit flags remain OFF. The active lease is process-bound and expires automatically. One-time exact application approval is still required in JobTomatik."
 }
 
 disarm_pilot() {
@@ -171,10 +206,8 @@ disarm_pilot() {
     return 1
   fi
 
-  # With the capability marker removed, persisted flags OFF, and a sanitized launch
-  # environment, the new processes can only start in the ordinary fail-safe mode.
   if ! run_stack_sanitized restart; then
-    echo "The supervised runtime was stopped, but the ordinary safe stack did not restart cleanly." >&2
+    echo "The supervised runtime was revoked, but the ordinary safe stack did not restart cleanly." >&2
     return 1
   fi
 
@@ -187,7 +220,7 @@ status_pilot() {
   if [[ -f "$PENDING_MARKER" ]]; then
     echo "JOBTOMATIK_LEVER_PILOT_TRANSITION: INCOMPLETE_PENDING_SAFE_RECOVERY"
   elif [[ -f "$ACTIVE_MARKER" ]]; then
-    echo "JOBTOMATIK_LEVER_PILOT_TRANSITION: LAST_VERIFIED_LAUNCH_WAS_SUPERVISED_LEVER"
+    echo "JOBTOMATIK_LEVER_PILOT_TRANSITION: COMPLETED_PROCESS_BOUND_LEASE"
   else
     echo "JOBTOMATIK_LEVER_PILOT_TRANSITION: NO_ACTIVE_MARKER"
   fi
