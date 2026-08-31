@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime
 from html import unescape
@@ -27,6 +28,7 @@ from app.services.supervised_platforms import (
     LEVER_PLATFORM_KEY,
     get_supervised_platform_policy,
 )
+from app.services.supervised_runtime_mode import lever_supervised_runtime_lease_active
 
 
 _PERSISTED_KEY = "supervised_target_metadata"
@@ -306,6 +308,14 @@ async def verify_supervised_browser_target(
         }
 
     blockers: list[str] = []
+    # Managed Android live workers must retain the process-bound lease all the way to
+    # the pre-submit browser boundary. If the lease expires or either bound process is
+    # replaced while the form is being filled, the final click is blocked. Unmanaged
+    # test/dev executions keep the pre-existing explicitly configured behavior.
+    if str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "") == "worker":
+        if not lever_supervised_runtime_lease_active(required_role="worker"):
+            blockers.append("lever_supervised_runtime_lease_inactive")
+
     if str(adapter_name or "").strip().lower() != LEVER_PLATFORM_KEY:
         blockers.append("lever_runtime_adapter_mismatch")
     if str(adapter_version or "").strip() != str(expected.get("adapter_version") or "").strip():
