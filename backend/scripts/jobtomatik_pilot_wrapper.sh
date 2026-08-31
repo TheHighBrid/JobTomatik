@@ -18,6 +18,12 @@ run_pilot_mode() {
     "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py '$action'"
 }
 
+create_runtime_marker() {
+  local owner_pid="$$"
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py create-marker --owner-pid '$owner_pid'"
+}
+
 write_pending_marker() {
   local temporary="${PENDING_MARKER}.tmp.$$"
   printf '%s\n' "lever_supervised_ephemeral" > "$temporary"
@@ -30,9 +36,22 @@ clear_transition_markers() {
   rm -f "$PENDING_MARKER" "$ACTIVE_MARKER"
 }
 
+clear_runtime_marker_or_contain() {
+  if run_pilot_mode clear-marker; then
+    return 0
+  fi
+  echo "Unable to clear the ephemeral Lever runtime marker. Stopping the managed stack instead of risking a supervised restart." >&2
+  "$STACK_COMMAND" stop || true
+  return 1
+}
+
 rollback_to_safe_mode() {
   trap - EXIT INT TERM HUP
   echo "JOBTOMATIK_LEVER_PILOT_ROLLBACK_BEGIN" >&2
+
+  if ! clear_runtime_marker_or_contain; then
+    return 1
+  fi
 
   if ! run_pilot_mode persist-safe; then
     echo "Unable to persist the fail-safe switches. Stopping the managed stack instead of restarting it." >&2
@@ -59,8 +78,8 @@ arm_exit() {
 }
 
 arm_pilot() {
-  # Keep the durable configuration fail-safe. The live window is carried only by
-  # process-level overrides for this one managed restart.
+  # Durable configuration always remains fail-safe. The temporary capability comes
+  # from the owner-bound marker created immediately before this one managed restart.
   run_pilot_mode persist-safe
   run_pilot_mode preflight-arm
   rm -f "$ACTIVE_MARKER"
@@ -68,8 +87,22 @@ arm_pilot() {
   ARM_TRANSITION_ACTIVE=1
   trap 'arm_exit $?' EXIT INT TERM HUP
 
-  if ! JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME=1 "$STACK_COMMAND" restart; then
+  create_runtime_marker
+  run_pilot_mode verify-marker
+
+  if ! "$STACK_COMMAND" restart; then
     echo "Lever supervised runtime failed validation; restoring the ordinary safe runtime." >&2
+    rollback_to_safe_mode
+    ARM_TRANSITION_ACTIVE=0
+    trap - EXIT INT TERM HUP
+    return 1
+  fi
+
+  # The native owner process is still alive here, so the backend marker must remain
+  # valid through the complete managed restart. Once this wrapper exits, the marker
+  # becomes stale automatically and cannot arm any later ordinary restart.
+  if ! run_pilot_mode verify-marker; then
+    echo "The owner-bound Lever runtime marker expired during restart; restoring the safe runtime." >&2
     rollback_to_safe_mode
     ARM_TRANSITION_ACTIVE=0
     trap - EXIT INT TERM HUP
@@ -86,15 +119,18 @@ arm_pilot() {
 }
 
 disarm_pilot() {
+  if ! clear_runtime_marker_or_contain; then
+    return 1
+  fi
+
   if ! run_pilot_mode persist-safe; then
     echo "Unable to persist the fail-safe switches. Stopping the managed stack to contain the live window." >&2
     "$STACK_COMMAND" stop || true
     return 1
   fi
 
-  # No pilot-mode environment is supplied here, so the new processes load the
-  # persisted fail-safe configuration. The native wrapper also treats stale pilot
-  # markers as a reason to force a safe restart rather than preserve the old stack.
+  # With the owner-bound marker removed and persisted flags OFF, the new processes
+  # can only start in the ordinary fail-safe mode.
   if ! "$STACK_COMMAND" restart; then
     echo "The supervised runtime was stopped, but the ordinary safe stack did not restart cleanly." >&2
     return 1
