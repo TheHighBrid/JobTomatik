@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Validate and preserve the fail-safe configuration for a supervised Lever window.
+"""Validate and preserve fail-safe configuration for a supervised Lever window.
 
-The live supervised window is carried by an owner-bound ephemeral runtime marker
-installed only for one managed restart. This helper never persists an enabled submit
-switch. Its environment write operation only forces the two consequential persisted
-switches OFF.
+The live supervised window is carried by an owner-, token-, and revision-bound runtime
+marker installed only for one managed restart. This helper never persists an enabled
+submit switch. Its only configuration write forces consequential persisted switches
+OFF.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tempfile
 from typing import Any
@@ -21,6 +22,7 @@ from typing import Any
 from dotenv import dotenv_values
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_ROOT.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
@@ -59,6 +61,22 @@ class _ManagedBackendSettings(Settings):
 
 def _settings(env_file: Path) -> Settings:
     return _ManagedBackendSettings(_env_file=env_file)
+
+
+def _runtime_revision() -> str:
+    try:
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip().lower()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError("LEVER_PILOT_RUNTIME_REVISION_UNAVAILABLE") from exc
+    if not re.fullmatch(r"[0-9a-f]{7,64}", revision):
+        raise RuntimeError("LEVER_PILOT_RUNTIME_REVISION_INVALID")
+    return revision
 
 
 def _env_values(env_file: Path) -> dict[str, str]:
@@ -196,18 +214,30 @@ def preflight_arm(env_file: Path = ENV_FILE) -> dict[str, Any]:
         "configuration_valid": True,
         "secret_key_safe_for_sensitive_runtime": True,
         "ephemeral_runtime_marker_required": True,
+        "runtime_revision": _runtime_revision(),
     }
 
 
-def create_marker(owner_pid: int, marker_path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any]:
-    """Create the owner-bound capability marker immediately before managed restart."""
+def create_marker(
+    owner_pid: int,
+    launch_token: str,
+    marker_path: Path = DEFAULT_MARKER_PATH,
+) -> dict[str, Any]:
+    """Create the exact-restart marker immediately before managed restart."""
 
-    marker = create_owner_bound_marker(owner_pid, marker_path)
+    revision = _runtime_revision()
+    marker = create_owner_bound_marker(
+        owner_pid,
+        launch_token=launch_token,
+        runtime_revision=revision,
+        path=marker_path,
+    )
     return {
         "marker_active": True,
         "marker_path": str(marker_path),
         "owner_pid": marker["owner_pid"],
         "owner_start_ticks": marker["owner_start_ticks"],
+        "runtime_revision": marker["runtime_revision"],
         "submission_approval_granted": False,
     }
 
@@ -223,10 +253,18 @@ def clear_marker(marker_path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any]:
     }
 
 
-def verify_marker(marker_path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any]:
-    """Fail closed unless the current owner-bound marker is still live."""
+def verify_marker(
+    launch_token: str,
+    marker_path: Path = DEFAULT_MARKER_PATH,
+) -> dict[str, Any]:
+    """Fail closed unless owner, token, and checkout revision still match."""
 
-    active = lever_supervised_runtime_marker_active(marker_path)
+    revision = _runtime_revision()
+    active = lever_supervised_runtime_marker_active(
+        marker_path,
+        expected_launch_token=launch_token,
+        expected_revision=revision,
+    )
     marker = load_marker(marker_path)
     if not active:
         raise RuntimeError("LEVER_PILOT_RUNTIME_MARKER_INACTIVE")
@@ -234,6 +272,7 @@ def verify_marker(marker_path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any]:
         "marker_active": True,
         "marker_path": str(marker_path),
         "owner_pid": marker.get("owner_pid") if marker else None,
+        "runtime_revision": revision,
         "submission_approval_granted": False,
     }
 
@@ -277,6 +316,7 @@ def main() -> int:
     parser.add_argument("--env-file", type=Path, default=ENV_FILE)
     parser.add_argument("--marker-path", type=Path, default=DEFAULT_MARKER_PATH)
     parser.add_argument("--owner-pid", type=int)
+    parser.add_argument("--launch-token")
     args = parser.parse_args()
 
     try:
@@ -287,11 +327,15 @@ def main() -> int:
         elif args.action == "create-marker":
             if args.owner_pid is None:
                 raise RuntimeError("LEVER_PILOT_MARKER_OWNER_PID_REQUIRED")
-            result = create_marker(args.owner_pid, args.marker_path)
+            if not args.launch_token:
+                raise RuntimeError("LEVER_PILOT_MARKER_LAUNCH_TOKEN_REQUIRED")
+            result = create_marker(args.owner_pid, args.launch_token, args.marker_path)
         elif args.action == "clear-marker":
             result = clear_marker(args.marker_path)
         elif args.action == "verify-marker":
-            result = verify_marker(args.marker_path)
+            if not args.launch_token:
+                raise RuntimeError("LEVER_PILOT_MARKER_LAUNCH_TOKEN_REQUIRED")
+            result = verify_marker(args.launch_token, args.marker_path)
         else:
             result = status(args.env_file)
         print(json.dumps(result, indent=2, sort_keys=True))
