@@ -23,7 +23,7 @@ import re
 import secrets
 import tempfile
 import time
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from sqlalchemy.orm import Session
 
@@ -393,6 +393,7 @@ def _create_request(
     request_path: Path = REQUEST_PATH,
     inflight_path: Path = INFLIGHT_PATH,
     status_path: Path = STATUS_PATH,
+    pre_publish: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     if action not in VALID_ACTIONS:
         raise LeverPilotControlError("LEVER_PILOT_CONTROL_ACTION_INVALID")
@@ -404,6 +405,8 @@ def _create_request(
             status_path=status_path,
             secret_key=secret,
         )
+        if pre_publish is not None:
+            pre_publish(secret)
         now = _now()
         payload = {
             "schema_version": CONTROL_SCHEMA_VERSION,
@@ -426,6 +429,9 @@ def request_runtime_arm(
     *,
     application_id: int,
     acknowledgment: str,
+    request_path: Path = REQUEST_PATH,
+    inflight_path: Path = INFLIGHT_PATH,
+    status_path: Path = STATUS_PATH,
     owner_path: Path = OWNER_PATH,
 ) -> dict[str, Any]:
     revision = _runtime_revision_from_environment()
@@ -439,18 +445,27 @@ def request_runtime_arm(
         raise LeverPilotControlError("LEVER_PILOT_CONTROL_NATIVE_CONTROLLER_UNAVAILABLE")
     if runtime_lease_status(expected_revision=revision).get("active"):
         raise LeverPilotControlError("LEVER_PILOT_CONTROL_RUNTIME_ALREADY_ACTIVE")
-    # A prior lease on the same revision may have expired without an explicit disarm.
-    # Clear that stale receipt before publishing a new arm request so an interrupted
-    # new arm can never inherit another account's old disarm authority.
-    _unlink(owner_path)
+
+    def arm_commit_guard(_secret: str) -> None:
+        if runtime_lease_status(expected_revision=revision).get("active"):
+            raise LeverPilotControlError("LEVER_PILOT_CONTROL_RUNTIME_ALREADY_ACTIVE")
+        # A prior lease on the same revision may have expired without an explicit
+        # disarm. Clear that stale receipt only at the serialized publication boundary.
+        _unlink(owner_path)
+
+    request = _create_request(
+        action="arm",
+        user=user,
+        runtime_revision=revision,
+        application_id=application_id,
+        request_path=request_path,
+        inflight_path=inflight_path,
+        status_path=status_path,
+        pre_publish=arm_commit_guard,
+    )
     return {
         "accepted": True,
-        "request": _create_request(
-            action="arm",
-            user=user,
-            runtime_revision=revision,
-            application_id=application_id,
-        ),
+        "request": request,
         "submission_approval_issued": False,
         "submission_queued": False,
         "persisted_runtime_flags_changed": False,
@@ -479,17 +494,32 @@ def request_runtime_disarm(
         secret_key=secret,
     ):
         raise LeverPilotControlError("LEVER_PILOT_CONTROL_DISARM_OWNER_REQUIRED")
-    return {
-        "accepted": True,
-        "request": _create_request(
-            action="disarm",
+
+    def disarm_commit_guard(commit_secret: str) -> None:
+        if not runtime_lease_status(expected_revision=revision).get("active"):
+            raise LeverPilotControlError("LEVER_PILOT_CONTROL_RUNTIME_NOT_ACTIVE")
+        current_owner = _read_json(owner_path)
+        if not _owner_record_matches(
+            current_owner,
             user=user,
             runtime_revision=revision,
-            application_id=None,
-            request_path=request_path,
-            inflight_path=inflight_path,
-            status_path=status_path,
-        ),
+            secret_key=commit_secret,
+        ):
+            raise LeverPilotControlError("LEVER_PILOT_CONTROL_DISARM_OWNER_REQUIRED")
+
+    request = _create_request(
+        action="disarm",
+        user=user,
+        runtime_revision=revision,
+        application_id=None,
+        request_path=request_path,
+        inflight_path=inflight_path,
+        status_path=status_path,
+        pre_publish=disarm_commit_guard,
+    )
+    return {
+        "accepted": True,
+        "request": request,
         "submission_approval_issued": False,
         "submission_queued": False,
         "persisted_runtime_flags_changed": False,
