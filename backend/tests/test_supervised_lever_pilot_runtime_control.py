@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.services import supervised_runtime_mode
 from scripts import lever_supervised_pilot_runtime as pilot_runtime
 
 
@@ -47,12 +48,7 @@ def test_preflight_arm_keeps_persisted_submit_switches_off_and_preserves_config(
     assert result["one_time_application_approval_still_required"] is True
     assert result["live_process_mode_observed"] is False
     assert result["live_submission_state_observed"] is False
-    assert result["ephemeral_runtime_overrides_required"] == {
-        "ALLOW_REAL_APPLICATION_SUBMIT": True,
-        "LEVER_SUPERVISED_PILOT_ENABLED": True,
-        "ALLOW_REAL_FOLLOWUP_SEND": False,
-        "AUTOPILOT_ENABLED": False,
-    }
+    assert result["ephemeral_runtime_marker_required"] is True
     assert after == before
     assert "CUSTOM_OPERATOR_SETTING=preserve-me" in after
     assert "REDIS_URL=redis://localhost:6379/1" in after
@@ -147,7 +143,53 @@ def test_status_does_not_claim_unobserved_queue_or_submit_outcomes(tmp_path):
     assert "final_submit_clicked" not in result
 
 
-def test_native_pilot_wrapper_uses_ephemeral_arm_and_fail_safe_rollback_contract():
+def test_owner_bound_runtime_marker_expires_on_owner_identity_change(tmp_path, monkeypatch):
+    marker_path = tmp_path / "lever-supervised-pilot-runtime.json"
+    owner_pid = 4242
+    observed = {
+        "ticks": 123456,
+        "cmdline": "/data/data/com.termux/files/usr/bin/bash /data/data/com.termux/files/usr/bin/jobtomatik-pilot arm",
+    }
+
+    monkeypatch.setattr(
+        supervised_runtime_mode,
+        "_process_start_ticks",
+        lambda pid: observed["ticks"] if pid == owner_pid else None,
+    )
+    monkeypatch.setattr(
+        supervised_runtime_mode,
+        "_process_cmdline",
+        lambda pid: observed["cmdline"] if pid == owner_pid else "",
+    )
+
+    marker = supervised_runtime_mode.create_owner_bound_marker(owner_pid, marker_path)
+    assert marker["submission_approval_granted"] is False
+    assert marker["owner_cmdline_token"] == "jobtomatik-pilot"
+    assert supervised_runtime_mode.lever_supervised_runtime_marker_active(marker_path) is True
+    assert marker_path.stat().st_mode & 0o777 == 0o600
+
+    observed["ticks"] += 1
+    assert supervised_runtime_mode.lever_supervised_runtime_marker_active(marker_path) is False
+
+    supervised_runtime_mode.clear_owner_bound_marker(marker_path)
+    assert marker_path.exists() is False
+
+
+def test_owner_bound_runtime_marker_rejects_unrecognized_creator(tmp_path, monkeypatch):
+    marker_path = tmp_path / "lever-supervised-pilot-runtime.json"
+    monkeypatch.setattr(supervised_runtime_mode, "_process_start_ticks", lambda _pid: 123)
+    monkeypatch.setattr(
+        supervised_runtime_mode,
+        "_process_cmdline",
+        lambda _pid: "/data/data/com.termux/files/usr/bin/bash unrelated-script.sh",
+    )
+
+    with pytest.raises(RuntimeError, match="OWNER_IDENTITY_MISMATCH"):
+        supervised_runtime_mode.create_owner_bound_marker(77, marker_path)
+    assert marker_path.exists() is False
+
+
+def test_native_pilot_wrapper_uses_owner_marker_and_fail_safe_rollback_contract():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_pilot_wrapper.sh").read_text(
         encoding="utf-8"
     )
@@ -157,16 +199,19 @@ def test_native_pilot_wrapper_uses_ephemeral_arm_and_fail_safe_rollback_contract
 
     assert "run_pilot_mode persist-safe" in wrapper
     assert "run_pilot_mode preflight-arm" in wrapper
+    assert "create-marker --owner-pid" in wrapper
+    assert "run_pilot_mode verify-marker" in wrapper
+    assert "run_pilot_mode clear-marker" in wrapper
+    assert "clear_runtime_marker_or_contain" in wrapper
     assert "rollback_to_safe_mode" in wrapper
     assert "PENDING_MARKER" in wrapper
     assert "ACTIVE_MARKER" in wrapper
     assert "trap 'arm_exit $?' EXIT INT TERM HUP" in wrapper
-    assert "JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME=1" in wrapper
+    assert "JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME=1" not in wrapper
     assert '"$STACK_COMMAND" restart' in wrapper
     assert "JOBTOMATIK_LEVER_PILOT_ARMED_EPHEMERAL" in wrapper
     assert "Persisted submit flags remain OFF" in wrapper
     assert "One-time exact application approval is still required" in wrapper
-    assert "run_pilot_mode persist-safe; then" in wrapper
     assert '"$STACK_COMMAND" stop || true' in wrapper
     assert "submission approval" not in wrapper.casefold()
     assert "queue" not in wrapper.casefold()
