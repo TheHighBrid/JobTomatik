@@ -24,6 +24,11 @@ export default function CurrentLeverTargetForm() {
       location: form.location.trim() || null,
       notes: 'Owner-selected in JobTomatik current Lever operator UI',
       source_reference: 'current-lever-operator-ui',
+    }, {
+      // Exact target verification may make two sequential bounded network probes.
+      // Do not inherit the global 20s axios timeout and falsely report failure while
+      // the backend is still verifying and may commit the exact owner-selected target.
+      timeout: 60000,
     }),
     onSuccess: async (response) => {
       const applicationId = response.data?.application_id
