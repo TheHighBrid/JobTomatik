@@ -9,7 +9,11 @@ import pytest
 
 from app.api import controller as controller_api
 from app.models.submission_approval import SubmissionApproval
-from app.models.submission_integrity import SubmissionAttempt
+from app.models.submission_integrity import (
+    ACTIVE_SUBMISSION_ATTEMPT_STATUSES,
+    SubmissionAttempt,
+    SubmissionAttemptStatus,
+)
 from app.services import android_runtime_update_control as update_control
 from app.services import lever_pilot_control_request as pilot_control
 
@@ -72,7 +76,7 @@ def test_runtime_update_request_is_signed_one_shot_and_submission_free(
     )
     monkeypatch.setattr(
         update_control,
-        "_owner_has_active_or_uncertain_submission_attempt",
+        "_owner_has_executing_submission_attempt",
         lambda *_args: False,
     )
     monkeypatch.setattr(update_control, "_now", lambda: 1000)
@@ -102,7 +106,7 @@ def test_runtime_update_request_is_signed_one_shot_and_submission_free(
     assert request_path.stat().st_mode & 0o777 == 0o600
 
 
-def test_runtime_update_is_blocked_by_controller_lease_or_submission_state(
+def test_runtime_update_is_blocked_by_controller_lease_or_executing_submission_state(
     tmp_path,
     monkeypatch,
 ):
@@ -124,7 +128,7 @@ def test_runtime_update_is_blocked_by_controller_lease_or_submission_state(
     )
     monkeypatch.setattr(
         update_control,
-        "_owner_has_active_or_uncertain_submission_attempt",
+        "_owner_has_executing_submission_attempt",
         lambda *_args: False,
     )
 
@@ -167,12 +171,12 @@ def test_runtime_update_is_blocked_by_controller_lease_or_submission_state(
     )
     monkeypatch.setattr(
         update_control,
-        "_owner_has_active_or_uncertain_submission_attempt",
+        "_owner_has_executing_submission_attempt",
         lambda *_args: True,
     )
     with pytest.raises(
         pilot_control.LeverPilotControlError,
-        match="ACTIVE_OR_UNCERTAIN_SUBMISSION_ATTEMPT",
+        match="EXECUTING_SUBMISSION_ATTEMPT",
     ):
         update_control.request_runtime_update(
             db,
@@ -185,6 +189,20 @@ def test_runtime_update_is_blocked_by_controller_lease_or_submission_state(
 
     assert request_path.exists() is False
     assert inflight_path.exists() is False
+
+
+def test_uncertain_quarantine_does_not_permanently_lock_runtime_maintenance():
+    assert update_control.EXECUTING_SUBMISSION_ATTEMPT_STATUSES == (
+        SubmissionAttemptStatus.queued.value,
+        SubmissionAttemptStatus.in_progress.value,
+    )
+    assert (
+        SubmissionAttemptStatus.uncertain.value
+        not in update_control.EXECUTING_SUBMISSION_ATTEMPT_STATUSES
+    )
+    # Quarantine semantics remain stricter than runtime-maintenance semantics.
+    # An uncertain application still cannot mutate materials or retry automatically.
+    assert SubmissionAttemptStatus.uncertain.value in ACTIVE_SUBMISSION_ATTEMPT_STATUSES
 
 
 def test_native_claim_rechecks_update_safety_and_never_replays(
@@ -204,7 +222,7 @@ def test_native_claim_rechecks_update_safety_and_never_replays(
     )
     monkeypatch.setattr(
         update_control,
-        "_owner_has_active_or_uncertain_submission_attempt",
+        "_owner_has_executing_submission_attempt",
         lambda *_args: False,
     )
     monkeypatch.setattr(update_control, "_now", lambda: 1000)
@@ -267,7 +285,7 @@ def test_native_claim_rejects_update_if_state_changes_after_publication(
     )
     monkeypatch.setattr(
         update_control,
-        "_owner_has_active_or_uncertain_submission_attempt",
+        "_owner_has_executing_submission_attempt",
         lambda *_args: False,
     )
     monkeypatch.setattr(update_control, "_now", lambda: 1000)
