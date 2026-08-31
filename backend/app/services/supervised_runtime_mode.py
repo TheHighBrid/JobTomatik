@@ -8,7 +8,9 @@ its PID is recycled. The marker never grants per-application submission approval
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import tempfile
 from typing import Any
 
 
@@ -16,7 +18,10 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MARKER_PATH = BACKEND_ROOT / ".runtime" / "lever-supervised-pilot-runtime.json"
 MARKER_SCHEMA_VERSION = 1
 MARKER_MODE = "lever_supervised_ephemeral"
-OWNER_CMDLINE_TOKEN = "jobtomatik_pilot_wrapper.sh"
+OWNER_CMDLINE_TOKENS = (
+    "jobtomatik-pilot",
+    "jobtomatik_pilot_wrapper.sh",
+)
 
 
 def _process_start_ticks(pid: int) -> int | None:
@@ -45,6 +50,19 @@ def _process_cmdline(pid: int) -> str:
     except OSError:
         return ""
     return raw.replace(b"\0", b" ").decode("utf-8", errors="replace")
+
+
+def _owner_cmdline_token(pid: int) -> str | None:
+    cmdline = _process_cmdline(pid)
+    return next((token for token in OWNER_CMDLINE_TOKENS if token in cmdline), None)
+
+
+def _fsync_directory(path: Path) -> None:
+    directory_fd = os.open(str(path), os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
 
 
 def load_marker(path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any] | None:
@@ -77,16 +95,84 @@ def lever_supervised_runtime_marker_active(
         return False
     if _process_start_ticks(owner_pid) != owner_start_ticks:
         return False
-    if OWNER_CMDLINE_TOKEN not in _process_cmdline(owner_pid):
+
+    marker_token = str(marker.get("owner_cmdline_token") or "")
+    if marker_token not in OWNER_CMDLINE_TOKENS:
+        return False
+    if marker_token not in _process_cmdline(owner_pid):
         return False
     return True
+
+
+def create_owner_bound_marker(
+    owner_pid: int,
+    path: Path = DEFAULT_MARKER_PATH,
+) -> dict[str, Any]:
+    """Create the runtime marker only for the currently alive native wrapper."""
+
+    owner_pid = int(owner_pid)
+    if owner_pid <= 0:
+        raise RuntimeError("LEVER_PILOT_MARKER_INVALID_OWNER_PID")
+    owner_start_ticks = _process_start_ticks(owner_pid)
+    owner_cmdline_token = _owner_cmdline_token(owner_pid)
+    if owner_start_ticks is None or owner_start_ticks <= 0:
+        raise RuntimeError("LEVER_PILOT_MARKER_OWNER_PROCESS_UNAVAILABLE")
+    if owner_cmdline_token is None:
+        raise RuntimeError("LEVER_PILOT_MARKER_OWNER_IDENTITY_MISMATCH")
+
+    marker = {
+        "schema_version": MARKER_SCHEMA_VERSION,
+        "mode": MARKER_MODE,
+        "submission_approval_granted": False,
+        "owner_pid": owner_pid,
+        "owner_start_ticks": owner_start_ticks,
+        "owner_cmdline_token": owner_cmdline_token,
+    }
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+        text=True,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(marker, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+    if not lever_supervised_runtime_marker_active(path):
+        clear_owner_bound_marker(path)
+        raise RuntimeError("LEVER_PILOT_MARKER_ACTIVE_VERIFICATION_FAILED")
+    return marker
+
+
+def clear_owner_bound_marker(path: Path = DEFAULT_MARKER_PATH) -> None:
+    """Remove the ephemeral capability marker before any ordinary safe restart."""
+
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    _fsync_directory(path.parent)
 
 
 __all__ = [
     "DEFAULT_MARKER_PATH",
     "MARKER_MODE",
     "MARKER_SCHEMA_VERSION",
-    "OWNER_CMDLINE_TOKEN",
+    "OWNER_CMDLINE_TOKENS",
+    "clear_owner_bound_marker",
+    "create_owner_bound_marker",
     "lever_supervised_runtime_marker_active",
     "load_marker",
 ]
