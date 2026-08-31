@@ -18,6 +18,7 @@ from app.services.lever_pilot_control_request import (  # noqa: E402
     CONTROL_DIR,
     INFLIGHT_PATH,
     LeverPilotControlError,
+    OWNER_PATH,
     REQUEST_PATH,
     STATUS_PATH,
     claim_control_request,
@@ -63,6 +64,7 @@ def main() -> int:
     request_path = args.control_dir / REQUEST_PATH.name
     inflight_path = args.control_dir / INFLIGHT_PATH.name
     status_path = args.control_dir / STATUS_PATH.name
+    owner_path = args.control_dir / OWNER_PATH.name
 
     try:
         if args.action == "claim-request":
@@ -102,6 +104,7 @@ def main() -> int:
             exit_code=args.exit_code,
             inflight_path=inflight_path,
             status_path=status_path,
+            owner_path=owner_path,
         )
         return 0
     except LeverPilotControlError as exc:
