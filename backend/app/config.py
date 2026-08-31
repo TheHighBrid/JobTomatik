@@ -1,4 +1,3 @@
-import os
 from functools import lru_cache
 from typing import List, Literal
 
@@ -133,37 +132,18 @@ class Settings(BaseSettings):
                 "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
             )
 
-        # The Android supervised Lever window is intentionally ephemeral. The durable
-        # .env remains fail-safe. Elevation requires all of the managed Android runtime
-        # identity, an API/worker/Beat role, the exact checked-out revision, a per-restart
-        # random capability token forwarded across the manager's env -i boundary, and
-        # the owner-bound marker for that same token/revision. A separately launched
-        # process therefore cannot reuse the marker merely by sharing the checkout.
-        # This capability never creates the distinct one-time exact-application approval.
+        # The supervised Lever window never trusts a generic environment label. API,
+        # worker, and Beat must prove they are children of the real Android manager,
+        # that the manager carries this restart's random capability token, that their
+        # runtime and expected revisions match, and that the owner-bound marker matches
+        # the same token/revision. The child processes keep their existing env -i
+        # isolation. This capability never creates the separate one-time application
+        # approval required for a final submission.
         from app.services.supervised_runtime_mode import (
-            lever_supervised_runtime_marker_active,
+            managed_android_lever_runtime_capability_active,
         )
 
-        runtime_mode = str(os.environ.get("JOBTOMATIK_RUNTIME_MODE") or "")
-        frontend_runtime_mode = str(
-            os.environ.get("JOBTOMATIK_FRONTEND_RUNTIME_MODE") or ""
-        )
-        runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
-        runtime_revision = str(os.environ.get("JOBTOMATIK_RUNTIME_REVISION") or "")
-        launch_token = str(
-            os.environ.get("JOBTOMATIK_LEVER_PILOT_LAUNCH_TOKEN") or ""
-        )
-        managed_android_runtime = (
-            runtime_mode == "android_managed"
-            and frontend_runtime_mode == "static_artifact"
-            and runtime_role in {"api", "worker", "beat"}
-            and bool(runtime_revision)
-            and bool(launch_token)
-        )
-        if managed_android_runtime and lever_supervised_runtime_marker_active(
-            expected_launch_token=launch_token,
-            expected_revision=runtime_revision,
-        ):
+        if managed_android_lever_runtime_capability_active():
             if self.greenhouse_supervised_pilot_enabled:
                 raise ValueError(
                     "Greenhouse supervised pilot cannot be enabled during the ephemeral Lever window"
