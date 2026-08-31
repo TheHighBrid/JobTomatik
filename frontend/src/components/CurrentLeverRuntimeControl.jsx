@@ -149,7 +149,7 @@ export default function CurrentLeverRuntimeControl() {
               <h2 className="font-semibold">Supervised Lever runtime</h2>
             </div>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-300">
-              Open or close the temporary Android submission window, or safely refresh the local runtime from JobTomatik. These controls do not approve an application, queue a submission, or enable unattended automation.
+              Open or close the temporary Android submission window, or safely refresh the local runtime from JobTomatik. This does not approve an application, queue a submission, or enable unattended automation.
             </p>
           </div>
           <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${
