@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -393,8 +394,6 @@ def test_final_lever_browser_verification_blocks_managed_worker_without_live_lea
         "posting_metadata_hash": "hash",
     }
 
-    result = pytest.run(async_fn=None) if False else None
-    import asyncio
     result = asyncio.run(
         supervised_target_identity.verify_supervised_browser_target(
             current_url="https://jobs.lever.co/example/abc-123/apply",
