@@ -47,6 +47,11 @@ test('owner can add an exact Lever target in the app without a terminal intake c
   assert.equal(targetForm.includes('proot-distro'), false)
 })
 
+test('exact Lever target verification does not inherit the global 20-second axios timeout', () => {
+  assert.equal(targetForm.includes('timeout: 60000'), true)
+  assert.equal(targetForm.includes('global 20s axios timeout'), true)
+})
+
 test('material decision is exact-application and exact-displayed-bundle bound', () => {
   assert.equal(
     panel.includes('acknowledgment: `APPROVE LEVER MATERIALS ${applicationId}`'),
