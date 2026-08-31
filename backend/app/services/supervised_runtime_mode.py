@@ -336,6 +336,18 @@ def activate_runtime_lease(
         "expires_at_epoch": now + bounded_ttl,
         "processes": process_identities,
     }
+
+    # Revalidate the exact pending owner at the capability commit boundary. The
+    # activation helper may outlive the native wrapper if that wrapper is hard-killed;
+    # in that case the child must never be allowed to commit an active lease from an
+    # earlier liveness snapshot.
+    if not pending_runtime_marker_active(
+        path,
+        expected_launch_token=launch_token,
+        expected_revision=normalized_revision,
+    ):
+        raise RuntimeError("LEVER_PILOT_RUNTIME_OWNER_EXPIRED_BEFORE_ACTIVATION")
+
     _atomic_write_marker(path, marker)
 
     # A shadow runtime-acceptance receipt created before lease activation no longer
