@@ -20,6 +20,14 @@ _EXTRA_PATTERNS = {
         r"(?:consent|agree).{0,50}(?:processing|retaining).{0,30}(?:applicant )?data",
         r"(?:processing|retaining).{0,30}(?:applicant )?data",
     ],
+    # Lever employers frequently phrase the existing why_this_company family as a
+    # personal excitement/interest prompt rather than a literal "why our company".
+    # Classification only makes the Vault policy selectable; automatic use still
+    # requires an explicitly confirmed, in-scope answer policy.
+    "why_this_company": [
+        r"what.{0,100}(?:excites|interests|appeals to).{0,140}(?:working|work).{0,60}(?:at|for|with)",
+        r"what.{0,100}(?:excites|interests|appeals to).{0,140}(?:company|employer|organization)",
+    ],
 }
 
 # ``privacy_consent`` existed in early policy payloads before consent was split into
