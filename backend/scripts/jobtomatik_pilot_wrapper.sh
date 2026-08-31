@@ -18,26 +18,43 @@ run_pilot_mode() {
     "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py '$action'"
 }
 
+generate_launch_token() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+}
+
 create_runtime_marker() {
+  local launch_token="$1"
   local owner_pid="$$"
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py create-marker --owner-pid '$owner_pid'"
+    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py create-marker --owner-pid '$owner_pid' --launch-token '$launch_token'"
+}
+
+verify_runtime_marker() {
+  local launch_token="$1"
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py verify-marker --launch-token '$launch_token'"
 }
 
 run_stack_sanitized() {
   local action="$1"
+  local launch_token="${2:-}"
   (
     # Process environment is authoritative for both Pydantic and operations policy.
     # Never let caller-shell values or an alternate operations env file widen this
-    # narrow supervised window. The owner-bound marker is the only mechanism allowed
-    # to elevate Lever submit capability inside the managed Android stack.
+    # narrow supervised window. Only this invocation receives the random capability
+    # token; the managed stack forwards it across env -i solely to API/worker/Beat.
     unset JOBTOMATIK_OPERATIONS_ENV_FILE
     unset JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME
+    unset JOBTOMATIK_LEVER_PILOT_LAUNCH_TOKEN
     export AUTOPILOT_ENABLED=false
     export ALLOW_REAL_APPLICATION_SUBMIT=false
     export ALLOW_REAL_FOLLOWUP_SEND=false
     export GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
     export LEVER_SUPERVISED_PILOT_ENABLED=false
+    if [[ -n "$launch_token" ]]; then
+      export JOBTOMATIK_LEVER_PILOT_LAUNCH_TOKEN="$launch_token"
+    fi
     "$STACK_COMMAND" "$action"
   )
 }
@@ -96,19 +113,27 @@ arm_exit() {
 }
 
 arm_pilot() {
+  local launch_token
+
   # Durable configuration always remains fail-safe. The temporary capability comes
-  # from the owner-bound marker created immediately before this one managed restart.
+  # from one random token plus the owner/revision-bound marker for this exact restart.
   run_pilot_mode persist-safe
   run_pilot_mode preflight-arm
+  launch_token="$(generate_launch_token)"
+  if [[ ${#launch_token} -lt 32 ]]; then
+    echo "Unable to generate the supervised Lever restart capability token." >&2
+    return 1
+  fi
+
   rm -f "$ACTIVE_MARKER"
   write_pending_marker
   ARM_TRANSITION_ACTIVE=1
   trap 'arm_exit $?' EXIT INT TERM HUP
 
-  create_runtime_marker
-  run_pilot_mode verify-marker
+  create_runtime_marker "$launch_token"
+  verify_runtime_marker "$launch_token"
 
-  if ! run_stack_sanitized restart; then
+  if ! run_stack_sanitized restart "$launch_token"; then
     echo "Lever supervised runtime failed validation; restoring the ordinary safe runtime." >&2
     rollback_to_safe_mode
     ARM_TRANSITION_ACTIVE=0
@@ -116,11 +141,10 @@ arm_pilot() {
     return 1
   fi
 
-  # The native owner process is still alive here, so the backend marker must remain
-  # valid through the complete managed restart. Once this wrapper exits, the marker
-  # becomes stale automatically and cannot arm any later ordinary restart.
-  if ! run_pilot_mode verify-marker; then
-    echo "The owner-bound Lever runtime marker expired during restart; restoring the safe runtime." >&2
+  # The native owner is still alive, so owner/token/revision binding must survive the
+  # full managed restart. The wrapper never persists or prints the raw launch token.
+  if ! verify_runtime_marker "$launch_token"; then
+    echo "The exact Lever restart marker expired during restart; restoring the safe runtime." >&2
     rollback_to_safe_mode
     ARM_TRANSITION_ACTIVE=0
     trap - EXIT INT TERM HUP
@@ -147,7 +171,7 @@ disarm_pilot() {
     return 1
   fi
 
-  # With the owner-bound marker removed, persisted flags OFF, and a sanitized launch
+  # With the capability marker removed, persisted flags OFF, and a sanitized launch
   # environment, the new processes can only start in the ordinary fail-safe mode.
   if ! run_stack_sanitized restart; then
     echo "The supervised runtime was stopped, but the ordinary safe stack did not restart cleanly." >&2
