@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Validate and preserve the fail-safe configuration for a supervised Lever window.
 
-The live supervised window is carried only by process-level overrides installed by
-the Android stack manager. This helper never persists an enabled submit switch. Its
-only write operation forces the two consequential persisted switches OFF.
+The live supervised window is carried by an owner-bound ephemeral runtime marker
+installed only for one managed restart. This helper never persists an enabled submit
+switch. Its environment write operation only forces the two consequential persisted
+switches OFF.
 """
 
 from __future__ import annotations
@@ -26,6 +27,13 @@ if str(BACKEND_ROOT) not in sys.path:
 from pydantic_settings import PydanticBaseSettingsSource  # noqa: E402
 
 from app.config import Settings  # noqa: E402
+from app.services.supervised_runtime_mode import (  # noqa: E402
+    DEFAULT_MARKER_PATH,
+    clear_owner_bound_marker,
+    create_owner_bound_marker,
+    lever_supervised_runtime_marker_active,
+    load_marker,
+)
 
 
 ENV_FILE = BACKEND_ROOT / ".env"
@@ -187,12 +195,46 @@ def preflight_arm(env_file: Path = ENV_FILE) -> dict[str, Any]:
         **persisted,
         "configuration_valid": True,
         "secret_key_safe_for_sensitive_runtime": True,
-        "ephemeral_runtime_overrides_required": {
-            GLOBAL_SUBMIT_KEY: True,
-            LEVER_PILOT_KEY: True,
-            "ALLOW_REAL_FOLLOWUP_SEND": False,
-            AUTOPILOT_KEY: False,
-        },
+        "ephemeral_runtime_marker_required": True,
+    }
+
+
+def create_marker(owner_pid: int, marker_path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any]:
+    """Create the owner-bound capability marker immediately before managed restart."""
+
+    marker = create_owner_bound_marker(owner_pid, marker_path)
+    return {
+        "marker_active": True,
+        "marker_path": str(marker_path),
+        "owner_pid": marker["owner_pid"],
+        "owner_start_ticks": marker["owner_start_ticks"],
+        "submission_approval_granted": False,
+    }
+
+
+def clear_marker(marker_path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any]:
+    """Remove the capability marker before an ordinary fail-safe restart."""
+
+    clear_owner_bound_marker(marker_path)
+    return {
+        "marker_active": False,
+        "marker_path": str(marker_path),
+        "marker_present": marker_path.exists(),
+    }
+
+
+def verify_marker(marker_path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any]:
+    """Fail closed unless the current owner-bound marker is still live."""
+
+    active = lever_supervised_runtime_marker_active(marker_path)
+    marker = load_marker(marker_path)
+    if not active:
+        raise RuntimeError("LEVER_PILOT_RUNTIME_MARKER_INACTIVE")
+    return {
+        "marker_active": True,
+        "marker_path": str(marker_path),
+        "owner_pid": marker.get("owner_pid") if marker else None,
+        "submission_approval_granted": False,
     }
 
 
@@ -223,9 +265,18 @@ def main() -> int:
     )
     parser.add_argument(
         "action",
-        choices=("persist-safe", "preflight-arm", "status"),
+        choices=(
+            "persist-safe",
+            "preflight-arm",
+            "create-marker",
+            "clear-marker",
+            "verify-marker",
+            "status",
+        ),
     )
     parser.add_argument("--env-file", type=Path, default=ENV_FILE)
+    parser.add_argument("--marker-path", type=Path, default=DEFAULT_MARKER_PATH)
+    parser.add_argument("--owner-pid", type=int)
     args = parser.parse_args()
 
     try:
@@ -233,6 +284,14 @@ def main() -> int:
             result = persist_safe(args.env_file)
         elif args.action == "preflight-arm":
             result = preflight_arm(args.env_file)
+        elif args.action == "create-marker":
+            if args.owner_pid is None:
+                raise RuntimeError("LEVER_PILOT_MARKER_OWNER_PID_REQUIRED")
+            result = create_marker(args.owner_pid, args.marker_path)
+        elif args.action == "clear-marker":
+            result = clear_marker(args.marker_path)
+        elif args.action == "verify-marker":
+            result = verify_marker(args.marker_path)
         else:
             result = status(args.env_file)
         print(json.dumps(result, indent=2, sort_keys=True))
