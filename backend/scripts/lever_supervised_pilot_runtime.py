@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Validate fail-safe configuration and manage one supervised Lever runtime lease.
 
-Persisted real-submit and Lever-pilot switches always remain OFF. ``create-marker``
-creates only an owner-bound pending transition. ``activate-marker`` may promote that
-transition after the managed API and worker are already running and attested; the
-resulting lease is process/revision bound and expires automatically.
+Persisted real-submit, Lever-pilot, and autopilot switches remain OFF for the
+supervised Lever workflow. ``create-marker`` creates only an owner-bound pending
+transition. ``activate-marker`` may promote that transition after the managed API
+and worker are already running and attested; the resulting lease is process/revision
+bound and expires automatically.
 """
 
 from __future__ import annotations
@@ -169,17 +170,18 @@ def _persisted_status(env_file: Path) -> dict[str, Any]:
 
 
 def persist_safe(env_file: Path = ENV_FILE) -> dict[str, Any]:
-    """Persist only OFF values and verify them without parsing unrelated settings."""
+    """Persist supervised Lever safety switches OFF without changing unrelated config."""
 
     _set_env_values(
         env_file,
         {
             GLOBAL_SUBMIT_KEY: "false",
             LEVER_PILOT_KEY: "false",
+            AUTOPILOT_KEY: "false",
         },
     )
     status = _persisted_status(env_file)
-    if not status["persisted_fail_safe"]:
+    if not status["persisted_fail_safe"] or status["persisted_autopilot_enabled"]:
         raise RuntimeError("LEVER_PILOT_SAFE_PERSIST_FAILED consequential switches remained enabled")
     return status
 
