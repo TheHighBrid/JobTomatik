@@ -4,6 +4,7 @@ set -uo pipefail
 PROOT_DISTRO="${JOBTOMATIK_PROOT_DISTRO:-ubuntu}"
 PROOT_REPO="${JOBTOMATIK_PROOT_REPO:-/root/JobTomatik}"
 PILOT_COMMAND="${JOBTOMATIK_PILOT_COMMAND:-jobtomatik-pilot}"
+STACK_COMMAND="${JOBTOMATIK_STACK_COMMAND:-jobtomatik}"
 NATIVE_TMPDIR="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
 NATIVE_CONTROL_DIR="${JOBTOMATIK_PILOT_CONTROL_NATIVE_DIR:-$NATIVE_TMPDIR/jobtomatik-pilot-control}"
 GUEST_CONTROL_DIR="${JOBTOMATIK_PILOT_CONTROL_GUEST_DIR:-/tmp/jobtomatik-pilot-control}"
@@ -56,7 +57,7 @@ complete_request() {
 
 # An inflight request means a previous controller died after the request was claimed.
 # Never replay it automatically. Record an uncertain operator-control outcome and let
-# the independently verified runtime lease tell the UI whether an arm actually landed.
+# independently verified runtime state tell the UI what actually landed.
 run_bridge recover-inflight >/dev/null 2>&1 || true
 
 while true; do
@@ -74,11 +75,19 @@ while true; do
       application_id=""
       IFS=$'\t' read -r request_id action application_id <<< "$claim_output"
 
-      if [[ -z "$request_id" || ( "$action" != "arm" && "$action" != "disarm" ) ]]; then
+      if [[ -z "$request_id" || ( "$action" != "arm" && "$action" != "disarm" && "$action" != "update" ) ]]; then
         echo "JOBTOMATIK_PILOT_CONTROL_INVALID_CLAIM output=$claim_output" >&2
       else
         echo "JOBTOMATIK_PILOT_CONTROL_CLAIMED request_id=$request_id action=$action application_id=$application_id"
-        "$PILOT_COMMAND" "$action"
+
+        # The controller never executes caller-supplied shell text or arguments.
+        # Runtime update maps to one fixed hardened launcher action. Arm/disarm keep
+        # using the existing fail-closed supervised-pilot wrapper.
+        if [[ "$action" == "update" ]]; then
+          "$STACK_COMMAND" update
+        else
+          "$PILOT_COMMAND" "$action"
+        fi
         action_exit=$?
 
         if [[ "$action_exit" -eq 0 ]]; then
@@ -94,8 +103,8 @@ while true; do
     else
       claim_exit=$?
       # Exit 3 is the bridge's ordinary "nothing claimable" result, including an
-      # expired request that it already removed and recorded. Other failures are
-      # logged but never cause automatic execution.
+      # expired or safety-rejected request that it already removed and recorded.
+      # Other failures are logged but never cause automatic execution.
       if [[ "$claim_exit" -ne 3 ]]; then
         echo "JOBTOMATIK_PILOT_CONTROL_CLAIM_FAILED exit_code=$claim_exit detail=$claim_output" >&2
       fi
