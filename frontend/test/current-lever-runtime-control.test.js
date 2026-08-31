@@ -46,8 +46,13 @@ test('native restart is treated as reconnecting state, never as automatic replay
   assert.equal(control.includes('The process-bound lease state shown here is authoritative.'), true)
 })
 
-test('active lease always exposes a safe restore action', () => {
+test('active lease restore is restricted to the signed lease owner account', () => {
+  assert.equal(control.includes('const canDisarm = runtime?.can_disarm === true'), true)
   assert.equal(control.includes('Restore fail-safe runtime'), true)
   assert.equal(control.includes("'/supervised-pilot/current-lever/runtime-control/disarm'"), true)
-  assert.equal(control.includes('leaseActive ? ('), true)
+  assert.equal(control.includes('disabled={!canDisarm || !controllerReady'), true)
+  assert.equal(
+    control.includes('cannot revoke another account&apos;s active supervised window'),
+    true,
+  )
 })
