@@ -12,6 +12,8 @@ truth after a native transition.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import hmac
 import json
@@ -21,7 +23,7 @@ import re
 import secrets
 import tempfile
 import time
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 from sqlalchemy.orm import Session
 
@@ -43,6 +45,7 @@ CONTROL_DIR = Path("/tmp/jobtomatik-pilot-control")
 REQUEST_PATH = CONTROL_DIR / "request.json"
 INFLIGHT_PATH = CONTROL_DIR / "inflight.json"
 STATUS_PATH = CONTROL_DIR / "status.json"
+OWNER_PATH = CONTROL_DIR / "lease-owner.json"
 HEARTBEAT_PATH = CONTROL_DIR / "controller-heartbeat"
 REQUEST_TTL_SECONDS = 90
 CONTROLLER_HEARTBEAT_TTL_SECONDS = 8
@@ -135,6 +138,21 @@ def _atomic_write_json(path: Path, value: Mapping[str, Any]) -> None:
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+@contextmanager
+def _request_publication_lock(request_path: Path) -> Iterator[None]:
+    """Serialize the single request slot across API workers and the native bridge."""
+
+    _ensure_control_dir(request_path.parent)
+    lock_path = request_path.with_name("request.lock")
+    with open(lock_path, "a+", encoding="utf-8") as handle:
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -230,6 +248,50 @@ def _write_status(
     record = _signed_record(payload, secret)
     _atomic_write_json(status_path, record)
     return record
+
+
+def _write_owner_record(
+    request: Mapping[str, Any],
+    *,
+    owner_path: Path = OWNER_PATH,
+    secret_key: str | None = None,
+) -> dict[str, Any]:
+    secret = secret_key or _settings_secret()
+    payload = {
+        "schema_version": CONTROL_SCHEMA_VERSION,
+        "kind": "lever_supervised_lease_owner",
+        "arm_request_id": request.get("request_id"),
+        "application_id": request.get("application_id"),
+        "user_id": request.get("user_id"),
+        "runtime_revision": request.get("runtime_revision"),
+        "recorded_at_epoch": _now(),
+    }
+    record = _signed_record(payload, secret)
+    _atomic_write_json(owner_path, record)
+    return record
+
+
+def _owner_record_matches(
+    record: Mapping[str, Any] | None,
+    *,
+    user: User,
+    runtime_revision: str,
+    secret_key: str,
+) -> bool:
+    if not _record_signature_valid(record, secret_key):
+        return False
+    assert record is not None
+    try:
+        owner_id = int(record.get("user_id"))
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        record.get("schema_version") == CONTROL_SCHEMA_VERSION
+        and record.get("kind") == "lever_supervised_lease_owner"
+        and owner_id == int(user.id)
+        and str(record.get("runtime_revision") or "").lower()
+        == str(runtime_revision or "").lower()
+    )
 
 
 def _remove_expired_unclaimed_request(
@@ -335,25 +397,26 @@ def _create_request(
     if action not in VALID_ACTIONS:
         raise LeverPilotControlError("LEVER_PILOT_CONTROL_ACTION_INVALID")
     secret = _settings_secret()
-    _assert_request_slot_available(
-        request_path=request_path,
-        inflight_path=inflight_path,
-        status_path=status_path,
-        secret_key=secret,
-    )
-    now = _now()
-    payload = {
-        "schema_version": CONTROL_SCHEMA_VERSION,
-        "request_id": "pilot-control-" + secrets.token_urlsafe(18),
-        "action": action,
-        "application_id": application_id,
-        "user_id": int(user.id),
-        "runtime_revision": runtime_revision,
-        "created_at_epoch": now,
-        "expires_at_epoch": now + REQUEST_TTL_SECONDS,
-    }
-    record = _signed_record(payload, secret)
-    _atomic_write_json(request_path, record)
+    with _request_publication_lock(request_path):
+        _assert_request_slot_available(
+            request_path=request_path,
+            inflight_path=inflight_path,
+            status_path=status_path,
+            secret_key=secret,
+        )
+        now = _now()
+        payload = {
+            "schema_version": CONTROL_SCHEMA_VERSION,
+            "request_id": "pilot-control-" + secrets.token_urlsafe(18),
+            "action": action,
+            "application_id": application_id,
+            "user_id": int(user.id),
+            "runtime_revision": runtime_revision,
+            "created_at_epoch": now,
+            "expires_at_epoch": now + REQUEST_TTL_SECONDS,
+        }
+        record = _signed_record(payload, secret)
+        _atomic_write_json(request_path, record)
     return _sanitize_request(record) or {}
 
 
@@ -391,10 +454,26 @@ def request_runtime_arm(
 
 def request_runtime_disarm(
     user: User,
+    *,
+    request_path: Path = REQUEST_PATH,
+    inflight_path: Path = INFLIGHT_PATH,
+    status_path: Path = STATUS_PATH,
+    owner_path: Path = OWNER_PATH,
 ) -> dict[str, Any]:
     revision = _runtime_revision_from_environment()
     if not _heartbeat_fresh():
         raise LeverPilotControlError("LEVER_PILOT_CONTROL_NATIVE_CONTROLLER_UNAVAILABLE")
+    if not runtime_lease_status(expected_revision=revision).get("active"):
+        raise LeverPilotControlError("LEVER_PILOT_CONTROL_RUNTIME_NOT_ACTIVE")
+    secret = _settings_secret()
+    owner_record = _read_json(owner_path)
+    if not _owner_record_matches(
+        owner_record,
+        user=user,
+        runtime_revision=revision,
+        secret_key=secret,
+    ):
+        raise LeverPilotControlError("LEVER_PILOT_CONTROL_DISARM_OWNER_REQUIRED")
     return {
         "accepted": True,
         "request": _create_request(
@@ -402,6 +481,9 @@ def request_runtime_disarm(
             user=user,
             runtime_revision=revision,
             application_id=None,
+            request_path=request_path,
+            inflight_path=inflight_path,
+            status_path=status_path,
         ),
         "submission_approval_issued": False,
         "submission_queued": False,
@@ -423,6 +505,7 @@ def runtime_control_status(
     request_path: Path = REQUEST_PATH,
     inflight_path: Path = INFLIGHT_PATH,
     status_path: Path = STATUS_PATH,
+    owner_path: Path = OWNER_PATH,
     heartbeat_path: Path = HEARTBEAT_PATH,
 ) -> dict[str, Any]:
     try:
@@ -440,6 +523,7 @@ def runtime_control_status(
     request = _read_json(request_path)
     inflight = _read_json(inflight_path)
     status_record = _read_json(status_path)
+    owner_record = _read_json(owner_path)
     if secret is not None:
         if request and not _record_signature_valid(request, secret):
             request = None
@@ -447,10 +531,13 @@ def runtime_control_status(
             inflight = None
         if status_record and not _record_signature_valid(status_record, secret):
             status_record = None
+        if owner_record and not _record_signature_valid(owner_record, secret):
+            owner_record = None
     else:
         request = None
         inflight = None
         status_record = None
+        owner_record = None
 
     def owned(record: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
         if not record:
@@ -474,6 +561,17 @@ def runtime_control_status(
     }
 
     controller_available = _heartbeat_fresh(heartbeat_path)
+    lease_owned_by_current_user = bool(
+        lease.get("active")
+        and revision
+        and secret
+        and _owner_record_matches(
+            owner_record,
+            user=user,
+            runtime_revision=revision,
+            secret_key=secret,
+        )
+    )
     transition_state = "idle"
     if lease.get("active"):
         transition_state = "active"
@@ -495,6 +593,8 @@ def runtime_control_status(
         "lease_state": lease.get("state"),
         "lease_expires_at_epoch": lease.get("expires_at_epoch"),
         "lease_blockers": list(lease.get("blockers") or []),
+        "lease_owned_by_current_user": lease_owned_by_current_user,
+        "can_disarm": bool(lease_owned_by_current_user and controller_available),
         "transition_state": transition_state,
         "pending_request": _sanitize_request(owned_request),
         "inflight_request": _sanitize_request(owned_inflight),
@@ -514,56 +614,57 @@ def claim_control_request(
 ) -> dict[str, Any] | None:
     secret = _settings_secret()
     _ensure_control_dir(request_path.parent)
-    request = _read_json(request_path)
-    if not request:
-        return None
-    if not _record_signature_valid(request, secret):
-        _unlink(request_path)
-        return None
-    if request.get("schema_version") != CONTROL_SCHEMA_VERSION:
-        _write_status(
-            request,
-            outcome="rejected_invalid_request",
-            status_path=status_path,
-            secret_key=secret,
-        )
-        _unlink(request_path)
-        return None
-    if str(request.get("action") or "") not in VALID_ACTIONS:
-        _write_status(
-            request,
-            outcome="rejected_invalid_request",
-            status_path=status_path,
-            secret_key=secret,
-        )
-        _unlink(request_path)
-        return None
-    if str(request.get("runtime_revision") or "").lower() != str(runtime_revision).lower():
-        _write_status(
-            request,
-            outcome="rejected_invalid_request",
-            status_path=status_path,
-            secret_key=secret,
-        )
-        _unlink(request_path)
-        return None
-    if _request_is_expired(request):
-        _write_status(
-            request,
-            outcome="expired",
-            status_path=status_path,
-            secret_key=secret,
-        )
-        _unlink(request_path)
-        return None
-    if inflight_path.exists():
-        raise LeverPilotControlError("LEVER_PILOT_CONTROL_INFLIGHT_EXISTS_NO_REPLAY")
-    os.replace(request_path, inflight_path)
-    directory_fd = os.open(str(inflight_path.parent), os.O_RDONLY)
-    try:
-        os.fsync(directory_fd)
-    finally:
-        os.close(directory_fd)
+    with _request_publication_lock(request_path):
+        request = _read_json(request_path)
+        if not request:
+            return None
+        if not _record_signature_valid(request, secret):
+            _unlink(request_path)
+            return None
+        if request.get("schema_version") != CONTROL_SCHEMA_VERSION:
+            _write_status(
+                request,
+                outcome="rejected_invalid_request",
+                status_path=status_path,
+                secret_key=secret,
+            )
+            _unlink(request_path)
+            return None
+        if str(request.get("action") or "") not in VALID_ACTIONS:
+            _write_status(
+                request,
+                outcome="rejected_invalid_request",
+                status_path=status_path,
+                secret_key=secret,
+            )
+            _unlink(request_path)
+            return None
+        if str(request.get("runtime_revision") or "").lower() != str(runtime_revision).lower():
+            _write_status(
+                request,
+                outcome="rejected_invalid_request",
+                status_path=status_path,
+                secret_key=secret,
+            )
+            _unlink(request_path)
+            return None
+        if _request_is_expired(request):
+            _write_status(
+                request,
+                outcome="expired",
+                status_path=status_path,
+                secret_key=secret,
+            )
+            _unlink(request_path)
+            return None
+        if inflight_path.exists():
+            raise LeverPilotControlError("LEVER_PILOT_CONTROL_INFLIGHT_EXISTS_NO_REPLAY")
+        os.replace(request_path, inflight_path)
+        directory_fd = os.open(str(inflight_path.parent), os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
     return request
 
 
@@ -574,6 +675,7 @@ def complete_control_request(
     exit_code: int | None = None,
     inflight_path: Path = INFLIGHT_PATH,
     status_path: Path = STATUS_PATH,
+    owner_path: Path = OWNER_PATH,
 ) -> dict[str, Any]:
     secret = _settings_secret()
     request = _read_json(inflight_path)
@@ -588,6 +690,11 @@ def complete_control_request(
         status_path=status_path,
         secret_key=secret,
     )
+    action = str(request.get("action") or "")
+    if outcome == "success" and action == "arm":
+        _write_owner_record(request, owner_path=owner_path, secret_key=secret)
+    elif outcome == "success" and action == "disarm":
+        _unlink(owner_path)
     _unlink(inflight_path)
     return status_record
 
@@ -620,6 +727,7 @@ __all__ = [
     "HEARTBEAT_PATH",
     "INFLIGHT_PATH",
     "LeverPilotControlError",
+    "OWNER_PATH",
     "REQUEST_PATH",
     "STATUS_PATH",
     "claim_control_request",
