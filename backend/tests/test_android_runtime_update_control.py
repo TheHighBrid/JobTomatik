@@ -21,6 +21,7 @@ from app.services import lever_pilot_control_request as pilot_control
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REVISION = "b" * 40
 SECRET = "u" * 48
+TEST_NOW = 2_000_000_000
 
 
 def _paths(tmp_path: Path):
@@ -37,6 +38,15 @@ def _paths(tmp_path: Path):
 def _patch_secret(monkeypatch):
     monkeypatch.setattr(update_control, "_settings_secret", lambda: SECRET)
     monkeypatch.setattr(pilot_control, "_settings_secret", lambda: SECRET)
+
+
+def _patch_clock(monkeypatch):
+    # Request publication uses the imported alias in update_control while expiry,
+    # completion, and receipt timestamps execute in pilot_control. Keep both modules
+    # on one deterministic clock so the tests exercise lifecycle behavior rather
+    # than accidentally expiring a request against the wall clock.
+    monkeypatch.setattr(update_control, "_now", lambda: TEST_NOW)
+    monkeypatch.setattr(pilot_control, "_now", lambda: TEST_NOW)
 
 
 def _fake_db_for_user(user):
@@ -59,6 +69,7 @@ def test_runtime_update_request_is_signed_one_shot_and_submission_free(
     monkeypatch,
 ):
     _patch_secret(monkeypatch)
+    _patch_clock(monkeypatch)
     request_path, inflight_path, status_path, heartbeat_path, _owner_path = _paths(tmp_path)
     user = SimpleNamespace(id=7)
     db = object()
@@ -79,7 +90,6 @@ def test_runtime_update_request_is_signed_one_shot_and_submission_free(
         "_owner_has_executing_submission_attempt",
         lambda *_args: False,
     )
-    monkeypatch.setattr(update_control, "_now", lambda: 1000)
 
     result = update_control.request_runtime_update(
         db,
@@ -210,6 +220,7 @@ def test_native_claim_rechecks_update_safety_and_never_replays(
     monkeypatch,
 ):
     _patch_secret(monkeypatch)
+    _patch_clock(monkeypatch)
     request_path, inflight_path, status_path, heartbeat_path, owner_path = _paths(tmp_path)
     user = SimpleNamespace(id=7)
     fake_db = _fake_db_for_user(user)
@@ -225,7 +236,6 @@ def test_native_claim_rechecks_update_safety_and_never_replays(
         "_owner_has_executing_submission_attempt",
         lambda *_args: False,
     )
-    monkeypatch.setattr(update_control, "_now", lambda: 1000)
 
     request = update_control._create_update_request(
         fake_db,
@@ -274,6 +284,7 @@ def test_native_claim_rejects_update_if_state_changes_after_publication(
     monkeypatch,
 ):
     _patch_secret(monkeypatch)
+    _patch_clock(monkeypatch)
     request_path, inflight_path, status_path, _heartbeat_path, _owner_path = _paths(tmp_path)
     user = SimpleNamespace(id=7)
     fake_db = _fake_db_for_user(user)
@@ -288,7 +299,6 @@ def test_native_claim_rejects_update_if_state_changes_after_publication(
         "_owner_has_executing_submission_attempt",
         lambda *_args: False,
     )
-    monkeypatch.setattr(update_control, "_now", lambda: 1000)
     update_control._create_update_request(
         fake_db,
         user,
