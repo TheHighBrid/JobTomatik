@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import app.config as config_module
 from app.config import Settings
 from app.services import supervised_runtime_mode
@@ -45,6 +47,18 @@ def test_android_managed_api_requires_exact_supervised_lease_scope(monkeypatch):
     monkeypatch.setattr(config_module, "_supervised_submission_service_on_stack", lambda: True)
     assert settings.allow_real_application_submit is True
     assert settings.lever_supervised_pilot_enabled is True
+
+
+def test_shadow_acceptance_is_blocked_while_active_lever_lease_exists(monkeypatch):
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    monkeypatch.setattr(
+        android_runtime_acceptance,
+        "runtime_lease_status",
+        lambda *_args, **_kwargs: {"active": True},
+    )
+
+    with pytest.raises(RuntimeError, match="shadow runtime acceptance is blocked"):
+        android_runtime_acceptance.run_acceptance("shadow_no_submit")
 
 
 def test_non_android_runtime_preserves_explicit_configuration(monkeypatch):
