@@ -214,7 +214,7 @@ export default function CurrentLeverRuntimeControl() {
               <div className="max-w-3xl">
                 <div className="text-xs font-semibold text-sky-950">Update Android runtime</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
-                  Pull the latest main revision through the hardened native updater, reinstall the native commands, restart the managed stack, install the exact CI-built frontend artifact, and rerun runtime acceptance. The server blocks this action if any supervised window or active or uncertain submission attempt exists.
+                  Pull the latest main revision through the hardened native updater, reinstall the native commands, restart the managed stack, install the exact CI-built frontend artifact, and rerun runtime acceptance. The server blocks this action while a supervised window or queued or in-progress submission is executing. Quarantined uncertain applications remain immutable and are never retried by this maintenance action.
                 </p>
               </div>
 
