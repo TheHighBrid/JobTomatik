@@ -29,6 +29,17 @@ test('runtime update is a two-step fail-safe action', () => {
   )
 })
 
+test('runtime maintenance does not reinterpret quarantined uncertainty as execution', () => {
+  assert.equal(
+    control.includes('queued or in-progress submission is executing'),
+    true,
+  )
+  assert.equal(
+    control.includes('Quarantined uncertain applications remain immutable and are never retried'),
+    true,
+  )
+})
+
 test('runtime update expects local restart and reconnect instead of replay', () => {
   assert.equal(control.includes('JobTomatik will reconnect automatically after the verified restart.'), true)
   assert.equal(control.includes('refetchInterval: 2500'), true)
