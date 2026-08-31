@@ -54,3 +54,16 @@ class CurrentLeverPhaseBMaterialReviewIn(BaseModel):
     material_versions: Optional[Dict[str, int]] = None
     posting_sha256: Optional[str] = Field(default=None, max_length=64)
     evidence_digest: Optional[str] = Field(default=None, max_length=64)
+
+
+class CurrentLeverRuntimeArmIn(BaseModel):
+    """Explicit owner request to open the temporary supervised Lever runtime window.
+
+    This request does not approve or queue an application. It only authorizes the
+    native Android control bridge to ask the existing fail-closed pilot wrapper to
+    establish a short-lived process-bound runtime lease.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    acknowledgment: str = Field(min_length=1, max_length=200)

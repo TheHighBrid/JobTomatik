@@ -14,11 +14,17 @@ on:
       - backend/app/services/lever_phase_b_current_materials_v5.py
       - backend/app/services/lever_phase_b_current_operator.py
       - backend/app/services/lever_phase_b_current_roster.py
+      - backend/app/services/lever_pilot_control_request.py
       - backend/app/services/material_generation_v4.py
       - backend/app/services/material_generation_v4_policy.py
       - backend/app/services/material_generation_v5.py
       - backend/app/services/material_generation_v5_policy.py
       - backend/scripts/current_lever_phase_b_materials.py
+      - backend/scripts/install_android_native_browser_launcher.sh
+      - backend/scripts/jobtomatik_pilot_control_daemon.sh
+      - backend/scripts/jobtomatik_pilot_controller_manager.sh
+      - backend/scripts/jobtomatik_termux_wrapper.sh
+      - backend/scripts/lever_supervised_pilot_control_bridge.py
       - backend/tests/test_day39_current_lever_intake.py
       - backend/tests/test_day39_current_lever_materials.py
       - backend/tests/test_day39_current_lever_materials_v4.py
@@ -31,13 +37,16 @@ on:
       - backend/tests/test_current_lever_operator_execution_lock.py
       - backend/tests/test_current_lever_operator_service.py
       - backend/tests/test_current_lever_roster.py
+      - backend/tests/test_supervised_lever_pilot_ui_control.py
       - frontend/src/App.jsx
       - frontend/src/components/CurrentLeverOperatorPanel.jsx
+      - frontend/src/components/CurrentLeverRuntimeControl.jsx
       - frontend/src/components/CurrentLeverTargetForm.jsx
       - frontend/src/components/Layout.jsx
       - frontend/src/components/MobileNav.jsx
       - frontend/src/pages/CurrentLeverOperator.jsx
       - frontend/test/current-lever-operator.test.js
+      - frontend/test/current-lever-runtime-control.test.js
       - .github/workflows/day39-current-lever-materials.yml
 
 permissions:
@@ -66,7 +75,7 @@ jobs:
           python scripts/current_lever_phase_b_materials.py --help >/tmp/current-lever-materials-help.txt
           grep -q "Operate the preparation-only current Lever Phase B material boundary" /tmp/current-lever-materials-help.txt
 
-      - name: Run current Lever intake, API, service, and material regressions
+      - name: Run current Lever intake, API, service, runtime-control, and material regressions
         working-directory: backend
         run: |
           pytest -q \
@@ -81,7 +90,8 @@ jobs:
             tests/test_current_lever_operator_api.py \
             tests/test_current_lever_operator_execution_lock.py \
             tests/test_current_lever_operator_service.py \
-            tests/test_current_lever_roster.py
+            tests/test_current_lever_roster.py \
+            tests/test_supervised_lever_pilot_ui_control.py
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -94,7 +104,9 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          node --test test/current-lever-operator.test.js
+          node --test \
+            test/current-lever-operator.test.js \
+            test/current-lever-runtime-control.test.js
           npm run build
 
       - name: Assert operator boundary has no submission authority
@@ -108,8 +120,10 @@ jobs:
               Path('backend/app/services/lever_phase_b_current_materials_v5.py'),
               Path('backend/app/services/lever_phase_b_current_operator.py'),
               Path('backend/app/services/lever_phase_b_current_roster.py'),
+              Path('backend/app/services/lever_pilot_control_request.py'),
               Path('backend/scripts/current_lever_phase_b_materials.py'),
               Path('frontend/src/components/CurrentLeverOperatorPanel.jsx'),
+              Path('frontend/src/components/CurrentLeverRuntimeControl.jsx'),
               Path('frontend/src/components/CurrentLeverTargetForm.jsx'),
           ]
           forbidden = [

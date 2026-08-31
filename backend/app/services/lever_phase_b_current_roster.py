@@ -13,7 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.job import Job
-from app.models.submission_integrity import SubmissionAttempt, SubmissionAttemptStatus
+from app.models.submission_integrity import (
+    ACTIVE_SUBMISSION_ATTEMPT_STATUSES,
+    SubmissionAttempt,
+    SubmissionAttemptStatus,
+)
 from app.models.user import User
 from app.services.application_state import normalize_state
 from app.services.lever_phase_b_current_intake import INTAKE_SOURCE, SELECTION_POLICY
@@ -36,20 +40,26 @@ def list_current_lever_phase_b_candidates(
     )
 
     application_ids = [application.id for application, _job in rows]
+    active_attempt_counts: dict[int, int] = {}
     uncertain_attempt_counts: dict[int, int] = {}
     if application_ids:
-        uncertain_attempt_rows = (
-            db.query(SubmissionAttempt.application_id)
+        active_attempt_rows = (
+            db.query(SubmissionAttempt.application_id, SubmissionAttempt.status)
             .filter(
                 SubmissionAttempt.application_id.in_(application_ids),
-                SubmissionAttempt.status == SubmissionAttemptStatus.uncertain.value,
+                SubmissionAttempt.status.in_(ACTIVE_SUBMISSION_ATTEMPT_STATUSES),
             )
             .all()
         )
-        for (application_id,) in uncertain_attempt_rows:
-            uncertain_attempt_counts[int(application_id)] = (
-                uncertain_attempt_counts.get(int(application_id), 0) + 1
+        for application_id, status in active_attempt_rows:
+            normalized_id = int(application_id)
+            active_attempt_counts[normalized_id] = (
+                active_attempt_counts.get(normalized_id, 0) + 1
             )
+            if status == SubmissionAttemptStatus.uncertain.value:
+                uncertain_attempt_counts[normalized_id] = (
+                    uncertain_attempt_counts.get(normalized_id, 0) + 1
+                )
 
     candidates: list[Dict[str, Any]] = []
     for application, job in rows:
@@ -64,12 +74,15 @@ def list_current_lever_phase_b_candidates(
             for item in target.get("blockers") or []
             if str(item).strip()
         ]
+        active_attempt_count = active_attempt_counts.get(int(application.id), 0)
         uncertain_attempt_count = uncertain_attempt_counts.get(int(application.id), 0)
         eligibility_blockers: list[str] = []
         if state not in SUPPORTED_LOCAL_STATES:
             eligibility_blockers.append(
                 "automation_state_not_material_preparation_eligible"
             )
+        if active_attempt_count:
+            eligibility_blockers.append("submission_attempt_active_materials_locked")
         if uncertain_attempt_count:
             eligibility_blockers.append("submission_attempt_uncertain_no_retry")
         if target.get("verified") is not True:
@@ -102,6 +115,7 @@ def list_current_lever_phase_b_candidates(
                 "automation_state": state,
                 "target_identity_verified": target.get("verified") is True,
                 "target_identity_blockers": target_blockers,
+                "active_submission_attempt_count": active_attempt_count,
                 "uncertain_submission_attempt_count": uncertain_attempt_count,
                 "material_preparation_eligible": not unique_blockers,
                 "eligibility_blockers": unique_blockers,

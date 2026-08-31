@@ -5,6 +5,7 @@ ACTION="${1:-start}"
 PROOT_DISTRO="${JOBTOMATIK_PROOT_DISTRO:-ubuntu}"
 PROOT_REPO="${JOBTOMATIK_PROOT_REPO:-/root/JobTomatik}"
 BROWSER_COMMAND="${JOBTOMATIK_BROWSER_COMMAND:-jobtomatik-browser}"
+PILOT_CONTROLLER_MANAGER="${JOBTOMATIK_PILOT_CONTROLLER_MANAGER:-jobtomatik-pilot-controller-manager}"
 RUNTIME_DIR="${JOBTOMATIK_ANDROID_RUNTIME_DIR:-$HOME/.jobtomatik-runtime}"
 STACK_PID_FILE="$RUNTIME_DIR/proot-stack.pid"
 STACK_LOG="$RUNTIME_DIR/proot-stack.log"
@@ -21,6 +22,18 @@ fi
 source "$PROCESS_IDENTITY_HELPER"
 
 mkdir -p "$RUNTIME_DIR"
+
+ensure_pilot_controller() {
+  "$PILOT_CONTROLLER_MANAGER" start
+}
+
+pilot_controller_status() {
+  "$PILOT_CONTROLLER_MANAGER" status
+}
+
+stop_pilot_controller() {
+  "$PILOT_CONTROLLER_MANAGER" stop || true
+}
 
 run_stack_foreground() {
   local action="$1"
@@ -235,6 +248,7 @@ activate_stack() {
   # protocol boundary.
   start_stack_detached "$action"
   run_runtime_acceptance
+  ensure_pilot_controller
 }
 
 case "$ACTION" in
@@ -245,6 +259,7 @@ case "$ACTION" in
     if supervisor_alive && run_stack_foreground status && run_frontend_guard status; then
       echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
       run_runtime_acceptance
+      ensure_pilot_controller
     else
       browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"
       activate_stack start "$browser_recovery_mode"
@@ -262,12 +277,14 @@ case "$ACTION" in
     "$BROWSER_COMMAND" status || true
     run_stack_foreground status
     run_frontend_guard status
+    pilot_controller_status || true
     ;;
   acceptance)
     "$BROWSER_COMMAND" status
     run_stack_foreground status
     run_frontend_guard status
     run_runtime_acceptance
+    pilot_controller_status || true
     ;;
   qualify)
     # Direct database qualification is intentionally retired. It cannot establish the
@@ -278,6 +295,7 @@ case "$ACTION" in
     exit 2
     ;;
   stop)
+    stop_pilot_controller
     stop_stack_supervisor
     "$BROWSER_COMMAND" stop
     ;;
