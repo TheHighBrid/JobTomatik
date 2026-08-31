@@ -7,6 +7,8 @@ PILOT_COMMAND="${JOBTOMATIK_PILOT_COMMAND:-jobtomatik-pilot}"
 CONTROL_DIR="${JOBTOMATIK_PILOT_CONTROL_DIR:-/tmp/jobtomatik-pilot-control}"
 HEARTBEAT_PATH="$CONTROL_DIR/controller-heartbeat"
 POLL_SECONDS="${JOBTOMATIK_PILOT_CONTROL_POLL_SECONDS:-1}"
+SELF_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SELF_DIGEST="$(sha256sum "$SELF_PATH" | awk '{print $1}')"
 
 mkdir -p "$CONTROL_DIR"
 chmod 700 "$CONTROL_DIR" 2>/dev/null || true
@@ -31,6 +33,15 @@ write_heartbeat() {
   mv -f "$temporary" "$HEARTBEAT_PATH"
 }
 
+reload_if_replaced() {
+  local current_digest
+  current_digest="$(sha256sum "$SELF_PATH" 2>/dev/null | awk '{print $1}')"
+  if [[ -n "$current_digest" && "$current_digest" != "$SELF_DIGEST" ]]; then
+    echo "JOBTOMATIK_PILOT_CONTROLLER_REEXECUTING_UPDATED_BINARY"
+    exec "$SELF_PATH"
+  fi
+}
+
 complete_request() {
   local request_id="$1"
   local outcome="$2"
@@ -47,6 +58,7 @@ complete_request() {
 run_bridge recover-inflight >/dev/null 2>&1 || true
 
 while true; do
+  reload_if_replaced
   write_heartbeat
 
   if [[ -f "$CONTROL_DIR/request.json" ]]; then
