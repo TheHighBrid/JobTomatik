@@ -1,3 +1,5 @@
+import os
+import sys
 from functools import lru_cache
 from typing import List, Literal
 
@@ -12,6 +14,23 @@ PLACEHOLDER_SECRET_MARKERS = (
     "supersecretkey",
     "development-secret",
 )
+SUPERVISED_SUBMISSION_SERVICE_MODULE = "app.services.supervised_submission"
+
+
+def _supervised_submission_service_on_stack() -> bool:
+    """Return true only while the exact supervised submission service is executing."""
+
+    try:
+        frame = sys._getframe(2)
+    except (AttributeError, ValueError):
+        return False
+    for _ in range(20):
+        if frame is None:
+            break
+        if str(frame.f_globals.get("__name__") or "") == SUPERVISED_SUBMISSION_SERVICE_MODULE:
+            return True
+        frame = frame.f_back
+    return False
 
 
 class Settings(BaseSettings):
@@ -104,6 +123,52 @@ class Settings(BaseSettings):
     lever_pilot_readiness_markdown_path: str = "evidence/lever-pilot-readiness.md"
     lever_phase_b_launch_path: str = "evidence/lever-phase-b-launch.json"
 
+    def __getattribute__(self, name: str):
+        """Dynamically satisfy temporary Lever gates only at supervised boundaries.
+
+        Cached Settings remain persistently OFF. During an active process-bound lease:
+
+        * the API may observe the temporary submit/Lever-pilot gates only while the
+          exact supervised-submission service is on the call stack;
+        * the worker may observe them only while the existing exact supervised Lever
+          target context is active for the one approved task.
+
+        Generic bulk submit, Beat, follow-up, other ATS paths, separately launched
+        processes, expired leases, and restarted processes continue to read False.
+        """
+
+        value = super().__getattribute__(name)
+        if name not in {"allow_real_application_submit", "lever_supervised_pilot_enabled"}:
+            return value
+        if bool(value):
+            return value
+        try:
+            runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
+            from app.services.supervised_runtime_mode import (
+                lever_supervised_runtime_lease_active,
+            )
+
+            if runtime_role == "api":
+                if (
+                    _supervised_submission_service_on_stack()
+                    and lever_supervised_runtime_lease_active(required_role="api")
+                ):
+                    return True
+                return value
+
+            if runtime_role == "worker":
+                from app.services.supervised_runtime import current_supervised_target
+
+                target = dict(current_supervised_target() or {})
+                if (
+                    str(target.get("platform") or "").strip().lower() == "lever"
+                    and lever_supervised_runtime_lease_active(required_role="worker")
+                ):
+                    return True
+        except Exception:
+            return value
+        return value
+
     @property
     def cors_origin_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
@@ -132,6 +197,10 @@ class Settings(BaseSettings):
                 "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
             )
 
+        # The ephemeral supervised Lever lease never mutates Settings. Persistent
+        # consequential switches therefore remain fail-safe OFF across API/worker/Beat
+        # startup and ordinary restarts. Runtime authorization is revalidated at the
+        # supervised API/worker/browser boundaries instead of being cached here.
         sensitive_runtime = any(
             (
                 self.is_production,
