@@ -376,6 +376,27 @@ def test_cached_settings_stay_off_outside_exact_supervised_scopes(monkeypatch):
         assert settings.lever_supervised_pilot_enabled is True
 
 
+def test_worker_validates_both_approval_phases_inside_exact_target_scope():
+    integration = (
+        BACKEND_ROOT / "app/services/supervised_submission_integration.py"
+    ).read_text(encoding="utf-8")
+
+    assert integration.count("with supervised_target_scope(target_metadata):") >= 3
+    assert integration.count("validate_supervised_approval(") == 2
+    for fragment in (
+        "consume=False,\n                        target_metadata=target_metadata,",
+        "consume=True,\n                        target_metadata=target_metadata,",
+    ):
+        position = integration.index(fragment)
+        scope_position = integration.rfind(
+            "with supervised_target_scope(target_metadata):",
+            0,
+            position,
+        )
+        assert scope_position >= 0
+        assert position - scope_position < 800
+
+
 def test_final_lever_browser_verification_blocks_managed_worker_without_live_lease(
     monkeypatch,
 ):
