@@ -1,4 +1,5 @@
 import os
+import sys
 from functools import lru_cache
 from typing import List, Literal
 
@@ -13,6 +14,23 @@ PLACEHOLDER_SECRET_MARKERS = (
     "supersecretkey",
     "development-secret",
 )
+SUPERVISED_SUBMISSION_SERVICE_MODULE = "app.services.supervised_submission"
+
+
+def _supervised_submission_service_on_stack() -> bool:
+    """Return true only while the exact supervised submission service is executing."""
+
+    try:
+        frame = sys._getframe(2)
+    except (AttributeError, ValueError):
+        return False
+    for _ in range(20):
+        if frame is None:
+            break
+        if str(frame.f_globals.get("__name__") or "") == SUPERVISED_SUBMISSION_SERVICE_MODULE:
+            return True
+        frame = frame.f_back
+    return False
 
 
 class Settings(BaseSettings):
@@ -106,32 +124,47 @@ class Settings(BaseSettings):
     lever_phase_b_launch_path: str = "evidence/lever-phase-b-launch.json"
 
     def __getattribute__(self, name: str):
-        """Expose the temporary global-submit compatibility bit only in one worker call.
+        """Dynamically satisfy temporary Lever gates only at supervised boundaries.
 
-        Persisted configuration and cached Settings stay OFF. The legacy application
-        task still reads ``allow_real_application_submit`` immediately before entering
-        the browser path, so a supervised Lever worker may observe True only while the
-        existing exact-target context is active and the process-bound runtime lease is
-        currently valid. Unsupervised tasks, API bulk-submit routes, Beat, separately
-        launched workers, expired leases, and restarted workers continue to read False.
+        Cached Settings remain persistently OFF. During an active process-bound lease:
+
+        * the API may observe the temporary submit/Lever-pilot gates only while the
+          exact supervised-submission service is on the call stack;
+        * the worker may observe them only while the existing exact supervised Lever
+          target context is active for the one approved task.
+
+        Generic bulk submit, Beat, follow-up, other ATS paths, separately launched
+        processes, expired leases, and restarted processes continue to read False.
         """
 
         value = super().__getattribute__(name)
-        if name != "allow_real_application_submit" or bool(value):
+        if name not in {"allow_real_application_submit", "lever_supervised_pilot_enabled"}:
+            return value
+        if bool(value):
             return value
         try:
-            if str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "") != "worker":
-                return value
-            from app.services.supervised_runtime import current_supervised_target
+            runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
             from app.services.supervised_runtime_mode import (
                 lever_supervised_runtime_lease_active,
             )
 
-            target = dict(current_supervised_target() or {})
-            if str(target.get("platform") or "").strip().lower() != "lever":
+            if runtime_role == "api":
+                if (
+                    _supervised_submission_service_on_stack()
+                    and lever_supervised_runtime_lease_active(required_role="api")
+                ):
+                    return True
                 return value
-            if lever_supervised_runtime_lease_active(required_role="worker"):
-                return True
+
+            if runtime_role == "worker":
+                from app.services.supervised_runtime import current_supervised_target
+
+                target = dict(current_supervised_target() or {})
+                if (
+                    str(target.get("platform") or "").strip().lower() == "lever"
+                    and lever_supervised_runtime_lease_active(required_role="worker")
+                ):
+                    return True
         except Exception:
             return value
         return value
