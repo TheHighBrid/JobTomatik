@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native bridge for one-shot supervised Lever runtime-control requests."""
+"""Native bridge for one-shot signed JobTomatik Android control requests."""
 
 from __future__ import annotations
 
@@ -14,6 +14,10 @@ REPO_ROOT = BACKEND_ROOT.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.database import SessionLocal  # noqa: E402
+from app.services.android_runtime_update_control import (  # noqa: E402
+    claim_native_control_request,
+)
 from app.services.lever_pilot_control_request import (  # noqa: E402
     CONTROL_DIR,
     INFLIGHT_PATH,
@@ -21,7 +25,6 @@ from app.services.lever_pilot_control_request import (  # noqa: E402
     OWNER_PATH,
     REQUEST_PATH,
     STATUS_PATH,
-    claim_control_request,
     complete_control_request,
     recover_inflight_without_replay,
 )
@@ -49,7 +52,7 @@ def _runtime_revision() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Claim and finalize signed JobTomatik native pilot-control requests."
+        description="Claim and finalize signed JobTomatik native control requests."
     )
     parser.add_argument(
         "action",
@@ -68,12 +71,17 @@ def main() -> int:
 
     try:
         if args.action == "claim-request":
-            request = claim_control_request(
-                runtime_revision=_runtime_revision(),
-                request_path=request_path,
-                inflight_path=inflight_path,
-                status_path=status_path,
-            )
+            db = SessionLocal()
+            try:
+                request = claim_native_control_request(
+                    db,
+                    runtime_revision=_runtime_revision(),
+                    request_path=request_path,
+                    inflight_path=inflight_path,
+                    status_path=status_path,
+                )
+            finally:
+                db.close()
             if not request:
                 return 3
             print(
