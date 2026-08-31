@@ -44,14 +44,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str = DEFAULT_SECRET_KEY
     answer_vault_key: str = ""
-    # Separate trust root for signed certified-autonomous release manifests.
-    # It must remain empty until an operator intentionally configures a release key.
     autonomy_certification_signing_key: str = ""
     algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = Field(default=10080, ge=5, le=43200)
 
-    # Comma-separated browser origins allowed to call the API with credentials.
-    # These defaults cover Vite, the local browser UI, and Capacitor Android.
     cors_origins: str = (
         "http://localhost:3000,"
         "http://127.0.0.1:3000,"
@@ -60,63 +56,40 @@ class Settings(BaseSettings):
         "capacitor://localhost"
     )
 
-    # AI is optional. The app works for free with AI_PROVIDER=template.
-    ai_provider: str = "template"  # template | anthropic
+    ai_provider: str = "template"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5"
 
-    # Email is optional. If SENDGRID_API_KEY is empty, email applications are prepared but not sent.
     sendgrid_api_key: str = ""
     from_email: str = "noreply@jobtomatik.com"
 
-    # Optional integrations / local development.
     rapidapi_key: str = ""
     upload_dir: str = "uploads"
     dev_mock_jobs: bool = False
 
-    # Persistent local browser used to resolve job-board listings and run ATS forms.
-    # The code default remains headless for CI. Local XFCE installs can set
-    # APPLICATION_BROWSER_HEADLESS=false and log in once to the dedicated profile.
     application_browser_profile_dir: str = "browser_profiles/jobtomatik-operator"
     application_browser_headless: bool = True
     application_browser_executable: str = ""
-    # Android-only installs may keep Chromium running natively in Termux and let
-    # the Ubuntu PRoot worker attach over Chrome DevTools Protocol. When set,
-    # JobTomatik never launches or terminates the external browser process.
     application_browser_cdp_endpoint: str = ""
-    # Keep target resolution nonblocking for headless and solo-worker deployments.
-    # A positive value is an explicit opt-in that occupies the current worker task.
     application_target_human_wait_seconds: int = Field(default=0, ge=0, le=3600)
 
-    # Defense-in-depth gate for any non-dry-run application attempt.
-    # Keep disabled until the active adapter has passed supervised certification.
     allow_real_application_submit: bool = False
 
-    # Independent defense-in-depth gate for recruiter/hiring-team email follow-ups.
-    # Approval of an application submission never implies permission to contact a person.
     allow_real_followup_send: bool = False
     supervised_followup_max_schedule_days: int = Field(default=30, ge=1, le=90)
 
-    # Platform-scoped supervised real-submission pilots. The global flag, the
-    # matching platform flag, and a one-time exact-payload approval are required.
     greenhouse_supervised_pilot_enabled: bool = False
     lever_supervised_pilot_enabled: bool = False
     supervised_approval_ttl_minutes: int = Field(default=20, ge=1, le=60)
     supervised_approval_max_ttl_minutes: int = Field(default=60, ge=1, le=240)
 
-    # Dry runs retain human-verification boundaries automatically. This flag also
-    # enables retained-browser handoffs for explicitly approved non-dry runs.
     enable_resumable_handoffs: bool = False
 
-    # Verified read-only Phase A baseline plus writable Phase B runtime ledger.
-    # Readiness merges both sources. Runtime ingestion never rewrites the baseline.
     greenhouse_pilot_baseline_path: str = "evidence/greenhouse-phase-a-baseline.csv"
     greenhouse_pilot_ledger_path: str = "evidence/greenhouse-pilot-ledger.jsonl"
     greenhouse_pilot_readiness_json_path: str = "evidence/greenhouse-pilot-readiness.json"
     greenhouse_pilot_readiness_markdown_path: str = "evidence/greenhouse-pilot-readiness.md"
 
-    # Lever evidence is isolated from Greenhouse. The baseline may remain absent
-    # until retained Phase A artifacts are indexed; absence counts as zero evidence.
     lever_pilot_baseline_path: str = "evidence/lever-phase-a-baseline.csv"
     lever_pilot_ledger_path: str = "evidence/lever-pilot-ledger.jsonl"
     lever_pilot_readiness_json_path: str = "evidence/lever-pilot-readiness.json"
@@ -126,14 +99,17 @@ class Settings(BaseSettings):
     def __getattribute__(self, name: str):
         """Dynamically satisfy temporary Lever gates only at supervised boundaries.
 
-        Android-managed runtime never trusts persisted live-submit or Lever-pilot
-        booleans directly. Historical/operator ``.env`` values can therefore not
-        silently reopen a supervised window after reboot, update, or ordinary restart.
-        The only Android exception is a currently valid process-bound lease observed
-        inside the exact supervised API/worker scopes below.
+        Android-managed runtime never trusts a persisted Lever pilot as live-submit
+        authority. Historical ``ALLOW_REAL_APPLICATION_SUBMIT=true`` plus
+        ``LEVER_SUPERVISED_PILOT_ENABLED=true`` therefore cannot silently reopen the
+        Lever window after reboot, update, or ordinary restart. Lever may become live
+        only through the process-bound lease inside the exact supervised API/worker
+        scopes below.
 
-        Outside Android-managed runtime, explicitly configured values retain their
-        existing behavior.
+        The older documented Greenhouse supervised pilot remains configuration-driven:
+        an Android Greenhouse-only window may still use its explicit global + platform
+        gates. If both ATS pilot flags are configured, the global gate fails closed.
+        Non-Android runtimes preserve their existing explicit configuration behavior.
         """
 
         value = super().__getattribute__(name)
@@ -146,8 +122,20 @@ class Settings(BaseSettings):
         if runtime_mode != "android_managed":
             return value
 
-        # Persisted/configured values are never direct authority on Android. Start
-        # from fail-safe false and project true only through the live lease below.
+        configured_greenhouse = bool(
+            super().__getattribute__("greenhouse_supervised_pilot_enabled")
+        )
+        configured_lever = bool(
+            super().__getattribute__("lever_supervised_pilot_enabled")
+        )
+
+        if (
+            name == "allow_real_application_submit"
+            and configured_greenhouse
+            and not configured_lever
+        ):
+            return value
+
         value = False
         try:
             from app.services.supervised_runtime_mode import (
@@ -203,10 +191,6 @@ class Settings(BaseSettings):
                 "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
             )
 
-        # The ephemeral supervised Lever lease never mutates Settings. Persistent
-        # consequential switches therefore remain fail-safe OFF across API/worker/Beat
-        # startup and ordinary restarts. Runtime authorization is revalidated at the
-        # supervised API/worker/browser boundaries instead of being cached here.
         sensitive_runtime = any(
             (
                 self.is_production,
