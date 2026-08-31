@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Validate and preserve fail-safe configuration for a supervised Lever window.
+"""Validate fail-safe configuration and manage one supervised Lever runtime lease.
 
-The live supervised window is carried by an owner-, token-, and revision-bound runtime
-marker installed only for one managed restart. This helper never persists an enabled
-submit switch. Its only configuration write forces consequential persisted switches
-OFF.
+Persisted real-submit and Lever-pilot switches always remain OFF. ``create-marker``
+creates only an owner-bound pending transition. ``activate-marker`` may promote that
+transition after the managed API and worker are already running and attested; the
+resulting lease is process/revision bound and expires automatically.
 """
 
 from __future__ import annotations
@@ -31,10 +31,12 @@ from pydantic_settings import PydanticBaseSettingsSource  # noqa: E402
 from app.config import Settings  # noqa: E402
 from app.services.supervised_runtime_mode import (  # noqa: E402
     DEFAULT_MARKER_PATH,
+    activate_runtime_lease,
     clear_owner_bound_marker,
     create_owner_bound_marker,
-    lever_supervised_runtime_marker_active,
     load_marker,
+    pending_runtime_marker_active,
+    runtime_lease_status,
 )
 
 
@@ -223,7 +225,7 @@ def create_marker(
     launch_token: str,
     marker_path: Path = DEFAULT_MARKER_PATH,
 ) -> dict[str, Any]:
-    """Create the exact-restart marker immediately before managed restart."""
+    """Create a non-authorizing owner-bound pending transition marker."""
 
     revision = _runtime_revision()
     marker = create_owner_bound_marker(
@@ -233,7 +235,9 @@ def create_marker(
         path=marker_path,
     )
     return {
-        "marker_active": True,
+        "marker_active": False,
+        "marker_pending": True,
+        "marker_state": marker.get("state"),
         "marker_path": str(marker_path),
         "owner_pid": marker["owner_pid"],
         "owner_start_ticks": marker["owner_start_ticks"],
@@ -242,12 +246,42 @@ def create_marker(
     }
 
 
+def activate_marker(
+    launch_token: str,
+    marker_path: Path = DEFAULT_MARKER_PATH,
+) -> dict[str, Any]:
+    """Promote only after the exact managed API and worker are already running."""
+
+    revision = _runtime_revision()
+    marker = activate_runtime_lease(
+        launch_token=launch_token,
+        runtime_revision=revision,
+        path=marker_path,
+    )
+    status = runtime_lease_status(
+        marker_path,
+        expected_launch_token=launch_token,
+        expected_revision=revision,
+    )
+    return {
+        "marker_active": bool(status.get("active")),
+        "marker_pending": False,
+        "marker_state": marker.get("state"),
+        "marker_path": str(marker_path),
+        "runtime_revision": revision,
+        "expires_at_epoch": marker.get("expires_at_epoch"),
+        "processes": marker.get("processes"),
+        "submission_approval_granted": False,
+    }
+
+
 def clear_marker(marker_path: Path = DEFAULT_MARKER_PATH) -> dict[str, Any]:
-    """Remove the capability marker before an ordinary fail-safe restart."""
+    """Remove pending or active capability before an ordinary fail-safe restart."""
 
     clear_owner_bound_marker(marker_path)
     return {
         "marker_active": False,
+        "marker_pending": False,
         "marker_path": str(marker_path),
         "marker_present": marker_path.exists(),
     }
@@ -257,30 +291,60 @@ def verify_marker(
     launch_token: str,
     marker_path: Path = DEFAULT_MARKER_PATH,
 ) -> dict[str, Any]:
-    """Fail closed unless owner, token, and checkout revision still match."""
+    """Fail closed unless the pending owner, token, and checkout revision still match."""
 
     revision = _runtime_revision()
-    active = lever_supervised_runtime_marker_active(
+    active = pending_runtime_marker_active(
         marker_path,
         expected_launch_token=launch_token,
         expected_revision=revision,
     )
     marker = load_marker(marker_path)
     if not active:
-        raise RuntimeError("LEVER_PILOT_RUNTIME_MARKER_INACTIVE")
+        raise RuntimeError("LEVER_PILOT_RUNTIME_PENDING_MARKER_INACTIVE")
     return {
-        "marker_active": True,
+        "marker_active": False,
+        "marker_pending": True,
+        "marker_state": (marker or {}).get("state"),
         "marker_path": str(marker_path),
-        "owner_pid": marker.get("owner_pid") if marker else None,
+        "owner_pid": (marker or {}).get("owner_pid"),
         "runtime_revision": revision,
         "submission_approval_granted": False,
     }
 
 
+def verify_active_marker(
+    launch_token: str,
+    marker_path: Path = DEFAULT_MARKER_PATH,
+) -> dict[str, Any]:
+    revision = _runtime_revision()
+    status = runtime_lease_status(
+        marker_path,
+        expected_launch_token=launch_token,
+        expected_revision=revision,
+    )
+    if not status.get("active"):
+        raise RuntimeError(
+            "LEVER_PILOT_RUNTIME_ACTIVE_MARKER_INACTIVE "
+            + ",".join(status.get("blockers") or [])
+        )
+    return {
+        "marker_active": True,
+        "marker_pending": False,
+        "marker_state": status.get("state"),
+        "marker_path": str(marker_path),
+        "runtime_revision": revision,
+        "expires_at_epoch": status.get("expires_at_epoch"),
+        "submission_approval_granted": False,
+    }
+
+
 def status(env_file: Path = ENV_FILE) -> dict[str, Any]:
-    """Report persisted configuration only, never infer queue or submit outcomes."""
+    """Report config + runtime capability truth, never queue/final-submit outcomes."""
 
     result = _persisted_status(env_file)
+    marker = load_marker(DEFAULT_MARKER_PATH)
+    lease = runtime_lease_status(DEFAULT_MARKER_PATH)
     try:
         settings = _settings(env_file)
     except Exception as exc:
@@ -289,12 +353,19 @@ def status(env_file: Path = ENV_FILE) -> dict[str, Any]:
             "configuration_valid": False,
             "configuration_error": f"{type(exc).__name__}: {exc}",
             "secret_key_safe_for_sensitive_runtime": None,
+            "runtime_marker_state": (marker or {}).get("state"),
+            "runtime_lease_active": bool(lease.get("active")),
+            "runtime_lease_blockers": list(lease.get("blockers") or []),
         }
     return {
         **result,
         "configuration_valid": True,
         "configuration_error": None,
         "secret_key_safe_for_sensitive_runtime": not settings.uses_placeholder_secret,
+        "runtime_marker_state": (marker or {}).get("state"),
+        "runtime_lease_active": bool(lease.get("active")),
+        "runtime_lease_blockers": list(lease.get("blockers") or []),
+        "runtime_lease_expires_at_epoch": lease.get("expires_at_epoch"),
     }
 
 
@@ -308,8 +379,10 @@ def main() -> int:
             "persist-safe",
             "preflight-arm",
             "create-marker",
+            "activate-marker",
             "clear-marker",
             "verify-marker",
+            "verify-active-marker",
             "status",
         ),
     )
@@ -330,12 +403,20 @@ def main() -> int:
             if not args.launch_token:
                 raise RuntimeError("LEVER_PILOT_MARKER_LAUNCH_TOKEN_REQUIRED")
             result = create_marker(args.owner_pid, args.launch_token, args.marker_path)
+        elif args.action == "activate-marker":
+            if not args.launch_token:
+                raise RuntimeError("LEVER_PILOT_MARKER_LAUNCH_TOKEN_REQUIRED")
+            result = activate_marker(args.launch_token, args.marker_path)
         elif args.action == "clear-marker":
             result = clear_marker(args.marker_path)
         elif args.action == "verify-marker":
             if not args.launch_token:
                 raise RuntimeError("LEVER_PILOT_MARKER_LAUNCH_TOKEN_REQUIRED")
             result = verify_marker(args.launch_token, args.marker_path)
+        elif args.action == "verify-active-marker":
+            if not args.launch_token:
+                raise RuntimeError("LEVER_PILOT_MARKER_LAUNCH_TOKEN_REQUIRED")
+            result = verify_active_marker(args.launch_token, args.marker_path)
         else:
             result = status(args.env_file)
         print(json.dumps(result, indent=2, sort_keys=True))
