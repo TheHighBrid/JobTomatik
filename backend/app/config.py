@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import List, Literal
 
@@ -104,6 +105,37 @@ class Settings(BaseSettings):
     lever_pilot_readiness_markdown_path: str = "evidence/lever-pilot-readiness.md"
     lever_phase_b_launch_path: str = "evidence/lever-phase-b-launch.json"
 
+    def __getattribute__(self, name: str):
+        """Expose the temporary global-submit compatibility bit only in one worker call.
+
+        Persisted configuration and cached Settings stay OFF. The legacy application
+        task still reads ``allow_real_application_submit`` immediately before entering
+        the browser path, so a supervised Lever worker may observe True only while the
+        existing exact-target context is active and the process-bound runtime lease is
+        currently valid. Unsupervised tasks, API bulk-submit routes, Beat, separately
+        launched workers, expired leases, and restarted workers continue to read False.
+        """
+
+        value = super().__getattribute__(name)
+        if name != "allow_real_application_submit" or bool(value):
+            return value
+        try:
+            if str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "") != "worker":
+                return value
+            from app.services.supervised_runtime import current_supervised_target
+            from app.services.supervised_runtime_mode import (
+                lever_supervised_runtime_lease_active,
+            )
+
+            target = dict(current_supervised_target() or {})
+            if str(target.get("platform") or "").strip().lower() != "lever":
+                return value
+            if lever_supervised_runtime_lease_active(required_role="worker"):
+                return True
+        except Exception:
+            return value
+        return value
+
     @property
     def cors_origin_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
@@ -132,29 +164,10 @@ class Settings(BaseSettings):
                 "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
             )
 
-        # The supervised Lever window never trusts a generic environment label. API,
-        # worker, and Beat must prove they are children of the real Android manager,
-        # that the manager carries this restart's random capability token, that their
-        # runtime and expected revisions match, and that the owner-bound marker matches
-        # the same token/revision. The child processes keep their existing env -i
-        # isolation. This capability never creates the separate one-time application
-        # approval required for a final submission.
-        from app.services.supervised_runtime_mode import (
-            managed_android_lever_runtime_capability_active,
-        )
-
-        if managed_android_lever_runtime_capability_active():
-            if self.greenhouse_supervised_pilot_enabled:
-                raise ValueError(
-                    "Greenhouse supervised pilot cannot be enabled during the ephemeral Lever window"
-                )
-            if self.allow_real_followup_send:
-                raise ValueError(
-                    "Real follow-up sending must remain disabled during the ephemeral Lever window"
-                )
-            self.allow_real_application_submit = True
-            self.lever_supervised_pilot_enabled = True
-
+        # The ephemeral supervised Lever lease never mutates Settings. Persistent
+        # consequential switches therefore remain fail-safe OFF across API/worker/Beat
+        # startup and ordinary restarts. Runtime authorization is revalidated at the
+        # supervised API/worker/browser boundaries instead of being cached here.
         sensitive_runtime = any(
             (
                 self.is_production,
