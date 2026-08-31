@@ -112,6 +112,7 @@ export default function CurrentLeverRuntimeControl() {
 
   const runtime = runtimeQuery.data
   const leaseActive = runtime?.lease_active === true
+  const canDisarm = runtime?.can_disarm === true
   const transitionState = runtime?.transition_state || 'idle'
   const transitionPending = transitionState === 'requested' || transitionState === 'inflight'
   const uncertain = transitionState === 'uncertain_no_replay'
@@ -200,11 +201,16 @@ export default function CurrentLeverRuntimeControl() {
                   <p className="mt-1 text-[11px] leading-relaxed text-emerald-800">
                     The API and worker must keep their exact attested process identities for this lease to remain valid. Final submission still requires the separate exact application approval in Fresh Runtime Preflight.
                   </p>
+                  {!canDisarm && (
+                    <p className="mt-2 text-[11px] leading-relaxed text-amber-800">
+                      This account does not hold the signed lease-owner receipt, so it cannot revoke another account&apos;s active supervised window.
+                    </p>
+                  )}
                 </div>
               </div>
               <button
                 type="button"
-                disabled={!controllerReady || disarmMutation.isPending || transitionPending}
+                disabled={!canDisarm || !controllerReady || disarmMutation.isPending || transitionPending}
                 onClick={() => disarmMutation.mutate()}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
