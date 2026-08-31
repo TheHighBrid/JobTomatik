@@ -1,9 +1,10 @@
 """Non-authorizing proof for one ephemeral supervised Lever runtime launch.
 
-The marker is deliberately bound to the exact native ``jobtomatik-pilot`` process
-that created it, one cryptographically random restart token, and one repository
-revision. A stale file, recycled PID, unrelated process, or later restart cannot reuse
-it. The marker never grants per-application submission approval.
+The capability is bound to the exact native ``jobtomatik-pilot`` owner, one random
+restart token, one repository revision, and the real Android managed supervisor parent.
+API, worker, and Beat keep their existing ``env -i`` isolation: they recover the token
+only from the verified ``manage_android_stack.sh`` parent process. The marker never
+grants per-application submission approval.
 """
 
 from __future__ import annotations
@@ -26,6 +27,9 @@ OWNER_CMDLINE_TOKENS = (
     "jobtomatik-pilot",
     "jobtomatik_pilot_wrapper.sh",
 )
+MANAGED_SUPERVISOR_CMDLINE_TOKEN = "manage_android_stack.sh"
+MANAGED_RUNTIME_ROLES = frozenset({"api", "worker", "beat"})
+LAUNCH_TOKEN_ENV_KEY = "JOBTOMATIK_LEVER_PILOT_LAUNCH_TOKEN"
 REVISION_RE = re.compile(r"^[0-9a-f]{7,64}$")
 MIN_LAUNCH_TOKEN_LENGTH = 32
 
@@ -56,6 +60,22 @@ def _process_cmdline(pid: int) -> str:
     except OSError:
         return ""
     return raw.replace(b"\0", b" ").decode("utf-8", errors="replace")
+
+
+def _process_environ(pid: int) -> dict[str, str]:
+    try:
+        raw = Path(f"/proc/{pid}/environ").read_bytes()
+    except OSError:
+        return {}
+    result: dict[str, str] = {}
+    for item in raw.split(b"\0"):
+        if not item or b"=" not in item:
+            continue
+        key, value = item.split(b"=", 1)
+        result[key.decode("utf-8", errors="replace")] = value.decode(
+            "utf-8", errors="replace"
+        )
+    return result
 
 
 def _owner_cmdline_token(pid: int) -> str | None:
@@ -150,6 +170,47 @@ def lever_supervised_runtime_marker_active(
     return True
 
 
+def managed_android_lever_runtime_capability_active(
+    path: Path = DEFAULT_MARKER_PATH,
+) -> bool:
+    """Authorize only the API/worker/Beat children of the exact managed restart.
+
+    The managed launcher intentionally starts these children with ``env -i``. Rather
+    than weakening that isolation by copying the capability into each child, verify
+    the actual parent process and read the token from that parent's environment.
+    """
+
+    runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
+    runtime_revision = str(os.environ.get("JOBTOMATIK_RUNTIME_REVISION") or "").lower()
+    expected_revision = str(os.environ.get("JOBTOMATIK_EXPECTED_REVISION") or "").lower()
+    if runtime_role not in MANAGED_RUNTIME_ROLES:
+        return False
+    if not REVISION_RE.fullmatch(runtime_revision):
+        return False
+    if expected_revision != runtime_revision:
+        return False
+
+    parent_pid = os.getppid()
+    if parent_pid <= 0:
+        return False
+    if MANAGED_SUPERVISOR_CMDLINE_TOKEN not in _process_cmdline(parent_pid):
+        return False
+    parent_env = _process_environ(parent_pid)
+    if parent_env.get("JOBTOMATIK_RUNTIME_MODE") != "android_managed":
+        return False
+    if parent_env.get("JOBTOMATIK_FRONTEND_RUNTIME_MODE") != "static_artifact":
+        return False
+    launch_token = str(parent_env.get(LAUNCH_TOKEN_ENV_KEY) or "")
+    if len(launch_token) < MIN_LAUNCH_TOKEN_LENGTH:
+        return False
+
+    return lever_supervised_runtime_marker_active(
+        path,
+        expected_launch_token=launch_token,
+        expected_revision=runtime_revision,
+    )
+
+
 def create_owner_bound_marker(
     owner_pid: int,
     *,
@@ -225,6 +286,9 @@ def clear_owner_bound_marker(path: Path = DEFAULT_MARKER_PATH) -> None:
 
 __all__ = [
     "DEFAULT_MARKER_PATH",
+    "LAUNCH_TOKEN_ENV_KEY",
+    "MANAGED_RUNTIME_ROLES",
+    "MANAGED_SUPERVISOR_CMDLINE_TOKEN",
     "MARKER_MODE",
     "MARKER_SCHEMA_VERSION",
     "MIN_LAUNCH_TOKEN_LENGTH",
@@ -233,4 +297,5 @@ __all__ = [
     "create_owner_bound_marker",
     "lever_supervised_runtime_marker_active",
     "load_marker",
+    "managed_android_lever_runtime_capability_active",
 ]
