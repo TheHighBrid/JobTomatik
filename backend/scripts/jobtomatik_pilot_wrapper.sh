@@ -42,8 +42,8 @@ run_stack_sanitized() {
   (
     # Process environment is authoritative for both Pydantic and operations policy.
     # Never let caller-shell values or an alternate operations env file widen this
-    # narrow supervised window. Only this invocation receives the random capability
-    # token; the managed stack forwards it across env -i solely to API/worker/Beat.
+    # narrow supervised window. Only this managed restart's supervisor receives the
+    # random token; API/worker/Beat keep env -i and verify it through their real parent.
     unset JOBTOMATIK_OPERATIONS_ENV_FILE
     unset JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME
     unset JOBTOMATIK_LEVER_PILOT_LAUNCH_TOKEN
