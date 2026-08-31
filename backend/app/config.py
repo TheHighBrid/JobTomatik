@@ -126,24 +126,30 @@ class Settings(BaseSettings):
     def __getattribute__(self, name: str):
         """Dynamically satisfy temporary Lever gates only at supervised boundaries.
 
-        Cached Settings remain persistently OFF. During an active process-bound lease:
+        Android-managed runtime never trusts persisted live-submit or Lever-pilot
+        booleans directly. Historical/operator ``.env`` values can therefore not
+        silently reopen a supervised window after reboot, update, or ordinary restart.
+        The only Android exception is a currently valid process-bound lease observed
+        inside the exact supervised API/worker scopes below.
 
-        * the API may observe the temporary submit/Lever-pilot gates only while the
-          exact supervised-submission service is on the call stack;
-        * the worker may observe them only while the existing exact supervised Lever
-          target context is active for the one approved task.
-
-        Generic bulk submit, Beat, follow-up, other ATS paths, separately launched
-        processes, expired leases, and restarted processes continue to read False.
+        Outside Android-managed runtime, explicitly configured values retain their
+        existing behavior.
         """
 
         value = super().__getattribute__(name)
         if name not in {"allow_real_application_submit", "lever_supervised_pilot_enabled"}:
             return value
-        if bool(value):
+
+        runtime_mode = str(os.environ.get("JOBTOMATIK_RUNTIME_MODE") or "")
+        runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
+
+        if runtime_mode != "android_managed":
             return value
+
+        # Persisted/configured values are never direct authority on Android. Start
+        # from fail-safe false and project true only through the live lease below.
+        value = False
         try:
-            runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
             from app.services.supervised_runtime_mode import (
                 lever_supervised_runtime_lease_active,
             )
