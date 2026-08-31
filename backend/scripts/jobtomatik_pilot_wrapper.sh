@@ -24,6 +24,24 @@ create_runtime_marker() {
     "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/lever_supervised_pilot_runtime.py create-marker --owner-pid '$owner_pid'"
 }
 
+run_stack_sanitized() {
+  local action="$1"
+  (
+    # Process environment is authoritative for both Pydantic and operations policy.
+    # Never let caller-shell values or an alternate operations env file widen this
+    # narrow supervised window. The owner-bound marker is the only mechanism allowed
+    # to elevate Lever submit capability inside the managed Android stack.
+    unset JOBTOMATIK_OPERATIONS_ENV_FILE
+    unset JOBTOMATIK_SUPERVISED_LEVER_PILOT_RUNTIME
+    export AUTOPILOT_ENABLED=false
+    export ALLOW_REAL_APPLICATION_SUBMIT=false
+    export ALLOW_REAL_FOLLOWUP_SEND=false
+    export GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
+    export LEVER_SUPERVISED_PILOT_ENABLED=false
+    "$STACK_COMMAND" "$action"
+  )
+}
+
 write_pending_marker() {
   local temporary="${PENDING_MARKER}.tmp.$$"
   printf '%s\n' "lever_supervised_ephemeral" > "$temporary"
@@ -59,7 +77,7 @@ rollback_to_safe_mode() {
     return 1
   fi
 
-  if ! "$STACK_COMMAND" restart; then
+  if ! run_stack_sanitized restart; then
     echo "Fail-safe switches are persisted OFF, but the managed safe restart failed." >&2
     return 1
   fi
@@ -90,7 +108,7 @@ arm_pilot() {
   create_runtime_marker
   run_pilot_mode verify-marker
 
-  if ! "$STACK_COMMAND" restart; then
+  if ! run_stack_sanitized restart; then
     echo "Lever supervised runtime failed validation; restoring the ordinary safe runtime." >&2
     rollback_to_safe_mode
     ARM_TRANSITION_ACTIVE=0
@@ -129,9 +147,9 @@ disarm_pilot() {
     return 1
   fi
 
-  # With the owner-bound marker removed and persisted flags OFF, the new processes
-  # can only start in the ordinary fail-safe mode.
-  if ! "$STACK_COMMAND" restart; then
+  # With the owner-bound marker removed, persisted flags OFF, and a sanitized launch
+  # environment, the new processes can only start in the ordinary fail-safe mode.
+  if ! run_stack_sanitized restart; then
     echo "The supervised runtime was stopped, but the ordinary safe stack did not restart cleanly." >&2
     return 1
   fi
