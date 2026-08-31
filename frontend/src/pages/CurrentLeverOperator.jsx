@@ -1,4 +1,5 @@
 import CurrentLeverOperatorPanel from '../components/CurrentLeverOperatorPanel'
+import CurrentLeverRuntimeControl from '../components/CurrentLeverRuntimeControl'
 import CurrentLeverTargetForm from '../components/CurrentLeverTargetForm'
 
 export default function CurrentLeverOperator() {
@@ -13,6 +14,7 @@ export default function CurrentLeverOperator() {
         </div>
         <CurrentLeverTargetForm />
       </div>
+      <CurrentLeverRuntimeControl />
       <CurrentLeverOperatorPanel />
     </div>
   )
