@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,3 +34,23 @@ class CurrentLeverPhaseBImportOut(BaseModel):
     submission_queued: bool = False
     approval_issued: bool = False
     runtime_flags_changed: bool = False
+
+
+class CurrentLeverPhaseBMaterialReviewIn(BaseModel):
+    """Explicit owner decision for the exact current Lever material bundle shown.
+
+    Approval remains intentionally fail-closed. The UI must submit the exact
+    application-bound acknowledgment plus the displayed material IDs, versions,
+    posting digest, and evidence digest. A generic approve boolean is not sufficient
+    authority, and a stale tab cannot silently approve a newer bundle.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    approved: bool
+    notes: Optional[str] = Field(default=None, max_length=5000)
+    acknowledgment: Optional[str] = Field(default=None, max_length=200)
+    material_ids: Optional[Dict[str, int]] = None
+    material_versions: Optional[Dict[str, int]] = None
+    posting_sha256: Optional[str] = Field(default=None, max_length=64)
+    evidence_digest: Optional[str] = Field(default=None, max_length=64)

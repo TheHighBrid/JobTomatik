@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, BrainCircuit, PanelsTopLeft, CalendarClock, Inbox, ShieldCheck, TimerReset, RotateCcw, Workflow, Fingerprint, MailCheck, Search, ListTodo, ClipboardList, BookOpenCheck,
-  HeartPulse, User, Settings, LogOut, Menu, X
+  HeartPulse, User, Settings, LogOut, Menu, X, Target
 } from 'lucide-react'
 import { useAuthStore, useNotificationStore } from '../store'
 import { getUnreadCount } from '../api/client'
@@ -23,6 +23,7 @@ const NAV = [
   { to: '/handoff-review', icon: Fingerprint, label: 'Handoff Review' },
   { to: '/followup-review', icon: MailCheck, label: 'Follow-up Review' },
   { to: '/search', icon: Search, label: 'Job Search' },
+  { to: '/current-lever', icon: Target, label: 'Current Lever' },
   { to: '/queue', icon: ListTodo, label: 'Queue' },
   { to: '/applications', icon: ClipboardList, label: 'Applications' },
   { to: '/evidence-materials', icon: BookOpenCheck, label: 'Evidence & Materials' },

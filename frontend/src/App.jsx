@@ -20,6 +20,7 @@ const Queue = lazy(() => import('./pages/Queue'))
 const Applications = lazy(() => import('./pages/Applications'))
 const ApplicationDetail = lazy(() => import('./pages/ApplicationDetail'))
 const EvidenceMaterials = lazy(() => import('./pages/EvidenceMaterials'))
+const CurrentLeverOperator = lazy(() => import('./pages/CurrentLeverOperator'))
 const AdapterHealth = lazy(() => import('./pages/AdapterHealth'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -63,6 +64,7 @@ export default function App() {
             <Route path="applications" element={<Applications />} />
             <Route path="applications/:id" element={<ApplicationDetail />} />
             <Route path="evidence-materials" element={<EvidenceMaterials />} />
+            <Route path="current-lever" element={<CurrentLeverOperator />} />
             <Route path="adapter-health" element={<AdapterHealth />} />
             <Route path="profile" element={<Profile />} />
             <Route path="settings" element={<Settings />} />
