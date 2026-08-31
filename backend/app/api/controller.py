@@ -1,14 +1,15 @@
 """User-triggered automation controller endpoints.
 
 These endpoints are intentionally preparation-only. They do not accept a live-submit
-argument and always delegate application work with ``dry_run=True``.
+argument and always delegate application work with ``dry_run=True``. Android runtime
+maintenance is also exposed here only as a signed fixed-action native request.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -21,8 +22,10 @@ from app.models.application import (
 )
 from app.models.job import Job, JobStatus
 from app.models.user import User
+from app.services.android_runtime_update_control import request_runtime_update
 from app.services.discovery_pipeline import persist_discovery_results
 from app.services.discovery_search import search_jobs
+from app.services.lever_pilot_control_request import LeverPilotControlError
 from app.tasks.applications import generate_cover_letter_task, submit_application_task
 
 
@@ -225,4 +228,23 @@ async def safe_dry_run(
             ),
         }
     )
+    return result
+
+
+@router.post("/android-runtime/update", status_code=202)
+def request_android_runtime_update(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Request the fixed native Android updater without submission authority."""
+
+    try:
+        result = request_runtime_update(db, current_user)
+    except LeverPilotControlError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    # Publishing the signed one-shot request is the only mutation. No approval,
+    # submission attempt, or application state transition is committed here.
+    db.rollback()
     return result

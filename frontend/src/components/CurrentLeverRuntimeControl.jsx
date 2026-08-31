@@ -28,6 +28,7 @@ export default function CurrentLeverRuntimeControl() {
   const queryClient = useQueryClient()
   const [selectedApplicationId, setSelectedApplicationId] = useState('')
   const [confirmingArm, setConfirmingArm] = useState(false)
+  const [confirmingUpdate, setConfirmingUpdate] = useState(false)
 
   const workspaceQuery = useQuery({
     queryKey: ['current-lever-workspace'],
@@ -110,6 +111,22 @@ export default function CurrentLeverRuntimeControl() {
     ),
   })
 
+  const updateMutation = useMutation({
+    mutationFn: () => api.post(
+      '/controller/android-runtime/update',
+      null,
+      { timeout: 15000 },
+    ),
+    onSuccess: async () => {
+      setConfirmingUpdate(false)
+      await refreshControl()
+      toast.success('Android runtime update requested. JobTomatik will reconnect automatically after the verified restart.')
+    },
+    onError: (error) => toast.error(
+      getApiErrorMessage(error, 'Could not request the Android runtime update.'),
+    ),
+  })
+
   const runtime = runtimeQuery.data
   const leaseActive = runtime?.lease_active === true
   const canDisarm = runtime?.can_disarm === true
@@ -132,7 +149,7 @@ export default function CurrentLeverRuntimeControl() {
               <h2 className="font-semibold">Supervised Lever runtime</h2>
             </div>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-300">
-              Open or close the temporary Android submission window from JobTomatik. This does not approve an application, queue a submission, or enable unattended automation.
+              Open or close the temporary Android submission window, or safely refresh the local runtime from JobTomatik. This does not approve an application, queue a submission, or enable unattended automation.
             </p>
           </div>
           <div className={`rounded-full border px-3 py-1 text-xs font-semibold ${
@@ -174,7 +191,7 @@ export default function CurrentLeverRuntimeControl() {
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <div>
-                Native runtime controller is offline. Arm/disarm requests are blocked rather than left unclaimed.
+                Native runtime controller is offline. Arm, disarm, and update requests are blocked rather than left unclaimed.
               </div>
             </div>
           </div>
@@ -187,6 +204,58 @@ export default function CurrentLeverRuntimeControl() {
               <div>
                 The previous native control action ended without a controller receipt. It will not be replayed. The process-bound lease state shown here is authoritative.
               </div>
+            </div>
+          </div>
+        )}
+
+        {!leaseActive && (
+          <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="max-w-3xl">
+                <div className="text-xs font-semibold text-sky-950">Update Android runtime</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
+                  Pull the latest main revision through the hardened native updater, reinstall the native commands, restart the managed stack, install the exact CI-built frontend artifact, and rerun runtime acceptance. The server blocks this action while a supervised window or queued or in-progress submission is executing. Quarantined uncertain applications remain immutable and are never retried by this maintenance action.
+                </p>
+              </div>
+
+              {confirmingUpdate ? (
+                <div className="min-w-[240px] rounded-lg border border-sky-200 bg-white p-3">
+                  <div className="text-xs font-semibold text-sky-950">Update and restart JobTomatik?</div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
+                    The local app can disconnect while the verified runtime refresh runs. No application approval or submit action is created.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={!available || transitionPending || updateMutation.isPending}
+                      onClick={() => updateMutation.mutate()}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-sky-800 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {updateMutation.isPending
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <RefreshCw className="h-3.5 w-3.5" />}
+                      Confirm runtime update
+                    </button>
+                    <button
+                      type="button"
+                      disabled={updateMutation.isPending}
+                      onClick={() => setConfirmingUpdate(false)}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!available || transitionPending}
+                  onClick={() => setConfirmingUpdate(true)}
+                  className="inline-flex min-w-fit items-center justify-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-950 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Update runtime
+                </button>
+              )}
             </div>
           </div>
         )}
