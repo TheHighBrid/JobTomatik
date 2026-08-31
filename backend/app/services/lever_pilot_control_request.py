@@ -426,6 +426,7 @@ def request_runtime_arm(
     *,
     application_id: int,
     acknowledgment: str,
+    owner_path: Path = OWNER_PATH,
 ) -> dict[str, Any]:
     revision = _runtime_revision_from_environment()
     expected_ack = f"{ARM_ACK_PREFIX} {application_id}"
@@ -438,6 +439,10 @@ def request_runtime_arm(
         raise LeverPilotControlError("LEVER_PILOT_CONTROL_NATIVE_CONTROLLER_UNAVAILABLE")
     if runtime_lease_status(expected_revision=revision).get("active"):
         raise LeverPilotControlError("LEVER_PILOT_CONTROL_RUNTIME_ALREADY_ACTIVE")
+    # A prior lease on the same revision may have expired without an explicit disarm.
+    # Clear that stale receipt before publishing a new arm request so an interrupted
+    # new arm can never inherit another account's old disarm authority.
+    _unlink(owner_path)
     return {
         "accepted": True,
         "request": _create_request(
