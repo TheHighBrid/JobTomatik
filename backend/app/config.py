@@ -126,24 +126,47 @@ class Settings(BaseSettings):
     def __getattribute__(self, name: str):
         """Dynamically satisfy temporary Lever gates only at supervised boundaries.
 
-        Cached Settings remain persistently OFF. During an active process-bound lease:
+        Android-managed runtime never trusts a persisted Lever pilot as live-submit
+        authority. Historical ``ALLOW_REAL_APPLICATION_SUBMIT=true`` plus
+        ``LEVER_SUPERVISED_PILOT_ENABLED=true`` therefore cannot silently reopen the
+        Lever window after reboot, update, or ordinary restart. Lever may become live
+        only through the process-bound lease inside the exact supervised API/worker
+        scopes below.
 
-        * the API may observe the temporary submit/Lever-pilot gates only while the
-          exact supervised-submission service is on the call stack;
-        * the worker may observe them only while the existing exact supervised Lever
-          target context is active for the one approved task.
-
-        Generic bulk submit, Beat, follow-up, other ATS paths, separately launched
-        processes, expired leases, and restarted processes continue to read False.
+        The documented Greenhouse supervised pilot remains configuration-driven: an
+        Android Greenhouse-only window may still use its explicit global + platform
+        gates. If both ATS pilot flags are configured, the global gate fails closed.
+        Non-Android runtimes preserve their existing explicit configuration behavior.
         """
 
         value = super().__getattribute__(name)
         if name not in {"allow_real_application_submit", "lever_supervised_pilot_enabled"}:
             return value
-        if bool(value):
+
+        runtime_mode = str(os.environ.get("JOBTOMATIK_RUNTIME_MODE") or "")
+        runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
+
+        if runtime_mode != "android_managed":
             return value
+
+        configured_greenhouse = bool(
+            super().__getattribute__("greenhouse_supervised_pilot_enabled")
+        )
+        configured_lever = bool(
+            super().__getattribute__("lever_supervised_pilot_enabled")
+        )
+
+        if (
+            name == "allow_real_application_submit"
+            and configured_greenhouse
+            and not configured_lever
+        ):
+            return value
+
+        # A persisted Lever configuration is never direct authority on Android.
+        # Start fail-safe false and project true only through the live lease below.
+        value = False
         try:
-            runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
             from app.services.supervised_runtime_mode import (
                 lever_supervised_runtime_lease_active,
             )

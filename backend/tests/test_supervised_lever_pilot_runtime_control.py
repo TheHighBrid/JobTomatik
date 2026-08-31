@@ -358,6 +358,7 @@ def test_cached_settings_stay_off_outside_exact_supervised_scopes(monkeypatch):
         lambda *args, **kwargs: True,
     )
 
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_ROLE", "api")
     monkeypatch.setattr(config_module, "_supervised_submission_service_on_stack", lambda: False)
     assert settings.allow_real_application_submit is False
