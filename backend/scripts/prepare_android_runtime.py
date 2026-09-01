@@ -17,6 +17,7 @@ from app import models as _models  # noqa: E402,F401
 from app.config import get_settings  # noqa: E402
 from app.database import Base, engine  # noqa: E402
 from app.services.application_recovery import recover_interrupted_application_attempts  # noqa: E402
+from scripts.repair_android_runtime_secret import repair_android_runtime_secret  # noqa: E402
 
 CRITICAL_TABLES = {
     "users",
@@ -106,6 +107,11 @@ def _recover_abandoned_application_attempts() -> dict:
 
 
 def main() -> int:
+    secret_migration = repair_android_runtime_secret(
+        BACKEND_ROOT / ".env",
+        BACKEND_ROOT / ".runtime",
+    )
+
     before = _table_names()
     missing_before = CRITICAL_TABLES - before
     backup_path = _backup_database_if_needed(missing_before)
@@ -120,6 +126,12 @@ def main() -> int:
 
     recovery = _recover_abandoned_application_attempts()
 
+    if secret_migration["changed"]:
+        print("ANDROID_RUNTIME_SECRET_MIGRATED")
+        print("ANDROID_RUNTIME_VAULT_KEY_PRESERVED")
+        print("ANDROID_RUNTIME_REAUTHENTICATION_MAY_BE_REQUIRED")
+    else:
+        print("ANDROID_RUNTIME_SECRET_READY")
     print("JOBTOMATIK_RUNTIME_SCHEMA_READY")
     print(f"Database: {engine.url.render_as_string(hide_password=True)}")
     if backup_path is not None:

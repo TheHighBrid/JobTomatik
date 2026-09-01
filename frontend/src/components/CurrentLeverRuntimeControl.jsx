@@ -127,6 +127,13 @@ export default function CurrentLeverRuntimeControl() {
     && runtimeEndpointMissing
     && executingSubmissionCount === 0
   )
+  const runtimeNeedsNativeRepair = (
+    nativeBootstrapSafe
+    && runtimeQuery.isSuccess
+    && runtime?.android_managed_api === true
+    && controllerReady
+    && !available
+  )
 
   const armMutation = useMutation({
     mutationFn: (applicationId) => api.post(
@@ -163,6 +170,11 @@ export default function CurrentLeverRuntimeControl() {
 
   const updateMutation = useMutation({
     mutationFn: async () => {
+      if (runtimeNeedsNativeRepair) {
+        const result = await updateRuntimeViaNativeBootstrap()
+        return { mode: 'native-security-repair', result }
+      }
+
       try {
         const response = await api.post(
           '/controller/android-runtime/update',
@@ -191,12 +203,26 @@ export default function CurrentLeverRuntimeControl() {
     },
     onSuccess: async (result) => {
       setConfirmingUpdate(false)
-      await refreshControl()
-      if (result?.mode === 'native-bootstrap' || result?.mode === 'legacy-native-bootstrap') {
-        toast.success('Native Android bootstrap completed. JobTomatik is now on the verified in-app update path.')
-      } else {
-        toast.success('Android runtime update requested. JobTomatik will reconnect automatically after the verified restart.')
+      if (
+        result?.mode === 'native-bootstrap'
+        || result?.mode === 'legacy-native-bootstrap'
+        || result?.mode === 'native-security-repair'
+      ) {
+        try {
+          await refreshControl()
+        } catch {
+          // A security migration can intentionally rotate the JWT signing secret.
+          // The next authenticated request may therefore require a fresh sign-in.
+        }
+        toast.success(
+          result?.mode === 'native-security-repair'
+            ? 'Android runtime security migration completed. Sign in again if prompted; existing encrypted application answers were preserved.'
+            : 'Native Android bootstrap completed. JobTomatik is now on the verified in-app update path.',
+        )
+        return
       }
+      await refreshControl()
+      toast.success('Android runtime update requested. JobTomatik will reconnect automatically after the verified restart.')
     },
     onError: (error) => toast.error(
       error?.message || getApiErrorMessage(error, 'Could not request the Android runtime update.'),
@@ -263,6 +289,17 @@ export default function CurrentLeverRuntimeControl() {
           </div>
         )}
 
+        {runtimeNeedsNativeRepair && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div>
+                Runtime security migration required. The Android API and native controller are healthy, but this older install does not yet have a signing secret that is safe for supervised control. Repair runtime security uses the fixed native update path, preserves the existing Answer Vault and handoff encryption key before rotating the authentication/runtime secret, and may require one fresh sign-in after restart.
+              </div>
+            </div>
+          </div>
+        )}
+
         {runtime && !controllerReady && !nativeBootstrapSafe && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             <div className="flex items-start gap-2">
@@ -300,7 +337,9 @@ export default function CurrentLeverRuntimeControl() {
           <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="max-w-3xl">
-                <div className="text-xs font-semibold text-sky-950">Update Android runtime</div>
+                <div className="text-xs font-semibold text-sky-950">
+                  {runtimeNeedsNativeRepair ? 'Repair Android runtime security' : 'Update Android runtime'}
+                </div>
                 <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
                   Pull the latest main revision through the hardened native updater, reinstall the native commands, restart the managed stack, install the exact CI-built frontend artifact, and rerun runtime acceptance. The server blocks this action while a supervised window or queued or in-progress submission is executing. Quarantined uncertain applications remain immutable and are never retried by this maintenance action.
                 </p>
@@ -308,7 +347,9 @@ export default function CurrentLeverRuntimeControl() {
 
               {confirmingUpdate ? (
                 <div className="min-w-[240px] rounded-lg border border-sky-200 bg-white p-3">
-                  <div className="text-xs font-semibold text-sky-950">Update and restart JobTomatik?</div>
+                  <div className="text-xs font-semibold text-sky-950">
+                    {runtimeNeedsNativeRepair ? 'Repair security and restart JobTomatik?' : 'Update and restart JobTomatik?'}
+                  </div>
                   <p className="mt-1 text-[11px] leading-relaxed text-sky-800">
                     The local app can disconnect while the verified runtime refresh runs. No application approval or submit action is created.
                   </p>
@@ -322,7 +363,7 @@ export default function CurrentLeverRuntimeControl() {
                       {updateMutation.isPending
                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         : <RefreshCw className="h-3.5 w-3.5" />}
-                      Confirm runtime update
+                      {runtimeNeedsNativeRepair ? 'Confirm security repair' : 'Confirm runtime update'}
                     </button>
                     <button
                       type="button"
@@ -341,7 +382,8 @@ export default function CurrentLeverRuntimeControl() {
                   onClick={() => setConfirmingUpdate(true)}
                   className="inline-flex min-w-fit items-center justify-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-950 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <RefreshCw className="h-3.5 w-3.5" /> Update runtime
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {runtimeNeedsNativeRepair ? 'Repair runtime security' : 'Update runtime'}
                 </button>
               )}
             </div>

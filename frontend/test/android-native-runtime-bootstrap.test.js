@@ -27,6 +27,12 @@ test('native bootstrap is registered and permission scoped to Termux RUN_COMMAND
   assert.equal(plugin.includes('TERMUX_PERMISSION_ALIAS'), true)
 })
 
+test('native bootstrap availability trusts the registered plugin after local runtime refresh', () => {
+  assert.equal(client.includes("Capacitor.isPluginAvailable('NativeRuntimeBootstrap')"), true)
+  assert.equal(client.includes('Capacitor.isNativePlatform()'), false)
+  assert.equal(client.includes("Capacitor.getPlatform() === 'android'"), false)
+})
+
 test('native bootstrap exposes only fixed JobTomatik maintenance executables', () => {
   assert.equal(
     plugin.includes('private static final String TERMUX_BIN = "/data/data/com.termux/files/usr/bin/"'),
