@@ -13,6 +13,11 @@ from app.models.submission_approval import SubmissionApproval
 from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
 from app.schemas.supervised_submission import (
+    OperatorAssistedApprovalCreate,
+    OperatorAssistedAuthorizationOut,
+    OperatorAssistedConfirmationCreate,
+    OperatorAssistedConfirmationOut,
+    OperatorAssistedPreflightOut,
     SupervisedApprovalCreate,
     SupervisedApprovalOut,
     SupervisedApprovalRevoke,
@@ -20,6 +25,13 @@ from app.schemas.supervised_submission import (
     SupervisedSubmitQueued,
 )
 from app.services.application_integrity import submission_is_closed
+from app.services.operator_assisted_submission import (
+    OperatorAssistedSubmissionError,
+    build_operator_assisted_preflight,
+    issue_operator_assisted_approval,
+    record_operator_confirmation,
+    validate_operator_assisted_approval,
+)
 from app.services.submission_integrity import (
     SubmissionAttemptReservationError,
     reserve_submission_attempt,
@@ -150,6 +162,174 @@ def _publish_supervised_submission_task(
         },
         queue="applications",
     )
+
+
+@router.get(
+    "/applications/{application_id}/operator-assisted/preflight",
+    response_model=OperatorAssistedPreflightOut,
+)
+async def operator_assisted_preflight(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    application, user, job = _owned_records(db, application_id, current_user.id)
+    _require_open_submission(application)
+    target_metadata = await resolve_supervised_target_metadata(job)
+    return build_operator_assisted_preflight(
+        db,
+        application,
+        user,
+        job,
+        target_metadata=target_metadata,
+    )
+
+
+@router.post(
+    "/applications/{application_id}/operator-assisted/approvals",
+    response_model=SupervisedApprovalOut,
+    status_code=201,
+)
+async def create_operator_assisted_approval(
+    application_id: int,
+    data: OperatorAssistedApprovalCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    application, user, job = _owned_records(
+        db,
+        application_id,
+        current_user.id,
+        lock=True,
+    )
+    _require_open_submission(application)
+    target_metadata = await resolve_supervised_target_metadata(job)
+    if target_metadata:
+        persist_supervised_target_metadata(job, target_metadata)
+    try:
+        approval = issue_operator_assisted_approval(
+            db,
+            application,
+            user,
+            job,
+            confirm_employer=data.confirm_employer,
+            confirm_role=data.confirm_role,
+            confirm_application_url=data.confirm_application_url,
+            confirm_operator_final_click=data.confirm_operator_final_click,
+            expires_in_minutes=data.expires_in_minutes,
+            notes=data.notes,
+            target_metadata=target_metadata,
+        )
+        db.commit()
+        db.refresh(approval)
+        return approval_safe_dict(approval)
+    except OperatorAssistedSubmissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/applications/{application_id}/operator-assisted/approvals/{reference}/authorize-final-click",
+    response_model=OperatorAssistedAuthorizationOut,
+)
+async def authorize_operator_final_click(
+    application_id: int,
+    reference: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    application, user, job = _owned_records(
+        db,
+        application_id,
+        current_user.id,
+        lock=True,
+    )
+    _require_open_submission(application)
+    target_metadata = await resolve_supervised_target_metadata(job)
+    if target_metadata:
+        persist_supervised_target_metadata(job, target_metadata)
+    try:
+        approval = validate_operator_assisted_approval(
+            db,
+            application,
+            user,
+            job,
+            reference=reference,
+            consume=True,
+            target_metadata=target_metadata,
+        )
+        db.commit()
+        db.refresh(approval)
+        db.refresh(application)
+    except OperatorAssistedSubmissionError as exc:
+        raise _approval_error(db, exc) from exc
+
+    return {
+        "application_id": application.id,
+        "approval_reference": approval.reference,
+        "status": approval.status,
+        "application_url": approval.application_url,
+        "combined_payload_hash": approval.combined_payload_hash,
+        "attempt_number": int(application.submission_attempt_count or 0),
+        "operator_final_click_required": True,
+        "automated_submission_authorized": False,
+        "worker_task_created": False,
+        "queue_created": False,
+    }
+
+
+@router.post(
+    "/applications/{application_id}/operator-assisted/approvals/{reference}/confirmation",
+    response_model=OperatorAssistedConfirmationOut,
+)
+async def record_operator_assisted_confirmation(
+    application_id: int,
+    reference: str,
+    data: OperatorAssistedConfirmationCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if data.confirm_submission_completed is not True:
+        raise HTTPException(
+            status_code=409,
+            detail="confirm_submission_completed must be explicitly true",
+        )
+    application, user, job = _owned_records(
+        db,
+        application_id,
+        current_user.id,
+        lock=True,
+    )
+    try:
+        evidence = record_operator_confirmation(
+            db,
+            application,
+            user,
+            job,
+            reference=reference,
+            evidence_type=data.evidence_type,
+            final_url=data.final_url,
+            confirmation_text=data.confirmation_text,
+            external_application_id=data.external_application_id,
+            notes=data.notes,
+        )
+        db.commit()
+        db.refresh(evidence)
+        db.refresh(application)
+    except OperatorAssistedSubmissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return {
+        "application_id": application.id,
+        "approval_reference": reference,
+        "evidence_id": evidence.id,
+        "evidence_type": evidence.evidence_type,
+        "final_url": evidence.final_url,
+        "automation_state": application.automation_state,
+        "independent_review_required": True,
+        "phase_b_credit_granted": False,
+    }
 
 
 @router.get(
