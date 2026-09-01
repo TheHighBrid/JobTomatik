@@ -282,15 +282,17 @@ public class NativeRuntimeBootstrapPlugin extends Plugin {
             return;
         }
 
-        int err = result.getInt(TERMUX_RESULT_ERR, 0);
+        int err = result.getInt(TERMUX_RESULT_ERR, Integer.MIN_VALUE);
         int exitCode = result.getInt(TERMUX_RESULT_EXIT_CODE, -1);
         String errmsg = result.getString(TERMUX_RESULT_ERRMSG, "");
         String stdout = result.getString(TERMUX_RESULT_STDOUT, "");
         String stderr = result.getString(TERMUX_RESULT_STDERR, "");
 
-        if (err != 0) {
+        // Termux follows Android's Activity result contract: Activity.RESULT_OK (-1)
+        // means no internal Termux error. Zero is not success here.
+        if (err != android.app.Activity.RESULT_OK) {
             String detail = errmsg == null || errmsg.trim().isEmpty()
-                ? "Termux rejected the native runtime bootstrap command."
+                ? "Termux rejected the native runtime bootstrap command (internal error " + err + ")."
                 : errmsg;
             call.reject(detail);
             return;
