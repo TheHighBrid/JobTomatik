@@ -57,8 +57,17 @@ jobs:
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Install frontend dependencies for Capacitor project resolution
+      - name: Install frontend dependencies for Android project resolution
         run: npm ci
+
+      - name: Prepare generated Capacitor placeholder project
+        shell: bash
+        run: |
+          set -euo pipefail
+          # settings.gradle includes this generated bridge project for the normal app.
+          # The standalone recovery module does not use it, but Gradle 9 requires the
+          # referenced project directory to exist during settings evaluation.
+          mkdir -p android/capacitor-cordova-android-plugins
 
       - name: Build standalone recovery APK
         shell: bash
