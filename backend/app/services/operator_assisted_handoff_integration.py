@@ -24,6 +24,7 @@ _INSTALLED = False
 _ORIGINAL_FLOW = None
 _ORIGINAL_FILL = None
 _ORIGINAL_CLAIM = None
+_ORIGINAL_VERIFY_COMPLETION = None
 
 
 def current_operator_prepare_target() -> Optional[Dict[str, Any]]:
@@ -43,8 +44,8 @@ def operator_prepare_scope(target_metadata: Mapping[str, Any]) -> Iterator[None]
 def _dry_run_requested(args, kwargs) -> bool:
     if "dry_run" in kwargs:
         return bool(kwargs["dry_run"])
-    if len(args) >= 4:
-        return bool(args[3])
+    if len(args) >= 5:
+        return bool(args[4])
     return True
 
 
@@ -52,9 +53,11 @@ def install_operator_assisted_handoff_integration() -> None:
     """Install an idempotent, context-gated final-submit handoff extension."""
 
     global _INSTALLED, _ORIGINAL_FLOW, _ORIGINAL_FILL, _ORIGINAL_CLAIM
+    global _ORIGINAL_VERIFY_COMPLETION
     if _INSTALLED:
         return
 
+    from app.services import browser_handoff
     from app.services import form_filler_handoff as handoff_filler
     from app.services import handoff_integration
     from app.services import handoff_session
@@ -74,11 +77,7 @@ def install_operator_assisted_handoff_integration() -> None:
         target = current_operator_prepare_target()
         if not target or not bool(kwargs.get("dry_run", True)):
             return flow
-        if (
-            flow.success
-            and flow.ready_to_submit
-            and not flow.requires_manual_review
-        ):
+        if flow.success and flow.ready_to_submit and not flow.requires_manual_review:
             flow.requires_manual_review = True
             flow.error = (
                 "The application is fully prepared. The exact final Submit action "
@@ -144,12 +143,29 @@ def install_operator_assisted_handoff_integration() -> None:
 
     handoff_session.claim_handoff_session = approval_gated_claim
 
-    # The API router imported the function object before this compatibility layer is
-    # installed. Replace that local reference too so HTTP claims use the same gate.
+    _ORIGINAL_VERIFY_COMPLETION = browser_handoff.verify_browser_handoff_completion
+
+    async def final_submit_confirmation_required(session):
+        verification = await _ORIGINAL_VERIFY_COMPLETION(session)
+        if (
+            session.challenge_type == HandoffChallengeType.final_submit.value
+            and not verification.evidence.get("submission_confirmed")
+        ):
+            verification.challenge_cleared = False
+            verification.evidence["verification_method"] = (
+                "operator_final_submit_confirmation_required"
+            )
+        return verification
+
+    browser_handoff.verify_browser_handoff_completion = final_submit_confirmation_required
+
+    # HTTP routers imported these function objects before this compatibility layer is
+    # installed. Replace those local references too so API calls share the same gates.
     try:
         from app.api import handoffs as handoff_api
 
         handoff_api.claim_handoff_session = approval_gated_claim
+        handoff_api.verify_browser_handoff_completion = final_submit_confirmation_required
     except Exception:
         # Worker-only imports do not need the HTTP router patch.
         pass
