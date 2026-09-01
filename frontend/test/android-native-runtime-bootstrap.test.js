@@ -58,11 +58,13 @@ test('global bootstrap guard is fixed, shell-free, and covers every platform', (
   assert.equal(plugin.includes('"-lc"'), false)
 })
 
-test('native bootstrap waits for the trusted Termux result instead of assuming success', () => {
+test('native bootstrap waits for the trusted Termux result and honors Android RESULT_OK', () => {
   assert.equal(plugin.includes('com.termux.RUN_COMMAND_PENDING_INTENT'), true)
   assert.equal(plugin.includes('PendingIntent.FLAG_MUTABLE'), true)
   assert.equal(plugin.includes('intent.getBundleExtra(TERMUX_RESULT_BUNDLE)'), true)
-  assert.equal(plugin.includes('if (err != 0)'), true)
+  assert.equal(plugin.includes('result.getInt(TERMUX_RESULT_ERR, Integer.MIN_VALUE)'), true)
+  assert.equal(plugin.includes('if (err != android.app.Activity.RESULT_OK)'), true)
+  assert.equal(plugin.includes('if (err != 0)'), false)
   assert.equal(plugin.includes('if (exitCode != 0)'), true)
   assert.equal(plugin.includes('response.put("completed", true)'), true)
 })
