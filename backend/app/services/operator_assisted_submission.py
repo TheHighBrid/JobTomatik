@@ -1,9 +1,9 @@
-"""Human-final-click bridge for supervised Phase B submissions.
+"""Exact human-final-click approval for supervised Phase B submissions.
 
-This lane deliberately does not authorize JobTomatik to click the final submit
-control, publish Celery work, or enable a live-submit feature flag. It preserves the
-existing exact-target/payload approval and evidence-review chain while requiring the
-owner to perform the consequential final click directly in the employer form.
+This lane never gives JobTomatik permission to click the final submit control, never
+creates a SubmissionAttempt, and never enables the live-submit/pilot/autopilot flags.
+It binds one short-lived approval to the exact payload, target, and retained browser
+handoff that the authenticated owner will inspect and operate directly.
 """
 
 from __future__ import annotations
@@ -19,17 +19,19 @@ from app.models.application import (
     ApplicationAutomationState,
     ApplicationEvent,
     ApplicationStatus,
-    SubmissionEvidence,
+    ManualReviewReason,
+    ManualReviewStatus,
+    ManualReviewTask,
+)
+from app.models.handoff import (
+    ACTIVE_HANDOFF_STATUSES,
+    HandoffChallengeType,
+    ManualHandoffSession,
 )
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.models.user import User
-from app.services.application_state import (
-    normalize_state,
-    record_submission_evidence,
-    transition_application_state,
-)
-from app.services.submission_evidence_review import STRONG_EVIDENCE_TYPES
+from app.services.application_state import normalize_state, transition_application_state
 from app.services.supervised_platforms import get_supervised_platform_policy
 from app.services.supervised_submission import build_supervised_preflight
 
@@ -62,6 +64,52 @@ def _operator_execution_blockers(preflight: Mapping[str, Any]) -> set[str]:
     return blockers
 
 
+def _active_final_submit_boundary(
+    db: Session,
+    application: Application,
+    *,
+    public_id: Optional[str] = None,
+) -> Optional[ManualHandoffSession]:
+    reviews = (
+        db.query(ManualReviewTask)
+        .filter(
+            ManualReviewTask.application_id == application.id,
+            ManualReviewTask.status.in_([
+                ManualReviewStatus.open.value,
+                ManualReviewStatus.in_progress.value,
+            ]),
+        )
+        .order_by(ManualReviewTask.created_at.desc(), ManualReviewTask.id.desc())
+        .all()
+    )
+    if len(reviews) != 1:
+        return None
+    review = reviews[0]
+    if review.reason_code != ManualReviewReason.operator_final_submit_required.value:
+        return None
+
+    query = db.query(ManualHandoffSession).filter(
+        ManualHandoffSession.application_id == application.id,
+        ManualHandoffSession.manual_review_id == review.id,
+        ManualHandoffSession.challenge_type == HandoffChallengeType.final_submit.value,
+        ManualHandoffSession.status.in_(ACTIVE_HANDOFF_STATUSES),
+    )
+    if public_id:
+        query = query.filter(ManualHandoffSession.public_id == public_id)
+    sessions = query.order_by(
+        ManualHandoffSession.created_at.desc(),
+        ManualHandoffSession.id.desc(),
+    ).all()
+    return sessions[0] if len(sessions) == 1 else None
+
+
+def get_operator_final_submit_boundary(
+    db: Session,
+    application: Application,
+) -> Optional[ManualHandoffSession]:
+    return _active_final_submit_boundary(db, application)
+
+
 def build_operator_assisted_preflight(
     db: Session,
     application: Application,
@@ -70,7 +118,7 @@ def build_operator_assisted_preflight(
     *,
     target_metadata: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Reuse every structural supervised check while requiring automation to stay off."""
+    """Reuse structural supervised checks while insisting automation authority is off."""
 
     base = build_supervised_preflight(
         db,
@@ -80,22 +128,20 @@ def build_operator_assisted_preflight(
         target_metadata=target_metadata,
     )
     policy = get_supervised_platform_policy(base.get("platform"))
+    boundary = _active_final_submit_boundary(db, application)
     ignored = _operator_execution_blockers(base)
+    if boundary is not None:
+        ignored.update({"application_not_ready_to_apply", "unresolved_manual_reviews"})
+
     blockers = [
         str(item)
         for item in base.get("blockers") or []
         if str(item) not in ignored
     ]
 
-    # This lane exists specifically so a human can perform the final action while
-    # JobTomatik remains fail-safe. If automation authority is unexpectedly enabled,
-    # refuse to create a second overlapping path.
     if base.get("global_live_submit_enabled") is not False:
         blockers.append("operator_assisted_requires_global_submit_disabled")
-    if policy is None:
-        # unsupported_platform is already retained from the base preflight.
-        pass
-    elif base.get("platform_pilot_enabled") is not False:
+    if policy is not None and base.get("platform_pilot_enabled") is not False:
         blockers.append("operator_assisted_requires_platform_pilot_disabled")
     if bool(getattr(settings, "autopilot_enabled", False)):
         blockers.append("operator_assisted_requires_autopilot_disabled")
@@ -110,6 +156,8 @@ def build_operator_assisted_preflight(
         "automated_submission_authorized": False,
         "queue_submission_authorized": False,
         "autopilot_enabled": bool(getattr(settings, "autopilot_enabled", False)),
+        "operator_final_submit_boundary": boundary is not None,
+        "operator_handoff_public_id": boundary.public_id if boundary else None,
     }
 
 
@@ -145,6 +193,7 @@ def issue_operator_assisted_approval(
     user: User,
     job: Job,
     *,
+    handoff_public_id: str,
     confirm_employer: str,
     confirm_role: str,
     confirm_application_url: str,
@@ -153,6 +202,16 @@ def issue_operator_assisted_approval(
     notes: Optional[str] = None,
     target_metadata: Optional[Mapping[str, Any]] = None,
 ) -> SubmissionApproval:
+    boundary = _active_final_submit_boundary(
+        db,
+        application,
+        public_id=str(handoff_public_id or "").strip(),
+    )
+    if boundary is None:
+        raise OperatorAssistedSubmissionError(
+            "Prepare and retain the exact ready-to-submit application before approval."
+        )
+
     preflight = build_operator_assisted_preflight(
         db,
         application,
@@ -164,6 +223,8 @@ def issue_operator_assisted_approval(
         raise OperatorAssistedSubmissionError(
             "Operator-assisted preflight is blocked: " + ", ".join(preflight["blockers"])
         )
+    if preflight.get("operator_handoff_public_id") != boundary.public_id:
+        raise OperatorAssistedSubmissionError("Retained final-submit handoff changed")
     if confirm_operator_final_click is not True:
         raise OperatorAssistedSubmissionError(
             "confirm_operator_final_click must be explicitly true"
@@ -217,6 +278,7 @@ def issue_operator_assisted_approval(
         notes=notes,
         approval_metadata={
             "approval_source": OPERATOR_ASSISTED_APPROVAL_SOURCE,
+            "handoff_public_id": boundary.public_id,
             "confirm_operator_final_click": True,
             "operator_final_click_required": True,
             "automated_submission_authorized": False,
@@ -227,7 +289,7 @@ def issue_operator_assisted_approval(
             "policy_count": preflight["policy_count"],
             "cover_letter_present": preflight["cover_letter_present"],
             "resume_filename": preflight["resume_filename"],
-            "unresolved_manual_review_count": 0,
+            "unresolved_manual_review_count": preflight["unresolved_manual_review_count"],
             "platform_pilot_setting": policy.pilot_setting_name,
             "platform_display_name": policy.display_name,
             "adapter_version": policy.adapter_version,
@@ -248,6 +310,7 @@ def issue_operator_assisted_approval(
             to_state=application.automation_state,
             payload={
                 "approval_reference": approval.reference,
+                "handoff_public_id": boundary.public_id,
                 "platform": approval.platform,
                 "employer": approval.employer,
                 "role": approval.role,
@@ -287,6 +350,8 @@ def _load_owned_operator_approval(
         )
     if metadata.get("automated_submission_authorized") is not False:
         raise OperatorAssistedSubmissionError("Operator-assisted approval is not fail-safe")
+    if metadata.get("queue_submission_authorized") is not False:
+        raise OperatorAssistedSubmissionError("Operator-assisted approval permits queue work")
     return approval
 
 
@@ -316,6 +381,17 @@ def validate_operator_assisted_approval(
         approval.status = SubmissionApprovalStatus.expired.value
         raise OperatorAssistedApprovalExpired("Submission approval has expired")
 
+    metadata = dict(approval.approval_metadata or {})
+    boundary = _active_final_submit_boundary(
+        db,
+        application,
+        public_id=str(metadata.get("handoff_public_id") or ""),
+    )
+    if boundary is None:
+        raise OperatorAssistedSubmissionError(
+            "The exact retained final-submit handoff is no longer active"
+        )
+
     preflight = build_operator_assisted_preflight(
         db,
         application,
@@ -343,7 +419,6 @@ def validate_operator_assisted_approval(
     mismatches = [
         field for field, value in expected.items() if getattr(approval, field) != value
     ]
-    metadata = dict(approval.approval_metadata or {})
     policy = get_supervised_platform_policy(preflight["platform"])
     if policy and metadata.get("adapter_version") != policy.adapter_version:
         mismatches.append("adapter_version")
@@ -355,6 +430,8 @@ def validate_operator_assisted_approval(
         mismatches.append("target_identity_hash")
     if metadata.get("form_schema_hash") != preflight.get("form_schema_hash"):
         mismatches.append("form_schema_hash")
+    if metadata.get("handoff_public_id") != boundary.public_id:
+        mismatches.append("handoff_public_id")
     mismatches = list(dict.fromkeys(mismatches))
 
     if mismatches:
@@ -382,9 +459,9 @@ def validate_operator_assisted_approval(
         )
 
     if consume:
-        if normalize_state(application.automation_state) != ApplicationAutomationState.ready_to_apply.value:
+        if normalize_state(application.automation_state) != ApplicationAutomationState.needs_review.value:
             raise OperatorAssistedSubmissionError(
-                "Application must be ready_to_apply before operator final-action authorization"
+                "Application must be at the retained final-submit review boundary"
             )
         approval.status = SubmissionApprovalStatus.consumed.value
         approval.consumed_at = now
@@ -406,6 +483,7 @@ def validate_operator_assisted_approval(
             "operator_assisted_final_action_authorized",
             {
                 "approval_reference": approval.reference,
+                "handoff_public_id": boundary.public_id,
                 "attempt": attempt_number,
                 "combined_payload_hash": approval.combined_payload_hash,
                 "target_identity_hash": preflight["target_identity_hash"],
@@ -417,100 +495,36 @@ def validate_operator_assisted_approval(
     return approval
 
 
-def record_operator_confirmation(
+def operator_final_click_authorized(
     db: Session,
-    application: Application,
-    user: User,
-    job: Job,
+    session: ManualHandoffSession,
     *,
-    reference: str,
-    evidence_type: str,
-    final_url: str,
-    confirmation_text: Optional[str] = None,
-    external_application_id: Optional[str] = None,
-    notes: Optional[str] = None,
-) -> SubmissionEvidence:
-    approval = _load_owned_operator_approval(
-        db,
-        application_id=application.id,
-        user_id=user.id,
-        reference=reference,
-        for_update=True,
+    user_id: int,
+) -> bool:
+    if session.user_id != user_id:
+        return False
+    if session.challenge_type != HandoffChallengeType.final_submit.value:
+        return False
+    approval = (
+        db.query(SubmissionApproval)
+        .filter(
+            SubmissionApproval.application_id == session.application_id,
+            SubmissionApproval.user_id == user_id,
+            SubmissionApproval.status == SubmissionApprovalStatus.consumed.value,
+        )
+        .order_by(SubmissionApproval.consumed_at.desc(), SubmissionApproval.id.desc())
+        .first()
     )
-    if approval.status != SubmissionApprovalStatus.consumed.value:
-        raise OperatorAssistedSubmissionError(
-            "Operator-assisted approval must be consumed before confirmation evidence is recorded"
-        )
-    state = normalize_state(application.automation_state)
-    if state not in {
-        ApplicationAutomationState.applying.value,
-        ApplicationAutomationState.submission_uncertain.value,
-    }:
-        raise OperatorAssistedSubmissionError(
-            "Application is not waiting for operator-assisted confirmation evidence"
-        )
-
-    normalized_type = str(evidence_type or "").strip()
-    if normalized_type not in STRONG_EVIDENCE_TYPES:
-        raise OperatorAssistedSubmissionError(
-            "Operator-assisted confirmation requires a strong evidence type"
-        )
-    if not str(final_url or "").strip():
-        raise OperatorAssistedSubmissionError("final_url is required")
-    if not (
-        str(confirmation_text or "").strip()
-        or str(external_application_id or "").strip()
-    ):
-        raise OperatorAssistedSubmissionError(
-            "Concrete confirmation text or an external application id is required"
-        )
-
-    evidence = record_submission_evidence(
-        db,
-        application,
-        normalized_type,
-        is_sufficient=True,
-        final_url=str(final_url).strip(),
-        confirmation_text=str(confirmation_text or "").strip() or None,
-        external_application_id=str(external_application_id or "").strip() or None,
-        payload_hash=approval.combined_payload_hash,
-        metadata={
-            "capture_source": "authenticated_user_operator_assisted",
-            "operator_final_click_reported": True,
-            "approval_reference": approval.reference,
-            "combined_payload_hash": approval.combined_payload_hash,
-            "notes": str(notes or "").strip() or None,
-        },
+    if not approval:
+        return False
+    metadata = dict(approval.approval_metadata or {})
+    return bool(
+        metadata.get("approval_source") == OPERATOR_ASSISTED_APPROVAL_SOURCE
+        and metadata.get("handoff_public_id") == session.public_id
+        and metadata.get("operator_final_click_required") is True
+        and metadata.get("automated_submission_authorized") is False
+        and metadata.get("queue_submission_authorized") is False
     )
-    db.flush()
-
-    if state == ApplicationAutomationState.submission_uncertain.value:
-        transition_application_state(
-            db,
-            application,
-            ApplicationAutomationState.submitted,
-            "operator_assisted_submission_evidence_recorded",
-            {
-                "approval_reference": approval.reference,
-                "evidence_id": evidence.id,
-                "evidence_type": evidence.evidence_type,
-            },
-        )
-    else:
-        transition_application_state(
-            db,
-            application,
-            ApplicationAutomationState.submitted,
-            "operator_assisted_submission_evidence_recorded",
-            {
-                "approval_reference": approval.reference,
-                "evidence_id": evidence.id,
-                "evidence_type": evidence.evidence_type,
-            },
-        )
-    application.status = ApplicationStatus.applied
-    application.applied_at = application.applied_at or _now()
-    return evidence
 
 
 __all__ = [
@@ -519,7 +533,8 @@ __all__ = [
     "OperatorAssistedApprovalMismatch",
     "OperatorAssistedSubmissionError",
     "build_operator_assisted_preflight",
+    "get_operator_final_submit_boundary",
     "issue_operator_assisted_approval",
-    "record_operator_confirmation",
+    "operator_final_click_authorized",
     "validate_operator_assisted_approval",
 ]
