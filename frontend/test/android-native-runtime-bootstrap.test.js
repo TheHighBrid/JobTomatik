@@ -79,6 +79,17 @@ test('bootstrap quiesces controller and rechecks backend state before update', (
   assert.equal(client.includes('await NativeRuntimeBootstrap.updateRuntime()'), true)
 })
 
+test('legacy bootstrap skips nonexistent controller but still runs the global durable guard', () => {
+  assert.equal(client.includes('updateRuntimeViaLegacyNativeBootstrap'), true)
+  const legacyStart = client.indexOf('export async function updateRuntimeViaLegacyNativeBootstrap')
+  const normalStart = client.indexOf('export async function updateRuntimeViaNativeBootstrap')
+  const legacyBlock = client.slice(legacyStart, normalStart)
+  assert.equal(legacyBlock.includes('await assertNoExecutingSubmissionsGlobally()'), true)
+  assert.equal(legacyBlock.includes('NativeRuntimeBootstrap.updateRuntime()'), true)
+  assert.equal(legacyBlock.includes('quiesceController'), false)
+  assert.equal(legacyBlock.includes('restoreController'), false)
+})
+
 test('bootstrap restores native controller whenever quiesced safety, global guard, or update aborts', () => {
   assert.equal(client.includes('let controllerQuiesced = false'), true)
   assert.equal(client.includes('await restoreNativeRuntimeController()'), true)
