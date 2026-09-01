@@ -54,6 +54,7 @@ class ManualReviewReason(str, enum.Enum):
     validation_error = "validation_error"
     step_navigation_failed = "step_navigation_failed"
     submission_confirmation_uncertain = "submission_confirmation_uncertain"
+    operator_final_submit_required = "operator_final_submit_required"
     safety_gate_blocked = "safety_gate_blocked"
     missing_job_url = "missing_job_url"
     automation_error = "automation_error"
