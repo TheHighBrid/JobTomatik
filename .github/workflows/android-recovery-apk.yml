@@ -79,15 +79,23 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee recovery-apk-badging.txt
           grep -q "package: name='ca.jobtomatik.recovery'" recovery-apk-badging.txt
-          grep -q "versionCode='1'" recovery-apk-badging.txt
-          grep -q "versionName='1.0'" recovery-apk-badging.txt
+          grep -q "versionCode='2'" recovery-apk-badging.txt
+          grep -q "versionName='2.0'" recovery-apk-badging.txt
 
           SOURCE="android/recovery/src/main/java/ca/jobtomatik/recovery/RecoveryActivity.java"
           grep -Fq 'TERMUX_BIN + "proot-distro"' "$SOURCE"
           grep -Fq 'TERMUX_BIN + "jobtomatik"' "$SOURCE"
+          grep -Fq 'TERMUX_BIN + "jobtomatik-pilot"' "$SOURCE"
           grep -Fq 'new String[] { "update" }' "$SOURCE"
+          grep -Fq 'new String[] { "arm" }' "$SOURCE"
+          grep -Fq 'new String[] { "disarm" }' "$SOURCE"
+          grep -Fq "normalize_state(application.automation_state) != 'ready_to_apply'" "$SOURCE"
+          grep -Fq "target.get('verified') is not True" "$SOURCE"
+          grep -Fq "str(target.get('platform') or '').strip().lower() != 'lever'" "$SOURCE"
+          grep -Fq 'ACTIVE_SUBMISSION_ATTEMPT_STATUSES' "$SOURCE"
           grep -Fq 'SubmissionAttemptStatus.queued.value' "$SOURCE"
           grep -Fq 'SubmissionAttemptStatus.in_progress.value' "$SOURCE"
+          grep -Fq 'if len(eligible) != 1:' "$SOURCE"
           grep -Fq 'Activity.RESULT_OK' "$SOURCE"
           ! grep -Fq 'getIntent().getStringExtra' "$SOURCE"
           ! grep -Fq 'Runtime.getRuntime().exec' "$SOURCE"
