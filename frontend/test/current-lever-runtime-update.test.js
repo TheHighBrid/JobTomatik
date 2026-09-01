@@ -20,13 +20,29 @@ test('runtime update is a two-step fail-safe action', () => {
   assert.equal(control.includes('const [confirmingUpdate, setConfirmingUpdate]'), true)
   assert.equal(control.includes('{!leaseActive && ('), true)
   assert.equal(
-    control.includes('disabled={!available || transitionPending || updateMutation.isPending}'),
+    control.includes('disabled={!updateControlAvailable || transitionPending || updateMutation.isPending}'),
     true,
   )
   assert.equal(
     control.includes('No application approval or submit action is created.'),
     true,
   )
+})
+
+test('native bootstrap is only an old-backend compatibility ladder', () => {
+  assert.equal(control.includes('const endpointMissing = status === 404 || status === 405'), true)
+  assert.equal(control.includes('if (!endpointMissing)'), true)
+  assert.equal(control.includes('if (!nativeBootstrapSafe)'), true)
+  assert.equal(control.includes('updateRuntimeViaNativeBootstrap()'), true)
+  assert.equal(control.includes("mode: 'native-bootstrap'"), true)
+})
+
+test('native bootstrap safety distinguishes execution from quarantined uncertainty', () => {
+  assert.equal(control.includes('active - uncertain'), true)
+  assert.equal(control.includes('executingSubmissionCount === 0'), true)
+  assert.equal(control.includes('workspaceQuery.isSuccess'), true)
+  assert.equal(control.includes('runtimeQuery.isSuccess'), true)
+  assert.equal(control.includes('&& !leaseActive'), true)
 })
 
 test('runtime maintenance does not reinterpret quarantined uncertainty as execution', () => {
