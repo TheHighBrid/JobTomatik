@@ -6,12 +6,17 @@ import os
 import re
 import secrets
 import shutil
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from app.config import DEFAULT_SECRET_KEY, PLACEHOLDER_SECRET_MARKERS
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.config import DEFAULT_SECRET_KEY, PLACEHOLDER_SECRET_MARKERS  # noqa: E402
 
 
 MIN_SECRET_BYTES = 32
