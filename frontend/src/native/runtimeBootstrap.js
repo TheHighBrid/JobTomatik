@@ -76,6 +76,19 @@ export async function assertNoExecutingSubmissionsGlobally() {
   return NativeRuntimeBootstrap.assertNoExecutingSubmissions()
 }
 
+export async function updateRuntimeViaLegacyNativeBootstrap() {
+  requireNativeBootstrap()
+
+  // This compatibility path is used only after the authenticated old backend has
+  // explicitly returned 404/405 for the runtime-control endpoint. That proves this
+  // runtime predates the signed pilot-controller/lease feature, so there is no native
+  // controller to quiesce or lease state to read. We still fail closed on durable work:
+  // the fixed PRoot guard queries every SubmissionAttempt and refuses the update if any
+  // platform has queued or in-progress execution. No user-provided command is exposed.
+  await assertNoExecutingSubmissionsGlobally()
+  return NativeRuntimeBootstrap.updateRuntime()
+}
+
 export async function updateRuntimeViaNativeBootstrap() {
   requireNativeBootstrap()
   let controllerQuiesced = false
