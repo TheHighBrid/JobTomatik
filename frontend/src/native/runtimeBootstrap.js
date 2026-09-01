@@ -6,11 +6,16 @@ const QUIESCE_STATUS_ATTEMPTS = 15
 const QUIESCE_STATUS_INTERVAL_MS = 1000
 
 export function nativeRuntimeBootstrapAvailable() {
-  // Plugin availability is the authoritative signal here. The Android WebView can
-  // reconnect across a local static-runtime refresh, while URL/platform heuristics
-  // may briefly look web-like. A normal browser has no registered native plugin, so
-  // this remains false outside the installed APK.
-  return Capacitor.isPluginAvailable('NativeRuntimeBootstrap')
+  // The installed Android APK has already proven the fixed native bridge can run
+  // even when Capacitor's custom-plugin registry does not report the dynamically
+  // registered Java plugin. Keep plugin availability as an additional positive
+  // signal after a local static-runtime refresh, but preserve the native Android
+  // platform check as the primary compatibility path. A normal browser satisfies
+  // neither condition.
+  return (
+    (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android')
+    || Capacitor.isPluginAvailable('NativeRuntimeBootstrap')
+  )
 }
 
 function requireNativeBootstrap() {
