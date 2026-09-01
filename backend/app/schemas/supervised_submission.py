@@ -14,20 +14,12 @@ class SupervisedApprovalCreate(BaseModel):
 
 
 class OperatorAssistedApprovalCreate(BaseModel):
+    handoff_public_id: str = Field(min_length=1, max_length=64)
     confirm_employer: str = Field(min_length=1, max_length=500)
     confirm_role: str = Field(min_length=1, max_length=500)
     confirm_application_url: str = Field(min_length=1, max_length=1500)
     confirm_operator_final_click: bool
     expires_in_minutes: Optional[int] = Field(default=None, ge=1, le=60)
-    notes: Optional[str] = Field(default=None, max_length=2000)
-
-
-class OperatorAssistedConfirmationCreate(BaseModel):
-    confirm_submission_completed: bool
-    evidence_type: str = Field(min_length=1, max_length=80)
-    final_url: str = Field(min_length=1, max_length=1500)
-    confirmation_text: Optional[str] = Field(default=None, max_length=4000)
-    external_application_id: Optional[str] = Field(default=None, max_length=255)
     notes: Optional[str] = Field(default=None, max_length=2000)
 
 
@@ -66,11 +58,24 @@ class OperatorAssistedPreflightOut(BaseModel):
     automated_submission_authorized: bool
     queue_submission_authorized: bool
     autopilot_enabled: bool
+    operator_final_submit_boundary: bool = False
+    operator_handoff_public_id: Optional[str] = None
+
+
+class OperatorAssistedPrepareOut(BaseModel):
+    application_id: int
+    status: str
+    task_id: Optional[str] = None
+    submission_mode: str = "operator_assisted_prepare"
+    handoff_public_id: Optional[str] = None
+    automated_submission_authorized: bool = False
+    final_submit_clicked_by_jobtomatik: bool = False
 
 
 class OperatorAssistedAuthorizationOut(BaseModel):
     application_id: int
     approval_reference: str
+    handoff_public_id: str
     status: str
     application_url: str
     combined_payload_hash: str
@@ -79,17 +84,6 @@ class OperatorAssistedAuthorizationOut(BaseModel):
     automated_submission_authorized: bool = False
     worker_task_created: bool = False
     queue_created: bool = False
-
-
-class OperatorAssistedConfirmationOut(BaseModel):
-    application_id: int
-    approval_reference: str
-    evidence_id: int
-    evidence_type: str
-    final_url: str
-    automation_state: str
-    independent_review_required: bool = True
-    phase_b_credit_granted: bool = False
 
 
 class SupervisedApprovalRevoke(BaseModel):
