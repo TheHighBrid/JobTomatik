@@ -1,0 +1,111 @@
+name: Android Recovery APK
+
+on:
+  pull_request:
+    paths:
+      - "frontend/android/recovery/**"
+      - "frontend/android/settings.gradle"
+      - ".github/workflows/android-recovery-apk.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/android/recovery/**"
+      - "frontend/android/settings.gradle"
+      - ".github/workflows/android-recovery-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-recovery-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-recovery-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android platform
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install frontend dependencies for Android project resolution
+        run: npm ci
+
+      - name: Generate the normal Android bridge files
+        run: npm run android:prepare
+
+      - name: Build standalone recovery APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          cd android
+          ./gradlew --no-daemon :recovery:lintDebug :recovery:assembleDebug | tee recovery-build-output.txt
+
+      - name: Verify recovery APK identity and fixed command surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android/recovery/build/outputs/apk/debug/recovery-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee recovery-apk-badging.txt
+          grep -q "package: name='ca.jobtomatik.recovery'" recovery-apk-badging.txt
+          grep -q "versionCode='1'" recovery-apk-badging.txt
+          grep -q "versionName='1.0'" recovery-apk-badging.txt
+
+          SOURCE="android/recovery/src/main/java/ca/jobtomatik/recovery/RecoveryActivity.java"
+          grep -Fq 'TERMUX_BIN + "proot-distro"' "$SOURCE"
+          grep -Fq 'TERMUX_BIN + "jobtomatik"' "$SOURCE"
+          grep -Fq 'new String[] { "update" }' "$SOURCE"
+          grep -Fq 'SubmissionAttemptStatus.queued.value' "$SOURCE"
+          grep -Fq 'SubmissionAttemptStatus.in_progress.value' "$SOURCE"
+          grep -Fq 'Activity.RESULT_OK' "$SOURCE"
+          ! grep -Fq 'getIntent().getStringExtra' "$SOURCE"
+          ! grep -Fq 'Runtime.getRuntime().exec' "$SOURCE"
+          ! grep -Fq 'ProcessBuilder' "$SOURCE"
+
+          mkdir -p release-recovery
+          cp "$APK" release-recovery/JobTomatik-Recovery.apk
+          sha256sum release-recovery/JobTomatik-Recovery.apk > release-recovery/JobTomatik-Recovery.sha256
+          printf '%s\n' "$GITHUB_SHA" > release-recovery/SOURCE-COMMIT.txt
+
+      - name: Upload recovery APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: jobtomatik-android-recovery-apk
+          path: |
+            frontend/release-recovery/*
+            frontend/android/recovery-build-output.txt
+            frontend/recovery-apk-badging.txt
+            frontend/android/recovery/build/reports/lint-results-debug.html
+          if-no-files-found: error
+          retention-days: 30
