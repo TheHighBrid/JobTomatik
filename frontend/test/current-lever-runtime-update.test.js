@@ -32,9 +32,27 @@ test('runtime update is a two-step fail-safe action', () => {
 test('native bootstrap is only an old-backend compatibility ladder', () => {
   assert.equal(control.includes('const endpointMissing = status === 404 || status === 405'), true)
   assert.equal(control.includes('if (!endpointMissing)'), true)
-  assert.equal(control.includes('if (!nativeBootstrapSafe)'), true)
+  assert.equal(control.includes('if (!nativeBootstrapSafe && !legacyNativeBootstrapSafe)'), true)
+  assert.equal(control.includes('updateRuntimeViaLegacyNativeBootstrap()'), true)
   assert.equal(control.includes('updateRuntimeViaNativeBootstrap()'), true)
+  assert.equal(control.includes("mode: 'legacy-native-bootstrap'"), true)
   assert.equal(control.includes("mode: 'native-bootstrap'"), true)
+})
+
+test('missing runtime-control endpoint stops retrying and unlocks legacy bootstrap safely', () => {
+  assert.equal(control.includes('isMissingRuntimeControlEndpoint(error)'), true)
+  assert.equal(
+    control.includes('!isMissingRuntimeControlEndpoint(error) && failureCount < 2'),
+    true,
+  )
+  assert.equal(control.includes('runtimeEndpointMissing'), true)
+  assert.equal(control.includes('legacyNativeBootstrapSafe'), true)
+  assert.equal(control.includes('workspaceQuery.isSuccess'), true)
+  assert.equal(control.includes('executingSubmissionCount === 0'), true)
+  assert.equal(
+    control.includes('Legacy Android runtime detected.'),
+    true,
+  )
 })
 
 test('native bootstrap safety distinguishes execution from quarantined uncertainty', () => {

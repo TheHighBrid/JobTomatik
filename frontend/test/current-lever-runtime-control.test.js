@@ -40,7 +40,8 @@ test('runtime control never becomes submission approval UI', () => {
 
 test('native restart is treated as reconnecting state, never as automatic replay', () => {
   assert.equal(control.includes('refetchInterval: 2500'), true)
-  assert.equal(control.includes('retry: true'), true)
+  assert.equal(control.includes('failureCount < 2'), true)
+  assert.equal(control.includes('isMissingRuntimeControlEndpoint(error)'), true)
   assert.equal(control.includes('no control request is replayed automatically'), true)
   assert.equal(control.includes('uncertain_no_replay'), true)
   assert.equal(control.includes('The process-bound lease state shown here is authoritative.'), true)

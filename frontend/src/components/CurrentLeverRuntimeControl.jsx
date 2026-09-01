@@ -13,6 +13,7 @@ import {
 import api, { getApiErrorMessage } from '../api/client'
 import {
   nativeRuntimeBootstrapAvailable,
+  updateRuntimeViaLegacyNativeBootstrap,
   updateRuntimeViaNativeBootstrap,
 } from '../native/runtimeBootstrap'
 
@@ -26,6 +27,11 @@ function formatExpiry(epochSeconds) {
   } catch {
     return 'unknown expiry'
   }
+}
+
+function isMissingRuntimeControlEndpoint(error) {
+  const status = error?.response?.status
+  return status === 404 || status === 405
 }
 
 export default function CurrentLeverRuntimeControl() {
@@ -46,7 +52,9 @@ export default function CurrentLeverRuntimeControl() {
     queryKey: ['current-lever-runtime-control'],
     queryFn: () => api.get('/supervised-pilot/current-lever/runtime-control'),
     select: (response) => response.data,
-    retry: true,
+    retry: (failureCount, error) => (
+      !isMissingRuntimeControlEndpoint(error) && failureCount < 2
+    ),
     retryDelay: 1500,
     refetchInterval: 2500,
   })
@@ -99,6 +107,9 @@ export default function CurrentLeverRuntimeControl() {
   const uncertain = transitionState === 'uncertain_no_replay'
   const controllerReady = runtime?.controller_available === true
   const available = runtime?.available === true
+  const runtimeEndpointMissing = (
+    runtimeQuery.isError && isMissingRuntimeControlEndpoint(runtimeQuery.error)
+  )
   const selectedCandidate = readyCandidates.find(
     (candidate) => String(candidate.application_id) === selectedApplicationId,
   )
@@ -108,6 +119,12 @@ export default function CurrentLeverRuntimeControl() {
     && runtimeQuery.isSuccess
     && !leaseActive
     && !transitionPending
+    && executingSubmissionCount === 0
+  )
+  const legacyNativeBootstrapSafe = (
+    nativeRuntimeBootstrapAvailable()
+    && workspaceQuery.isSuccess
+    && runtimeEndpointMissing
     && executingSubmissionCount === 0
   )
 
@@ -159,10 +176,14 @@ export default function CurrentLeverRuntimeControl() {
         if (!endpointMissing) {
           throw error
         }
-        if (!nativeBootstrapSafe) {
+        if (!nativeBootstrapSafe && !legacyNativeBootstrapSafe) {
           throw new Error(
-            'The local backend is older than the in-app updater, but native bootstrap is blocked until runtime state is readable and no Lever submission is executing.',
+            'The local backend is older than the in-app updater, but native bootstrap is blocked until the current workspace is readable and no Lever submission is executing.',
           )
+        }
+        if (legacyNativeBootstrapSafe) {
+          const result = await updateRuntimeViaLegacyNativeBootstrap()
+          return { mode: 'legacy-native-bootstrap', result }
         }
         const result = await updateRuntimeViaNativeBootstrap()
         return { mode: 'native-bootstrap', result }
@@ -171,7 +192,7 @@ export default function CurrentLeverRuntimeControl() {
     onSuccess: async (result) => {
       setConfirmingUpdate(false)
       await refreshControl()
-      if (result?.mode === 'native-bootstrap') {
+      if (result?.mode === 'native-bootstrap' || result?.mode === 'legacy-native-bootstrap') {
         toast.success('Native Android bootstrap completed. JobTomatik is now on the verified in-app update path.')
       } else {
         toast.success('Android runtime update requested. JobTomatik will reconnect automatically after the verified restart.')
@@ -182,7 +203,7 @@ export default function CurrentLeverRuntimeControl() {
     ),
   })
 
-  const updateControlAvailable = available || nativeBootstrapSafe
+  const updateControlAvailable = available || nativeBootstrapSafe || legacyNativeBootstrapSafe
 
   return (
     <section className="card overflow-hidden border border-slate-200">
@@ -220,12 +241,23 @@ export default function CurrentLeverRuntimeControl() {
           </div>
         )}
 
-        {runtimeQuery.isError && (
+        {runtimeQuery.isError && !runtimeEndpointMissing && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             <div className="flex items-start gap-2">
               <RefreshCw className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <div>
                 JobTomatik may be restarting locally. This panel will keep reconnecting; no control request is replayed automatically.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {legacyNativeBootstrapSafe && (
+          <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+            <div className="flex items-start gap-2">
+              <RefreshCw className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div>
+                Legacy Android runtime detected. This backend predates the signed runtime-control endpoint, so the APK can use the fixed native bootstrap after its global durable submission guard confirms that nothing is queued or in progress.
               </div>
             </div>
           </div>
