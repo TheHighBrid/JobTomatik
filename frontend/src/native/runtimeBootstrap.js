@@ -6,7 +6,11 @@ const QUIESCE_STATUS_ATTEMPTS = 15
 const QUIESCE_STATUS_INTERVAL_MS = 1000
 
 export function nativeRuntimeBootstrapAvailable() {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
+  // Plugin availability is the authoritative signal here. The Android WebView can
+  // reconnect across a local static-runtime refresh, while URL/platform heuristics
+  // may briefly look web-like. A normal browser has no registered native plugin, so
+  // this remains false outside the installed APK.
+  return Capacitor.isPluginAvailable('NativeRuntimeBootstrap')
 }
 
 function requireNativeBootstrap() {
