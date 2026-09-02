@@ -50,6 +50,12 @@ def _dry_run_requested(args, kwargs) -> bool:
     return True
 
 
+def _challenge_type(session: Any) -> Optional[str]:
+    """Read the typed handoff discriminator without breaking legacy test doubles."""
+    value = getattr(session, "challenge_type", None)
+    return str(value) if value is not None else None
+
+
 def install_operator_assisted_handoff_integration() -> None:
     """Install an idempotent, context-gated final-submit handoff extension."""
 
@@ -125,7 +131,7 @@ def install_operator_assisted_handoff_integration() -> None:
     _ORIGINAL_CLAIM = handoff_session.claim_handoff_session
 
     def approval_gated_claim(db, session, *, user_id: int, resume_token: str):
-        if session.challenge_type == HandoffChallengeType.final_submit.value:
+        if _challenge_type(session) == HandoffChallengeType.final_submit.value:
             from app.services.operator_assisted_submission import (
                 operator_final_click_authorized,
             )
@@ -157,7 +163,7 @@ def install_operator_assisted_handoff_integration() -> None:
         delta_x: float = 0,
         delta_y: float = 0,
     ):
-        if session.challenge_type != HandoffChallengeType.final_submit.value:
+        if _challenge_type(session) != HandoffChallengeType.final_submit.value:
             if action == "operator_submit":
                 raise browser_handoff.BrowserHandoffError(
                     "Operator-submit is valid only for an approved final-submit handoff."
@@ -261,7 +267,7 @@ def install_operator_assisted_handoff_integration() -> None:
 
     async def final_submit_confirmation_required(session):
         verification = await _ORIGINAL_VERIFY_COMPLETION(session)
-        if session.challenge_type != HandoffChallengeType.final_submit.value:
+        if _challenge_type(session) != HandoffChallengeType.final_submit.value:
             return verification
 
         metadata = dict(session.handoff_metadata or {})
