@@ -60,12 +60,18 @@ cd ~/JobTomatik/backend
 ./.venv/bin/python scripts/install_android_static_frontend_artifact.py \
   --revision "$CANDIDATE_SHA"
 
+JOBTOMATIK_RUNTIME_REVISION="$CANDIDATE_SHA" \
+JOBTOMATIK_EXPECTED_REVISION="$CANDIDATE_SHA" \
+  bash scripts/sanitize_android_runtime_pid_files.sh
+
 JOBTOMATIK_EXPECTED_REVISION="$CANDIDATE_SHA" \
   bash scripts/manage_android_stack.sh start
 
 JOBTOMATIK_EXPECTED_REVISION="$CANDIDATE_SHA" \
   bash scripts/manage_android_stack.sh status
 ```
+
+The PID sanitizer is mandatory before the direct managed-stack start. Android/Linux can recycle numeric PIDs after an earlier JobTomatik process exits. The sanitizer validates each live persisted PID against the expected JobTomatik process identity and removes a stale PID file without signalling the unrelated live process. Do not bypass this step when using `manage_android_stack.sh` directly.
 
 The frontend installer must print `ANDROID_STATIC_FRONTEND_ARTIFACT_READY` with the exact candidate SHA. If the exact artifact has not yet been published, wait for the matching artifact workflow rather than substituting a locally built or stale frontend.
 
@@ -111,5 +117,6 @@ At this point, proceed only to a no-submit material and fresh-preflight workflow
 - `docs/ANDROID_SHADOW_RUNTIME_READINESS.md`
 - `docs/roadmaps/2026-08-10-android-arm64-efficient-execution-plan.md`
 - `backend/scripts/manage_android_stack.sh`
+- `backend/scripts/sanitize_android_runtime_pid_files.sh`
 - `backend/scripts/android_runtime_acceptance_base.py`
 - `backend/scripts/install_android_static_frontend_artifact.py`
