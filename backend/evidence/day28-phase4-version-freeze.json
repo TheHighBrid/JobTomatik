@@ -1,19 +1,7 @@
 {
   "schema_version": "1.1",
   "phase": "day28_phase4_gate",
-  "freeze_source_commit": "0e11c23045827f5fb7b0fd031bd0f03ac35c4399",
-  "fixture_digest_migration": {
-    "migration": "day39_cross_phase_contract_regate_v1",
-    "reason": "The original Day 28 fixture digest combined adapter-specific regressions with global autonomy-contract tests. Day 39 correctly evolved the global contract from autonomy_release_v1 to autonomy_release_v2 without changing adapter implementations or adapter-specific regressions. The retained Day 28 hashes are preserved below and were independently revalidated against the original freeze commit before accepting the new combined hashes.",
-    "validated_current_commit": "f8c1bc93625db07c73a2321741d3b7bbd1d490b3",
-    "diagnostic_workflow_run_id": 33076673763,
-    "diagnostic_artifact_sha256": "5ee37d57b8e36fc6e4df74d7673b3d984b06608fa439b18a85b298adc929d1c6",
-    "legacy_day28_hashes_match_original_freeze_commit": true,
-    "adapter_scoped_regressions_unchanged_since_day28": true,
-    "adapter_source_changes_observed": false,
-    "adapter_maturity_changes_authorized": false,
-    "real_submission_enablement_changed": false
-  },
+  "freeze_source_commit": "4f774e7a1e159f8b2c033c23cad391e14a498dfd",
   "candidate": {
     "adapter": "lever",
     "selection_scope": "unattended_pilot_preparation_only",
@@ -49,10 +37,8 @@
       "maturity": "dry_run",
       "version": "1.1.0",
       "digests": {
-        "adapter_source_sha256": "217538f34398d3b8799bfb6bcb743cf02bb623964eb7f066ce8e0dfd01dc803e",
-        "fixture_regression_sha256": "a53548fdc01970d2baa35c1d42dc58f8a82f53b154aab577ad1ad100618f9d37",
-        "legacy_day28_fixture_regression_sha256": "f60bbbdcd8df3ec2e053525db30502ab13f24c30b900767958013ebacb1cd872",
-        "adapter_scoped_fixture_regression_sha256": "f4ab1096a53fcc110307194f4fc75aa0c32c43bf9ad54efef81030d1ecdcca3c",
+        "adapter_source_sha256": "c6355f06e9b00e5911d7f34d8eca84aeb2e50bc7a869fc430931e0e1b6651e9d",
+        "fixture_regression_sha256": "10f9a22e3fb21fa6ff8777c543e6db0a2f70f101b8db163ccc83a3c903bc5a7c",
         "retained_evidence_sha256": "1ffe75765fdb5c98c086e9b8e373acecaf7a1ed088a9ee276b353723a17012a3",
         "manifest_live_evidence_sha256": "e4e5ba427d4477621fa976c3b65b8d0c33c90f0d52bf6a04100dd7548e43ba31"
       }

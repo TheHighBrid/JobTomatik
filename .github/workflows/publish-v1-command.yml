@@ -141,8 +141,8 @@ jobs:
           git fetch origin main --no-tags
           test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
 
-      - name: Download exact prepublication candidate
-        uses: actions/download-artifact@v8
+      - name: Set up Java
+        uses: actions/setup-java@v6.0.0
         with:
           name: JobTomatik-v2.00-candidate-${{ needs.authorize-exact-release.outputs.source_commit }}
           path: candidate

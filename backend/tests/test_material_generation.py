@@ -1,8 +1,17 @@
+from types import SimpleNamespace
+
 from app.models.application import Application, ApplicationAutomationState, ApplicationStatus
 from app.models.job import Job, JobSource, JobStatus
 from app.models.material import ApplicationMaterial, ApplicationMaterialEvidence
 from app.models.user import User
-from app.services.material_generation import generate_application_material
+from app.services.material_generation import (
+    _clean_material_statement,
+    _cover_letter_content,
+    _resume_summary_content,
+    _usable_narrative_unit,
+    generate_application_material,
+    validate_claims,
+)
 
 
 def _user(db_session):
@@ -62,6 +71,43 @@ def _complete_profile(user: User):
         "skills": ["AML", "Fraud Investigation", "Case Documentation"],
         "preferred_locations": ["Ottawa"],
     }
+
+
+def _unit(
+    statement: str,
+    unit_id: int = 1,
+    *,
+    kind: str = "employment",
+    organization: str | None = None,
+    role: str | None = None,
+    confidence: float = 0.85,
+):
+    return SimpleNamespace(
+        id=unit_id,
+        kind=kind,
+        label="Resume evidence",
+        statement=statement,
+        organization=organization,
+        role=role,
+        source_hash=f"hash-{unit_id}",
+        verification_status="source_backed",
+        confidence=confidence,
+    )
+
+
+def _narrative_unit(statement: str, unit_id: int = 1):
+    return _unit(statement, unit_id)
+
+
+def _simple_job():
+    return SimpleNamespace(
+        title="Technical Support Specialist",
+        company="Example Co",
+        location="Ottawa, ON",
+        description="Investigate fraud issues, troubleshoot systems, and document cases.",
+        requirements="Fraud investigation, troubleshooting, and case documentation.",
+        skills=["Fraud Investigation", "Troubleshooting"],
+    )
 
 
 def test_verified_cover_letter_maps_every_applicant_claim_to_evidence(auth_client, db_session):
@@ -168,3 +214,185 @@ def test_material_api_generates_cover_letter_and_resume_summary(auth_client, db_
     assert len(materials) == 2
     assert all(item["evidence_links"] for item in materials)
     assert all(item["claims"] for item in materials)
+
+
+def test_real_pdf_fragments_are_not_usable_narrative_evidence():
+    fragments = [
+        "\uf0b7 Resolved client issues using authentication procedures, analytical troubleshooting, clear bilingual communication, and strong",
+        "\uf0b7 Review account situations, document client interactions in internal systems, and maintain accurate notes for auditability,",
+        "\uf0b7 Verified client information, assessed risk indicators, and resolved fraud/security issues at first point of contact when",
+    ]
+
+    assert all(
+        _usable_narrative_unit(_narrative_unit(statement)) is False
+        for statement in fragments
+    )
+
+
+def test_complete_pdf_bullet_is_cleaned_without_discarding_its_evidence():
+    statement = (
+        "\uf0b7 Investigated API and web issues, documented escalations, "
+        "and supported customers."
+    )
+    unit = _narrative_unit(statement)
+
+    assert _usable_narrative_unit(unit) is True
+    assert _clean_material_statement(statement) == (
+        "Investigated API and web issues, documented escalations, and supported customers."
+    )
+
+
+def test_validator_blocks_pre_fix_material_with_pdf_glyph_and_fragment():
+    unit = _narrative_unit(
+        "\uf0b7 Resolved client issues using authentication procedures, analytical troubleshooting, clear bilingual communication, and strong"
+    )
+    claim = {
+        "text": (
+            "My employment record includes: \uf0b7 Resolved client issues using "
+            "authentication procedures, analytical troubleshooting, clear bilingual "
+            "communication, and strong."
+        ),
+        "category": "employment",
+        "applicant_fact": True,
+        "evidence_unit_ids": [unit.id],
+        "evidence_hashes": [unit.source_hash],
+    }
+
+    errors = validate_claims([claim], [unit])
+
+    assert any("unsafe PDF bullet glyph" in error for error in errors)
+    assert any("likely incomplete" in error for error in errors)
+
+
+def test_complete_short_narrative_evidence_is_preserved():
+    for statement in ("Won MVP award.", "Built JobTomatik.", "Controls remain strong."):
+        assert _usable_narrative_unit(_narrative_unit(statement)) is True
+
+
+def test_cleaner_preserves_signed_metrics_and_nix_terms():
+    assert _clean_material_statement("-10% error rate") == "-10% error rate"
+    assert _clean_material_statement("*nix administration") == "*nix administration"
+    assert _clean_material_statement("- Reduced error rate") == "Reduced error rate"
+
+
+def test_cover_letter_only_claims_structured_roles_that_are_rendered():
+    units = [
+        _unit("First complete role record.", 1, organization="Bank A", role="Analyst A"),
+        _unit("Second complete role record.", 2, organization="Bank B", role="Analyst B"),
+        _unit("Third complete role record.", 3, organization="Bank C", role="Analyst C"),
+    ]
+
+    content, claims, _ = _cover_letter_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        units,
+    )
+
+    employment_claims = [claim for claim in claims if claim["category"] == "employment"]
+    assert [claim["evidence_unit_ids"] for claim in employment_claims] == [[1], [2]]
+    assert "Analyst A" in content
+    assert "Analyst B" in content
+    assert "Analyst C" not in content
+    assert all(3 not in claim["evidence_unit_ids"] for claim in claims)
+
+
+def test_employment_alignment_is_applicant_fact_and_only_uses_supporting_units():
+    relevant = _unit("Investigated fraud alerts and documented cases.", 1, confidence=0.5)
+    unrelated = _unit("Supported retail customers with account questions.", 2)
+
+    _, claims, _ = _cover_letter_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [relevant, unrelated],
+    )
+
+    alignment_claims = [claim for claim in claims if claim["category"] == "job_alignment"]
+    assert alignment_claims
+    assert all(claim["applicant_fact"] is True for claim in alignment_claims)
+    assert any(claim["evidence_unit_ids"] == [1] for claim in alignment_claims)
+    assert all(2 not in claim["evidence_unit_ids"] for claim in alignment_claims)
+
+
+def test_resume_summary_attaches_employment_only_when_rendered_alignment_uses_it():
+    role = _unit("Credit Officer", 1, kind="role")
+    relevant = _unit("Investigated fraud alerts and documented cases.", 2)
+    unrelated = _unit("Supported retail customers with account questions.", 3)
+
+    _, claims, _ = _resume_summary_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [role, relevant, unrelated],
+    )
+
+    summary_claim = next(claim for claim in claims if claim["category"] == "career_summary")
+    assert 1 in summary_claim["evidence_unit_ids"]
+    assert 2 in summary_claim["evidence_unit_ids"]
+    assert 3 not in summary_claim["evidence_unit_ids"]
+
+
+def test_dangling_skill_fragment_is_filtered_and_stale_skill_claim_is_blocked():
+    skill = _unit("Risk management, data analysis, and", 1, kind="skill")
+
+    assert _usable_narrative_unit(skill) is False
+    content, _, _ = _resume_summary_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [skill],
+    )
+    assert "Risk management" not in content
+
+    stale_claim = {
+        "text": "Risk management, data analysis, and.",
+        "category": "skill",
+        "applicant_fact": True,
+        "evidence_unit_ids": [skill.id],
+        "evidence_hashes": [skill.source_hash],
+    }
+    errors = validate_claims([stale_claim], [skill])
+    assert any("likely incomplete" in error for error in errors)
+
+
+def test_stale_v1_dangling_fragment_with_terminal_period_is_blocked():
+    unit = _unit("Resolved cases and", 1)
+    claim = {
+        "text": "My employment record includes: Resolved cases and.",
+        "category": "employment",
+        "applicant_fact": True,
+        "evidence_unit_ids": [unit.id],
+        "evidence_hashes": [unit.source_hash],
+    }
+
+    errors = validate_claims([claim], [unit])
+
+    assert any("likely incomplete" in error for error in errors)
+
+
+def test_stale_combined_claim_validates_every_delimited_item_and_evidence_unit():
+    broken = _unit("Risk management, data analysis, and", 1, kind="skill")
+    clean = _unit("Python", 2, kind="skill")
+    claim = {
+        "text": "Risk management, data analysis, and; Python.",
+        "category": "skill",
+        "applicant_fact": True,
+        "evidence_unit_ids": [broken.id, clean.id],
+        "evidence_hashes": [broken.source_hash, clean.source_hash],
+    }
+
+    errors = validate_claims([claim], [broken, clean])
+
+    assert any("item 0" in error and "likely incomplete" in error for error in errors)
+    assert any("evidence unit 1" in error and "likely incomplete" in error for error in errors)
+
+
+def test_clean_combined_claim_does_not_gain_fragment_warnings():
+    first = _unit("Risk Management", 1, kind="skill")
+    second = _unit("Python", 2, kind="skill")
+    claim = {
+        "text": "Risk Management; Python.",
+        "category": "skill",
+        "applicant_fact": True,
+        "evidence_unit_ids": [first.id, second.id],
+        "evidence_hashes": [first.source_hash, second.source_hash],
+    }
+
+    assert validate_claims([claim], [first, second]) == []

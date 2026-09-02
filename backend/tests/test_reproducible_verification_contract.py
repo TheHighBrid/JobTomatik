@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -36,6 +37,10 @@ def _run_npm_audit_validator(tmp_path: Path, payload: dict) -> subprocess.Comple
         capture_output=True,
         text=True,
     )
+
+
+def test_verification_script_is_executable() -> None:
+    assert os.access(VERIFY_SCRIPT, os.X_OK)
 
 
 def test_verification_script_is_valid_bash() -> None:

@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - "backend/app/services/autonomous_material_verification.py"
+      - "backend/app/services/evidence_ledger.py"
       - "backend/app/services/material_generation.py"
       - "backend/app/services/material_task_integration.py"
       - "backend/app/services/answer_policy.py"
       - "backend/scripts/build_day31_material_verification_gate.py"
       - "backend/tests/test_day31_autonomous_material_verification.py"
       - "backend/tests/test_material_generation.py"
+      - "backend/tests/test_material_generation_review_followups.py"
       - "backend/tests/test_material_task_integration.py"
       - "backend/tests/test_answer_policy_readiness.py"
       - ".github/workflows/day31-material-verification-gate.yml"
@@ -63,6 +65,7 @@ jobs:
           pytest -q --tb=short -ra \
             tests/test_day31_autonomous_material_verification.py \
             tests/test_material_generation.py \
+            tests/test_material_generation_review_followups.py \
             tests/test_material_task_integration.py \
             tests/test_answer_policy_readiness.py \
             tests/test_answer_policies.py \

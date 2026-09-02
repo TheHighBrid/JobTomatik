@@ -1,3 +1,5 @@
+import os
+import sys
 from functools import lru_cache
 from typing import List, Literal
 
@@ -12,6 +14,23 @@ PLACEHOLDER_SECRET_MARKERS = (
     "supersecretkey",
     "development-secret",
 )
+SUPERVISED_SUBMISSION_SERVICE_MODULE = "app.services.supervised_submission"
+
+
+def _supervised_submission_service_on_stack() -> bool:
+    """Return true only while the exact supervised submission service is executing."""
+
+    try:
+        frame = sys._getframe(2)
+    except (AttributeError, ValueError):
+        return False
+    for _ in range(20):
+        if frame is None:
+            break
+        if str(frame.f_globals.get("__name__") or "") == SUPERVISED_SUBMISSION_SERVICE_MODULE:
+            return True
+        frame = frame.f_back
+    return False
 
 
 class Settings(BaseSettings):
@@ -104,6 +123,75 @@ class Settings(BaseSettings):
     lever_pilot_readiness_markdown_path: str = "evidence/lever-pilot-readiness.md"
     lever_phase_b_launch_path: str = "evidence/lever-phase-b-launch.json"
 
+    def __getattribute__(self, name: str):
+        """Dynamically satisfy temporary Lever gates only at supervised boundaries.
+
+        Android-managed runtime never trusts a persisted Lever pilot as live-submit
+        authority. Historical ``ALLOW_REAL_APPLICATION_SUBMIT=true`` plus
+        ``LEVER_SUPERVISED_PILOT_ENABLED=true`` therefore cannot silently reopen the
+        Lever window after reboot, update, or ordinary restart. Lever may become live
+        only through the process-bound lease inside the exact supervised API/worker
+        scopes below.
+
+        The documented Greenhouse supervised pilot remains configuration-driven: an
+        Android Greenhouse-only window may still use its explicit global + platform
+        gates. If both ATS pilot flags are configured, the global gate fails closed.
+        Non-Android runtimes preserve their existing explicit configuration behavior.
+        """
+
+        value = super().__getattribute__(name)
+        if name not in {"allow_real_application_submit", "lever_supervised_pilot_enabled"}:
+            return value
+
+        runtime_mode = str(os.environ.get("JOBTOMATIK_RUNTIME_MODE") or "")
+        runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
+
+        if runtime_mode != "android_managed":
+            return value
+
+        configured_greenhouse = bool(
+            super().__getattribute__("greenhouse_supervised_pilot_enabled")
+        )
+        configured_lever = bool(
+            super().__getattribute__("lever_supervised_pilot_enabled")
+        )
+
+        if (
+            name == "allow_real_application_submit"
+            and configured_greenhouse
+            and not configured_lever
+        ):
+            return value
+
+        # A persisted Lever configuration is never direct authority on Android.
+        # Start fail-safe false and project true only through the live lease below.
+        value = False
+        try:
+            from app.services.supervised_runtime_mode import (
+                lever_supervised_runtime_lease_active,
+            )
+
+            if runtime_role == "api":
+                if (
+                    _supervised_submission_service_on_stack()
+                    and lever_supervised_runtime_lease_active(required_role="api")
+                ):
+                    return True
+                return value
+
+            if runtime_role == "worker":
+                from app.services.supervised_runtime import current_supervised_target
+
+                target = dict(current_supervised_target() or {})
+                if (
+                    str(target.get("platform") or "").strip().lower() == "lever"
+                    and lever_supervised_runtime_lease_active(required_role="worker")
+                ):
+                    return True
+        except Exception:
+            return value
+        return value
+
     @property
     def cors_origin_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
@@ -132,6 +220,10 @@ class Settings(BaseSettings):
                 "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
             )
 
+        # The ephemeral supervised Lever lease never mutates Settings. Persistent
+        # consequential switches therefore remain fail-safe OFF across API/worker/Beat
+        # startup and ordinary restarts. Runtime authorization is revalidated at the
+        # supervised API/worker/browser boundaries instead of being cached here.
         sensitive_runtime = any(
             (
                 self.is_production,
