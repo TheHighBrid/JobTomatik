@@ -103,6 +103,7 @@ def install_operator_assisted_handoff_integration() -> None:
                     "submit_clicked": False,
                     "operator_final_click_required": True,
                     "automated_submission_authorized": False,
+                    "queue_submission_authorized": False,
                     "target_identity_hash": target.get("identity_hash"),
                 },
             })
@@ -113,6 +114,8 @@ def install_operator_assisted_handoff_integration() -> None:
                 "fields_filled": int(flow.fields_filled or 0),
                 "submit_clicked": False,
                 "operator_final_click_required": True,
+                "automated_submission_authorized": False,
+                "queue_submission_authorized": False,
             })
         return flow
 
@@ -122,9 +125,30 @@ def install_operator_assisted_handoff_integration() -> None:
 
     async def operator_target_aware_fill(*args, **kwargs):
         target = current_operator_prepare_target()
-        if target and _dry_run_requested(args, kwargs) and "supervised_target" not in kwargs:
+        dry_run = _dry_run_requested(args, kwargs)
+        if target and dry_run and "supervised_target" not in kwargs:
             kwargs["supervised_target"] = dict(target)
-        return await _ORIGINAL_FILL(*args, **kwargs)
+        result = await _ORIGINAL_FILL(*args, **kwargs)
+        if not target or not dry_run or not isinstance(result, dict):
+            return result
+
+        final_boundary = any(
+            str(item.get("reason_code") or "") == final_reason
+            for item in result.get("review_items") or []
+        )
+        snapshot = dict(result.get("handoff_snapshot") or {})
+        if final_boundary and snapshot:
+            snapshot_metadata = dict(snapshot.get("metadata") or {})
+            snapshot_metadata.update({
+                "operator_assisted_final_submit": True,
+                "operator_final_click_required": True,
+                "automated_submission_authorized": False,
+                "queue_submission_authorized": False,
+                "operator_target_identity_hash": target.get("identity_hash"),
+            })
+            snapshot["metadata"] = snapshot_metadata
+            result["handoff_snapshot"] = snapshot
+        return result
 
     application_tasks.fill_and_submit_application = operator_target_aware_fill
 
