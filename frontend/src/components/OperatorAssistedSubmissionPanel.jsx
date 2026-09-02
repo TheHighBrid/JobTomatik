@@ -179,9 +179,19 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
   const confirmationMatches = confirmation === expectedConfirmation
   const preparing = prepareMutation.isPending || Boolean(prepareTaskId)
   const boundaryReady = Boolean(preflight.operator_final_submit_boundary && preflight.operator_handoff_public_id)
-  const canPrepare = Boolean(preflight.ready && !boundaryReady && !preparing)
+  const executionAuthorityOff = (
+    preflight.automated_submission_authorized === false
+    && preflight.queue_submission_authorized === false
+  )
+  const canPrepare = Boolean(
+    preflight.ready
+    && executionAuthorityOff
+    && !boundaryReady
+    && !preparing
+  )
   const canApprove = Boolean(
     preflight.ready
+    && executionAuthorityOff
     && boundaryReady
     && !finalClickUnlocked
     && confirmationMatches
@@ -214,20 +224,36 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
       </div>
 
       <div className="space-y-4 p-5">
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-5">
           {[
-            ['Global live submit', preflight.global_live_submit_enabled],
-            ['Lever automated pilot', preflight.platform_pilot_enabled],
-            ['Autopilot', preflight.autopilot_enabled],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
-                <LockKeyhole className="h-3.5 w-3.5" /> {value ? 'Unexpectedly ON' : 'OFF'}
+            ['Global live submit', preflight.global_live_submit_enabled === false],
+            ['Lever automated pilot', preflight.platform_pilot_enabled === false],
+            ['Autopilot', preflight.autopilot_enabled === false],
+            ['Automated submit authority', preflight.automated_submission_authorized === false],
+            ['Queue submit authority', preflight.queue_submission_authorized === false],
+          ].map(([label, safelyOff]) => (
+            <div key={label} className={`rounded-xl border p-3 ${
+              safelyOff
+                ? 'border-emerald-100 bg-emerald-50'
+                : 'border-red-200 bg-red-50'
+            }`}>
+              <div className={`flex items-center gap-1.5 text-xs font-semibold ${
+                safelyOff ? 'text-emerald-900' : 'text-red-900'
+              }`}>
+                <LockKeyhole className="h-3.5 w-3.5" /> {safelyOff ? 'OFF' : 'BLOCKED'}
               </div>
-              <div className="mt-1 text-[11px] text-emerald-700">{label}</div>
+              <div className={`mt-1 text-[11px] ${
+                safelyOff ? 'text-emerald-700' : 'text-red-700'
+              }`}>{label}</div>
             </div>
           ))}
         </div>
+
+        {!executionAuthorityOff && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+            Operator-assisted actions are disabled because the backend did not explicitly prove automated submission and queue authority are both OFF.
+          </div>
+        )}
 
         {!preflight.ready && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
