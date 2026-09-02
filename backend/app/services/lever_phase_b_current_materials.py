@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import html
 import re
-from datetime import datetime
 from typing import Any, Dict, Mapping, Optional
 from urllib.parse import urlparse
 
