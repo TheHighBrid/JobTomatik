@@ -67,7 +67,7 @@ jobs:
           bash -n backend/scripts/jobtomatik_termux_wrapper.sh
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
