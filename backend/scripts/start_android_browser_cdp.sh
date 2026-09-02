@@ -3,7 +3,9 @@ set -euo pipefail
 
 PROFILE_DIR="${JOBTOMATIK_ANDROID_BROWSER_PROFILE:-$HOME/.jobtomatik-chromium}"
 CDP_PORT="${JOBTOMATIK_ANDROID_BROWSER_PORT:-9222}"
-DISPLAY_VALUE="${DISPLAY:-:0}"
+CALLER_DISPLAY="${DISPLAY:-}"
+DISPLAY_VALUE=""
+DISPLAY_SOURCE=""
 BROWSER_BIN="${JOBTOMATIK_ANDROID_BROWSER_BIN:-$(command -v chromium-browser || true)}"
 RUNTIME_DIR="${JOBTOMATIK_ANDROID_RUNTIME_DIR:-$HOME/.jobtomatik-runtime}"
 SUPERVISOR_PID_FILE="$RUNTIME_DIR/chromium-supervisor.pid"
@@ -42,13 +44,135 @@ esac
 START_URL="${1:-$DEFAULT_URL}"
 
 mkdir -p "$PROFILE_DIR" "$RUNTIME_DIR"
-export DISPLAY="$DISPLAY_VALUE"
 
 if [[ -z "$BROWSER_BIN" ]]; then
   echo "chromium-browser was not found in native Termux." >&2
   echo "Install it with: pkg install x11-repo chromium" >&2
   exit 1
 fi
+
+x11_socket_dirs() {
+  local emitted="|"
+  local candidate
+  for candidate in \
+    "${TMPDIR:-}/.X11-unix" \
+    "${PREFIX:-/data/data/com.termux/files/usr}/tmp/.X11-unix" \
+    "/tmp/.X11-unix"; do
+    [[ "$candidate" != "/.X11-unix" ]] || continue
+    if [[ "$emitted" != *"|$candidate|"* ]]; then
+      printf '%s\n' "$candidate"
+      emitted+="$candidate|"
+    fi
+  done
+}
+
+display_number() {
+  local candidate="${1:-}"
+  candidate="${candidate#:}"
+  candidate="${candidate%%.*}"
+  [[ "$candidate" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+display_has_socket() {
+  local number
+  number="$(display_number "${1:-}")" || return 1
+  local directory
+  while IFS= read -r directory; do
+    [[ -n "$directory" ]] || continue
+    if [[ -e "$directory/X$number" ]]; then
+      return 0
+    fi
+  done < <(x11_socket_dirs)
+  return 1
+}
+
+process_display_value() {
+  local env_file="$1"
+  [[ -r "$env_file" ]] || return 1
+  tr '\0' '\n' < "$env_file" 2>/dev/null | sed -n 's/^DISPLAY=//p' | head -n 1
+}
+
+resolve_display() {
+  local candidate=""
+  local fallback_process_display=""
+  local env_file
+  local directory
+  local socket
+  local number
+
+  if [[ -n "${JOBTOMATIK_ANDROID_DISPLAY:-}" ]]; then
+    candidate="$JOBTOMATIK_ANDROID_DISPLAY"
+    if display_number "$candidate" >/dev/null; then
+      DISPLAY_VALUE="$candidate"
+      DISPLAY_SOURCE="explicit"
+      return 0
+    fi
+  fi
+
+  if [[ -n "$CALLER_DISPLAY" ]] && display_number "$CALLER_DISPLAY" >/dev/null; then
+    DISPLAY_VALUE="$CALLER_DISPLAY"
+    DISPLAY_SOURCE="caller"
+    return 0
+  fi
+
+  # Termux RUN_COMMAND executes in a clean background service context and normally
+  # does not inherit DISPLAY from the foreground XFCE/Termux:X11 session. Read the
+  # environment of same-UID processes and prefer only candidates backed by a live
+  # X11 socket. This avoids assuming :0 when the active Termux:X11 server is :1, :2,
+  # or another local display.
+  for env_file in /proc/[0-9]*/environ; do
+    [[ -r "$env_file" ]] || continue
+    candidate="$(process_display_value "$env_file" || true)"
+    [[ -n "$candidate" ]] || continue
+    if ! display_number "$candidate" >/dev/null; then
+      continue
+    fi
+    if display_has_socket "$candidate"; then
+      DISPLAY_VALUE="$candidate"
+      DISPLAY_SOURCE="process-env"
+      return 0
+    fi
+    if [[ -z "$fallback_process_display" ]]; then
+      fallback_process_display="$candidate"
+    fi
+  done
+
+  # If no readable foreground process exposes DISPLAY, derive it directly from the
+  # active local X11 socket. Termux:X11 publishes X<N> under the Termux tmp tree.
+  while IFS= read -r directory; do
+    [[ -d "$directory" ]] || continue
+    for socket in "$directory"/X[0-9]*; do
+      [[ -e "$socket" ]] || continue
+      number="${socket##*/X}"
+      [[ "$number" =~ ^[0-9]+$ ]] || continue
+      DISPLAY_VALUE=":$number"
+      DISPLAY_SOURCE="x11-socket"
+      return 0
+    done
+  done < <(x11_socket_dirs)
+
+  # Some Android/Termux:X11 combinations expose the display to child processes while
+  # using an abstract socket that is not visible as a normal filesystem entry. Keep a
+  # readable process DISPLAY as a final bounded fallback rather than inventing :0.
+  if [[ -n "$fallback_process_display" ]]; then
+    DISPLAY_VALUE="$fallback_process_display"
+    DISPLAY_SOURCE="process-env-fallback"
+    return 0
+  fi
+
+  return 1
+}
+
+ensure_display() {
+  if ! resolve_display; then
+    echo "ANDROID_BROWSER_DISPLAY_UNAVAILABLE" >&2
+    echo "No active local Termux/X11 DISPLAY could be discovered for Chromium." >&2
+    return 1
+  fi
+  export DISPLAY="$DISPLAY_VALUE"
+  echo "ANDROID_BROWSER_DISPLAY_RESOLVED source=$DISPLAY_SOURCE display=$DISPLAY_VALUE"
+}
 
 cdp_url() {
   printf 'http://127.0.0.1:%s/json/version' "$CDP_PORT"
@@ -71,6 +195,7 @@ rotate_log() {
 }
 
 browser_command() {
+  ensure_display
   exec "$BROWSER_BIN" \
     --no-sandbox \
     --disable-dev-shm-usage \

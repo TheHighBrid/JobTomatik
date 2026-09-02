@@ -80,7 +80,7 @@ jobs:
             tests/test_post_application_hardening.py
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
