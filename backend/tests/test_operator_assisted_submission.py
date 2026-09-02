@@ -153,26 +153,27 @@ def _approval_payload(handoff_public_id: str):
     }
 
 
-def _authorize_and_claim(auth_client, app_id: int, handoff_public_id: str):
-    bootstrapped = auth_client.post(f"/api/handoffs/{handoff_public_id}/bootstrap")
-    assert bootstrapped.status_code == 200
-    resume_token = bootstrapped.json()["resume_token"]
-
+def _create_and_authorize(auth_client, app_id: int, handoff_public_id: str) -> str:
     created = auth_client.post(
         f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals",
         json=_approval_payload(handoff_public_id),
     )
     assert created.status_code == 201
     reference = created.json()["reference"]
-
     authorized = auth_client.post(
         f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals/{reference}/authorize-final-click"
     )
     assert authorized.status_code == 200
+    return reference
 
+
+def _authorize_and_claim(auth_client, app_id: int, handoff_public_id: str):
+    reference = _create_and_authorize(auth_client, app_id, handoff_public_id)
+    bootstrapped = auth_client.post(f"/api/handoffs/{handoff_public_id}/bootstrap")
+    assert bootstrapped.status_code == 200
     claimed = auth_client.post(
         f"/api/handoffs/{handoff_public_id}/claim",
-        json={"resume_token": resume_token},
+        json={"resume_token": bootstrapped.json()["resume_token"]},
     )
     assert claimed.status_code == 200
     return reference, claimed.json()["lease_token"]
@@ -244,7 +245,7 @@ def test_prepare_endpoint_queues_only_dedicated_fill_and_retain_task(
     assert calls == [{"args": [app_id], "queue": "applications"}]
 
 
-def test_final_boundary_is_allowed_but_cannot_be_claimed_before_exact_approval(
+def test_final_boundary_is_allowed_but_token_is_not_disclosed_before_exact_approval(
     auth_client,
     tmp_path,
     monkeypatch,
@@ -267,15 +268,25 @@ def test_final_boundary_is_allowed_but_cannot_be_claimed_before_exact_approval(
     assert "application_not_ready_to_apply" not in data["blockers"]
     assert "unresolved_manual_reviews" not in data["blockers"]
 
+    blocked_bootstrap = auth_client.post(f"/api/handoffs/{handoff_public_id}/bootstrap")
+    assert blocked_bootstrap.status_code == 409
+    assert "approval is required" in blocked_bootstrap.json()["detail"].lower()
+
+    db = TestingSessionLocal()
+    handoff = db.query(ManualHandoffSession).filter(
+        ManualHandoffSession.public_id == handoff_public_id
+    ).one()
+    assert handoff.resume_token_disclosed_at is None
+    db.close()
+
+    _create_and_authorize(auth_client, app_id, handoff_public_id)
     bootstrapped = auth_client.post(f"/api/handoffs/{handoff_public_id}/bootstrap")
     assert bootstrapped.status_code == 200
-    resume_token = bootstrapped.json()["resume_token"]
-    blocked_claim = auth_client.post(
+    claimed = auth_client.post(
         f"/api/handoffs/{handoff_public_id}/claim",
-        json={"resume_token": resume_token},
+        json={"resume_token": bootstrapped.json()["resume_token"]},
     )
-    assert blocked_claim.status_code == 409
-    assert "Exact operator final-click approval is required" in blocked_claim.json()["detail"]
+    assert claimed.status_code == 200
 
 
 def test_exact_operator_authorization_unlocks_handoff_without_submission_attempt(
@@ -287,9 +298,6 @@ def test_exact_operator_authorization_unlocks_handoff_without_submission_attempt
     _mock_metadata(monkeypatch)
     _keep_automation_off(monkeypatch)
     handoff_public_id = _create_final_submit_boundary(app_id)
-
-    bootstrapped = auth_client.post(f"/api/handoffs/{handoff_public_id}/bootstrap")
-    resume_token = bootstrapped.json()["resume_token"]
 
     created = auth_client.post(
         f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals",
@@ -316,9 +324,11 @@ def test_exact_operator_authorization_unlocks_handoff_without_submission_attempt
     assert data["queue_created"] is False
     assert data["automated_submission_authorized"] is False
 
+    bootstrapped = auth_client.post(f"/api/handoffs/{handoff_public_id}/bootstrap")
+    assert bootstrapped.status_code == 200
     claim = auth_client.post(
         f"/api/handoffs/{handoff_public_id}/claim",
-        json={"resume_token": resume_token},
+        json={"resume_token": bootstrapped.json()["resume_token"]},
     )
     assert claim.status_code == 200
     assert claim.json()["session"]["challenge_type"] == HandoffChallengeType.final_submit.value
