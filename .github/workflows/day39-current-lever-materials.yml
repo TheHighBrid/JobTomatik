@@ -94,7 +94,7 @@ jobs:
             tests/test_supervised_lever_pilot_ui_control.py
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
