@@ -23,6 +23,21 @@ class OperatorAssistedApprovalCreate(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=2000)
 
 
+class OperatorAssistedFinalSubmitRequest(BaseModel):
+    lease_token: str = Field(min_length=24, max_length=512)
+
+
+class OperatorAssistedFinalSubmitOut(BaseModel):
+    application_id: int
+    handoff_public_id: str
+    approval_reference: str
+    action: str = "operator_submit"
+    current_url: str
+    submission_confirmed: bool = False
+    final_action_started: bool = True
+    automatic_retry_allowed: bool = False
+
+
 class OperatorAssistedPreflightOut(BaseModel):
     ready: bool
     blockers: List[str] = Field(default_factory=list)
