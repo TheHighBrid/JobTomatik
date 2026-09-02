@@ -58,7 +58,13 @@ def claim_operator_final_action(
     *,
     user_id: int,
 ) -> SubmissionApproval:
-    """Persist a no-retry checkpoint before touching the employer Submit control."""
+    """Persist the once-only no-retry claim before any external final action.
+
+    The live pre-submit URL and fingerprint are intentionally *not* copied from the
+    persisted handoff here. Those fields can be stale. The browser boundary records a
+    fresh live snapshot in a separate durable transaction after reconnecting and before
+    the employer Submit control can be touched.
+    """
 
     if session.application_id != application.id or session.user_id != user_id:
         raise OperatorAssistedSubmissionError("Retained final-submit handoff ownership mismatch")
@@ -84,23 +90,23 @@ def claim_operator_final_action(
         )
 
     now = _now()
-    pre_submit_url = str(session.current_url or "")
-    pre_submit_fingerprint = str(session.current_fingerprint or "")
     approval.approval_metadata = {
         **metadata,
         "operator_submit_action_started_at": now.isoformat(),
         "operator_submit_action_started": True,
         "operator_submit_action_completed": False,
         "operator_submit_action_result": "pending_external_action",
-        "operator_submit_pre_submit_url": pre_submit_url or None,
-        "operator_submit_pre_submit_fingerprint": pre_submit_fingerprint or None,
+        "operator_submit_live_snapshot_checkpointed": False,
+        "operator_submit_pre_submit_url": None,
+        "operator_submit_pre_submit_fingerprint": None,
         "automatic_retry_allowed": False,
     }
     session.handoff_metadata = {
         **dict(session.handoff_metadata or {}),
         "operator_submit_action_started_at": now.isoformat(),
-        "operator_submit_pre_submit_url": pre_submit_url or None,
-        "operator_submit_pre_submit_fingerprint": pre_submit_fingerprint or None,
+        "operator_submit_live_snapshot_checkpointed": False,
+        "operator_submit_pre_submit_url": None,
+        "operator_submit_pre_submit_fingerprint": None,
         "operator_submit_confirmation_observed": False,
         "automatic_retry_allowed": False,
     }
@@ -113,8 +119,93 @@ def claim_operator_final_action(
             payload={
                 "approval_reference": approval.reference,
                 "handoff_public_id": session.public_id,
-                "pre_submit_url": pre_submit_url or None,
-                "pre_submit_fingerprint": pre_submit_fingerprint or None,
+                "live_snapshot_checkpointed": False,
+                "automatic_retry_allowed": False,
+            },
+        )
+    )
+    db.flush()
+    return approval
+
+
+def checkpoint_operator_final_action_live_snapshot(
+    db: Session,
+    application: Application,
+    session: ManualHandoffSession,
+    *,
+    user_id: int,
+    current_url: str,
+    current_fingerprint: str,
+) -> SubmissionApproval:
+    """Durably bind the once-only action to the freshly verified live browser page."""
+
+    if session.application_id != application.id or session.user_id != user_id:
+        raise OperatorAssistedSubmissionError("Retained final-submit handoff ownership mismatch")
+    if session.challenge_type != HandoffChallengeType.final_submit.value:
+        raise OperatorAssistedSubmissionError("Handoff is not an operator final-submit boundary")
+
+    approval = _bound_consumed_approval(
+        db,
+        session,
+        user_id=user_id,
+        for_update=True,
+    )
+    if approval is None:
+        raise OperatorAssistedSubmissionError(
+            "Consumed exact operator approval is required before final submit"
+        )
+
+    metadata = dict(approval.approval_metadata or {})
+    if not metadata.get("operator_submit_action_started_at"):
+        raise OperatorAssistedSubmissionError(
+            "The once-only final submit action must be claimed before live checkpointing"
+        )
+    if metadata.get("operator_submit_action_result") != "pending_external_action":
+        raise OperatorAssistedSubmissionError(
+            "The final submit action is no longer pending and cannot be checkpointed"
+        )
+    if metadata.get("operator_submit_live_snapshot_checkpointed") is True:
+        raise OperatorAssistedSubmissionError(
+            "The live pre-submit snapshot was already checkpointed. Automatic replay is forbidden."
+        )
+
+    live_url = str(current_url or "").strip()
+    live_fingerprint = str(current_fingerprint or "").strip()
+    if not live_url or not live_fingerprint:
+        raise OperatorAssistedSubmissionError(
+            "A verified live pre-submit URL and fingerprint are required before final submit"
+        )
+
+    now = _now()
+    approval.approval_metadata = {
+        **metadata,
+        "operator_submit_live_snapshot_checkpointed": True,
+        "operator_submit_live_snapshot_checkpointed_at": now.isoformat(),
+        "operator_submit_pre_submit_url": live_url,
+        "operator_submit_pre_submit_fingerprint": live_fingerprint,
+        "automatic_retry_allowed": False,
+    }
+    session.current_url = live_url
+    session.current_fingerprint = live_fingerprint
+    session.handoff_metadata = {
+        **dict(session.handoff_metadata or {}),
+        "operator_submit_live_snapshot_checkpointed": True,
+        "operator_submit_live_snapshot_checkpointed_at": now.isoformat(),
+        "operator_submit_pre_submit_url": live_url,
+        "operator_submit_pre_submit_fingerprint": live_fingerprint,
+        "automatic_retry_allowed": False,
+    }
+    db.add(
+        ApplicationEvent(
+            application_id=application.id,
+            event_type="operator_assisted_final_submit_live_snapshot_checkpointed",
+            from_state=application.automation_state,
+            to_state=application.automation_state,
+            payload={
+                "approval_reference": approval.reference,
+                "handoff_public_id": session.public_id,
+                "pre_submit_url": live_url,
+                "pre_submit_fingerprint": live_fingerprint,
                 "automatic_retry_allowed": False,
             },
         )
@@ -203,6 +294,7 @@ def finalize_operator_final_action(
 
 
 __all__ = [
+    "checkpoint_operator_final_action_live_snapshot",
     "claim_operator_final_action",
     "finalize_operator_final_action",
 ]
