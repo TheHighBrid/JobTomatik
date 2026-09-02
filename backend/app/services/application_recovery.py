@@ -19,12 +19,14 @@ from app.models.application import (
     ManualReviewReason,
 )
 from app.models.notification import Notification, NotificationType
+from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.services.application_state import create_manual_review_task, normalize_state
 from app.services.operations_settings import get_operations_settings
 
 
 RECOVERY_KIND = "stale_application_attempt"
 RUNTIME_INTERRUPTION_KIND = "runtime_interrupted_application_attempt"
+OPERATOR_ASSISTED_APPROVAL_SOURCE = "authenticated_user_operator_assisted"
 
 
 def _naive_utc(value: datetime | None) -> datetime | None:
@@ -55,6 +57,87 @@ def _attempt_dry_run(db, application: Application) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
+def _operator_final_submit_checkpoint(
+    db,
+    application: Application,
+    *,
+    now: datetime | None = None,
+) -> Dict[str, Any] | None:
+    """Return the newest consumed human-final-click checkpoint, if one exists.
+
+    The preparation task is a dry run and therefore leaves a historical dry-run
+    attempt event. Once an exact operator approval is consumed, that old event must
+    never make later recovery retryable because the owner may have reached or used the
+    consequential final-submit boundary.
+    """
+
+    current = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
+    approvals = (
+        db.query(SubmissionApproval)
+        .filter(
+            SubmissionApproval.application_id == application.id,
+            SubmissionApproval.user_id == application.user_id,
+            SubmissionApproval.status == SubmissionApprovalStatus.consumed.value,
+        )
+        .order_by(SubmissionApproval.consumed_at.desc(), SubmissionApproval.id.desc())
+        .all()
+    )
+    approval = next(
+        (
+            item
+            for item in approvals
+            if (item.approval_metadata or {}).get("approval_source")
+            == OPERATOR_ASSISTED_APPROVAL_SOURCE
+            and (item.approval_metadata or {}).get("operator_final_click_required") is True
+            and (item.approval_metadata or {}).get("automated_submission_authorized") is False
+            and (item.approval_metadata or {}).get("queue_submission_authorized") is False
+        ),
+        None,
+    )
+    if approval is None:
+        return None
+
+    metadata = dict(approval.approval_metadata or {})
+    handoff_public_id = str(metadata.get("handoff_public_id") or "").strip()
+    session = None
+    active = False
+    expires_at = None
+    if handoff_public_id:
+        from app.models.handoff import (
+            ACTIVE_HANDOFF_STATUSES,
+            HandoffChallengeType,
+            ManualHandoffSession,
+        )
+
+        session = (
+            db.query(ManualHandoffSession)
+            .filter(
+                ManualHandoffSession.public_id == handoff_public_id,
+                ManualHandoffSession.application_id == application.id,
+                ManualHandoffSession.user_id == application.user_id,
+                ManualHandoffSession.challenge_type == HandoffChallengeType.final_submit.value,
+            )
+            .first()
+        )
+        expires_at = _naive_utc(getattr(session, "expires_at", None))
+        active = bool(
+            session
+            and session.status in ACTIVE_HANDOFF_STATUSES
+            and expires_at is not None
+            and expires_at > current
+        )
+
+    return {
+        "approval_reference": approval.reference,
+        "handoff_public_id": handoff_public_id or None,
+        "handoff_active": active,
+        "handoff_status": getattr(session, "status", None),
+        "handoff_expires_at": expires_at.isoformat() if expires_at else None,
+        "final_action_started": bool(metadata.get("operator_submit_action_started_at")),
+        "automatic_retry_allowed": False,
+    }
+
+
 def recover_stale_application_attempt(
     db,
     application: Application,
@@ -77,6 +160,26 @@ def recover_stale_application_attempt(
             "recovered": False,
             "reason": "not_applying",
             "state": state,
+        }
+
+    operator_checkpoint = _operator_final_submit_checkpoint(
+        db,
+        application,
+        now=normalized_now,
+    )
+    if (
+        operator_checkpoint
+        and operator_checkpoint.get("handoff_active")
+        and not force_interrupted
+    ):
+        return {
+            "application_id": application.id,
+            "recovered": False,
+            "reason": "operator_final_submit_handoff_active",
+            "state": state,
+            "approval_reference": operator_checkpoint.get("approval_reference"),
+            "handoff_public_id": operator_checkpoint.get("handoff_public_id"),
+            "automatic_retry_allowed": False,
         }
 
     started_at = _naive_utc(
@@ -103,7 +206,9 @@ def recover_stale_application_attempt(
             "timeout_minutes": timeout,
         }
 
-    dry_run = _attempt_dry_run(db, application)
+    # A consumed operator approval is consequential even though the form was prepared
+    # by a dry-run task. Never inherit that historical dry-run bit into recovery.
+    dry_run = None if operator_checkpoint else _attempt_dry_run(db, application)
     job = application.job
     blocking_url = getattr(job, "url", None)
     job_title = getattr(job, "title", None) or f"Application {application.id}"
@@ -133,6 +238,8 @@ def recover_stale_application_attempt(
         "submission_attempt_count": int(application.submission_attempt_count or 0),
         "idempotency_key": application.submission_idempotency_key,
         "recovered_at": normalized_now.replace(microsecond=0).isoformat() + "Z",
+        "operator_final_submit_checkpoint": operator_checkpoint,
+        "automatic_retry_allowed": False if operator_checkpoint else None,
     }
     review = create_manual_review_task(
         db,
@@ -185,6 +292,8 @@ def recover_stale_application_attempt(
         "age_seconds": age_seconds,
         "timeout_minutes": timeout,
         "runtime_interrupted": bool(force_interrupted),
+        "operator_final_submit_checkpoint": operator_checkpoint,
+        "automatic_retry_allowed": False if operator_checkpoint else None,
     }
 
 

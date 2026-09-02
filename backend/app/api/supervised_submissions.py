@@ -8,18 +8,41 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.database import get_db
 from app.models.application import Application
+from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
 from app.schemas.supervised_submission import (
+    OperatorAssistedApprovalCreate,
+    OperatorAssistedAuthorizationOut,
+    OperatorAssistedFinalSubmitOut,
+    OperatorAssistedFinalSubmitRequest,
+    OperatorAssistedPreflightOut,
+    OperatorAssistedPrepareOut,
     SupervisedApprovalCreate,
     SupervisedApprovalOut,
     SupervisedApprovalRevoke,
     SupervisedPreflightOut,
     SupervisedSubmitQueued,
 )
+from app.services import browser_handoff as browser_handoff_service
 from app.services.application_integrity import submission_is_closed
+from app.services.handoff_session import verify_handoff_lease
+from app.services.operator_assisted_final_action import (
+    claim_operator_final_action,
+    finalize_operator_final_action,
+)
+from app.services.operator_assisted_handoff_integration import (
+    install_operator_assisted_handoff_integration,
+)
+from app.services.operator_assisted_submission import (
+    OperatorAssistedSubmissionError,
+    build_operator_assisted_preflight,
+    get_operator_final_submit_boundary,
+    issue_operator_assisted_approval,
+    validate_operator_assisted_approval,
+)
 from app.services.submission_integrity import (
     SubmissionAttemptReservationError,
     reserve_submission_attempt,
@@ -37,8 +60,10 @@ from app.services.supervised_target_identity import (
     resolve_supervised_target_metadata,
 )
 from app.tasks.applications import submit_application_task
+from app.tasks.operator_assisted import prepare_operator_assisted_application_task
 
 
+install_operator_assisted_handoff_integration()
 router = APIRouter(prefix="/supervised-submissions", tags=["supervised-submissions"])
 
 
@@ -103,15 +128,6 @@ def _synchronize_submission_attempt_counter(
     db: Session,
     application: Application,
 ) -> None:
-    """Keep the next reservation monotonic after a pre-worker publish failure.
-
-    The application counter normally advances when the worker starts. A producer-side
-    failure can leave an immutable blocked SubmissionAttempt behind before that worker
-    transition happens. Reconcile the counter to the highest durable reservation so a
-    newly approved retry receives the next unique attempt number instead of colliding
-    with the blocked reservation.
-    """
-
     latest = (
         db.query(SubmissionAttempt.attempt_number)
         .filter(SubmissionAttempt.application_id == application.id)
@@ -130,16 +146,6 @@ def _publish_supervised_submission_task(
     approval_reference: str,
     attempt_reference: str,
 ):
-    """Publish the exact supervised envelope without stale producer-side typing.
-
-    The worker installs the authoritative supervised task gate and accepts the approval
-    and durable attempt references. Celery's local Task.delay() argument checker is
-    generated from the original task function before that worker-only wrapper exists,
-    so it cannot represent the supervised envelope in an API producer process. Using
-    send_task() publishes the named task exactly as the worker contract expects while
-    retaining queue routing and all worker-side approval/attempt validation.
-    """
-
     return submit_application_task.app.send_task(
         submit_application_task.name,
         args=[application_id],
@@ -150,6 +156,296 @@ def _publish_supervised_submission_task(
         },
         queue="applications",
     )
+
+
+@router.get(
+    "/applications/{application_id}/operator-assisted/preflight",
+    response_model=OperatorAssistedPreflightOut,
+)
+async def operator_assisted_preflight(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    application, user, job = _owned_records(db, application_id, current_user.id)
+    _require_open_submission(application)
+    target_metadata = await resolve_supervised_target_metadata(job)
+    return build_operator_assisted_preflight(
+        db,
+        application,
+        user,
+        job,
+        target_metadata=target_metadata,
+    )
+
+
+@router.post(
+    "/applications/{application_id}/operator-assisted/prepare",
+    response_model=OperatorAssistedPrepareOut,
+    status_code=202,
+)
+async def prepare_operator_assisted_submission(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    application, user, job = _owned_records(
+        db,
+        application_id,
+        current_user.id,
+        lock=True,
+    )
+    _require_open_submission(application)
+
+    existing = get_operator_final_submit_boundary(db, application)
+    if existing is not None:
+        return {
+            "application_id": application.id,
+            "status": "retained_ready_to_submit",
+            "task_id": None,
+            "submission_mode": "operator_assisted_prepare",
+            "handoff_public_id": existing.public_id,
+            "automated_submission_authorized": False,
+            "final_submit_clicked_by_jobtomatik": False,
+        }
+
+    target_metadata = await resolve_supervised_target_metadata(job)
+    if target_metadata:
+        persist_supervised_target_metadata(job, target_metadata)
+    preflight = build_operator_assisted_preflight(
+        db,
+        application,
+        user,
+        job,
+        target_metadata=target_metadata,
+    )
+    if not preflight["ready"]:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Operator-assisted preparation is blocked: "
+            + ", ".join(preflight["blockers"]),
+        )
+    db.commit()
+
+    task = prepare_operator_assisted_application_task.apply_async(
+        args=[application_id],
+        queue="applications",
+    )
+    return {
+        "application_id": application_id,
+        "status": "preparing_retained_form",
+        "task_id": str(task.id),
+        "submission_mode": "operator_assisted_prepare",
+        "handoff_public_id": None,
+        "automated_submission_authorized": False,
+        "final_submit_clicked_by_jobtomatik": False,
+    }
+
+
+@router.post(
+    "/applications/{application_id}/operator-assisted/approvals",
+    response_model=SupervisedApprovalOut,
+    status_code=201,
+)
+async def create_operator_assisted_approval(
+    application_id: int,
+    data: OperatorAssistedApprovalCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    application, user, job = _owned_records(
+        db,
+        application_id,
+        current_user.id,
+        lock=True,
+    )
+    _require_open_submission(application)
+    target_metadata = await resolve_supervised_target_metadata(job)
+    if target_metadata:
+        persist_supervised_target_metadata(job, target_metadata)
+    try:
+        approval = issue_operator_assisted_approval(
+            db,
+            application,
+            user,
+            job,
+            handoff_public_id=data.handoff_public_id,
+            confirm_employer=data.confirm_employer,
+            confirm_role=data.confirm_role,
+            confirm_application_url=data.confirm_application_url,
+            confirm_operator_final_click=data.confirm_operator_final_click,
+            expires_in_minutes=data.expires_in_minutes,
+            notes=data.notes,
+            target_metadata=target_metadata,
+        )
+        db.commit()
+        db.refresh(approval)
+        return approval_safe_dict(approval)
+    except OperatorAssistedSubmissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/applications/{application_id}/operator-assisted/approvals/{reference}/authorize-final-click",
+    response_model=OperatorAssistedAuthorizationOut,
+)
+async def authorize_operator_final_click(
+    application_id: int,
+    reference: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    application, user, job = _owned_records(
+        db,
+        application_id,
+        current_user.id,
+        lock=True,
+    )
+    _require_open_submission(application)
+    target_metadata = await resolve_supervised_target_metadata(job)
+    if target_metadata:
+        persist_supervised_target_metadata(job, target_metadata)
+    try:
+        approval = validate_operator_assisted_approval(
+            db,
+            application,
+            user,
+            job,
+            reference=reference,
+            consume=True,
+            target_metadata=target_metadata,
+        )
+        db.commit()
+        db.refresh(approval)
+        db.refresh(application)
+    except OperatorAssistedSubmissionError as exc:
+        raise _approval_error(db, exc) from exc
+
+    metadata = dict(approval.approval_metadata or {})
+    return {
+        "application_id": application.id,
+        "approval_reference": approval.reference,
+        "handoff_public_id": str(metadata.get("handoff_public_id") or ""),
+        "status": approval.status,
+        "application_url": approval.application_url,
+        "combined_payload_hash": approval.combined_payload_hash,
+        "attempt_number": int(application.submission_attempt_count or 0),
+        "operator_final_click_required": True,
+        "automated_submission_authorized": False,
+        "worker_task_created": False,
+        "queue_created": False,
+    }
+
+
+@router.post(
+    "/applications/{application_id}/operator-assisted/handoffs/{handoff_public_id}/submit",
+    response_model=OperatorAssistedFinalSubmitOut,
+)
+async def submit_operator_assisted_final_action(
+    application_id: int,
+    handoff_public_id: str,
+    data: OperatorAssistedFinalSubmitRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    application, _, _ = _owned_records(
+        db,
+        application_id,
+        current_user.id,
+        lock=True,
+    )
+    _require_open_submission(application)
+    session = (
+        db.query(ManualHandoffSession)
+        .filter(
+            ManualHandoffSession.public_id == handoff_public_id,
+            ManualHandoffSession.application_id == application.id,
+            ManualHandoffSession.user_id == current_user.id,
+            ManualHandoffSession.challenge_type == HandoffChallengeType.final_submit.value,
+        )
+        .with_for_update()
+        .first()
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Operator final-submit handoff not found")
+
+    try:
+        verify_handoff_lease(
+            db,
+            session,
+            user_id=current_user.id,
+            lease_token=data.lease_token,
+        )
+        approval = claim_operator_final_action(
+            db,
+            application,
+            session,
+            user_id=current_user.id,
+        )
+        approval_reference = approval.reference
+        db.commit()
+    except OperatorAssistedSubmissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    try:
+        result = await browser_handoff_service.perform_handoff_action(
+            session,
+            action="operator_submit",
+        )
+    except Exception as exc:
+        db.rollback()
+        application = db.query(Application).filter(Application.id == application_id).first()
+        session = db.query(ManualHandoffSession).filter(
+            ManualHandoffSession.public_id == handoff_public_id
+        ).first()
+        approval = db.query(SubmissionApproval).filter(
+            SubmissionApproval.reference == approval_reference
+        ).first()
+        if application and session and approval:
+            finalize_operator_final_action(
+                db,
+                application,
+                session,
+                approval,
+                error=exc,
+            )
+            db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The final submit action outcome is uncertain. Automatic retry is forbidden. "
+                "Refresh the retained employer page and verify confirmation instead."
+            ),
+        ) from exc
+
+    session.current_url = str(result.get("current_url") or session.current_url or "")
+    session.current_fingerprint = str(
+        result.get("current_fingerprint") or session.current_fingerprint or ""
+    )
+    finalize_operator_final_action(
+        db,
+        application,
+        session,
+        approval,
+        result=result,
+    )
+    db.commit()
+    return {
+        "application_id": application.id,
+        "handoff_public_id": session.public_id,
+        "approval_reference": approval.reference,
+        "action": "operator_submit",
+        "current_url": session.current_url or "",
+        "submission_confirmed": bool(result.get("submission_confirmed")),
+        "final_action_started": True,
+        "automatic_retry_allowed": False,
+    }
 
 
 @router.get(
@@ -208,7 +504,7 @@ async def create_supervised_submission_approval(
         return approval_safe_dict(approval)
     except SupervisedSubmissionApprovalError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get(
@@ -258,7 +554,7 @@ async def revoke_submission_approval(
         return approval_safe_dict(approval)
     except SupervisedSubmissionApprovalError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post(
@@ -271,10 +567,6 @@ async def queue_supervised_submission(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Hold the same application-row lock used by current Lever material mutation.
-    # This keeps the final fresh approval validation and durable attempt reservation
-    # atomic with respect to material regeneration/review, so a bundle cannot change
-    # between preflight and reservation.
     application, user, job = _owned_records(
         db,
         application_id,
@@ -316,7 +608,6 @@ async def queue_supervised_submission(
             approval,
             task_id="reserved-" + str(uuid4()),
         )
-        # The reservation is authoritative and visible before any queue message exists.
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -333,12 +624,10 @@ async def queue_supervised_submission(
             return _queued_attempt_payload(application, approval, attempt, created=False)
         raise HTTPException(status_code=409, detail="Duplicate submission queue request")
     except (SupervisedSubmissionApprovalError, SubmissionAttemptReservationError) as exc:
-        raise _approval_error(db, exc)
+        raise _approval_error(db, exc) from exc
 
     if created:
         try:
-            # Publish the exact immutable approval + attempt envelope. The worker still
-            # revalidates both records before consuming approval or touching a browser.
             task = _publish_supervised_submission_task(
                 application_id,
                 reference,
@@ -363,6 +652,6 @@ async def queue_supervised_submission(
             raise HTTPException(
                 status_code=503,
                 detail="Submission queue publication was uncertain; a new approval is required.",
-            )
+            ) from exc
 
     return _queued_attempt_payload(application, approval, attempt, created=created)
