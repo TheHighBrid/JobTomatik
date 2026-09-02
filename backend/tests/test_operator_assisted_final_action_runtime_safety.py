@@ -197,7 +197,7 @@ async def test_runtime_gate_drift_after_checkpoint_blocks_before_click(monkeypat
             return object()
 
         async def step_fingerprint(self, _surface):
-            return "fresh-live-before"
+            return "lever-step-before"
 
         async def find_submit_button(self, _surface):
             return control
@@ -220,10 +220,14 @@ async def test_runtime_gate_drift_after_checkpoint_blocks_before_click(monkeypat
     async def disconnect(_playwright):
         return None
 
+    async def page_fingerprint(_page):
+        return "fresh-live-before"
+
     monkeypatch.setattr(browser_handoff, "_connect_local_cdp", connect)
     monkeypatch.setattr(browser_handoff, "_verify_session_target", verify)
     monkeypatch.setattr(browser_handoff, "_require_verified_session_target", lambda _value: None)
     monkeypatch.setattr(browser_handoff, "detect_ats_adapter", detect)
+    monkeypatch.setattr(browser_handoff, "page_fingerprint", page_fingerprint)
     monkeypatch.setattr(
         browser_handoff,
         "_session_supervised_target",
