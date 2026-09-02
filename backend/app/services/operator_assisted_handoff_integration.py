@@ -326,7 +326,8 @@ def install_operator_assisted_handoff_integration() -> None:
 
             surface = await adapter.resolve_surface(page)
             before_url = str(page.url or "")
-            before_fingerprint = await adapter.step_fingerprint(surface)
+            before_page_fingerprint = await browser_handoff.page_fingerprint(page)
+            before_step_fingerprint = await adapter.step_fingerprint(surface)
             snapshot_blockers = _operator_final_action_blockers(before_url)
             if snapshot_blockers:
                 raise browser_handoff.BrowserHandoffError(
@@ -363,7 +364,7 @@ def install_operator_assisted_handoff_integration() -> None:
                 _checkpoint_fresh_live_snapshot(
                     session,
                     current_url=before_url,
-                    current_fingerprint=before_fingerprint,
+                    current_fingerprint=before_page_fingerprint,
                 )
             except Exception as exc:
                 raise browser_handoff.BrowserHandoffError(
@@ -373,8 +374,13 @@ def install_operator_assisted_handoff_integration() -> None:
             # The durable checkpoint is now authoritative. Re-read the live page and
             # every consequential gate after that commit and immediately before click.
             latest_url = str(page.url or "")
-            latest_fingerprint = await adapter.step_fingerprint(surface)
-            if latest_url != before_url or latest_fingerprint != before_fingerprint:
+            latest_page_fingerprint = await browser_handoff.page_fingerprint(page)
+            latest_step_fingerprint = await adapter.step_fingerprint(surface)
+            if (
+                latest_url != before_url
+                or latest_page_fingerprint != before_page_fingerprint
+                or latest_step_fingerprint != before_step_fingerprint
+            ):
                 raise browser_handoff.BrowserHandoffError(
                     "The retained Lever page changed after the durable pre-submit checkpoint. "
                     "Automatic retry is forbidden; verify the employer page instead."
@@ -417,7 +423,7 @@ def install_operator_assisted_handoff_integration() -> None:
             confirmation_items = await adapter.detect_confirmation(
                 surface,
                 before_url=before_url,
-                before_fingerprint=before_fingerprint,
+                before_fingerprint=before_step_fingerprint,
             )
             confirmation_evidence = [item.as_dict() for item in confirmation_items]
             submission_confirmed = any(item.is_sufficient for item in confirmation_items)
@@ -433,7 +439,8 @@ def install_operator_assisted_handoff_integration() -> None:
                 "current_url": page.url,
                 "current_fingerprint": fingerprint,
                 "pre_submit_url": before_url,
-                "pre_submit_fingerprint": before_fingerprint,
+                "pre_submit_fingerprint": before_page_fingerprint,
+                "pre_submit_step_fingerprint": before_step_fingerprint,
                 "target_verification": after,
                 "submission_confirmed": submission_confirmed,
                 "confirmation_evidence": confirmation_evidence,
