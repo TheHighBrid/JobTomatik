@@ -10,12 +10,10 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
-  XCircle,
 } from 'lucide-react'
 
 import {
   bootstrapHandoff,
-  cancelHandoff,
   claimHandoff,
   completeHandoff,
   getApiErrorMessage,
@@ -23,8 +21,8 @@ import {
   heartbeatHandoff,
   listApplicationHandoffs,
   recoverHandoffLease,
-  sendHandoffAction,
 } from '../api/client'
+import { submitOperatorAssistedFinalAction } from '../api/operatorAssisted'
 
 const ACTIVE_STATUSES = new Set(['awaiting_user', 'claimed', 'ready_to_resume', 'resuming'])
 
@@ -180,10 +178,10 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
   })
 
   const submitMutation = useMutation({
-    mutationFn: () => sendHandoffAction(
+    mutationFn: () => submitOperatorAssistedFinalAction(
+      applicationId,
       session.public_id,
       leaseToken,
-      { action: 'operator_submit' },
     ),
     onSuccess: async (response) => {
       setSubmitActionSent(true)
@@ -191,27 +189,23 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       if (response.data?.submission_confirmed) {
         completeMutation.mutate()
       } else {
-        toast('Final Submit was activated. Waiting for explicit employer confirmation.')
+        toast('Final Submit was activated once. Waiting for explicit employer confirmation.')
       }
     },
-    onError: (error) => toast.error(getApiErrorMessage(
-      error,
-      'The exact final Submit action was blocked. Re-prepare rather than guessing.',
-    )),
-  })
-
-  const cancelMutation = useMutation({
-    mutationFn: () => cancelHandoff(
-      session.public_id,
-      'Cancelled by owner before operator-assisted final submission.',
-    ),
-    onSuccess: async () => {
-      writeLease(session.public_id, '')
-      setLeaseToken('')
-      await invalidate()
-      toast('Retained final-submit handoff cancelled.')
+    onError: async (error) => {
+      const message = getApiErrorMessage(
+        error,
+        'The exact final Submit action was blocked.',
+      )
+      const noRetry = /automatic retry is forbidden|already requested|outcome is uncertain/i.test(message)
+      if (noRetry) {
+        setSubmitActionSent(true)
+        await refreshFrame()
+        toast.error(`${message} Do not submit again; verify the employer page instead.`)
+        return
+      }
+      toast.error(message)
     },
-    onError: (error) => toast.error(getApiErrorMessage(error, 'Could not cancel the retained handoff.')),
   })
 
   if (!session) return null
@@ -317,41 +311,31 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-start gap-2 text-xs leading-relaxed text-slate-700">
                 <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                <span>No typing, answer editing, navigation, or arbitrary browser clicks are exposed in this handoff. The backend accepts only the single verified final-submit action.</span>
+                <span>No typing, answer editing, navigation, arbitrary browser clicks, or automatic retry are exposed here. The backend durably records the one final-action request before touching the employer Submit control.</span>
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="button"
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending || submitMutation.isPending}
-                className="btn-secondary inline-flex items-center justify-center gap-2 border-red-200 text-red-700 hover:bg-red-50"
-              >
-                <XCircle className="h-4 w-4" /> Cancel
-              </button>
-              <div className="flex flex-wrap gap-2">
-                {submitActionSent && (
-                  <button
-                    type="button"
-                    onClick={() => completeMutation.mutate()}
-                    disabled={completeMutation.isPending}
-                    className="btn-secondary inline-flex items-center gap-2"
-                  >
-                    {completeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    Verify employer confirmation
-                  </button>
-                )}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {submitActionSent && (
                 <button
                   type="button"
-                  onClick={() => submitMutation.mutate()}
-                  disabled={submitMutation.isPending || completeMutation.isPending || submitActionSent}
-                  className="btn-primary inline-flex items-center gap-2"
+                  onClick={() => completeMutation.mutate()}
+                  disabled={completeMutation.isPending}
+                  className="btn-secondary inline-flex items-center gap-2"
                 >
-                  {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Submit exact application
+                  {completeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Verify employer confirmation
                 </button>
-              </div>
+              )}
+              <button
+                type="button"
+                onClick={() => submitMutation.mutate()}
+                disabled={submitMutation.isPending || completeMutation.isPending || submitActionSent}
+                className="btn-primary inline-flex items-center gap-2"
+              >
+                {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Submit exact application once
+              </button>
             </div>
           </>
         )}
