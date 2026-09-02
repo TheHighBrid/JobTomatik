@@ -25,6 +25,7 @@ _ORIGINAL_FLOW = None
 _ORIGINAL_FILL = None
 _ORIGINAL_CLAIM = None
 _ORIGINAL_VERIFY_COMPLETION = None
+_ORIGINAL_PERFORM_ACTION = None
 
 
 def current_operator_prepare_target() -> Optional[Dict[str, Any]]:
@@ -53,7 +54,7 @@ def install_operator_assisted_handoff_integration() -> None:
     """Install an idempotent, context-gated final-submit handoff extension."""
 
     global _INSTALLED, _ORIGINAL_FLOW, _ORIGINAL_FILL, _ORIGINAL_CLAIM
-    global _ORIGINAL_VERIFY_COMPLETION
+    global _ORIGINAL_VERIFY_COMPLETION, _ORIGINAL_PERFORM_ACTION
     if _INSTALLED:
         return
 
@@ -87,7 +88,7 @@ def install_operator_assisted_handoff_integration() -> None:
                 "reason_code": final_reason,
                 "summary": (
                     "Review the fully filled application and make the final Submit "
-                    "click yourself after exact approval."
+                    "action yourself after exact approval."
                 ),
                 "details": {
                     "handoff_stage": "operator_final_submit",
@@ -143,6 +144,88 @@ def install_operator_assisted_handoff_integration() -> None:
 
     handoff_session.claim_handoff_session = approval_gated_claim
 
+    _ORIGINAL_PERFORM_ACTION = browser_handoff.perform_handoff_action
+
+    async def operator_locked_action(
+        session,
+        *,
+        action: str,
+        x=None,
+        y=None,
+        text=None,
+        key=None,
+        delta_x: float = 0,
+        delta_y: float = 0,
+    ):
+        if session.challenge_type != HandoffChallengeType.final_submit.value:
+            if action == "operator_submit":
+                raise browser_handoff.BrowserHandoffError(
+                    "Operator-submit is valid only for an approved final-submit handoff."
+                )
+            return await _ORIGINAL_PERFORM_ACTION(
+                session,
+                action=action,
+                x=x,
+                y=y,
+                text=text,
+                key=key,
+                delta_x=delta_x,
+                delta_y=delta_y,
+            )
+
+        if action != "operator_submit":
+            raise browser_handoff.BrowserHandoffError(
+                "The approved final-submit handoff is review-only except for the "
+                "single explicit Submit action."
+            )
+
+        playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
+        try:
+            before = await browser_handoff._verify_session_target(page, session)
+            browser_handoff._require_verified_session_target(before)
+            adapter = await browser_handoff.detect_ats_adapter(page, page.url)
+            surface = await adapter.resolve_surface(page)
+            submit_control = await adapter.find_submit_button(surface)
+            if submit_control is None:
+                raise browser_handoff.BrowserHandoffError(
+                    "The exact final Submit control is no longer available. Re-prepare "
+                    "the retained application instead of guessing."
+                )
+            try:
+                visible = await submit_control.is_visible()
+                enabled = await submit_control.is_enabled()
+            except Exception as exc:
+                raise browser_handoff.BrowserHandoffError(
+                    "The final Submit control could not be verified safely."
+                ) from exc
+            if not visible or not enabled:
+                raise browser_handoff.BrowserHandoffError(
+                    "The final Submit control is not currently visible and enabled."
+                )
+
+            await submit_control.click()
+            await page.wait_for_timeout(900)
+            confirmation = await browser_handoff._submission_confirmation_state(page)
+            after = await browser_handoff._verify_session_target(
+                page,
+                session,
+                allow_same_site_confirmation=bool(confirmation["submission_confirmed"]),
+            )
+            browser_handoff._require_verified_session_target(after)
+            fingerprint = await browser_handoff.page_fingerprint(page)
+            return {
+                "action": action,
+                "current_url": page.url,
+                "current_fingerprint": fingerprint,
+                "target_verification": after,
+                "submission_confirmed": bool(confirmation["submission_confirmed"]),
+                "sensitive_value_logged": False,
+            }
+        finally:
+            await browser_handoff._disconnect(playwright)
+
+    browser_handoff.perform_handoff_action = operator_locked_action
+
     _ORIGINAL_VERIFY_COMPLETION = browser_handoff.verify_browser_handoff_completion
 
     async def final_submit_confirmation_required(session):
@@ -165,6 +248,7 @@ def install_operator_assisted_handoff_integration() -> None:
         from app.api import handoffs as handoff_api
 
         handoff_api.claim_handoff_session = approval_gated_claim
+        handoff_api.perform_handoff_action = operator_locked_action
         handoff_api.verify_browser_handoff_completion = final_submit_confirmation_required
     except Exception:
         # Worker-only imports do not need the HTTP router patch.
