@@ -96,6 +96,7 @@ def _checkpoint_fresh_live_snapshot(
         checkpoint_operator_final_action_live_snapshot,
     )
 
+    committed_metadata: Dict[str, Any] = {}
     db = SessionLocal()
     try:
         persisted_session = (
@@ -129,6 +130,7 @@ def _checkpoint_fresh_live_snapshot(
             current_url=current_url,
             current_fingerprint=current_fingerprint,
         )
+        committed_metadata = dict(persisted_session.handoff_metadata or {})
         db.commit()
     except Exception:
         db.rollback()
@@ -140,10 +142,7 @@ def _checkpoint_fresh_live_snapshot(
     session.current_fingerprint = current_fingerprint
     session.handoff_metadata = {
         **dict(getattr(session, "handoff_metadata", None) or {}),
-        "operator_submit_live_snapshot_checkpointed": True,
-        "operator_submit_pre_submit_url": current_url,
-        "operator_submit_pre_submit_fingerprint": current_fingerprint,
-        "automatic_retry_allowed": False,
+        **committed_metadata,
     }
 
 
