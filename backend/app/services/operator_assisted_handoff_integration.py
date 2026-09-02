@@ -184,7 +184,21 @@ def install_operator_assisted_handoff_integration() -> None:
             before = await browser_handoff._verify_session_target(page, session)
             browser_handoff._require_verified_session_target(before)
             adapter = await browser_handoff.detect_ats_adapter(page, page.url)
+            expected = browser_handoff._session_supervised_target(session)
+            expected_adapter = str(expected.get("adapter") or "lever")
+            expected_version = str(expected.get("adapter_version") or "")
+            if adapter.name != "lever" or expected_adapter != "lever":
+                raise browser_handoff.BrowserHandoffError(
+                    "Operator-assisted Phase B final submit is certified only for Lever."
+                )
+            if expected_version and adapter.version != expected_version:
+                raise browser_handoff.BrowserHandoffError(
+                    "The retained Lever adapter version changed after owner approval."
+                )
+
             surface = await adapter.resolve_surface(page)
+            before_url = str(page.url or "")
+            before_fingerprint = await adapter.step_fingerprint(surface)
             submit_control = await adapter.find_submit_button(surface)
             if submit_control is None:
                 raise browser_handoff.BrowserHandoffError(
@@ -203,13 +217,26 @@ def install_operator_assisted_handoff_integration() -> None:
                     "The final Submit control is not currently visible and enabled."
                 )
 
+            validation_errors = await adapter.extract_validation_errors(surface)
+            if validation_errors:
+                raise browser_handoff.BrowserHandoffError(
+                    "The retained Lever form exposes validation errors. Re-prepare and "
+                    "review the exact application instead of submitting it."
+                )
+
             await submit_control.click()
             await page.wait_for_timeout(900)
-            confirmation = await browser_handoff._submission_confirmation_state(page)
+            confirmation_items = await adapter.detect_confirmation(
+                surface,
+                before_url=before_url,
+                before_fingerprint=before_fingerprint,
+            )
+            confirmation_evidence = [item.as_dict() for item in confirmation_items]
+            submission_confirmed = any(item.is_sufficient for item in confirmation_items)
             after = await browser_handoff._verify_session_target(
                 page,
                 session,
-                allow_same_site_confirmation=bool(confirmation["submission_confirmed"]),
+                allow_same_site_confirmation=submission_confirmed,
             )
             browser_handoff._require_verified_session_target(after)
             fingerprint = await browser_handoff.page_fingerprint(page)
@@ -217,8 +244,12 @@ def install_operator_assisted_handoff_integration() -> None:
                 "action": action,
                 "current_url": page.url,
                 "current_fingerprint": fingerprint,
+                "pre_submit_url": before_url,
+                "pre_submit_fingerprint": before_fingerprint,
                 "target_verification": after,
-                "submission_confirmed": bool(confirmation["submission_confirmed"]),
+                "submission_confirmed": submission_confirmed,
+                "confirmation_evidence": confirmation_evidence,
+                "confirmation_detector": "lever_adapter_strict",
                 "sensitive_value_logged": False,
             }
         finally:
@@ -230,14 +261,45 @@ def install_operator_assisted_handoff_integration() -> None:
 
     async def final_submit_confirmation_required(session):
         verification = await _ORIGINAL_VERIFY_COMPLETION(session)
-        if (
-            session.challenge_type == HandoffChallengeType.final_submit.value
-            and not verification.evidence.get("submission_confirmed")
-        ):
-            verification.challenge_cleared = False
-            verification.evidence["verification_method"] = (
-                "operator_final_submit_confirmation_required"
-            )
+        if session.challenge_type != HandoffChallengeType.final_submit.value:
+            return verification
+
+        metadata = dict(session.handoff_metadata or {})
+        target_verification = dict(verification.evidence.get("target_verification") or {})
+        target_verified = bool(target_verification.get("verified"))
+        strong_confirmation_observed = bool(
+            metadata.get("operator_submit_confirmation_observed") is True
+        )
+        generic_confirmation = bool(verification.evidence.get("submission_confirmed"))
+        confirmation_url_signal = bool(
+            verification.evidence.get("confirmation_url_signal")
+        )
+        pre_submit_url = str(metadata.get("operator_submit_pre_submit_url") or "")
+        current_url = str(verification.current_url or "")
+        provable_confirmation_transition = bool(
+            generic_confirmation
+            and confirmation_url_signal
+            and pre_submit_url
+            and current_url
+            and current_url != pre_submit_url
+        )
+        final_confirmed = bool(
+            target_verified
+            and (strong_confirmation_observed or provable_confirmation_transition)
+        )
+        verification.challenge_cleared = final_confirmed
+        verification.evidence["submission_confirmed"] = final_confirmed
+        verification.evidence["operator_submit_confirmation_observed"] = (
+            strong_confirmation_observed
+        )
+        verification.evidence["provable_confirmation_transition"] = (
+            provable_confirmation_transition
+        )
+        verification.evidence["verification_method"] = (
+            "operator_final_submit_strict_confirmation"
+            if final_confirmed
+            else "operator_final_submit_confirmation_required"
+        )
         return verification
 
     browser_handoff.verify_browser_handoff_completion = final_submit_confirmation_required
