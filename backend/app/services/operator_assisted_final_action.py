@@ -226,6 +226,16 @@ def finalize_operator_final_action(
     """Record the external action outcome without ever reopening retry authority."""
 
     metadata = dict(approval.approval_metadata or {})
+    session_metadata = dict(session.handoff_metadata or {})
+    for key in (
+        "operator_submit_live_snapshot_checkpointed",
+        "operator_submit_live_snapshot_checkpointed_at",
+        "operator_submit_pre_submit_url",
+        "operator_submit_pre_submit_fingerprint",
+    ):
+        if key in session_metadata:
+            metadata[key] = session_metadata[key]
+
     now = _now()
     if error is not None:
         outcome = "uncertain"
@@ -258,7 +268,7 @@ def finalize_operator_final_action(
         "automatic_retry_allowed": False,
     }
     session.handoff_metadata = {
-        **dict(session.handoff_metadata or {}),
+        **session_metadata,
         "operator_submit_action_result": outcome,
         "operator_submit_action_finished_at": now.isoformat(),
         "operator_submit_confirmation_observed": confirmed,
@@ -285,6 +295,9 @@ def finalize_operator_final_action(
                 "outcome": outcome,
                 "current_url": current_url or None,
                 "current_fingerprint": current_fingerprint or None,
+                "live_snapshot_checkpointed": bool(
+                    metadata.get("operator_submit_live_snapshot_checkpointed") is True
+                ),
                 "automatic_retry_allowed": False,
                 "error": error_text,
             },
