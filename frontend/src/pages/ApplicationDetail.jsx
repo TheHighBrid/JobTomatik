@@ -7,6 +7,8 @@ import {
   submitApplication, createFollowup, getTaskStatus, getApiErrorMessage
 } from '../api/client'
 import ManualHandoffPanel from '../components/ManualHandoffPanel'
+import OperatorAssistedSubmissionPanel from '../components/OperatorAssistedSubmissionPanel'
+import OperatorFinalSubmitHandoffPanel from '../components/OperatorFinalSubmitHandoffPanel'
 import SupervisedSubmissionPanel from '../components/SupervisedSubmissionPanel'
 import SupervisedPilotDossierPanel from '../components/SupervisedPilotDossierPanel'
 import SubmissionEvidenceReviewPanel from '../components/SubmissionEvidenceReviewPanel'
@@ -283,6 +285,9 @@ export default function ApplicationDetail() {
     activeManualReview?.reason_code === 'unsupported_platform'
     && isLinkedInUrl(job?.url)
   )
+  const operatorFinalSubmitReview = (
+    activeManualReview?.reason_code === 'operator_final_submit_required'
+  )
   const handoffExpected = (
     !activeManualReview
     || HANDOFF_REVIEW_REASONS.has(activeManualReview.reason_code)
@@ -375,7 +380,9 @@ export default function ApplicationDetail() {
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-amber-700 mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <h2 className="font-semibold text-gray-900">Manual review required</h2>
+                <h2 className="font-semibold text-gray-900">
+                  {operatorFinalSubmitReview ? 'Owner final action required' : 'Manual review required'}
+                </h2>
                 <p className="text-sm text-gray-700 mt-1">
                   {activeManualReview.summary}
                 </p>
@@ -384,7 +391,9 @@ export default function ApplicationDetail() {
                     ? 'This is an obsolete navigation-only review from an older attempt. Start a new dry run so JobTomatik can resolve the Apply doorway automatically.'
                     : linkedInDiscoveryReview
                       ? 'This older attempt treated LinkedIn as an unsupported form. Start a new dry run to use the persistent target resolver.'
-                      : 'This attempt reached a step that JobTomatik cannot complete automatically. Review the reason below and open the application page when manual action is required.'}
+                      : operatorFinalSubmitReview
+                        ? 'The exact employer form is already filled and retained. Use the operator-assisted approval and secure final-submit handoff below. Do not open a fresh application page.'
+                        : 'This attempt reached a step that JobTomatik cannot complete automatically. Review the reason below and open the application page when manual action is required.'}
                 </p>
                 <div className="text-xs text-gray-500 mt-2">
                   Reason: {activeManualReview.reason_code.replaceAll('_', ' ')}
@@ -393,7 +402,7 @@ export default function ApplicationDetail() {
             </div>
           </div>
 
-          {activeManualReview.blocking_url && !targetNavigationReview && (
+          {activeManualReview.blocking_url && !targetNavigationReview && !operatorFinalSubmitReview && (
             <div className="px-5 py-4">
               <a
                 href={activeManualReview.blocking_url}
@@ -409,10 +418,18 @@ export default function ApplicationDetail() {
         </section>
       )}
 
-      {!applicationFinished && handoffExpected && (
+      {!applicationFinished && supervisedPlatform === 'lever' && (
+        <OperatorAssistedSubmissionPanel application={app} />
+      )}
+      {!applicationFinished && operatorFinalSubmitReview && (
+        <OperatorFinalSubmitHandoffPanel applicationId={Number(id)} />
+      )}
+      {!applicationFinished && !operatorFinalSubmitReview && handoffExpected && (
         <ManualHandoffPanel applicationId={Number(id)} />
       )}
-      {!applicationFinished && <SupervisedSubmissionPanel application={app} />}
+      {!applicationFinished && supervisedPlatform !== 'lever' && (
+        <SupervisedSubmissionPanel application={app} />
+      )}
       {!applicationFinished && supervisedPlatform === 'lever' && (
         <SupervisedPilotDossierPanel applicationId={Number(id)} />
       )}
@@ -451,7 +468,7 @@ export default function ApplicationDetail() {
         <div className="card p-5 space-y-3">
           <h2 className="font-semibold text-gray-900">Actions</h2>
 
-          {(submitTaskId || app.automation_state === 'applying') && (
+          {(submitTaskId || (app.automation_state === 'applying' && !operatorFinalSubmitReview)) && (
             <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-800">
               <Loader2 className="w-4 h-4 animate-spin mt-0.5 flex-shrink-0" />
               <span>
@@ -471,7 +488,7 @@ export default function ApplicationDetail() {
             {app.cover_letter ? 'Regenerate Verified Cover Letter' : 'Generate Verified Cover Letter'}
           </button>
 
-          {!applicationFinished && (
+          {!applicationFinished && supervisedPlatform !== 'lever' && (
             <button
               onClick={() => handleSubmit(true)}
               disabled={submissionBusy}
@@ -491,7 +508,9 @@ export default function ApplicationDetail() {
                 Direct {supervisedPlatformConfig.displayName} live submit is locked
               </div>
               <p className="mt-1">
-                Use the supervised panel above. It requires exact platform and target confirmation, payload hashes, two feature flags, and a one-time approval.
+                {supervisedPlatform === 'lever'
+                  ? 'Use the operator-assisted Phase B panel above. It prepares and retains the filled application while global live-submit, the Lever automated pilot, and autopilot stay off.'
+                  : 'Use the supervised panel above. It requires exact platform and target confirmation, payload hashes, feature flags, and a one-time approval.'}
               </p>
             </div>
           )}
