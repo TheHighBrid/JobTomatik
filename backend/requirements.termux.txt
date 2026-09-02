@@ -19,4 +19,4 @@ pydantic==2.13.4
 pydantic-settings==2.14.2
 aiofiles==25.1.0
 email-validator==2.3.0
-pypdf==6.15.0
+pypdf==6.16.1
