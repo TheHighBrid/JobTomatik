@@ -20,11 +20,13 @@ import {
   getHandoffFrame,
   heartbeatHandoff,
   listApplicationHandoffs,
+  listSupervisedSubmissionApprovals,
   recoverHandoffLease,
 } from '../api/client'
 import { submitOperatorAssistedFinalAction } from '../api/operatorAssisted'
 
 const ACTIVE_STATUSES = new Set(['awaiting_user', 'claimed', 'ready_to_resume', 'resuming'])
+const OPERATOR_APPROVAL_SOURCE = 'authenticated_user_operator_assisted'
 
 function leaseKey(publicId) {
   return `jobtomatik_operator_final_lease_${publicId}`
@@ -67,6 +69,27 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     ) || null,
     [sessionsQuery.data],
   )
+
+  const approvalsQuery = useQuery({
+    queryKey: ['supervised-approvals', applicationId],
+    queryFn: () => listSupervisedSubmissionApprovals(applicationId),
+    select: (response) => response.data,
+    enabled: Boolean(applicationId),
+    refetchInterval: 4000,
+  })
+
+  const boundApproval = useMemo(
+    () => (approvalsQuery.data || []).find((approval) => (
+      approval?.approval_metadata?.approval_source === OPERATOR_APPROVAL_SOURCE
+      && approval?.approval_metadata?.handoff_public_id === session?.public_id
+    )) || null,
+    [approvalsQuery.data, session?.public_id],
+  )
+  const handoffUnlocked = boundApproval?.status === 'consumed'
+  const serverFinalActionStarted = Boolean(
+    boundApproval?.approval_metadata?.operator_submit_action_started_at,
+  )
+  const finalActionStarted = submitActionSent || serverFinalActionStarted
 
   const invalidate = useCallback(async () => {
     await Promise.all([
@@ -185,6 +208,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     ),
     onSuccess: async (response) => {
       setSubmitActionSent(true)
+      await invalidate()
       await refreshFrame()
       if (response.data?.submission_confirmed) {
         completeMutation.mutate()
@@ -200,6 +224,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       const noRetry = /automatic retry is forbidden|already requested|outcome is uncertain/i.test(message)
       if (noRetry) {
         setSubmitActionSent(true)
+        await invalidate()
         await refreshFrame()
         toast.error(`${message} Do not submit again; verify the employer page instead.`)
         return
@@ -233,11 +258,18 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       </div>
 
       <div className="space-y-4 p-5">
-        {session.status === 'awaiting_user' && !leaseToken && (
+        {session.status === 'awaiting_user' && !leaseToken && !handoffUnlocked && (
+          <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span>Retained browser access is locked. Complete the exact owner approval above first. The one-time handoff token has not been disclosed.</span>
+          </div>
+        )}
+
+        {session.status === 'awaiting_user' && !leaseToken && handoffUnlocked && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-2 text-sm text-slate-600">
               <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-700" />
-              <span>Opening is server-locked until the exact operator-assisted approval above is consumed.</span>
+              <span>The exact approval is consumed. Open the retained application in review-only mode.</span>
             </div>
             <button
               type="button"
@@ -316,7 +348,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {submitActionSent && (
+              {finalActionStarted && (
                 <button
                   type="button"
                   onClick={() => completeMutation.mutate()}
@@ -330,11 +362,11 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
               <button
                 type="button"
                 onClick={() => submitMutation.mutate()}
-                disabled={submitMutation.isPending || completeMutation.isPending || submitActionSent}
+                disabled={submitMutation.isPending || completeMutation.isPending || finalActionStarted}
                 className="btn-primary inline-flex items-center gap-2"
               >
                 {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Submit exact application once
+                {finalActionStarted ? 'Final submit already requested' : 'Submit exact application once'}
               </button>
             </div>
           </>
