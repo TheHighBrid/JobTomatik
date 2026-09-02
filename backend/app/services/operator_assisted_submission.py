@@ -32,11 +32,24 @@ from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.models.user import User
 from app.services.application_state import normalize_state, transition_application_state
+from app.services.operations_settings import get_operations_settings
 from app.services.supervised_platforms import get_supervised_platform_policy
 from app.services.supervised_submission import build_supervised_preflight
 
 
-settings = get_settings()
+_core_settings = get_settings()
+
+
+class _OperatorSettingsProxy:
+    """Compatibility view for core settings plus the canonical operations autopilot flag."""
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "autopilot_enabled":
+            return bool(get_operations_settings().autopilot_enabled)
+        return getattr(_core_settings, name)
+
+
+settings = _OperatorSettingsProxy()
 OPERATOR_ASSISTED_APPROVAL_SOURCE = "authenticated_user_operator_assisted"
 
 
@@ -129,6 +142,8 @@ def build_operator_assisted_preflight(
     )
     policy = get_supervised_platform_policy(base.get("platform"))
     boundary = _active_final_submit_boundary(db, application)
+    operations = get_operations_settings()
+    autopilot_enabled = bool(operations.autopilot_enabled)
     ignored = _operator_execution_blockers(base)
     if boundary is not None:
         ignored.update({"application_not_ready_to_apply", "unresolved_manual_reviews"})
@@ -143,7 +158,7 @@ def build_operator_assisted_preflight(
         blockers.append("operator_assisted_requires_global_submit_disabled")
     if policy is not None and base.get("platform_pilot_enabled") is not False:
         blockers.append("operator_assisted_requires_platform_pilot_disabled")
-    if bool(getattr(settings, "autopilot_enabled", False)):
+    if autopilot_enabled:
         blockers.append("operator_assisted_requires_autopilot_disabled")
 
     blockers = list(dict.fromkeys(blockers))
@@ -155,7 +170,7 @@ def build_operator_assisted_preflight(
         "operator_final_click_required": True,
         "automated_submission_authorized": False,
         "queue_submission_authorized": False,
-        "autopilot_enabled": bool(getattr(settings, "autopilot_enabled", False)),
+        "autopilot_enabled": autopilot_enabled,
         "operator_final_submit_boundary": boundary is not None,
         "operator_handoff_public_id": boundary.public_id if boundary else None,
     }
