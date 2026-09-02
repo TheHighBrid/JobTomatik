@@ -57,7 +57,12 @@ def _attempt_dry_run(db, application: Application) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
-def _operator_final_submit_checkpoint(db, application: Application) -> Dict[str, Any] | None:
+def _operator_final_submit_checkpoint(
+    db,
+    application: Application,
+    *,
+    now: datetime | None = None,
+) -> Dict[str, Any] | None:
     """Return the newest consumed human-final-click checkpoint, if one exists.
 
     The preparation task is a dry run and therefore leaves a historical dry-run
@@ -66,6 +71,7 @@ def _operator_final_submit_checkpoint(db, application: Application) -> Dict[str,
     consequential final-submit boundary.
     """
 
+    current = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
     approvals = (
         db.query(SubmissionApproval)
         .filter(
@@ -95,6 +101,7 @@ def _operator_final_submit_checkpoint(db, application: Application) -> Dict[str,
     handoff_public_id = str(metadata.get("handoff_public_id") or "").strip()
     session = None
     active = False
+    expires_at = None
     if handoff_public_id:
         from app.models.handoff import (
             ACTIVE_HANDOFF_STATUSES,
@@ -112,13 +119,20 @@ def _operator_final_submit_checkpoint(db, application: Application) -> Dict[str,
             )
             .first()
         )
-        active = bool(session and session.status in ACTIVE_HANDOFF_STATUSES)
+        expires_at = _naive_utc(getattr(session, "expires_at", None))
+        active = bool(
+            session
+            and session.status in ACTIVE_HANDOFF_STATUSES
+            and expires_at is not None
+            and expires_at > current
+        )
 
     return {
         "approval_reference": approval.reference,
         "handoff_public_id": handoff_public_id or None,
         "handoff_active": active,
         "handoff_status": getattr(session, "status", None),
+        "handoff_expires_at": expires_at.isoformat() if expires_at else None,
         "final_action_started": bool(metadata.get("operator_submit_action_started_at")),
         "automatic_retry_allowed": False,
     }
@@ -148,7 +162,11 @@ def recover_stale_application_attempt(
             "state": state,
         }
 
-    operator_checkpoint = _operator_final_submit_checkpoint(db, application)
+    operator_checkpoint = _operator_final_submit_checkpoint(
+        db,
+        application,
+        now=normalized_now,
+    )
     if (
         operator_checkpoint
         and operator_checkpoint.get("handoff_active")
