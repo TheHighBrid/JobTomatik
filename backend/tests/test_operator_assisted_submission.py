@@ -115,6 +115,9 @@ def _create_final_submit_boundary(app_id: int) -> str:
             "handoff_stage": "operator_final_submit",
             "operator_final_click_required": True,
             "submit_clicked": False,
+            "automated_submission_authorized": False,
+            "queue_submission_authorized": False,
+            "target_identity_hash": "b" * 64,
         },
         blocking_url=LEVER_URL,
     )
@@ -132,6 +135,11 @@ def _create_final_submit_boundary(app_id: int) -> str:
             "dry_run": True,
             "adapter": "lever",
             "adapter_version": "1.1.0",
+            "operator_assisted_final_submit": True,
+            "operator_final_click_required": True,
+            "automated_submission_authorized": False,
+            "queue_submission_authorized": False,
+            "operator_target_identity_hash": "b" * 64,
             "supervised_target": _valid_metadata(),
         },
     )
