@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.application import Application
 from app.models.handoff import (
     HandoffActorType,
+    HandoffChallengeType,
     HandoffSessionEvent,
     HandoffSessionStatus,
     ManualHandoffSession,
@@ -122,6 +123,17 @@ async def bootstrap_handoff(
     )
     if session.status != HandoffSessionStatus.awaiting_user.value:
         raise HTTPException(status_code=409, detail="Handoff session is no longer awaiting bootstrap")
+    if session.challenge_type == HandoffChallengeType.final_submit.value:
+        from app.services.operator_assisted_submission import operator_final_click_authorized
+
+        if not operator_final_click_authorized(db, session, user_id=current_user.id):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Exact operator final-click approval is required before the "
+                    "retained application token can be disclosed."
+                ),
+            )
     if session.resume_token_disclosed_at is not None:
         raise HTTPException(status_code=409, detail="Resume token has already been disclosed")
     token = decrypt_handoff_secret(session.encrypted_resume_token)
