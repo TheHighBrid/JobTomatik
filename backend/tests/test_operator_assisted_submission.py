@@ -1,16 +1,30 @@
-from app.models.application import Application, ApplicationAutomationState, SubmissionEvidence
+from types import SimpleNamespace
+
+import pytest
+
+from app.models.application import (
+    Application,
+    ApplicationAutomationState,
+    ManualReviewReason,
+)
+from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.models.job import Job, JobSource, JobStatus
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
+from app.services import browser_handoff
 from app.services import operator_assisted_submission as operator_service
 from app.services import supervised_submission as approval_service
+from app.services.application_state import create_manual_review_task
+from app.services.handoff_session import issue_handoff_session
+from app.services.operator_assisted_handoff_integration import (
+    install_operator_assisted_handoff_integration,
+)
 from tests.conftest import TestingSessionLocal
 
 
 POSTING_ID = "12345678-1234-1234-1234-123456789abc"
 LEVER_URL = f"https://jobs.lever.co/safeco/{POSTING_ID}/apply"
-CONFIRMATION_URL = "https://jobs.lever.co/safeco/thank-you"
 
 
 def _valid_metadata():
@@ -87,14 +101,55 @@ def _prepare_application(auth_client, tmp_path):
     return response.json()["id"]
 
 
-def _approval_payload():
+def _create_final_submit_boundary(app_id: int) -> str:
+    install_operator_assisted_handoff_integration()
+    db = TestingSessionLocal()
+    application = db.query(Application).filter(Application.id == app_id).one()
+    application.automation_state = ApplicationAutomationState.ready_to_apply.value
+    review = create_manual_review_task(
+        db,
+        application,
+        ManualReviewReason.operator_final_submit_required,
+        "Review the filled Lever form and perform the final submit action.",
+        details={
+            "handoff_stage": "operator_final_submit",
+            "operator_final_click_required": True,
+            "submit_clicked": False,
+        },
+        blocking_url=LEVER_URL,
+    )
+    db.flush()
+    issued = issue_handoff_session(
+        db,
+        application,
+        review,
+        browser_provider="local_cdp",
+        browser_session_id="operator-assisted-test-browser",
+        browser_endpoint="http://127.0.0.1:9222",
+        current_url=LEVER_URL,
+        current_fingerprint="fingerprint-before-submit",
+        metadata={
+            "dry_run": True,
+            "adapter": "lever",
+            "adapter_version": "1.1.0",
+            "supervised_target": _valid_metadata(),
+        },
+    )
+    public_id = issued.session.public_id
+    db.commit()
+    db.close()
+    return public_id
+
+
+def _approval_payload(handoff_public_id: str):
     return {
+        "handoff_public_id": handoff_public_id,
         "confirm_employer": "SafeCo",
         "confirm_role": "Payments Risk Analyst",
         "confirm_application_url": LEVER_URL,
         "confirm_operator_final_click": True,
         "expires_in_minutes": 20,
-        "notes": "Owner will make the final click directly on Lever.",
+        "notes": "Owner will trigger only the exact retained final Submit action.",
     }
 
 
@@ -120,6 +175,7 @@ def test_operator_assisted_preflight_requires_automation_to_remain_off(
     assert data["operator_final_click_required"] is True
     assert data["automated_submission_authorized"] is False
     assert data["queue_submission_authorized"] is False
+    assert data["operator_final_submit_boundary"] is False
     assert "global_live_submit_disabled" not in data["blockers"]
     assert "lever_supervised_pilot_disabled" not in data["blockers"]
 
@@ -132,7 +188,7 @@ def test_operator_assisted_preflight_requires_automation_to_remain_off(
     assert "operator_assisted_requires_global_submit_disabled" in blocked.json()["blockers"]
 
 
-def test_operator_final_click_authorization_never_queues_worker_work(
+def test_prepare_endpoint_queues_only_dedicated_fill_and_retain_task(
     auth_client,
     tmp_path,
     monkeypatch,
@@ -140,16 +196,86 @@ def test_operator_final_click_authorization_never_queues_worker_work(
     app_id = _prepare_application(auth_client, tmp_path)
     _mock_metadata(monkeypatch)
     _keep_automation_off(monkeypatch)
+    calls = []
+
+    def fake_apply_async(*, args, queue):
+        calls.append({"args": args, "queue": queue})
+        return SimpleNamespace(id="operator-prepare-task-1")
+
+    monkeypatch.setattr(
+        "app.api.supervised_submissions.prepare_operator_assisted_application_task.apply_async",
+        fake_apply_async,
+    )
+
+    response = auth_client.post(
+        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/prepare"
+    )
+    assert response.status_code == 202
+    data = response.json()
+    assert data["task_id"] == "operator-prepare-task-1"
+    assert data["status"] == "preparing_retained_form"
+    assert data["automated_submission_authorized"] is False
+    assert data["final_submit_clicked_by_jobtomatik"] is False
+    assert calls == [{"args": [app_id], "queue": "applications"}]
+
+
+def test_final_boundary_is_allowed_but_cannot_be_claimed_before_exact_approval(
+    auth_client,
+    tmp_path,
+    monkeypatch,
+):
+    app_id = _prepare_application(auth_client, tmp_path)
+    _mock_metadata(monkeypatch)
+    _keep_automation_off(monkeypatch)
+    handoff_public_id = _create_final_submit_boundary(app_id)
+
+    preflight = auth_client.get(
+        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/preflight"
+    )
+    assert preflight.status_code == 200
+    data = preflight.json()
+    assert data["ready"] is True
+    assert data["automation_state"] == ApplicationAutomationState.needs_review.value
+    assert data["unresolved_manual_review_count"] == 1
+    assert data["operator_final_submit_boundary"] is True
+    assert data["operator_handoff_public_id"] == handoff_public_id
+    assert "application_not_ready_to_apply" not in data["blockers"]
+    assert "unresolved_manual_reviews" not in data["blockers"]
+
+    bootstrapped = auth_client.post(f"/api/handoffs/{handoff_public_id}/bootstrap")
+    assert bootstrapped.status_code == 200
+    resume_token = bootstrapped.json()["resume_token"]
+    blocked_claim = auth_client.post(
+        f"/api/handoffs/{handoff_public_id}/claim",
+        json={"resume_token": resume_token},
+    )
+    assert blocked_claim.status_code == 409
+    assert "Exact operator final-click approval is required" in blocked_claim.json()["detail"]
+
+
+def test_exact_operator_authorization_unlocks_handoff_without_submission_attempt(
+    auth_client,
+    tmp_path,
+    monkeypatch,
+):
+    app_id = _prepare_application(auth_client, tmp_path)
+    _mock_metadata(monkeypatch)
+    _keep_automation_off(monkeypatch)
+    handoff_public_id = _create_final_submit_boundary(app_id)
+
+    bootstrapped = auth_client.post(f"/api/handoffs/{handoff_public_id}/bootstrap")
+    resume_token = bootstrapped.json()["resume_token"]
 
     created = auth_client.post(
         f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals",
-        json=_approval_payload(),
+        json=_approval_payload(handoff_public_id),
     )
     assert created.status_code == 201
     approval = created.json()
     reference = approval["reference"]
     assert reference.startswith("lvsup-")
     assert approval["status"] == SubmissionApprovalStatus.active.value
+    assert approval["approval_metadata"]["handoff_public_id"] == handoff_public_id
     assert approval["approval_metadata"]["operator_final_click_required"] is True
     assert approval["approval_metadata"]["automated_submission_authorized"] is False
     assert approval["approval_metadata"]["queue_submission_authorized"] is False
@@ -160,10 +286,17 @@ def test_operator_final_click_authorization_never_queues_worker_work(
     assert authorized.status_code == 200
     data = authorized.json()
     assert data["status"] == SubmissionApprovalStatus.consumed.value
-    assert data["operator_final_click_required"] is True
+    assert data["handoff_public_id"] == handoff_public_id
     assert data["worker_task_created"] is False
     assert data["queue_created"] is False
     assert data["automated_submission_authorized"] is False
+
+    claim = auth_client.post(
+        f"/api/handoffs/{handoff_public_id}/claim",
+        json={"resume_token": resume_token},
+    )
+    assert claim.status_code == 200
+    assert claim.json()["session"]["challenge_type"] == HandoffChallengeType.final_submit.value
 
     db = TestingSessionLocal()
     application = db.query(Application).filter(Application.id == app_id).one()
@@ -176,97 +309,33 @@ def test_operator_final_click_authorization_never_queues_worker_work(
     db.close()
 
 
-def test_operator_confirmation_enters_existing_independent_review_pipeline(
-    auth_client,
-    tmp_path,
-    monkeypatch,
-):
-    app_id = _prepare_application(auth_client, tmp_path)
-    _mock_metadata(monkeypatch)
-    _keep_automation_off(monkeypatch)
-
-    created = auth_client.post(
-        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals",
-        json=_approval_payload(),
-    )
-    assert created.status_code == 201
-    reference = created.json()["reference"]
-    authorized = auth_client.post(
-        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals/{reference}/authorize-final-click"
-    )
-    assert authorized.status_code == 200
-
-    recorded = auth_client.post(
-        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals/{reference}/confirmation",
-        json={
-            "confirm_submission_completed": True,
-            "evidence_type": "confirmation_page",
-            "final_url": CONFIRMATION_URL,
-            "confirmation_text": "Thank you for applying",
-            "notes": "Owner observed Lever confirmation after making the final click.",
-        },
-    )
-    assert recorded.status_code == 200
-    evidence_id = recorded.json()["evidence_id"]
-    assert recorded.json()["automation_state"] == ApplicationAutomationState.submitted.value
-    assert recorded.json()["independent_review_required"] is True
-    assert recorded.json()["phase_b_credit_granted"] is False
-
-    preflight = auth_client.get(
-        f"/api/applications/{app_id}/evidence/{evidence_id}/review-preflight"
-    )
-    assert preflight.status_code == 200
-    review_data = preflight.json()
-    assert review_data["ready_for_acceptance"] is True
-    assert review_data["blockers"] == []
-    assert review_data["approval_reference"] == reference
-
-    db = TestingSessionLocal()
-    evidence = db.query(SubmissionEvidence).filter(SubmissionEvidence.id == evidence_id).one()
-    assert evidence.payload_hash
-    assert evidence.evidence_metadata["approval_reference"] == reference
-    assert evidence.evidence_metadata["platform"] == "lever"
-    assert evidence.evidence_metadata["adapter"] == "lever"
-    assert evidence.evidence_metadata["adapter_version"] == "1.1.0"
-    db.close()
-
-
-def test_operator_confirmation_rejects_weak_or_unconfirmed_claims(
-    auth_client,
-    tmp_path,
-    monkeypatch,
-):
-    app_id = _prepare_application(auth_client, tmp_path)
-    _mock_metadata(monkeypatch)
-    _keep_automation_off(monkeypatch)
-
-    created = auth_client.post(
-        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals",
-        json=_approval_payload(),
-    )
-    reference = created.json()["reference"]
-    auth_client.post(
-        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals/{reference}/authorize-final-click"
+@pytest.mark.asyncio
+async def test_final_submit_handoff_rejects_generic_browser_actions():
+    install_operator_assisted_handoff_integration()
+    session = ManualHandoffSession(
+        application_id=1,
+        manual_review_id=1,
+        user_id=1,
+        challenge_type=HandoffChallengeType.final_submit.value,
+        status="claimed",
+        idempotency_key="test-final-submit-action-lock",
+        resume_token_hash="x",
+        encrypted_resume_token="x",
+        resume_token_prefix="x",
+        browser_provider="local_cdp",
     )
 
-    not_confirmed = auth_client.post(
-        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals/{reference}/confirmation",
-        json={
-            "confirm_submission_completed": False,
-            "evidence_type": "confirmation_page",
-            "final_url": CONFIRMATION_URL,
-            "confirmation_text": "Thank you for applying",
-        },
-    )
-    assert not_confirmed.status_code == 409
+    with pytest.raises(browser_handoff.BrowserHandoffError, match="review-only"):
+        await browser_handoff.perform_handoff_action(
+            session,
+            action="click",
+            x=10,
+            y=10,
+        )
 
-    weak = auth_client.post(
-        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals/{reference}/confirmation",
-        json={
-            "confirm_submission_completed": True,
-            "evidence_type": "screenshot",
-            "final_url": CONFIRMATION_URL,
-            "confirmation_text": "looks submitted",
-        },
-    )
-    assert weak.status_code == 409
+    with pytest.raises(browser_handoff.BrowserHandoffError, match="review-only"):
+        await browser_handoff.perform_handoff_action(
+            session,
+            action="type",
+            text="changed answer",
+        )
