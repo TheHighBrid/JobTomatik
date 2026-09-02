@@ -4,12 +4,18 @@ on:
   pull_request:
     paths:
       - '.github/workflows/day39-live-window-tooling-gate.yml'
+      - 'backend/app/api/autonomy_control.py'
+      - 'backend/app/api/live_pilot.py'
       - 'backend/app/models/live_pilot.py'
       - 'backend/app/models/__init__.py'
       - 'backend/app/services/day39_live_window.py'
       - 'backend/app/services/day39_live_authorization.py'
+      - 'backend/app/services/day39_live_runtime.py'
+      - 'backend/app/services/day39_live_worker.py'
+      - 'backend/app/tasks/unattended.py'
       - 'backend/tests/test_day39_live_window.py'
       - 'backend/tests/test_day39_live_authorization.py'
+      - 'backend/tests/test_day39_live_enforcement.py'
   workflow_dispatch:
 
 permissions:
@@ -44,12 +50,15 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install backend dependencies
         run: python -m pip install -q --disable-pip-version-check -r requirements.txt
-      - name: Run bounded live-window and persistence tests
+      - name: Run bounded live-window persistence API and worker tests
         run: |
           pytest -q --tb=short -ra \
             tests/test_day39_live_window.py \
             tests/test_day39_live_authorization.py \
-            tests/test_worker_schema_bootstrap.py
+            tests/test_day39_live_enforcement.py \
+            tests/test_worker_schema_bootstrap.py \
+            tests/test_shadow_worker_exception.py \
+            tests/test_shadow_test_policy_profile.py
       - name: Assert evaluator cannot persist or enable live submission
         run: |
           python - <<'PY'
@@ -115,4 +124,20 @@ jobs:
           assert report['real_submission_enabled'] is False
           assert report['invariants']['worker_must_recheck_before_browser_work'] is True
           assert report['invariants']['attempt_reservation_must_be_atomic'] is True
+          PY
+      - name: Assert live worker chokepoint remains ahead of browser submission
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('app/tasks/unattended.py').read_text()
+          gate = source.index('enforce_day39_live_worker_gate(')
+          submit = source.rindex('submit_application_task.run(')
+          assert gate < submit
+          assert 'effective_shadow_session_id is None and dry_run is False' in source
+
+          api = Path('app/api/live_pilot.py').read_text()
+          assert 'ConfigDict(extra="forbid")' in api
+          assert 'runtime_enablement_changed": False' in api
+          assert 'followup_send_authorized": False' in api
           PY

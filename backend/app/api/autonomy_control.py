@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.api.live_pilot import router as live_pilot_router
 from app.auth import get_current_user
 from app.database import get_db
 from app.models.user import User
@@ -17,6 +18,7 @@ from app.services.operator_autonomy_control import MODE_DRAINING, MODE_PAUSED, M
 
 
 router = APIRouter(prefix="/autonomy-control", tags=["autonomy-control"])
+router.include_router(live_pilot_router)
 
 
 class ControlActionRequest(BaseModel):
