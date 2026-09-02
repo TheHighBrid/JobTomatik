@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.database import get_db
 from app.models.application import Application
+from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_integrity import SubmissionAttempt
@@ -15,6 +16,8 @@ from app.models.user import User
 from app.schemas.supervised_submission import (
     OperatorAssistedApprovalCreate,
     OperatorAssistedAuthorizationOut,
+    OperatorAssistedFinalSubmitOut,
+    OperatorAssistedFinalSubmitRequest,
     OperatorAssistedPreflightOut,
     OperatorAssistedPrepareOut,
     SupervisedApprovalCreate,
@@ -23,7 +26,13 @@ from app.schemas.supervised_submission import (
     SupervisedPreflightOut,
     SupervisedSubmitQueued,
 )
+from app.services import browser_handoff as browser_handoff_service
 from app.services.application_integrity import submission_is_closed
+from app.services.handoff_session import verify_handoff_lease
+from app.services.operator_assisted_final_action import (
+    claim_operator_final_action,
+    finalize_operator_final_action,
+)
 from app.services.operator_assisted_handoff_integration import (
     install_operator_assisted_handoff_integration,
 )
@@ -327,6 +336,115 @@ async def authorize_operator_final_click(
         "automated_submission_authorized": False,
         "worker_task_created": False,
         "queue_created": False,
+    }
+
+
+@router.post(
+    "/applications/{application_id}/operator-assisted/handoffs/{handoff_public_id}/submit",
+    response_model=OperatorAssistedFinalSubmitOut,
+)
+async def submit_operator_assisted_final_action(
+    application_id: int,
+    handoff_public_id: str,
+    data: OperatorAssistedFinalSubmitRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    application, _, _ = _owned_records(
+        db,
+        application_id,
+        current_user.id,
+        lock=True,
+    )
+    _require_open_submission(application)
+    session = (
+        db.query(ManualHandoffSession)
+        .filter(
+            ManualHandoffSession.public_id == handoff_public_id,
+            ManualHandoffSession.application_id == application.id,
+            ManualHandoffSession.user_id == current_user.id,
+            ManualHandoffSession.challenge_type == HandoffChallengeType.final_submit.value,
+        )
+        .with_for_update()
+        .first()
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Operator final-submit handoff not found")
+
+    try:
+        verify_handoff_lease(
+            db,
+            session,
+            user_id=current_user.id,
+            lease_token=data.lease_token,
+        )
+        approval = claim_operator_final_action(
+            db,
+            application,
+            session,
+            user_id=current_user.id,
+        )
+        approval_reference = approval.reference
+        db.commit()
+    except OperatorAssistedSubmissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    try:
+        result = await browser_handoff_service.perform_handoff_action(
+            session,
+            action="operator_submit",
+        )
+    except Exception as exc:
+        db.rollback()
+        application = db.query(Application).filter(Application.id == application_id).first()
+        session = db.query(ManualHandoffSession).filter(
+            ManualHandoffSession.public_id == handoff_public_id
+        ).first()
+        approval = db.query(SubmissionApproval).filter(
+            SubmissionApproval.reference == approval_reference
+        ).first()
+        if application and session and approval:
+            finalize_operator_final_action(
+                db,
+                application,
+                session,
+                approval,
+                error=exc,
+            )
+            db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The final submit action outcome is uncertain. Automatic retry is forbidden. "
+                "Refresh the retained employer page and verify confirmation instead."
+            ),
+        ) from exc
+
+    session.current_url = str(result.get("current_url") or session.current_url or "")
+    session.current_fingerprint = str(
+        result.get("current_fingerprint") or session.current_fingerprint or ""
+    )
+    finalize_operator_final_action(
+        db,
+        application,
+        session,
+        approval,
+        result=result,
+    )
+    db.commit()
+    return {
+        "application_id": application.id,
+        "handoff_public_id": session.public_id,
+        "approval_reference": approval.reference,
+        "action": "operator_submit",
+        "current_url": session.current_url or "",
+        "submission_confirmed": bool(result.get("submission_confirmed")),
+        "final_action_started": True,
+        "automatic_retry_allowed": False,
     }
 
 
