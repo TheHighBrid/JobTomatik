@@ -84,12 +84,24 @@ def claim_operator_final_action(
         )
 
     now = _now()
+    pre_submit_url = str(session.current_url or "")
+    pre_submit_fingerprint = str(session.current_fingerprint or "")
     approval.approval_metadata = {
         **metadata,
         "operator_submit_action_started_at": now.isoformat(),
         "operator_submit_action_started": True,
         "operator_submit_action_completed": False,
         "operator_submit_action_result": "pending_external_action",
+        "operator_submit_pre_submit_url": pre_submit_url or None,
+        "operator_submit_pre_submit_fingerprint": pre_submit_fingerprint or None,
+        "automatic_retry_allowed": False,
+    }
+    session.handoff_metadata = {
+        **dict(session.handoff_metadata or {}),
+        "operator_submit_action_started_at": now.isoformat(),
+        "operator_submit_pre_submit_url": pre_submit_url or None,
+        "operator_submit_pre_submit_fingerprint": pre_submit_fingerprint or None,
+        "operator_submit_confirmation_observed": False,
         "automatic_retry_allowed": False,
     }
     db.add(
@@ -101,6 +113,8 @@ def claim_operator_final_action(
             payload={
                 "approval_reference": approval.reference,
                 "handoff_public_id": session.public_id,
+                "pre_submit_url": pre_submit_url or None,
+                "pre_submit_fingerprint": pre_submit_fingerprint or None,
                 "automatic_retry_allowed": False,
             },
         )
@@ -126,12 +140,18 @@ def finalize_operator_final_action(
         outcome = "uncertain"
         confirmed = False
         current_url = str(session.current_url or "")
+        current_fingerprint = str(session.current_fingerprint or "")
+        detector = None
         error_text = f"{type(error).__name__}: {str(error)[:300]}"
     else:
         payload = dict(result or {})
         confirmed = bool(payload.get("submission_confirmed"))
         outcome = "confirmed" if confirmed else "awaiting_confirmation"
         current_url = str(payload.get("current_url") or session.current_url or "")
+        current_fingerprint = str(
+            payload.get("current_fingerprint") or session.current_fingerprint or ""
+        )
+        detector = str(payload.get("confirmation_detector") or "") or None
         error_text = None
 
     approval.approval_metadata = {
@@ -140,8 +160,20 @@ def finalize_operator_final_action(
         "operator_submit_action_result": outcome,
         "operator_submit_action_finished_at": now.isoformat(),
         "operator_submit_confirmation_observed": confirmed,
+        "operator_submit_confirmation_detector": detector,
         "operator_submit_current_url": current_url or None,
+        "operator_submit_current_fingerprint": current_fingerprint or None,
         "operator_submit_error": error_text,
+        "automatic_retry_allowed": False,
+    }
+    session.handoff_metadata = {
+        **dict(session.handoff_metadata or {}),
+        "operator_submit_action_result": outcome,
+        "operator_submit_action_finished_at": now.isoformat(),
+        "operator_submit_confirmation_observed": confirmed,
+        "operator_submit_confirmation_detector": detector,
+        "operator_submit_current_url": current_url or None,
+        "operator_submit_current_fingerprint": current_fingerprint or None,
         "automatic_retry_allowed": False,
     }
     db.add(
@@ -158,8 +190,10 @@ def finalize_operator_final_action(
                 "approval_reference": approval.reference,
                 "handoff_public_id": session.public_id,
                 "submission_confirmed": confirmed,
+                "confirmation_detector": detector,
                 "outcome": outcome,
                 "current_url": current_url or None,
+                "current_fingerprint": current_fingerprint or None,
                 "automatic_retry_allowed": False,
                 "error": error_text,
             },
