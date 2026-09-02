@@ -13,3 +13,9 @@ export const authorizeOperatorFinalClick = (applicationId, reference) =>
   api.post(
     `/supervised-submissions/applications/${applicationId}/operator-assisted/approvals/${reference}/authorize-final-click`,
   )
+
+export const submitOperatorAssistedFinalAction = (applicationId, handoffPublicId, leaseToken) =>
+  api.post(
+    `/supervised-submissions/applications/${applicationId}/operator-assisted/handoffs/${handoffPublicId}/submit`,
+    { lease_token: leaseToken },
+  )
