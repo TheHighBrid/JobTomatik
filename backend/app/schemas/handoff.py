@@ -63,7 +63,6 @@ class HandoffBrowserActionRequest(HandoffLeaseRequest):
         "resend_code",
         "back",
         "reload",
-        "operator_submit",
     ]
     x: Optional[float] = None
     y: Optional[float] = None
