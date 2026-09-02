@@ -40,8 +40,9 @@ test('operator approval is bound to one exact retained form and typed exact targ
     operatorPanel.includes('`SUBMIT ${preflight.employer} | ${preflight.role} | ${preflight.application_url}`'),
     true,
   )
-  assert.equal(operatorPanel.includes('automated_submission_authorized'), true)
-  assert.equal(operatorPanel.includes('queue_submission_authorized'), false)
+  assert.equal(operatorPanel.includes('preflight.automated_submission_authorized === false'), true)
+  assert.equal(operatorPanel.includes('preflight.queue_submission_authorized === false'), true)
+  assert.equal(operatorPanel.includes('executionAuthorityOff'), true)
   assert.equal(operatorPanel.includes('Approve exact application & unlock final submit'), true)
 })
 
