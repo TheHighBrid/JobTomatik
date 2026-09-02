@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
+from app.services import operator_assisted_final_action as final_action
 from app.services.operator_assisted_final_action import finalize_operator_final_action
+
+
+LEVER_URL = "https://jobs.lever.co/safeco/posting-123/apply"
 
 
 class _FakeDb:
@@ -13,6 +17,57 @@ class _FakeDb:
 
     def flush(self):
         self.flushed = True
+
+
+def test_claim_runtime_gate_detects_emergency_stop_before_consumption(monkeypatch):
+    monkeypatch.setattr(
+        final_action,
+        "get_operations_settings",
+        lambda: SimpleNamespace(
+            global_kill_switch=True,
+            autopilot_enabled=False,
+            disabled_platforms="",
+        ),
+    )
+    monkeypatch.setattr(
+        final_action,
+        "get_settings",
+        lambda: SimpleNamespace(
+            allow_real_application_submit=False,
+            lever_supervised_pilot_enabled=False,
+        ),
+    )
+
+    assert final_action._claim_runtime_blockers(LEVER_URL) == [
+        "global_kill_switch_active"
+    ]
+
+
+def test_claim_runtime_gate_detects_authority_drift_before_consumption(monkeypatch):
+    monkeypatch.setattr(
+        final_action,
+        "get_operations_settings",
+        lambda: SimpleNamespace(
+            global_kill_switch=False,
+            autopilot_enabled=True,
+            disabled_platforms="lever",
+        ),
+    )
+    monkeypatch.setattr(
+        final_action,
+        "get_settings",
+        lambda: SimpleNamespace(
+            allow_real_application_submit=True,
+            lever_supervised_pilot_enabled=True,
+        ),
+    )
+
+    blockers = final_action._claim_runtime_blockers(LEVER_URL)
+
+    assert "platform_disabled" in blockers
+    assert "operator_assisted_requires_autopilot_disabled" in blockers
+    assert "operator_assisted_requires_global_submit_disabled" in blockers
+    assert "operator_assisted_requires_platform_pilot_disabled" in blockers
 
 
 def test_finalization_preserves_fresh_live_checkpoint_from_outer_handoff_state():
@@ -30,12 +85,12 @@ def test_finalization_preserves_fresh_live_checkpoint_from_outer_handoff_state()
     )
     session = SimpleNamespace(
         public_id="handoff-final-action-test",
-        current_url="https://jobs.lever.co/safeco/posting-123/apply",
+        current_url=LEVER_URL,
         current_fingerprint="fresh-page-before",
         handoff_metadata={
             "operator_submit_live_snapshot_checkpointed": True,
             "operator_submit_live_snapshot_checkpointed_at": "2026-09-02T13:15:00",
-            "operator_submit_pre_submit_url": "https://jobs.lever.co/safeco/posting-123/apply",
+            "operator_submit_pre_submit_url": LEVER_URL,
             "operator_submit_pre_submit_fingerprint": "fresh-page-before",
             "automatic_retry_allowed": False,
         },
@@ -48,7 +103,7 @@ def test_finalization_preserves_fresh_live_checkpoint_from_outer_handoff_state()
         approval,
         result={
             "submission_confirmed": False,
-            "current_url": "https://jobs.lever.co/safeco/posting-123/apply",
+            "current_url": LEVER_URL,
             "current_fingerprint": "after-action",
             "confirmation_detector": "lever_adapter_strict",
         },
