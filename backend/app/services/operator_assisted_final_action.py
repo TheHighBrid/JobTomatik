@@ -7,9 +7,12 @@ from typing import Any, Mapping, Optional
 
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.application import Application, ApplicationEvent
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
+from app.services.operations_policy import disabled_platforms, platform_key_for_url
+from app.services.operations_settings import get_operations_settings
 from app.services.operator_assisted_submission import (
     OPERATOR_ASSISTED_APPROVAL_SOURCE,
     OperatorAssistedSubmissionError,
@@ -18,6 +21,28 @@ from app.services.operator_assisted_submission import (
 
 def _now() -> datetime:
     return datetime.utcnow()
+
+
+def _claim_runtime_blockers(url: str) -> list[str]:
+    """Reject authority drift before the once-only final action is consumed."""
+
+    operations = get_operations_settings()
+    core = get_settings()
+    platform = platform_key_for_url(str(url or ""))
+    disabled = disabled_platforms(operations.disabled_platforms)
+    blockers: list[str] = []
+
+    if operations.global_kill_switch:
+        blockers.append("global_kill_switch_active")
+    if platform in disabled or "all" in disabled:
+        blockers.append("platform_disabled")
+    if operations.autopilot_enabled:
+        blockers.append("operator_assisted_requires_autopilot_disabled")
+    if bool(core.allow_real_application_submit):
+        blockers.append("operator_assisted_requires_global_submit_disabled")
+    if bool(core.lever_supervised_pilot_enabled):
+        blockers.append("operator_assisted_requires_platform_pilot_disabled")
+    return blockers
 
 
 def _bound_consumed_approval(
@@ -70,6 +95,13 @@ def claim_operator_final_action(
         raise OperatorAssistedSubmissionError("Retained final-submit handoff ownership mismatch")
     if session.challenge_type != HandoffChallengeType.final_submit.value:
         raise OperatorAssistedSubmissionError("Handoff is not an operator final-submit boundary")
+
+    runtime_blockers = _claim_runtime_blockers(str(session.current_url or ""))
+    if runtime_blockers:
+        raise OperatorAssistedSubmissionError(
+            "Operator-assisted final submit is blocked by the current runtime profile: "
+            + ", ".join(runtime_blockers)
+        )
 
     approval = _bound_consumed_approval(
         db,
