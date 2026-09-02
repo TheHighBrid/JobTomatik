@@ -148,6 +148,38 @@ def test_periodic_stale_recovery_does_not_steal_active_operator_final_submit_win
     ).count() == 0
 
 
+def test_expired_by_time_operator_handoff_recovers_to_submission_uncertain(db_session):
+    now = datetime.utcnow().replace(microsecond=0)
+    application, handoff, approval = _make_operator_final_submit_window(db_session, now=now)
+    handoff.expires_at = now - timedelta(minutes=1)
+    db_session.commit()
+
+    result = recover_stale_application_attempt(
+        db_session,
+        application,
+        now=now,
+        timeout_minutes=30,
+    )
+    db_session.commit()
+    db_session.refresh(application)
+
+    assert result["recovered"] is True
+    assert result["dry_run"] is None
+    assert result["automatic_retry_allowed"] is False
+    assert result["operator_final_submit_checkpoint"]["handoff_active"] is False
+    assert result["operator_final_submit_checkpoint"]["handoff_public_id"] == handoff.public_id
+    assert result["operator_final_submit_checkpoint"]["approval_reference"] == approval.reference
+    assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
+
+    uncertain_review = db_session.query(ManualReviewTask).filter(
+        ManualReviewTask.application_id == application.id,
+        ManualReviewTask.reason_code == ManualReviewReason.submission_confirmation_uncertain.value,
+    ).one()
+    checkpoint = (uncertain_review.details or {})["operator_final_submit_checkpoint"]
+    assert checkpoint["handoff_active"] is False
+    assert checkpoint["automatic_retry_allowed"] is False
+
+
 def test_runtime_interruption_quarantines_operator_window_even_with_historical_dry_run(db_session):
     now = datetime.utcnow().replace(microsecond=0)
     application, handoff, approval = _make_operator_final_submit_window(db_session, now=now)
