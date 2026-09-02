@@ -187,6 +187,33 @@ def _expire_or_revoke_prior_approvals(
             }
 
 
+def _consumed_operator_approval_for_handoff(
+    db: Session,
+    *,
+    application_id: int,
+    user_id: int,
+    handoff_public_id: str,
+) -> Optional[SubmissionApproval]:
+    approvals = (
+        db.query(SubmissionApproval)
+        .filter(
+            SubmissionApproval.application_id == application_id,
+            SubmissionApproval.user_id == user_id,
+            SubmissionApproval.status == SubmissionApprovalStatus.consumed.value,
+        )
+        .order_by(SubmissionApproval.consumed_at.desc(), SubmissionApproval.id.desc())
+        .all()
+    )
+    for approval in approvals:
+        metadata = dict(approval.approval_metadata or {})
+        if (
+            metadata.get("approval_source") == OPERATOR_ASSISTED_APPROVAL_SOURCE
+            and metadata.get("handoff_public_id") == handoff_public_id
+        ):
+            return approval
+    return None
+
+
 def issue_operator_assisted_approval(
     db: Session,
     application: Application,
@@ -210,6 +237,16 @@ def issue_operator_assisted_approval(
     if boundary is None:
         raise OperatorAssistedSubmissionError(
             "Prepare and retain the exact ready-to-submit application before approval."
+        )
+    if _consumed_operator_approval_for_handoff(
+        db,
+        application_id=application.id,
+        user_id=user.id,
+        handoff_public_id=boundary.public_id,
+    ) is not None:
+        raise OperatorAssistedSubmissionError(
+            "This retained final-submit handoff already consumed an owner approval. "
+            "A second approval is forbidden."
         )
 
     preflight = build_operator_assisted_preflight(
