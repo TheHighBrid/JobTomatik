@@ -14,6 +14,10 @@ from app.services.operator_assisted_handoff_integration import (
     install_operator_assisted_handoff_integration,
     operator_prepare_scope,
 )
+from app.services.operator_assisted_question_retention import (
+    install_operator_assisted_question_retention,
+    summarize_operator_question_retention_result,
+)
 from app.services.operator_assisted_submission import (
     OperatorAssistedSubmissionError,
     build_operator_assisted_preflight,
@@ -26,6 +30,7 @@ from app.tasks.applications import submit_application_task
 
 
 install_operator_assisted_handoff_integration()
+install_operator_assisted_question_retention()
 
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
@@ -88,7 +93,7 @@ def prepare_operator_assisted_application_task(self, application_id: int):
         with operator_prepare_scope(target_metadata or {}):
             result = submit_application_task.run(application_id, dry_run=True)
         if isinstance(result, dict):
-            result = dict(result)
+            result = summarize_operator_question_retention_result(dict(result))
             result["operator_assisted"] = True
             result["automated_submission_authorized"] = False
             result["final_submit_clicked_by_jobtomatik"] = False
