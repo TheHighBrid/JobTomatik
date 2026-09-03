@@ -124,6 +124,8 @@ def test_clean_install_and_selected_python_are_used_consistently() -> None:
     script = VERIFY_SCRIPT.read_text(encoding="utf-8")
 
     assert '"$PYTHON_BIN" -m playwright install --with-deps chromium' in script
+    assert script.count("npm ci --engine-strict") == 2
+    assert "npm ci --engine-strict --ignore-scripts --no-audit --no-fund" in script
     assert '"$PYTHON_BIN" -m alembic -c alembic-verification.ini upgrade head' in script
     assert "require_command alembic" not in script
     assert "JOBTOMATIK_NODE_MIN_VERSION" in script

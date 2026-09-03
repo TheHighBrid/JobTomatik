@@ -146,7 +146,7 @@ bootstrap() {
   step "Install Playwright Chromium and Linux system dependencies"
   "$PYTHON_BIN" -m playwright install --with-deps chromium
   step "Install frontend dependencies"
-  (cd "$ROOT_DIR/frontend" && npm ci)
+  (cd "$ROOT_DIR/frontend" && npm ci --engine-strict)
 }
 
 backend_fast() {
@@ -210,6 +210,7 @@ dependency_check() {
   step "Audit frontend runtime dependencies at high severity"
   (
     cd "$ROOT_DIR/frontend"
+    npm ci --engine-strict --ignore-scripts --no-audit --no-fund
     local report
     report="$(mktemp)"
     trap 'rm -f "$report"' EXIT
