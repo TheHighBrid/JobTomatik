@@ -7,17 +7,17 @@ The Maple physical pilot exposed two production-only hazards:
    by Lever's verification layer. In that state JobTomatik must fail closed before any
    employer-side click and require the owner to finish in a normal browser.
 2. Compatibility wrappers around retained-browser confirmation can be installed in
-   different orders. Final-submit confirmation must not depend on a wrapper chain that
-   can recurse after a consequential click.
+   different orders. A recursive wrapper chain must fail closed instead of exhausting
+   the Python stack after a consequential click.
 
 This module does not solve or bypass CAPTCHA. It only detects the passive verification
-boundary and keeps final confirmation verification self-contained for final-submit
-handoffs.
+boundary and adds a fail-closed reentrancy fuse around the established strict final
+confirmation verifier.
 """
 
 from __future__ import annotations
 
-import hashlib
+from contextvars import ContextVar
 from typing import Any, Dict
 
 from app.models.handoff import HandoffChallengeType
@@ -27,7 +27,11 @@ from app.services import browser_navigation
 _INSTALLED = False
 _ORIGINAL_PERFORM_ACTION = None
 _ORIGINAL_VERIFY_COMPLETION = None
-_HARDENING_SENTINEL = "_jobtomatik_operator_live_pilot_hardening_v1"
+_HARDENING_SENTINEL = "_jobtomatik_operator_live_pilot_hardening_v2"
+_FINAL_VERIFY_ACTIVE: ContextVar[bool] = ContextVar(
+    "jobtomatik_operator_final_verify_active",
+    default=False,
+)
 
 
 def _challenge_type(session: Any) -> str:
@@ -95,7 +99,7 @@ async def passive_verification_state(page: Any) -> Dict[str, Any]:
 
 
 def passive_verification_requires_manual_browser(state: Dict[str, Any]) -> bool:
-    """Pure predicate used by tests and the final-action gate."""
+    """Return whether passive hCaptcha requires normal-browser completion."""
 
     return bool(
         state.get("hcaptcha_loaded")
@@ -103,82 +107,32 @@ def passive_verification_requires_manual_browser(state: Dict[str, Any]) -> bool:
     )
 
 
-async def _verify_final_submit_without_wrapper_chain(browser_handoff, session):
-    """Verify a final-submit handoff without calling the wrapped verifier again."""
+def _reentrant_verification_result(browser_handoff, session):
+    """Return deterministic fail-closed evidence instead of recursing forever."""
 
-    playwright, _, context, page = await browser_handoff._connect_local_cdp(session)
-    try:
-        fingerprint = await browser_handoff.page_fingerprint(page)
-        confirmation = await browser_handoff._submission_confirmation_state(page)
-        target_verification = await browser_handoff._verify_session_target(
-            page,
-            session,
-            allow_same_site_confirmation=bool(confirmation["submission_confirmed"]),
-        )
-
-        metadata = dict(getattr(session, "handoff_metadata", None) or {})
-        target_verified = bool(target_verification.get("verified"))
-        strong_confirmation_observed = bool(
-            metadata.get("operator_submit_confirmation_observed") is True
-        )
-        generic_confirmation = bool(confirmation.get("submission_confirmed"))
-        confirmation_url_signal = bool(confirmation.get("confirmation_url_signal"))
-        live_snapshot_checkpointed = bool(
-            metadata.get("operator_submit_live_snapshot_checkpointed") is True
-        )
-        pre_submit_url = str(metadata.get("operator_submit_pre_submit_url") or "")
-        current_url = str(getattr(page, "url", "") or "")
-        provable_confirmation_transition = bool(
-            live_snapshot_checkpointed
-            and generic_confirmation
-            and confirmation_url_signal
-            and pre_submit_url
-            and current_url
-            and current_url != pre_submit_url
-        )
-        final_confirmed = bool(
-            target_verified
-            and (strong_confirmation_observed or provable_confirmation_transition)
-        )
-
-        evidence: Dict[str, Any] = {
-            **confirmation,
-            "target_verification": target_verification,
-            "operator_submit_confirmation_observed": strong_confirmation_observed,
-            "operator_submit_live_snapshot_checkpointed": live_snapshot_checkpointed,
-            "provable_confirmation_transition": provable_confirmation_transition,
-            "submission_confirmed": final_confirmed,
-            "verification_method": (
-                "operator_final_submit_strict_confirmation"
-                if final_confirmed
-                else "operator_final_submit_confirmation_required"
-            ),
-        }
-        if not final_confirmed:
-            evidence["passive_verification_state"] = await passive_verification_state(page)
-
-        storage_state = await context.storage_state()
-        evidence["storage_state_hash"] = hashlib.sha256(
-            repr(storage_state).encode("utf-8")
-        ).hexdigest()
-
-        return browser_handoff.BrowserVerification(
-            challenge_cleared=final_confirmed,
-            provider=session.browser_provider,
-            current_url=current_url,
-            current_fingerprint=fingerprint,
-            evidence=evidence,
-        )
-    finally:
-        await browser_handoff._disconnect(playwright)
+    return browser_handoff.BrowserVerification(
+        challenge_cleared=False,
+        provider=str(getattr(session, "browser_provider", "") or "unknown"),
+        current_url=str(getattr(session, "current_url", "") or ""),
+        current_fingerprint=str(getattr(session, "current_fingerprint", "") or ""),
+        evidence={
+            "submission_confirmed": False,
+            "operator_submit_confirmation_observed": False,
+            "provable_confirmation_transition": False,
+            "reentrant_verification_blocked": True,
+            "verification_method": "operator_final_submit_reentrancy_blocked",
+            "automatic_retry_allowed": False,
+        },
+    )
 
 
 def install_operator_assisted_live_pilot_hardening() -> None:
-    """Install idempotent final-action and final-confirmation hardening."""
+    """Install idempotent passive-verification and recursion hardening."""
 
     global _INSTALLED, _ORIGINAL_PERFORM_ACTION, _ORIGINAL_VERIFY_COMPLETION
 
     from app.services import browser_handoff
+    from app.services import operator_assisted_handoff_integration as operator_integration
 
     if (
         getattr(browser_handoff.perform_handoff_action, _HARDENING_SENTINEL, False)
@@ -201,10 +155,23 @@ def install_operator_assisted_live_pilot_hardening() -> None:
         delta_x: float = 0,
         delta_y: float = 0,
     ):
-        if (
+        is_final_submit = bool(
             _challenge_type(session) == HandoffChallengeType.final_submit.value
             and action == "operator_submit"
-        ):
+        )
+        if is_final_submit:
+            # Preserve the established safety ordering. Emergency stops, platform
+            # disables, and runtime-mode drift must reject the action before any
+            # retained-browser connection is attempted.
+            blockers = operator_integration._operator_final_action_blockers(
+                str(getattr(session, "current_url", "") or "")
+            )
+            if blockers:
+                raise browser_handoff.BrowserHandoffError(
+                    "Operator-assisted final submit is blocked by the current runtime profile: "
+                    + ", ".join(blockers)
+                )
+
             playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
             try:
                 verification_state = await passive_verification_state(page)
@@ -231,12 +198,21 @@ def install_operator_assisted_live_pilot_hardening() -> None:
         )
 
     async def hardened_verify_completion(session):
-        if _challenge_type(session) == HandoffChallengeType.final_submit.value:
-            return await _verify_final_submit_without_wrapper_chain(
-                browser_handoff,
-                session,
-            )
-        return await _ORIGINAL_VERIFY_COMPLETION(session)
+        if _challenge_type(session) != HandoffChallengeType.final_submit.value:
+            return await _ORIGINAL_VERIFY_COMPLETION(session)
+
+        if _FINAL_VERIFY_ACTIVE.get():
+            return _reentrant_verification_result(browser_handoff, session)
+
+        token = _FINAL_VERIFY_ACTIVE.set(True)
+        try:
+            # Delegate to the already-established strict final-submit verifier. The
+            # ContextVar above prevents an accidental compatibility-wrapper cycle from
+            # recursing indefinitely while preserving its existing test seams and
+            # target/confirmation invariants.
+            return await _ORIGINAL_VERIFY_COMPLETION(session)
+        finally:
+            _FINAL_VERIFY_ACTIVE.reset(token)
 
     setattr(hardened_perform_action, _HARDENING_SENTINEL, True)
     setattr(hardened_verify_completion, _HARDENING_SENTINEL, True)
