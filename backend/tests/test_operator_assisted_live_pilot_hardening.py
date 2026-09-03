@@ -2,8 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.models.handoff import HandoffChallengeType
+from app.services import browser_handoff
+from app.services import operator_assisted_live_pilot_hardening as hardening
 from app.services.operator_assisted_live_pilot_hardening import (
-    _verify_final_submit_without_wrapper_chain,
     passive_verification_requires_manual_browser,
     passive_verification_state,
 )
@@ -63,87 +65,25 @@ async def test_completed_hcaptcha_response_does_not_force_manual_browser():
     assert passive_verification_requires_manual_browser(state) is False
 
 
-class _Context:
-    async def storage_state(self):
-        return {"cookies": [], "origins": []}
-
-
-class _Playwright:
-    pass
-
-
-class _Page:
-    url = "https://jobs.lever.co/example/posting/thanks"
-
-
-class _Verification:
-    def __init__(
-        self,
-        *,
-        challenge_cleared,
-        provider,
-        current_url,
-        current_fingerprint,
-        evidence,
-    ):
-        self.challenge_cleared = challenge_cleared
-        self.provider = provider
-        self.current_url = current_url
-        self.current_fingerprint = current_fingerprint
-        self.evidence = evidence
-
-
 @pytest.mark.asyncio
-async def test_final_submit_verification_is_self_contained_and_does_not_delegate():
-    page = _Page()
-    playwright = _Playwright()
-    disconnected = []
-
-    async def connect(_session):
-        return playwright, object(), _Context(), page
-
-    async def disconnect(value):
-        disconnected.append(value)
-
-    async def fingerprint(_page):
-        return "post-submit-fingerprint"
-
-    async def confirmation(_page):
-        return {
-            "submission_confirmed": True,
-            "confirmation_url_signal": True,
-            "matched_confirmation_phrases": ["application submitted"],
-            "confirmation_evidence": [],
-        }
-
-    async def target(_page, _session, **_kwargs):
-        return {"verified": True, "blockers": []}
-
-    fake_browser_handoff = SimpleNamespace(
-        _connect_local_cdp=connect,
-        _disconnect=disconnect,
-        page_fingerprint=fingerprint,
-        _submission_confirmation_state=confirmation,
-        _verify_session_target=target,
-        BrowserVerification=_Verification,
-    )
+async def test_final_submit_confirmation_recursion_fails_closed(monkeypatch):
+    hardening.install_operator_assisted_live_pilot_hardening()
     session = SimpleNamespace(
+        challenge_type=HandoffChallengeType.final_submit.value,
         browser_provider="local_cdp",
-        handoff_metadata={
-            "operator_submit_live_snapshot_checkpointed": True,
-            "operator_submit_pre_submit_url": (
-                "https://jobs.lever.co/example/posting/apply"
-            ),
-            "operator_submit_confirmation_observed": False,
-        },
+        current_url="https://jobs.lever.co/example/posting/apply",
+        current_fingerprint="before-submit",
     )
 
-    result = await _verify_final_submit_without_wrapper_chain(
-        fake_browser_handoff,
-        session,
-    )
+    async def recursive_verifier(current_session):
+        return await browser_handoff.verify_browser_handoff_completion(current_session)
 
-    assert result.challenge_cleared is True
-    assert result.evidence["submission_confirmed"] is True
-    assert result.evidence["provable_confirmation_transition"] is True
-    assert disconnected == [playwright]
+    monkeypatch.setattr(hardening, "_ORIGINAL_VERIFY_COMPLETION", recursive_verifier)
+
+    result = await browser_handoff.verify_browser_handoff_completion(session)
+
+    assert result.challenge_cleared is False
+    assert result.evidence["submission_confirmed"] is False
+    assert result.evidence["reentrant_verification_blocked"] is True
+    assert result.evidence["automatic_retry_allowed"] is False
+    assert result.evidence["verification_method"] == "operator_final_submit_reentrancy_blocked"
