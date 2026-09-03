@@ -51,6 +51,9 @@ from app.services.control_engine import certification_manifest
 from app.services.followup_schema import ensure_followup_schema
 from app.services.handoff_integration import install_handoff_task_integration
 from app.services.material_task_integration import install_verified_material_task_integration
+from app.services.operator_assisted_live_pilot_hardening import (
+    install_operator_assisted_live_pilot_hardening,
+)
 from app.services.operations_policy import operations_readiness_manifest
 from app.services.runtime_identity import runtime_identity_manifest
 from app.services.supervised_submission_integration import (
@@ -60,6 +63,7 @@ from app.services.supervised_submission_integration import (
 logger = logging.getLogger(__name__)
 settings = get_settings()
 install_handoff_task_integration()
+install_operator_assisted_live_pilot_hardening()
 install_application_target_handoff_task_persistence()
 install_application_target_task_integration()
 install_verified_material_task_integration()
