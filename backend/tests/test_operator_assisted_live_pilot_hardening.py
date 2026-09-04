@@ -1,3 +1,4 @@
+import inspect
 from types import SimpleNamespace
 
 import pytest
@@ -63,6 +64,20 @@ async def test_completed_hcaptcha_response_does_not_force_manual_browser():
     assert state["has_completed_response"] is True
     assert state["manual_browser_required"] is False
     assert passive_verification_requires_manual_browser(state) is False
+
+
+def test_passive_hcaptcha_is_rechecked_at_final_action_boundary():
+    from app.services import operator_assisted_handoff_integration as integration
+
+    source = inspect.getsource(integration.install_operator_assisted_handoff_integration)
+    final_blockers = source.index("final_blockers = _operator_final_action_blockers")
+    final_passive_check = source.index(
+        "final_verification_state = await passive_verification_state(page)"
+    )
+    consequential_click = source.index("await submit_control.click()")
+
+    assert source.count("await passive_verification_state(page)") == 2
+    assert final_blockers < final_passive_check < consequential_click
 
 
 @pytest.mark.asyncio

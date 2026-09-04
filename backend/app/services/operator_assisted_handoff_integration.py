@@ -435,6 +435,19 @@ def install_operator_assisted_handoff_integration() -> None:
                     "validation errors. Automatic retry is forbidden."
                 )
 
+            # Passive verification is mutable browser state. Re-read it only after the
+            # durable checkpoint, target/form revalidation, and final runtime blocker
+            # gate so an expired or newly loaded hCaptcha boundary can never be
+            # followed by an employer-side click.
+            final_verification_state = await passive_verification_state(page)
+            if passive_verification_requires_manual_browser(final_verification_state):
+                raise browser_handoff.BrowserHandoffError(
+                    "Lever passive hCaptcha verification is incomplete at the final "
+                    "action boundary. JobTomatik will not click Submit in the retained "
+                    "CDP browser. Finish the exact prepared application in a normal "
+                    "user browser and capture employer confirmation evidence."
+                )
+
             await submit_control.click()
             await page.wait_for_timeout(900)
             confirmation_items = await adapter.detect_confirmation(
