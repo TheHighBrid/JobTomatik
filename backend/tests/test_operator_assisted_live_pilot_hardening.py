@@ -25,16 +25,24 @@ class _Element:
 
 
 class _PassivePage:
-    def __init__(self, *, completed: bool):
+    def __init__(self, *, completed: bool, iframe_sources=None, globals_state=None):
         self.completed = completed
+        self.iframe_sources = iframe_sources
+        self.globals_state = globals_state
 
     async def evaluate(self, _script):
-        return {"hcaptcha": True, "grecaptcha": True, "turnstile": False}
+        return self.globals_state or {
+            "hcaptcha": True,
+            "grecaptcha": True,
+            "turnstile": False,
+        }
 
     async def query_selector_all(self, selector: str):
         if selector == 'textarea[name="h-captcha-response"]' and self.completed:
             return [_Element(value="x" * 40)]
         if selector == "iframe[src]":
+            if self.iframe_sources is not None:
+                return [_Element(src=source) for source in self.iframe_sources]
             return [
                 _Element(
                     src=(
@@ -64,6 +72,30 @@ async def test_completed_hcaptcha_response_does_not_force_manual_browser():
     assert state["has_completed_response"] is True
     assert state["manual_browser_required"] is False
     assert passive_verification_requires_manual_browser(state) is False
+
+
+@pytest.mark.asyncio
+async def test_provider_iframes_require_trusted_https_hostnames():
+    state = await passive_verification_state(
+        _PassivePage(
+            completed=False,
+            globals_state={
+                "hcaptcha": False,
+                "grecaptcha": False,
+                "turnstile": False,
+            },
+            iframe_sources=[
+                "https://hcaptcha.com.attacker.example/frame",
+                "https://attacker.example/challenges.cloudflare.com/frame",
+                "http://newassets.hcaptcha.com/captcha/frame",
+            ],
+        )
+    )
+
+    assert state["hcaptcha_loaded"] is False
+    assert state["grecaptcha_loaded"] is False
+    assert state["turnstile_loaded"] is False
+    assert state["manual_browser_required"] is False
 
 
 def test_passive_hcaptcha_is_rechecked_at_final_action_boundary():

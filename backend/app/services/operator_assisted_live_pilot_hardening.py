@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from typing import Any, Dict
+from urllib.parse import urlsplit
 
 from app.models.handoff import HandoffChallengeType
 from app.services import browser_navigation
@@ -36,6 +37,26 @@ _FINAL_VERIFY_ACTIVE: ContextVar[bool] = ContextVar(
 def _challenge_type(session: Any) -> str:
     value = getattr(session, "challenge_type", None)
     return str(value or "")
+
+
+def _trusted_provider_iframe(
+    source: str,
+    *,
+    domains: tuple[str, ...],
+    path_marker: str | None = None,
+) -> bool:
+    """Match an HTTPS provider iframe by parsed hostname, never URL substring."""
+
+    try:
+        parsed = urlsplit(source)
+        hostname = str(parsed.hostname or "").lower().rstrip(".")
+    except (TypeError, ValueError):
+        return False
+    if parsed.scheme.lower() != "https" or not hostname:
+        return False
+    if not any(hostname == domain or hostname.endswith(f".{domain}") for domain in domains):
+        return False
+    return path_marker is None or path_marker in parsed.path.lower()
 
 
 async def passive_verification_state(page: Any) -> Dict[str, Any]:
@@ -72,18 +93,33 @@ async def passive_verification_state(page: Any) -> Dict[str, Any]:
     except Exception:
         pass
 
-    lowered_sources = [source.lower() for source in iframe_sources]
     hcaptcha_loaded = bool(
         globals_state["hcaptcha"]
-        or any("hcaptcha.com" in source for source in lowered_sources)
+        or any(
+            _trusted_provider_iframe(source, domains=("hcaptcha.com",))
+            for source in iframe_sources
+        )
     )
     grecaptcha_loaded = bool(
         globals_state["grecaptcha"]
-        or any("recaptcha" in source for source in lowered_sources)
+        or any(
+            _trusted_provider_iframe(
+                source,
+                domains=("google.com", "recaptcha.net"),
+                path_marker="recaptcha",
+            )
+            for source in iframe_sources
+        )
     )
     turnstile_loaded = bool(
         globals_state["turnstile"]
-        or any("challenges.cloudflare.com" in source for source in lowered_sources)
+        or any(
+            _trusted_provider_iframe(
+                source,
+                domains=("challenges.cloudflare.com",),
+            )
+            for source in iframe_sources
+        )
     )
 
     completed = bool(response_state.get("has_completed_response"))
