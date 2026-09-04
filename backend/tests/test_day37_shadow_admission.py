@@ -96,6 +96,7 @@ def _record_day36_evidence(
         reviewed_by_user_id=(user.id if review_status == "verified" else None),
         reviewed_at=(NOW if review_status == "verified" else None),
         review_reference=("day37-test-review" if review_status == "verified" else None),
+        created_at=NOW,
     )
     db.add(record)
     db.flush()
