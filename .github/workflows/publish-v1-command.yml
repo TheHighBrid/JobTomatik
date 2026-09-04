@@ -11,7 +11,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: publish-jobtomatik-v2-command
+  group: publish-jobtomatik-v2.0.0
   cancel-in-progress: false
 
 env:
@@ -176,6 +176,45 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      - name: Refuse to overwrite an existing tag or release
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: v2.0.0
+        with:
+          script: |
+            const releaseTag = process.env.RELEASE_TAG;
+            let tagExists = false;
+            let releaseExists = false;
+
+            try {
+              await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${releaseTag}`,
+              });
+              tagExists = true;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: releaseTag,
+              });
+              releaseExists = true;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            if (tagExists || releaseExists) {
+              core.setFailed(
+                `Refusing to overwrite immutable release identity ${releaseTag}: ` +
+                `tag_exists=${tagExists}, release_exists=${releaseExists}`,
+              );
+            }
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3
         with:
@@ -185,7 +224,7 @@ jobs:
           body_path: frontend/release/RELEASE_NOTES.md
           make_latest: true
           fail_on_unmatched_files: true
-          overwrite_files: true
+          overwrite_files: false
           files: |
             frontend/release/JobTomatik-v2.00.apk
             frontend/release/JobTomatik-v2.00.sha256

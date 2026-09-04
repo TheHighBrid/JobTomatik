@@ -142,5 +142,28 @@ def test_owner_command_v2_publisher_is_authorized_and_narrowly_scoped():
     assert "versionName='2.0.0'" in workflow
     assert "tag_name: v2.0.0" in workflow
     assert "JobTomatik-v2.00.apk" in workflow
+    assert "group: publish-jobtomatik-v2.0.0" in workflow
+    assert "Refuse to overwrite an existing tag or release" in workflow
+    assert "github.rest.git.getRef" in workflow
+    assert "github.rest.repos.getReleaseByTag" in workflow
+    assert "if (error.status !== 404) throw error" in workflow
+    assert "core.setFailed" in workflow
+    assert "overwrite_files: false" in workflow
+    assert "overwrite_files: true" not in workflow
     assert "github.event.pull_request.head.sha" not in workflow
     assert "github.event.pull_request.merge_commit_sha" not in workflow
+
+
+def test_android_v2_publisher_cannot_overwrite_release_identity():
+    workflow = (
+        REPO_ROOT / ".github" / "workflows" / "android-apk.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "group: publish-jobtomatik-v2.0.0" in workflow
+    assert "Refuse to overwrite an existing tag or release" in workflow
+    assert "github.rest.git.getRef" in workflow
+    assert "github.rest.repos.getReleaseByTag" in workflow
+    assert "if (error.status !== 404) throw error" in workflow
+    assert "core.setFailed" in workflow
+    assert "overwrite_files: false" in workflow
+    assert "overwrite_files: true" not in workflow
