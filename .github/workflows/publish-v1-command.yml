@@ -10,10 +10,6 @@ permissions:
   issues: write
   pull-requests: read
 
-concurrency:
-  group: publish-jobtomatik-v2.0.0
-  cancel-in-progress: false
-
 env:
   AUTHORIZED_PR_NUMBER: "142"
   RELEASE_COMMAND: /publish-jobtomatik-v2.0.0
@@ -43,6 +39,9 @@ jobs:
 
   build-and-publish:
     needs: authorize
+    concurrency:
+      group: publish-jobtomatik-v2.0.0
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:

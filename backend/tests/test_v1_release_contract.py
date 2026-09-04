@@ -143,6 +143,14 @@ def test_owner_command_v2_publisher_is_authorized_and_narrowly_scoped():
     assert "tag_name: v2.0.0" in workflow
     assert "JobTomatik-v2.00.apk" in workflow
     assert "group: publish-jobtomatik-v2.0.0" in workflow
+    assert "group: publish-jobtomatik-v2.0.0" not in workflow.split("jobs:", 1)[0]
+    assert (
+        "  build-and-publish:\n"
+        "    needs: authorize\n"
+        "    concurrency:\n"
+        "      group: publish-jobtomatik-v2.0.0\n"
+        "      cancel-in-progress: false"
+    ) in workflow
     assert "Refuse to overwrite an existing tag or release" in workflow
     assert "github.rest.git.getRef" in workflow
     assert "github.rest.repos.getReleaseByTag" in workflow
