@@ -122,6 +122,9 @@ jobs:
       github.head_ref == 'release/publish-v2.0.0'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    concurrency:
+      group: publish-jobtomatik-v2.0.0
+      cancel-in-progress: false
     steps:
       - name: Download verified APK artifact
         uses: actions/download-artifact@v8
@@ -179,6 +182,45 @@ jobs:
           The APK was compiled, linted, identity-checked, version-checked, and supplied with a SHA-256 checksum by GitHub Actions.
           EOF
 
+      - name: Refuse to overwrite an existing tag or release
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: v2.0.0
+        with:
+          script: |
+            const releaseTag = process.env.RELEASE_TAG;
+            let tagExists = false;
+            let releaseExists = false;
+
+            try {
+              await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${releaseTag}`,
+              });
+              tagExists = true;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: releaseTag,
+              });
+              releaseExists = true;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            if (tagExists || releaseExists) {
+              core.setFailed(
+                `Refusing to overwrite immutable release identity ${releaseTag}: ` +
+                `tag_exists=${tagExists}, release_exists=${releaseExists}`,
+              );
+            }
+
       - name: Publish JobTomatik v2.00 GitHub release
         uses: softprops/action-gh-release@v3
         with:
@@ -188,7 +230,7 @@ jobs:
           body_path: release/RELEASE_NOTES.md
           make_latest: true
           fail_on_unmatched_files: true
-          overwrite_files: true
+          overwrite_files: false
           files: |
             release/JobTomatik-v2.00.apk
             release/JobTomatik-v2.00.sha256
