@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 
 from app.api import shadow_runs as shadow_api
 from app.models.certification import ShadowRunSession

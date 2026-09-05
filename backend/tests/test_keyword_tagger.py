@@ -1,4 +1,3 @@
-import pytest
 from app.services.keyword_tagger import (
     extract_skills, detect_seniority, detect_industry,
     compute_relevance, tag_job
