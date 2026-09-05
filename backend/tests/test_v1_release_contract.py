@@ -132,11 +132,11 @@ def test_owner_command_v2_publisher_is_authorized_and_narrowly_scoped():
     ).exists()
     assert "name: Publish JobTomatik v2 by authorized command" in workflow
     assert "issue_comment:" in workflow
-    assert "github.event.issue.number == 142" in workflow
+    assert "github.event.issue.number == 470" in workflow
     assert "github.event.comment.body == '/publish-jobtomatik-v2.1.0'" in workflow
     assert "github.event.comment.user.login == 'TheHighBrid'" in workflow
     assert "chatgpt-codex-connector[bot]" in workflow
-    assert 'AUTHORIZED_PR_NUMBER: "142"' in workflow
+    assert 'AUTHORIZED_PR_NUMBER: "470"' in workflow
     assert "ref: main" in workflow
     assert "versionCode='210'" in workflow
     assert "versionName='2.1.0'" in workflow
