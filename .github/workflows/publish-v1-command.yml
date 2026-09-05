@@ -24,17 +24,18 @@ jobs:
       github.event.comment.user.login == 'TheHighBrid'
     runs-on: ubuntu-24.04
     steps:
-      - name: Announce authorized publication
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
-              body: `🚀 Authorized JobTomatik v2.1.0 publication started.\n\nRun: ${runUrl}\nSource branch: main`,
-            });
+      - name: Record authorized publication request
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### JobTomatik v2.1.0 publication authorized"
+            echo
+            echo "- Authorized by: ${{ github.event.comment.user.login }}"
+            echo "- Authorization surface: PR #${AUTHORIZED_PR_NUMBER}"
+            echo "- Source branch: main"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build-and-publish:
     needs: authorize
@@ -257,15 +258,13 @@ jobs:
     if: always() && needs.authorize.result != 'skipped'
     runs-on: ubuntu-24.04
     steps:
-      - name: Report publication result
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const build = '${{ needs.build-and-publish.result }}';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
-              body: `JobTomatik v2.1.0 publication finished.\n\n- Build and release: **${build}**\n- Run: ${runUrl}`,
-            });
+      - name: Write publication result to workflow summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### JobTomatik v2.1.0 publication result"
+            echo
+            echo "- Build and release: **${{ needs.build-and-publish.result }}**"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } >> "$GITHUB_STEP_SUMMARY"
