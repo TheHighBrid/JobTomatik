@@ -28,8 +28,8 @@ def test_android_release_config_contains_no_committed_signing_secret():
         REPO_ROOT / "frontend" / "android" / "app" / "build.gradle"
     ).read_text(encoding="utf-8")
 
-    assert 'versionCode 200' in build_gradle
-    assert 'versionName "2.0.0"' in build_gradle
+    assert 'versionCode 210' in build_gradle
+    assert 'versionName "2.1.0"' in build_gradle
     assert "JOBTOMATIK_KEYSTORE_PATH" in build_gradle
     assert "/home/user/JobTomatik" not in build_gradle
     assert "jobtomatik123" not in build_gradle
@@ -132,23 +132,28 @@ def test_owner_command_v2_publisher_is_authorized_and_narrowly_scoped():
     ).exists()
     assert "name: Publish JobTomatik v2 by authorized command" in workflow
     assert "issue_comment:" in workflow
-    assert "github.event.issue.number == 142" in workflow
-    assert "github.event.comment.body == '/publish-jobtomatik-v2.0.0'" in workflow
+    assert "github.event.issue.number == 470" in workflow
+    assert "github.event.comment.body == '/publish-jobtomatik-v2.1.0'" in workflow
     assert "github.event.comment.user.login == 'TheHighBrid'" in workflow
-    assert "chatgpt-codex-connector[bot]" in workflow
-    assert 'AUTHORIZED_PR_NUMBER: "142"' in workflow
+    assert "chatgpt-codex-connector[bot]" not in workflow
+    assert 'AUTHORIZED_PR_NUMBER: "470"' in workflow
     assert "ref: main" in workflow
-    assert "versionCode='200'" in workflow
-    assert "versionName='2.0.0'" in workflow
-    assert "tag_name: v2.0.0" in workflow
-    assert "JobTomatik-v2.00.apk" in workflow
-    assert "group: publish-jobtomatik-v2.0.0" in workflow
-    assert "group: publish-jobtomatik-v2.0.0" not in workflow.split("jobs:", 1)[0]
+    assert "Freeze exact release source" in workflow
+    assert 'echo "RELEASE_SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"' in workflow
+    assert "Verify main has not moved since build" in workflow
+    assert 'target_commitish: ${{ env.RELEASE_SOURCE_SHA }}' in workflow
+    assert "release/SOURCE-COMMIT.txt" in workflow
+    assert "versionCode='210'" in workflow
+    assert "versionName='2.1.0'" in workflow
+    assert "tag_name: v2.1.0" in workflow
+    assert "JobTomatik-v2.1.0.apk" in workflow
+    assert "group: publish-jobtomatik-v2.1.0" in workflow
+    assert "group: publish-jobtomatik-v2.1.0" not in workflow.split("jobs:", 1)[0]
     assert (
         "  build-and-publish:\n"
         "    needs: authorize\n"
         "    concurrency:\n"
-        "      group: publish-jobtomatik-v2.0.0\n"
+        "      group: publish-jobtomatik-v2.1.0\n"
         "      cancel-in-progress: false"
     ) in workflow
     assert "Refuse to overwrite an existing tag or release" in workflow
@@ -162,16 +167,17 @@ def test_owner_command_v2_publisher_is_authorized_and_narrowly_scoped():
     assert "github.event.pull_request.merge_commit_sha" not in workflow
 
 
-def test_android_v2_publisher_cannot_overwrite_release_identity():
+def test_android_apk_workflow_is_build_only_and_cannot_publish():
     workflow = (
         REPO_ROOT / ".github" / "workflows" / "android-apk.yml"
     ).read_text(encoding="utf-8")
 
-    assert "group: publish-jobtomatik-v2.0.0" in workflow
-    assert "Refuse to overwrite an existing tag or release" in workflow
-    assert "github.rest.git.getRef" in workflow
-    assert "github.rest.repos.getReleaseByTag" in workflow
-    assert "if (error.status !== 404) throw error" in workflow
-    assert "core.setFailed" in workflow
-    assert "overwrite_files: false" in workflow
-    assert "overwrite_files: true" not in workflow
+    assert "contents: read" in workflow
+    assert "contents: write" not in workflow
+    assert "versionCode='210'" in workflow
+    assert "versionName='2.1.0'" in workflow
+    assert "JobTomatik-v2.1.0-debug.apk" in workflow
+    assert "publish-v2-release" not in workflow
+    assert "softprops/action-gh-release" not in workflow
+    assert "tag_name:" not in workflow
+    assert "overwrite_files:" not in workflow

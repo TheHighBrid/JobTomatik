@@ -178,19 +178,27 @@ Phase 10 certification already prefers `JOBTOMATIK_RUNTIME_REVISION` before GitH
 
 A mismatched expected SHA does **not** change Phase 10's observed runtime SHA. Instead, Phase 12 marks the deployment unattested and prevents it from entering the real shadow path.
 
-## Android artifact identity
+## Android artifact and release identity
 
-The Android workflow now binds its build to `${{ github.sha }}` and retains:
+The normal Android APK workflow binds each build to `${{ github.sha }}` and retains:
 
 ```text
 SOURCE-COMMIT.txt
 ```
 
-next to the APK and SHA-256 checksum.
+next to the debug APK and SHA-256 checksum. That artifact is build evidence only. The normal Android workflow has read-only repository permissions and cannot create a tag or GitHub Release.
 
-The build job creates the file from the exact GitHub Actions source SHA and verifies it before artifact upload. The v2 release publication path then reads the retained `SOURCE-COMMIT.txt` from the downloaded build artifact and uses that retained value in `BUILD-INFO.txt` and release notes.
+Public `v2.1.0` publication uses a separate explicit owner-command workflow. That workflow:
 
-This avoids replacing build provenance with the context of a later publication step.
+1. checks out current `main` only after owner authorization;
+2. freezes `RELEASE_SOURCE_SHA` from that exact checkout before building;
+3. builds and identity-checks the APK from that frozen source;
+4. writes the same SHA to `SOURCE-COMMIT.txt` and `BUILD-INFO.txt`;
+5. fetches `origin/main` again immediately before publication and fails if it moved;
+6. refuses to overwrite an existing `v2.1.0` tag or release;
+7. creates the immutable tag with `target_commitish` equal to the exact frozen source SHA.
+
+This prevents a PR merge-ref, later workflow context, or moved main branch from being substituted for the source that produced the published APK.
 
 The Android artifact contract remains separate from runtime submission authority.
 
@@ -247,7 +255,7 @@ If any revision changes while a Phase 11 campaign is running, the existing candi
 - runtime identity endpoints grant no submission/outreach authority;
 - an unattested shadow API cannot create a campaign;
 - a direct unattested shadow-worker invocation cannot execute a cycle;
-- Android artifacts retain `SOURCE-COMMIT.txt`;
+- Android build artifacts retain `SOURCE-COMMIT.txt`;
 - consequential runtime defaults remain false.
 
 The inherited Phase 11 workflow also runs the identity-bypass regressions with an exact CI attestation.
@@ -263,7 +271,7 @@ It does not claim:
 - the autonomous-pilot gate is satisfied;
 - an ATS adapter is autonomous;
 - the Android artifact has been accepted on a physical device;
-- v2.00 is released;
+- v2.1.0 is published;
 - owner authorization has occurred.
 
 Those gates remain independent and fail closed until their real evidence exists.
