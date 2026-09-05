@@ -119,6 +119,7 @@ def test_current_operator_and_certification_surfaces_use_v2_1_identity():
     android_setup = (REPO_ROOT / "ANDROID_TERMUX_SETUP.md").read_text(encoding="utf-8")
     setup_tutorial = (REPO_ROOT / "docs" / "SETUP_TUTORIAL.md").read_text(encoding="utf-8")
     phase10 = (REPO_ROOT / "docs" / "PHASE10_CERTIFICATION_SCALE.md").read_text(encoding="utf-8")
+    phase12 = (REPO_ROOT / "docs" / "PHASE12_RUNTIME_REVISION_ATTESTATION.md").read_text(encoding="utf-8")
 
     assert 'Query(default="v2.1.0"' in certification_api
     assert 'release_version: str = "v2.1.0"' in certification_scale
@@ -132,6 +133,13 @@ def test_current_operator_and_certification_surfaces_use_v2_1_identity():
     assert "### v2.00 release" not in phase10
     assert "AUTHORIZE AUTONOMOUS_PILOT v2.00" not in phase10
     assert "AUTHORIZE V2_RELEASE v2.00" not in phase10
+
+    assert "normal Android APK workflow" in phase12
+    assert "read-only repository permissions" in phase12
+    assert "Public `v2.1.0` publication uses a separate explicit owner-command workflow" in phase12
+    assert "target_commitish" in phase12
+    assert "v2.1.0 is published" in phase12
+    assert "v2.00 is released" not in phase12
 
     assert "Current repository candidate: `2.1.0`" in readme
     assert "Current Android version code: `210`" in readme
