@@ -1,4 +1,4 @@
-# JobTomatik v1.00
+# JobTomatik v2.1.0 candidate
 
 **An AI-powered job-search and application system built toward fully autonomous, evidence-backed real submission.**
 
@@ -17,26 +17,29 @@ The final product goal is a fully autonomous job-hunt agent that can:
 - verify employer confirmation before recording an application as submitted;
 - recover from failures, prevent duplicates, and continue operating within configured limits.
 
-JobTomatik v1 is the supervised foundation of that system, not its permanent ceiling. Current release controls let each adapter progress through detection, dry-run, reviewed submission, and autonomous certification as implementation evidence matures.
+JobTomatik v1 established the supervised foundation of that system. The current v2.1.0 candidate keeps those safety boundaries while advancing exact-head evidence, Android release identity, retained-browser reliability, and release controls. Adapter maturity still progresses through detection, dry-run, reviewed submission, and autonomous certification as implementation evidence matures.
 
 JobTomatik does not attempt to evade CAPTCHA, MFA, identity verification, or other third-party security controls. When a site explicitly requires a human action, the system may pause, request that action, and resume afterward.
 
-## Download
+## Download and candidate identity
 
 The Android client is published on the repository's **Releases** page:
 
-- [Download the latest JobTomatik APK](https://github.com/TheHighBrid/JobTomatik/releases/latest)
-- Technical version: `1.0.0`
-- Release title: **JobTomatik v1.00**
+- [Download the latest published JobTomatik APK](https://github.com/TheHighBrid/JobTomatik/releases/latest)
+- Current repository candidate: `2.1.0`
+- Current Android version code: `210`
+- Current Android version name: `2.1.0`
 - Android application ID: `ca.jobtomatik.app`
 - Minimum Android SDK: 23
 - Target Android SDK: 35
 
+The root `VERSION` file and backend product metadata identify the current repository candidate as `2.1.0`. A successful CI APK build does **not** publish it. Public release publication remains a separate explicit owner-authorized action, so the Releases page may still point to an earlier immutable release until that action occurs.
+
 The APK is the user interface. The FastAPI backend, Redis, Celery worker, database, and Playwright browser runtime run locally or on a trusted server.
 
-> Check `BUILD-INFO.txt` in the release before upgrading. When permanent Android signing secrets are not configured, CI publishes a development-signed APK intended for personal or local installation. A differently signed future APK may require uninstalling the previous build first.
+> Check `BUILD-INFO.txt` in a published release before upgrading. When permanent Android signing secrets are not configured, an owner-authorized release build may be development-signed for personal or local installation. A differently signed future APK may require uninstalling the previous build first.
 
-## Current v1 capabilities
+## Current capabilities
 
 | Area | Current state |
 |---|---|
@@ -67,7 +70,7 @@ unsupported
 → certified_autonomous
 ```
 
-The current v1 evidence boundary is:
+The current evidence boundary is:
 
 | Adapter | Current maturity | Current operating boundary |
 |---|---|---|
@@ -152,7 +155,7 @@ VITE_API_URL=http://127.0.0.1:8010 npm run dev
 
 Open `http://127.0.0.1:3000`.
 
-## Current v1 workflow
+## Current workflow
 
 1. Register or sign in.
 2. Complete **Profile** and upload the current résumé PDF.
@@ -222,7 +225,7 @@ docker compose up --build
 - Backend: `http://localhost:8000`
 - API docs: `http://localhost:8000/docs`
 
-Local-CDP retained-browser handoffs require the API and browser worker to share reachable browser-session affinity. The Android/Ubuntu single-node setup is the reference v1 configuration.
+Local-CDP retained-browser handoffs require the API and browser worker to share reachable browser-session affinity. The Android/Ubuntu single-node setup is the reference same-device configuration.
 
 ## Build the Android APK
 
@@ -290,9 +293,9 @@ bash scripts/verify.sh full --install
 
 The reproducible CI gate runs the same subsystem modes independently and requires every lane to pass. The canonical contract is Python 3.11, Node.js 20, Temurin Java 21, Gradle 9.5.1, Android Gradle Plugin 8.13.2, Android API 35, and Build Tools 35.0.0.
 
-Verification keeps real submission, scheduled autopilot, and live resumable handoffs disabled. Platform pilot settings remain available to configuration regression tests, then the dedicated safety gate explicitly verifies both pilots are off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `200`, and version name `2.0.0`.
+Verification keeps real submission, scheduled autopilot, and live resumable handoffs disabled. Platform pilot settings remain available to configuration regression tests, then the dedicated safety gate explicitly verifies both pilots are off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `210`, and version name `2.1.0`.
 
-The repository root `VERSION` and published download metadata continue to describe the latest v1.00 release until v2.00 is actually cut. The Android project already uses the reserved v2.00 candidate identity so development APKs cannot be mistaken for the v1.00 release artifact.
+The repository root `VERSION` now identifies the current candidate as `2.1.0`. APK CI remains build-only. Existing release tags and assets are immutable, and public v2.1.0 publication requires a separate owner-issued authorization bound to the exact source used to build the release artifact.
 
 ## Repository guide
 
@@ -328,4 +331,4 @@ Interactive OpenAPI documentation is available at `/docs` on the running backend
 
 ## Release history
 
-See **[CHANGELOG.md](CHANGELOG.md)**. JobTomatik v1.00 establishes the supervised foundation, retained-browser recovery, confirmation evidence, portable Android builds, and the adapter-maturity system used to progress toward autonomous operation.
+See **[CHANGELOG.md](CHANGELOG.md)**. JobTomatik v1.00 established the supervised foundation and retained-browser recovery architecture. Later release lines add stronger certification, runtime attestation, Android artifact provenance, and immutable publication controls while preserving the historical evidence trail.
