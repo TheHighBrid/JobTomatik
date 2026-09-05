@@ -103,3 +103,34 @@ def test_product_release_identity_and_private_package_tracks_are_consistent():
     assert backend_main.count('"version": APP_VERSION') == 2
     assert 'version="1.0.0"' not in backend_main
     assert '"version": "1.0.0"' not in backend_main
+
+
+def test_current_operator_and_certification_surfaces_use_v2_1_identity():
+    certification_api = (
+        REPO_ROOT / "backend" / "app" / "api" / "certification.py"
+    ).read_text(encoding="utf-8")
+    certification_scale = (
+        REPO_ROOT / "backend" / "app" / "services" / "certification_scale.py"
+    ).read_text(encoding="utf-8")
+    certification_ui = (
+        REPO_ROOT / "frontend" / "src" / "pages" / "CertificationCenter.jsx"
+    ).read_text(encoding="utf-8")
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    android_setup = (REPO_ROOT / "ANDROID_TERMUX_SETUP.md").read_text(encoding="utf-8")
+    setup_tutorial = (REPO_ROOT / "docs" / "SETUP_TUTORIAL.md").read_text(encoding="utf-8")
+
+    assert 'Query(default="v2.1.0"' in certification_api
+    assert 'release_version: str = "v2.1.0"' in certification_scale
+    assert "release_version: 'v2.1.0'" in certification_ui
+    assert '<option value="v2_release">v2.1.0 release</option>' in certification_ui
+    assert "v2.00 release</option>" not in certification_ui
+
+    assert "Current repository candidate: `2.1.0`" in readme
+    assert "Current Android version code: `210`" in readme
+    assert "version code `210`" in readme
+    assert "version name `2.1.0`" in readme
+
+    expected_health = '{"status":"ok","service":"JobTomatik API","version":"2.1.0"}'
+    assert expected_health in android_setup
+    assert expected_health in setup_tutorial
+    assert "Uvicorn health endpoint returns version 2.1.0" in setup_tutorial
