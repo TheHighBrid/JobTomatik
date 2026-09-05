@@ -1,0 +1,20 @@
+{
+  "name": "JobTomatik",
+  "short_name": "JobTomatik",
+  "description": "Smart job search automation, tailored applications, interview preparation, and progress tracking.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#081220",
+  "theme_color": "#081220",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/jobtomatik-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business", "career"],
+  "prefer_related_applications": false
+}
