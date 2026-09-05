@@ -28,7 +28,12 @@ def is_listing_source(url: str) -> bool:
     host = (parsed.hostname or "").lower()
     path = parsed.path or ""
     if _host_matches(host, _LINKEDIN_DOMAINS):
-        return any(fragment in path for fragment in _LINKEDIN_LISTING_PATHS)
+        normalized = path.lower()
+        \# Expired JDs redirect to /jobs/<slug>-jobs, search, and collection
+        \# pages. Those are still listing surfaces, not employer apply forms.
+        if normalized == "/jobs" or normalized.startswith("/jobs/"):
+            return True
+        return any(fragment in normalized for fragment in _LINKEDIN_LISTING_PATHS)
     if _host_matches(host, _JOB_BANK_DOMAINS):
         return any(fragment in path for fragment in _JOB_BANK_LISTING_PATHS)
     return False
