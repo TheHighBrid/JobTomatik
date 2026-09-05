@@ -306,8 +306,8 @@ android_check() {
   [[ -x "$aapt" ]] || fail "Missing Android aapt at $aapt. Install Build Tools $JOBTOMATIK_ANDROID_BUILD_TOOLS."
   badging="$($aapt dump badging "$apk")"
   grep -Fq "package: name='ca.jobtomatik.app'" <<<"$badging" || fail "Unexpected Android application ID."
-  grep -Fq "versionCode='200'" <<<"$badging" || fail "Unexpected Android versionCode."
-  grep -Fq "versionName='2.0.0'" <<<"$badging" || fail "Unexpected Android versionName."
+  grep -Fq "versionCode='210'" <<<"$badging" || fail "Unexpected Android versionCode."
+  grep -Fq "versionName='2.1.0'" <<<"$badging" || fail "Unexpected Android versionName."
 }
 
 case "$MODE" in
