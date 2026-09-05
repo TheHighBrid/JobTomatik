@@ -65,10 +65,10 @@ Test the exact backend health endpoint before trying auth in the app:
 curl http://127.0.0.1:8010/api/system/health
 ```
 
-Expected response for the current v2.1.0 candidate:
+Expected response:
 
 ```json
-{"status":"ok","service":"JobTomatik API","version":"2.1.0"}
+{"status":"ok","service":"JobTomatik API","version":"1.0.0"}
 ```
 
 Then open the app login screen, expand **API connection**, tap **Reset** or set

@@ -373,10 +373,10 @@ Test from another terminal:
 curl http://127.0.0.1:8010/health
 ```
 
-Expected shape for the current v2.1.0 candidate:
+Expected shape:
 
 ```json
-{"status":"ok","service":"JobTomatik API","version":"2.1.0"}
+{"status":"ok","service":"JobTomatik API","version":"1.0.0"}
 ```
 
 Keep this terminal open.
@@ -434,7 +434,11 @@ The browser and APK use the same backend database when both point to port 8010.
 
 ## 12. Install the JobTomatik APK
 
-Open the repository’s Releases page and download the latest published JobTomatik APK. The repository may contain a newer v2.1.0 candidate before that candidate is explicitly owner-authorized for publication.
+Open the repository’s Releases page and download:
+
+```text
+JobTomatik-v1.00.apk
+```
 
 Android may ask you to allow installs from your browser or file manager. Enable that permission only for the installation source you trust, install the APK, then optionally disable the permission again.
 
@@ -653,7 +657,7 @@ cd android
 ./gradlew --no-daemon lintDebug assembleDebug
 ```
 
-The canonical Android CI toolchain is declared in `.jobtomatik-toolchain.env` and enforced by `scripts/verify.sh`. The current release line uses Node.js 20, Temurin Java 21, Gradle 9.5.1, Android Gradle Plugin 8.13.2, Android API 35, and Build Tools 35.0.0.
+The Android CI toolchain uses Node.js 20, Temurin Java 21, Gradle 8.11.1, Android Gradle Plugin 8.7.2, Android API 35, and Build Tools 35.0.0.
 
 If Gradle reports `Unsupported class file major version 69`, the environment is using Java 25. Point `JAVA_HOME` and `PATH` to JDK 21 before running the wrapper.
 
@@ -717,7 +721,7 @@ base64 < jobtomatik-release.jks | tr -d '\n'
 
 Paste the single-line result into `JOBTOMATIK_KEYSTORE_BASE64`.
 
-When all four secrets are available, the owner-authorized release workflow builds a permanently signed release APK. Otherwise it builds a development-signed installable APK and states that fact in `BUILD-INFO.txt`. Publication requires the separate explicit owner command and does not happen merely because an APK build succeeds.
+When all four secrets are available, the release workflow builds a permanently signed release APK. Otherwise it publishes a development-signed installable APK and states that fact in `BUILD-INFO.txt`.
 
 ---
 
@@ -855,7 +859,7 @@ Request a new code, focus the field, paste only the newest code, and use **Repla
 
 ### “The retained browser still reports an active human-verification challenge” on a thank-you page
 
-Use current `main`. The confirmation detector must see explicit employer success text and/or the confirmation URL. Refresh the browser image and press **I completed the challenge** once.
+Update to v1.00 or newer. The confirmation detector must see explicit employer success text and/or the confirmation URL. Refresh the browser image and press **I completed the challenge** once.
 
 ### `Real application submission is not enabled in the current release profile`
 
@@ -879,13 +883,13 @@ http://127.0.0.1:8010
 
 Add the exact UI origin to `CORS_ORIGINS`, separated by commas, then restart Uvicorn. Do not use `*` with credentialed requests.
 
-### Android build tries to use a `/tmp/gradle-...` distribution
+### Android build tries to use `/tmp/gradle-8.11.1-all.zip`
 
-Your repository is outdated. Pull `main`. The current release line uses the validated official Gradle wrapper URL.
+Your repository is outdated. Pull `main`. v1.00 uses the official Gradle wrapper URL.
 
 ### Android build asks for `/home/user/JobTomatik/jobtomatik-release.jks`
 
-Your repository is outdated. Pull `main`. Signing is supplied through environment variables or private Gradle properties.
+Your repository is outdated. Pull `main`. Signing is now supplied through environment variables or private Gradle properties.
 
 ### New APK will not install over the old APK
 
@@ -902,7 +906,7 @@ Before calling the installation ready:
 [ ] Termux repository is on current main
 [ ] Backend virtual environment activates
 [ ] redis-cli ping returns PONG
-[ ] Uvicorn health endpoint returns version 2.1.0
+[ ] Uvicorn health endpoint returns version 1.0.0
 [ ] Celery says ready and uses --pool=solo
 [ ] Frontend npm build passes
 [ ] Résumé uploads successfully
@@ -915,4 +919,4 @@ Before calling the installation ready:
 [ ] Database and signing key backups exist
 ```
 
-Once every item is checked, the current JobTomatik installation is ready for its configured operating profile. Publication of the v2.1.0 candidate remains a separate explicit owner action.
+Once every item is checked, JobTomatik v1.00 is ready for its current supervised foundation workflow and continued promotion toward autonomous operation.

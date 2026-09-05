@@ -153,7 +153,7 @@ def _expected_authorization_ack(scope: str, release_version: str, revision: str)
 
 @router.get("/manifest", response_model=CertificationManifestOut)
 def certification_manifest(
-    release_version: str = Query(default="v2.1.0", min_length=1, max_length=80),
+    release_version: str = Query(default="v2.00", min_length=1, max_length=80),
     adapter: str | None = Query(default=None, max_length=80),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -271,6 +271,9 @@ def verify_certification_evidence(
             detail=f"Acknowledgment must exactly match: {expected}",
         )
 
+    # Integrity and full-stack shadow provenance must be established before review
+    # state can become verified. The same provenance is checked again by the release
+    # evaluator, so later session/report drift fails closed after verification too.
     qualifying_before_review, reasons_before_review = evidence_is_qualifying(
         record,
         revision=record.commit_sha,

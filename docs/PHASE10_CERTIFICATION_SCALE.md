@@ -34,15 +34,15 @@ The pilot track requires all of the following on the exact candidate head:
 
 The crash-recovery gate and dead-letter gate are intentionally separate. Recovering a stale application row does not prove that an exhausted bounded task can be safely requeued from an unchanged checkpoint.
 
-### v2.1.0 release
+### v2.00 release
 
-The v2.1.0 release track requires every autonomous-pilot prerequisite plus:
+The v2.00 release track requires every autonomous-pilot prerequisite plus:
 
 - retained evidence that the bounded autonomous pilot completed successfully;
 - exact-head Android device acceptance;
 - retained release-artifact identity;
 - an independently verified SHA-256 release checksum;
-- separate owner authorization for the v2.1.0 release commit.
+- separate owner authorization for the v2.00 release commit.
 
 ## Evidence lifecycle
 
@@ -89,13 +89,13 @@ Owner authorization is impossible until the selected track reports every prerequ
 The acknowledgment is commit-bound:
 
 ```text
-AUTHORIZE AUTONOMOUS_PILOT v2.1.0 <first-12-characters-of-commit>
+AUTHORIZE AUTONOMOUS_PILOT v2.00 <first-12-characters-of-commit>
 ```
 
 or:
 
 ```text
-AUTHORIZE V2_RELEASE v2.1.0 <first-12-characters-of-commit>
+AUTHORIZE V2_RELEASE v2.00 <first-12-characters-of-commit>
 ```
 
 Pilot authorizations expire by default after four hours. v2 release authorizations expire by default after twenty-four hours. Both can be revoked explicitly.

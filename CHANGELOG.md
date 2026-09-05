@@ -4,51 +4,14 @@ All notable JobTomatik changes are recorded here.
 
 ## [Unreleased]
 
-No unreleased changes are currently separated from the `2.1.0` candidate lineage.
-
-## [2.1.0] - candidate
-
-### Reliability and supervised submission
-
-- Hardened Lever operator-assisted final submission after the physical Maple pilot.
-- Detect passive hCaptcha verification without attempting to solve or bypass it, and require normal-browser completion when a retained CDP submit cannot be verified safely.
-- Preserved emergency-stop and runtime safety ordering before any retained-browser final action.
-- Added fail-closed reentrancy protection around final-submit confirmation verification so a wrapper cycle cannot exhaust the Python stack after a consequential action.
-- Preserved exact target verification, explicit owner authorization, durable final-action claiming, confirmation evidence, and no-automatic-retry behavior after uncertain consequential actions.
-
-### Release identity and Android
-
-- Set the canonical JobTomatik product candidate to `2.1.0`.
-- Set Android application identity to version name `2.1.0` and version code `210` for `ca.jobtomatik.app`.
-- Expose `2.1.0` consistently through backend metadata, health, readiness, certification defaults, and current operator documentation.
-- Keep the private frontend npm package version independent at `1.0.0`; it remains an implementation manifest rather than the shipped product version.
-- Make the normal Android APK workflow build-only with read-only repository permissions.
-- Verify APK application ID, version code, version name, source commit, and SHA-256 before retaining the build artifact.
-
-### Publication safety
-
-- Preserve the historical `v2.0.0` release as immutable rather than reusing or overwriting its tag or assets.
-- Reserve `v2.1.0` as the successor release identity.
-- Require an explicit owner command on the narrow release-authorization surface before public `v2.1.0` publication can begin.
-- Freeze one exact `main` source SHA before the owner-authorized release build, record it in release evidence, and refuse publication if `main` moves before the release is created.
-- Refuse to overwrite an existing `v2.1.0` tag or GitHub Release and keep release asset overwrite disabled.
-- Keep release publication separate from merge, normal APK CI, certification readiness, runtime submission authority, and autopilot enablement.
-
-### Certification and operations
-
-- Bind the current Certification Center, certification API default, release-track evaluator, owner acknowledgment phrases, and Phase 10 runbook to immutable release identity `v2.1.0`.
-- Align Phase 12 runtime-attestation documentation with build-only APK CI and exact-source owner-authorized publication.
-- Add regression coverage preventing current operator, certification, Android, and release-provenance surfaces from drifting back to older release identities.
-- Preserve exact-head evidence, independent review, account isolation, runtime attestation, kill switches, and conservative consequential-action defaults.
-
-## [1.0.0] - 2026-07-21
-
 ### Product direction
 
 - Declared fully autonomous, evidence-backed real submission as the final JobTomatik operating goal.
 - Clarified that the supervised v1 workflow is a foundation and rollout stage, not the permanent product ceiling.
 - Reframed real-submission, autopilot, and adapter-maturity controls as progressive release gates.
 - Preserved confirmation evidence, duplicate prevention, idempotency, circuit breakers, caps, and kill switches as safeguards for both supervised and autonomous operation.
+
+## [1.0.0] - 2026-07-21
 
 ### Added
 

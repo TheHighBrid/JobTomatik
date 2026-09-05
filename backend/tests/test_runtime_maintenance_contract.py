@@ -9,7 +9,6 @@ import bcrypt
 import pytest
 
 from app.auth import hash_password, verify_password
-from app.version import APP_VERSION
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -70,8 +69,8 @@ def test_form_filler_v3_compiles_without_escape_sequence_warnings():
         compile(source, str(path), "exec")
 
 
-def test_product_release_identity_and_private_package_tracks_are_consistent():
-    product_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+def test_web_package_and_android_release_tracks_are_consistent():
+    web_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
     package = json.loads(
         (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
     )
@@ -81,78 +80,14 @@ def test_product_release_identity_and_private_package_tracks_are_consistent():
     android_gradle = (
         REPO_ROOT / "frontend" / "android" / "app" / "build.gradle"
     ).read_text(encoding="utf-8")
-    backend_main = (REPO_ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
     android_name = re.search(r'versionName\s+"([^"]+)"', android_gradle)
     android_code = re.search(r"versionCode\s+(\d+)", android_gradle)
 
     assert android_name is not None
     assert android_code is not None
-    assert product_version == "2.1.0"
-    assert APP_VERSION == product_version
-    assert android_name.group(1) == product_version
-    assert android_code.group(1) == "210"
-
-    # The private npm package is an implementation manifest, not the shipped app version.
-    assert package["private"] is True
-    assert package["version"] == "1.0.0"
-    assert package_lock["version"] == package["version"]
-    assert package_lock["packages"][""]["version"] == package["version"]
-
-    assert "from app.version import APP_VERSION" in backend_main
-    assert "version=APP_VERSION" in backend_main
-    assert backend_main.count('"version": APP_VERSION') == 2
-    assert 'version="1.0.0"' not in backend_main
-    assert '"version": "1.0.0"' not in backend_main
-
-
-def test_current_operator_and_certification_surfaces_use_v2_1_identity():
-    certification_api = (
-        REPO_ROOT / "backend" / "app" / "api" / "certification.py"
-    ).read_text(encoding="utf-8")
-    certification_scale = (
-        REPO_ROOT / "backend" / "app" / "services" / "certification_scale.py"
-    ).read_text(encoding="utf-8")
-    certification_ui = (
-        REPO_ROOT / "frontend" / "src" / "pages" / "CertificationCenter.jsx"
-    ).read_text(encoding="utf-8")
-    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    android_setup = (REPO_ROOT / "ANDROID_TERMUX_SETUP.md").read_text(encoding="utf-8")
-    setup_tutorial = (REPO_ROOT / "docs" / "SETUP_TUTORIAL.md").read_text(encoding="utf-8")
-    phase10 = (REPO_ROOT / "docs" / "PHASE10_CERTIFICATION_SCALE.md").read_text(encoding="utf-8")
-    phase12 = (REPO_ROOT / "docs" / "PHASE12_RUNTIME_REVISION_ATTESTATION.md").read_text(encoding="utf-8")
-
-    assert 'Query(default="v2.1.0"' in certification_api
-    assert 'release_version: str = "v2.1.0"' in certification_scale
-    assert "release_version: 'v2.1.0'" in certification_ui
-    assert '<option value="v2_release">v2.1.0 release</option>' in certification_ui
-    assert "v2.00 release</option>" not in certification_ui
-
-    assert "### v2.1.0 release" in phase10
-    assert "AUTHORIZE AUTONOMOUS_PILOT v2.1.0" in phase10
-    assert "AUTHORIZE V2_RELEASE v2.1.0" in phase10
-    assert "### v2.00 release" not in phase10
-    assert "AUTHORIZE AUTONOMOUS_PILOT v2.00" not in phase10
-    assert "AUTHORIZE V2_RELEASE v2.00" not in phase10
-
-    assert "normal Android APK workflow" in phase12
-    assert "read-only repository permissions" in phase12
-    assert "Public `v2.1.0` publication uses a separate explicit owner-command workflow" in phase12
-    assert "target_commitish" in phase12
-    assert "v2.1.0 is published" in phase12
-    assert "v2.00 is released" not in phase12
-
-    assert "## [2.1.0] - candidate" in changelog
-    assert "normal Android APK workflow build-only" in changelog
-    assert "explicit owner command" in changelog
-    assert "Preserve the historical `v2.0.0` release as immutable" in changelog
-
-    assert "Current repository candidate: `2.1.0`" in readme
-    assert "Current Android version code: `210`" in readme
-    assert "version code `210`" in readme
-    assert "version name `2.1.0`" in readme
-
-    expected_health = '{"status":"ok","service":"JobTomatik API","version":"2.1.0"}'
-    assert expected_health in android_setup
-    assert expected_health in setup_tutorial
-    assert "Uvicorn health endpoint returns version 2.1.0" in setup_tutorial
+    assert web_version == "1.0.0"
+    assert package["version"] == web_version
+    assert package_lock["version"] == web_version
+    assert package_lock["packages"][""]["version"] == web_version
+    assert android_name.group(1) == "2.0.0"
+    assert android_code.group(1) == "200"
