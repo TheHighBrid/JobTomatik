@@ -12,6 +12,7 @@ RUNTIME_REVISION="${JOBTOMATIK_RUNTIME_REVISION:-$(git -C "$REPO_ROOT" rev-parse
 FRONTEND_ARTIFACT_ROOT="${JOBTOMATIK_FRONTEND_ARTIFACT_ROOT:-$RUNTIME_DIR/frontend-artifacts/$RUNTIME_REVISION}"
 FRONTEND_DIST_ROOT="$FRONTEND_ARTIFACT_ROOT/dist"
 STATIC_FRONTEND_SERVER="$BACKEND_ROOT/scripts/serve_static_frontend.py"
+STALE_API_RETIRER="$BACKEND_ROOT/scripts/retire_stale_android_api.py"
 
 # shellcheck source=jobtomatik_process_identity.sh
 source "$SCRIPT_DIR/jobtomatik_process_identity.sh"
@@ -86,9 +87,21 @@ sanitize_pid_file() {
   echo "ANDROID_STALE_PID_REJECTED role=$role pid=$pid action=pid_file_removed_process_not_signaled"
 }
 
+retire_verified_stale_api_without_pid_file() {
+  [[ -f "$RUNTIME_DIR/api.pid" ]] && return 0
+  if [[ ! -x "$VENV/bin/python" || ! -f "$STALE_API_RETIRER" ]]; then
+    echo "ANDROID_STALE_API_RETIRE_REFUSED reason=retirer_unavailable" >&2
+    return 1
+  fi
+  "$VENV/bin/python" "$STALE_API_RETIRER" \
+    --backend-root "$BACKEND_ROOT" \
+    --port 8010
+}
+
 mkdir -p "$RUNTIME_DIR"
 sanitize_pid_file frontend "$RUNTIME_DIR/frontend.pid"
 sanitize_pid_file beat "$RUNTIME_DIR/celery-beat.pid"
 sanitize_pid_file worker "$RUNTIME_DIR/celery.pid"
 sanitize_pid_file api "$RUNTIME_DIR/api.pid"
+retire_verified_stale_api_without_pid_file
 echo "ANDROID_RUNTIME_PID_FILES_SANITIZED"
