@@ -59,6 +59,7 @@ from app.services.runtime_identity import runtime_identity_manifest
 from app.services.supervised_submission_integration import (
     install_supervised_submission_task_gate,
 )
+from app.version import APP_VERSION
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -224,7 +225,7 @@ app = FastAPI(
         "AI-powered job-search and application automation platform progressing "
         "toward evidence-backed autonomous real submission"
     ),
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
     docs_url="/docs" if api_docs_enabled else None,
     redoc_url="/redoc" if api_docs_enabled else None,
@@ -272,7 +273,7 @@ app.include_router(shadow_runs.router, prefix="/api")
 @app.get("/health")
 @app.get("/api/system/health")
 async def health():
-    return {"status": "ok", "service": "JobTomatik API", "version": "1.0.0"}
+    return {"status": "ok", "service": "JobTomatik API", "version": APP_VERSION}
 
 
 @app.get("/api/system/ready")
@@ -280,7 +281,7 @@ def readiness_probe():
     """Confirm the API process can execute a database query."""
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
-    return {"status": "ready", "service": "JobTomatik API", "version": "1.0.0"}
+    return {"status": "ready", "service": "JobTomatik API", "version": APP_VERSION}
 
 
 @app.get("/api/system/runtime-identity")
