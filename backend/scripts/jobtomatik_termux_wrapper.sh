@@ -72,11 +72,11 @@ run_browser_playwright_probe() {
     "set -e; cd '$PROOT_REPO/backend'; export JOBTOMATIK_RUNTIME_MODE=android_managed; .venv/bin/python - <<'PY'
 import asyncio
 
-from app.services.browser_runtime import probe_external_playwright_cdp
+from app.services.browser_runtime import probe_external_playwright_cdp_attachment
 
 
 async def main() -> None:
-    proof = await probe_external_playwright_cdp('http://127.0.0.1:9222')
+    proof = await probe_external_playwright_cdp_attachment('http://127.0.0.1:9222')
     if proof.get('playwright_attach_ready') is not True:
         raise SystemExit(1)
     if proof.get('browser_owned_by_jobtomatik') is not False:

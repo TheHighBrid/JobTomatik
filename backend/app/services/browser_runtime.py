@@ -258,6 +258,32 @@ async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:
         }
 
 
+async def probe_external_playwright_cdp_attachment(endpoint: str) -> Dict[str, Any]:
+    """Prove only that Playwright can complete the external CDP handshake.
+
+    Launcher recovery must distinguish an unusable DevTools connection from a
+    healthy retained browser whose pages are intentionally ambiguous. Page
+    selection remains part of the worker/runtime acceptance probe, but it must
+    not authorize terminating the externally owned Chromium process.
+    """
+
+    from playwright.async_api import async_playwright
+
+    normalized_endpoint = _normalize_external_cdp_endpoint(endpoint)
+    await _wait_for_external_cdp_endpoint(normalized_endpoint)
+    async with async_playwright() as playwright:
+        browser = await _connect_external_playwright_over_cdp(
+            playwright,
+            normalized_endpoint,
+        )
+        return {
+            "playwright_attach_ready": True,
+            "cdp_endpoint": normalized_endpoint,
+            "context_count": len(list(browser.contexts)),
+            "browser_owned_by_jobtomatik": False,
+        }
+
+
 async def launch_application_browser(
     playwright: Any,
     *,

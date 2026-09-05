@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from playwright import async_api as playwright_api
 
 from app.services import browser_runtime
 from app.services.browser_runtime_base import BrowserRuntimeError
