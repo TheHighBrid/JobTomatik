@@ -72,6 +72,22 @@ def _read_argv(proc_root: Path, pid: int) -> list[str]:
     return [part.decode("utf-8", errors="replace") for part in raw.split(b"\0") if part]
 
 
+def _read_environ(proc_root: Path, pid: int) -> dict[str, str]:
+    try:
+        raw = (proc_root / str(pid) / "environ").read_bytes()
+    except OSError:
+        return {}
+    result: dict[str, str] = {}
+    for item in raw.split(b"\0"):
+        if not item or b"=" not in item:
+            continue
+        key, value = item.split(b"=", 1)
+        result[key.decode("utf-8", errors="replace")] = value.decode(
+            "utf-8", errors="replace"
+        )
+    return result
+
+
 def _flag_value(argv: list[str], flag: str) -> str | None:
     positions = [index for index, value in enumerate(argv) if value == flag]
     if len(positions) != 1 or positions[0] + 1 >= len(argv):
@@ -88,8 +104,7 @@ def _is_jobtomatik_api_argv(argv: list[str], backend_root: Path, port: int) -> b
         return False
 
     venv_bin = str(backend_root / ".venv" / "bin")
-    interpreter_owned = argv[0].startswith(f"{venv_bin}/")
-    if not interpreter_owned:
+    if not argv[0].startswith(f"{venv_bin}/"):
         return False
 
     module_launch = any(
@@ -98,6 +113,21 @@ def _is_jobtomatik_api_argv(argv: list[str], backend_root: Path, port: int) -> b
     )
     console_launch = str(backend_root / ".venv" / "bin" / "uvicorn") in argv
     return module_launch or console_launch
+
+
+def _candidate_api_pids(proc_root: Path, backend_root: Path, port: int) -> set[int]:
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError:
+        return set()
+    candidates: set[int] = set()
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if _is_jobtomatik_api_argv(_read_argv(proc_root, pid), backend_root, port):
+            candidates.add(pid)
+    return candidates
 
 
 def _fetch_runtime_identity(port: int) -> dict:
@@ -122,33 +152,94 @@ def _identity_is_jobtomatik_api(payload: dict) -> bool:
     )
 
 
+def _environment_consistent_with_identity(
+    proc_root: Path, pid: int, identity: dict
+) -> bool:
+    environment = _read_environ(proc_root, pid)
+    if not environment:
+        return True
+
+    role = environment.get("JOBTOMATIK_RUNTIME_ROLE")
+    revision = environment.get("JOBTOMATIK_RUNTIME_REVISION")
+    expected = environment.get("JOBTOMATIK_EXPECTED_REVISION")
+    if role is not None and role != "api":
+        return False
+    if revision is not None and revision.lower() != str(identity.get("revision") or "").lower():
+        return False
+    identity_expected = str(identity.get("expected_revision") or "")
+    if expected is not None and identity_expected and expected.lower() != identity_expected.lower():
+        return False
+    return True
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _select_verified_pid(
+    *, proc_root: Path, backend_root: Path, port: int, identity: dict
+) -> tuple[int | None, str]:
+    candidates = _candidate_api_pids(proc_root, backend_root, port)
+    if not candidates:
+        return None, "no_owned_api_candidate"
+
+    socket_pids = _listener_pids(proc_root, port)
+    if socket_pids:
+        matched = candidates & socket_pids
+        if len(matched) != 1:
+            return None, f"ambiguous_socket_owner candidates={sorted(candidates)} listeners={sorted(socket_pids)}"
+        pid = next(iter(matched))
+        source = "socket_owner"
+    else:
+        # Android may deny access to /proc/net/tcp even for the same app UID. In that
+        # case fall back only when there is exactly one exact JobTomatik API command.
+        if len(candidates) != 1:
+            return None, f"ambiguous_owned_candidates pids={sorted(candidates)}"
+        pid = next(iter(candidates))
+        source = "unique_owned_process_fallback"
+
+    if not _environment_consistent_with_identity(proc_root, pid, identity):
+        return None, f"process_identity_environment_mismatch pid={pid}"
+    return pid, source
+
+
 def retire_stale_api(*, proc_root: Path, backend_root: Path, port: int) -> int:
-    pids = _listener_pids(proc_root, port)
-    if not pids:
-        print(f"ANDROID_STALE_API_NONE port={port}")
-        return 0
-    if len(pids) != 1:
-        print(f"ANDROID_STALE_API_RETIRE_REFUSED reason=ambiguous_listener_pids pids={sorted(pids)}")
-        return 2
-
-    pid = next(iter(pids))
-    argv = _read_argv(proc_root, pid)
-    if not _is_jobtomatik_api_argv(argv, backend_root, port):
-        print(f"ANDROID_STALE_API_RETIRE_REFUSED reason=unknown_process pid={pid}")
-        return 2
-
+    candidates = _candidate_api_pids(proc_root, backend_root, port)
     try:
         identity = _fetch_runtime_identity(port)
     except Exception as exc:
-        print(f"ANDROID_STALE_API_RETIRE_REFUSED reason=identity_unavailable pid={pid} error={type(exc).__name__}")
+        if not candidates:
+            print(f"ANDROID_STALE_API_NONE port={port}")
+            return 0
+        print(
+            "ANDROID_STALE_API_RETIRE_REFUSED "
+            f"reason=identity_unavailable pids={sorted(candidates)} error={type(exc).__name__}"
+        )
         return 2
+
     if not _identity_is_jobtomatik_api(identity):
-        print(f"ANDROID_STALE_API_RETIRE_REFUSED reason=identity_mismatch pid={pid}")
+        print("ANDROID_STALE_API_RETIRE_REFUSED reason=identity_mismatch")
+        return 2
+
+    pid, source = _select_verified_pid(
+        proc_root=proc_root,
+        backend_root=backend_root,
+        port=port,
+        identity=identity,
+    )
+    if pid is None:
+        print(f"ANDROID_STALE_API_RETIRE_REFUSED reason={source}")
         return 2
 
     print(
         "ANDROID_STALE_API_VERIFIED "
-        f"pid={pid} revision={identity.get('revision')} role=api action=terminate"
+        f"pid={pid} revision={identity.get('revision')} role=api source={source} action=terminate"
     )
     try:
         os.kill(pid, signal.SIGTERM)
@@ -156,7 +247,7 @@ def retire_stale_api(*, proc_root: Path, backend_root: Path, port: int) -> int:
         pass
 
     for _ in range(40):
-        if not _listener_pids(proc_root, port):
+        if not _pid_alive(pid):
             print(f"ANDROID_STALE_API_RETIRED pid={pid} port={port}")
             return 0
         time.sleep(0.125)
