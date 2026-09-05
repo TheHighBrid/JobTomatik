@@ -118,12 +118,20 @@ def test_current_operator_and_certification_surfaces_use_v2_1_identity():
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     android_setup = (REPO_ROOT / "ANDROID_TERMUX_SETUP.md").read_text(encoding="utf-8")
     setup_tutorial = (REPO_ROOT / "docs" / "SETUP_TUTORIAL.md").read_text(encoding="utf-8")
+    phase10 = (REPO_ROOT / "docs" / "PHASE10_CERTIFICATION_SCALE.md").read_text(encoding="utf-8")
 
     assert 'Query(default="v2.1.0"' in certification_api
     assert 'release_version: str = "v2.1.0"' in certification_scale
     assert "release_version: 'v2.1.0'" in certification_ui
     assert '<option value="v2_release">v2.1.0 release</option>' in certification_ui
     assert "v2.00 release</option>" not in certification_ui
+
+    assert "### v2.1.0 release" in phase10
+    assert "AUTHORIZE AUTONOMOUS_PILOT v2.1.0" in phase10
+    assert "AUTHORIZE V2_RELEASE v2.1.0" in phase10
+    assert "### v2.00 release" not in phase10
+    assert "AUTHORIZE AUTONOMOUS_PILOT v2.00" not in phase10
+    assert "AUTHORIZE V2_RELEASE v2.00" not in phase10
 
     assert "Current repository candidate: `2.1.0`" in readme
     assert "Current Android version code: `210`" in readme
