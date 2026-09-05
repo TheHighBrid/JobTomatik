@@ -11,7 +11,7 @@ permissions:
   pull-requests: read
 
 env:
-  AUTHORIZED_PR_NUMBER: "142"
+  AUTHORIZED_PR_NUMBER: "470"
   RELEASE_COMMAND: /publish-jobtomatik-v2.1.0
   APK_NAME: JobTomatik-v2.1.0.apk
 
@@ -19,7 +19,7 @@ jobs:
   authorize:
     if: >-
       github.event.issue.pull_request &&
-      github.event.issue.number == 142 &&
+      github.event.issue.number == 470 &&
       github.event.comment.body == '/publish-jobtomatik-v2.1.0' &&
       (github.event.comment.user.login == 'TheHighBrid' ||
        github.event.comment.user.login == 'chatgpt-codex-connector[bot]')
