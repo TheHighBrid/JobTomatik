@@ -137,6 +137,10 @@ def test_owner_command_v2_publisher_is_authorized_and_narrowly_scoped():
     assert "github.event.comment.user.login == 'TheHighBrid'" in workflow
     assert "chatgpt-codex-connector[bot]" not in workflow
     assert 'AUTHORIZED_PR_NUMBER: "470"' in workflow
+    assert "Record authorized publication request" in workflow
+    assert "Write publication result to workflow summary" in workflow
+    assert "GITHUB_STEP_SUMMARY" in workflow
+    assert "github.rest.issues.createComment" not in workflow
     assert "ref: main" in workflow
     assert "Freeze exact release source" in workflow
     assert 'echo "RELEASE_SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"' in workflow
