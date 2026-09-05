@@ -6,6 +6,7 @@ import json
 import os
 import re
 import signal
+import socket
 import time
 import urllib.request
 from pathlib import Path
@@ -172,14 +173,12 @@ def _environment_consistent_with_identity(
     return True
 
 
-def _pid_alive(pid: int) -> bool:
+def _port_accepting(port: int) -> bool:
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.15):
+            return True
+    except OSError:
         return False
-    except PermissionError:
-        return True
-    return True
 
 
 def _select_verified_pid(
@@ -246,8 +245,11 @@ def retire_stale_api(*, proc_root: Path, backend_root: Path, port: int) -> int:
     except ProcessLookupError:
         pass
 
+    # Port release is the recovery boundary that matters. A terminated process can
+    # briefly remain visible as a zombie until its parent reaps it, especially under
+    # PRoot. Do not turn a successfully released API socket into a false failure.
     for _ in range(40):
-        if not _pid_alive(pid):
+        if not _port_accepting(port):
             print(f"ANDROID_STALE_API_RETIRED pid={pid} port={port}")
             return 0
         time.sleep(0.125)
