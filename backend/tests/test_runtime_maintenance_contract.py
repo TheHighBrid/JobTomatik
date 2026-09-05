@@ -9,6 +9,7 @@ import bcrypt
 import pytest
 
 from app.auth import hash_password, verify_password
+from app.version import APP_VERSION
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -69,7 +70,7 @@ def test_form_filler_v3_compiles_without_escape_sequence_warnings():
         compile(source, str(path), "exec")
 
 
-def test_web_package_and_android_release_tracks_are_consistent():
+def test_web_package_android_and_backend_release_tracks_are_consistent():
     web_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
     package = json.loads(
         (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
@@ -80,14 +81,21 @@ def test_web_package_and_android_release_tracks_are_consistent():
     android_gradle = (
         REPO_ROOT / "frontend" / "android" / "app" / "build.gradle"
     ).read_text(encoding="utf-8")
+    backend_main = (REPO_ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
     android_name = re.search(r'versionName\s+"([^"]+)"', android_gradle)
     android_code = re.search(r"versionCode\s+(\d+)", android_gradle)
 
     assert android_name is not None
     assert android_code is not None
-    assert web_version == "1.0.0"
+    assert web_version == "2.1.0"
+    assert APP_VERSION == web_version
     assert package["version"] == web_version
     assert package_lock["version"] == web_version
     assert package_lock["packages"][""]["version"] == web_version
-    assert android_name.group(1) == "2.0.0"
-    assert android_code.group(1) == "200"
+    assert android_name.group(1) == web_version
+    assert android_code.group(1) == "210"
+    assert "from app.version import APP_VERSION" in backend_main
+    assert "version=APP_VERSION" in backend_main
+    assert backend_main.count('"version": APP_VERSION') == 2
+    assert 'version="1.0.0"' not in backend_main
+    assert '"version": "1.0.0"' not in backend_main
