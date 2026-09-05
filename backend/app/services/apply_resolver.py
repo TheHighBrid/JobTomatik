@@ -114,9 +114,34 @@ def is_external_candidate(url: str) -> bool:
     return True
 
 
+_HOSTED_ATS_DOMAINS = (
+    "greenhouse.io",
+    "lever.co",
+    "ashbyhq.com",
+    "smartrecruiters.com",
+    "myworkdayjobs.com",
+    "workdayjobs.com",
+    "icims.com",
+    "jobvite.com",
+    "breezy.hr",
+    "applytojob.com",
+    "ashby.com",
+)
+
+
+def is_hosted_ats_url(url: str) -> bool:
+    """True when the page already lives on a known ATS host.
+
+    HTML link scoring must not replace these URLs with board roots or
+    marketing pages found in the same document.
+    """
+    host = _domain(url)
+    return any(host == domain or host.endswith("." + domain) for domain in _HOSTED_ATS_DOMAINS)
+
+
 def is_probably_ats_or_company_apply_url(url: str) -> bool:
     hay = (url or "").lower()
-    if any(hint in hay for hint in ATS_HINTS):
+    if is_hosted_ats_url(url) or any(hint in hay for hint in ATS_HINTS):
         return True
     return any(word in hay for word in APPLY_WORDS) and not is_unsupported_job_board_url(url)
 
@@ -136,6 +161,17 @@ def score_apply_link(url: str, label: str) -> int:
 
 
 def extract_application_method_from_html(page_url: str, html: str) -> Dict[str, Any]:
+    if is_hosted_ats_url(page_url):
+        return {
+            "application_method": "external_url",
+            "selected_apply_url": page_url,
+            "reason": "Page is already a hosted ATS posting; keep current URL",
+            "jobbank_original_url": page_url,
+            "apply_email_candidates": [],
+            "apply_url_candidates": [{"url": page_url, "text": "", "score": 100}],
+            "external_link_candidates": [],
+        }
+
     soup = BeautifulSoup(html or "", "html.parser")
     page_text = soup.get_text(" ", strip=True)
     emails = sorted(set(EMAIL_RE.findall(page_text)))
