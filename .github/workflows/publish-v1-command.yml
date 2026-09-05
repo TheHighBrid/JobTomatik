@@ -13,7 +13,7 @@ permissions:
 env:
   AUTHORIZED_PR_NUMBER: "142"
   RELEASE_COMMAND: /publish-jobtomatik-v2.1.0
-  APK_NAME: JobTomatik-v2.10.apk
+  APK_NAME: JobTomatik-v2.1.0.apk
 
 jobs:
   authorize:
@@ -34,7 +34,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
-              body: `🚀 Authorized JobTomatik v2.10 publication started.\n\nRun: ${runUrl}\nSource branch: main`,
+              body: `🚀 Authorized JobTomatik v2.1.0 publication started.\n\nRun: ${runUrl}\nSource branch: main`,
             });
 
   build-and-publish:
@@ -122,7 +122,7 @@ jobs:
             ./gradlew --no-daemon assembleDebug
           fi
 
-      - name: Package and verify JobTomatik v2.10
+      - name: Package and verify JobTomatik v2.1.0
         shell: bash
         run: |
           set -euo pipefail
@@ -141,10 +141,10 @@ jobs:
           grep -q "versionCode='210'" release/APK-BADGING.txt
           grep -q "versionName='2.1.0'" release/APK-BADGING.txt
 
-          sha256sum "release/$APK_NAME" > release/JobTomatik-v2.10.sha256
+          sha256sum "release/$APK_NAME" > release/JobTomatik-v2.1.0.sha256
 
           cat > release/BUILD-INFO.txt <<EOF
-          JobTomatik v2.10
+          JobTomatik v2.1.0
           Technical version: 2.1.0
           Android application ID: ca.jobtomatik.app
           Android version code: 210
@@ -154,9 +154,9 @@ jobs:
           EOF
 
           cat > release/RELEASE_NOTES.md <<EOF
-          # JobTomatik v2.10
+          # JobTomatik v2.1.0
 
-          JobTomatik v2.10 packages the current JobTomatik application and updated visual system into a new Android build.
+          JobTomatik v2.1.0 packages the current JobTomatik application and updated visual system into a new Android build.
 
           - Android version: 2.1.0
           - Android version code: 210
@@ -170,7 +170,7 @@ jobs:
       - name: Upload release bundle artifact
         uses: actions/upload-artifact@v7
         with:
-          name: JobTomatik-v2.10-command-release-bundle
+          name: JobTomatik-v2.1.0-command-release-bundle
           path: frontend/release/*
           if-no-files-found: error
           retention-days: 90
@@ -219,14 +219,14 @@ jobs:
         with:
           tag_name: v2.1.0
           target_commitish: main
-          name: JobTomatik v2.10
+          name: JobTomatik v2.1.0
           body_path: frontend/release/RELEASE_NOTES.md
           make_latest: true
           fail_on_unmatched_files: true
           overwrite_files: false
           files: |
-            frontend/release/JobTomatik-v2.10.apk
-            frontend/release/JobTomatik-v2.10.sha256
+            frontend/release/JobTomatik-v2.1.0.apk
+            frontend/release/JobTomatik-v2.1.0.sha256
             frontend/release/BUILD-INFO.txt
             frontend/release/APK-BADGING.txt
 
@@ -247,5 +247,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: Number(process.env.AUTHORIZED_PR_NUMBER),
-              body: `JobTomatik v2.10 publication finished.\n\n- Build and release: **${build}**\n- Run: ${runUrl}`,
+              body: `JobTomatik v2.1.0 publication finished.\n\n- Build and release: **${build}**\n- Run: ${runUrl}`,
             });
