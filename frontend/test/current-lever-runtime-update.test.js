@@ -41,6 +41,13 @@ test('native bootstrap repairs a current Android runtime whose security signer i
   assert.equal(control.includes('existing Answer Vault and handoff encryption key'), true)
 })
 
+test('offline native controller uses safe native bootstrap instead of a doomed server request', () => {
+  const offlineBootstrap = control.indexOf('if (nativeBootstrapSafe && !controllerReady)')
+  const serverPost = control.indexOf("'/controller/android-runtime/update'")
+  assert.equal(offlineBootstrap >= 0 && offlineBootstrap < serverPost, true)
+  assert.equal(control.includes("return { mode: 'native-bootstrap', result }"), true)
+})
+
 test('current healthy runtime still uses the signed server update path and does not bypass safety errors', () => {
   const nativeRepair = control.indexOf('if (runtimeNeedsNativeRepair)')
   const serverPost = control.indexOf("'/controller/android-runtime/update'")
