@@ -116,6 +116,7 @@ def test_current_operator_and_certification_surfaces_use_v2_1_identity():
         REPO_ROOT / "frontend" / "src" / "pages" / "CertificationCenter.jsx"
     ).read_text(encoding="utf-8")
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     android_setup = (REPO_ROOT / "ANDROID_TERMUX_SETUP.md").read_text(encoding="utf-8")
     setup_tutorial = (REPO_ROOT / "docs" / "SETUP_TUTORIAL.md").read_text(encoding="utf-8")
     phase10 = (REPO_ROOT / "docs" / "PHASE10_CERTIFICATION_SCALE.md").read_text(encoding="utf-8")
@@ -140,6 +141,11 @@ def test_current_operator_and_certification_surfaces_use_v2_1_identity():
     assert "target_commitish" in phase12
     assert "v2.1.0 is published" in phase12
     assert "v2.00 is released" not in phase12
+
+    assert "## [2.1.0] - candidate" in changelog
+    assert "normal Android APK workflow build-only" in changelog
+    assert "explicit owner command" in changelog
+    assert "Preserve the historical `v2.0.0` release as immutable" in changelog
 
     assert "Current repository candidate: `2.1.0`" in readme
     assert "Current Android version code: `210`" in readme
