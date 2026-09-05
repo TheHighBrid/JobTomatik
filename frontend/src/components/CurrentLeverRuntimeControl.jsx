@@ -175,6 +175,11 @@ export default function CurrentLeverRuntimeControl() {
         return { mode: 'native-security-repair', result }
       }
 
+      if (nativeBootstrapSafe && !controllerReady) {
+        const result = await updateRuntimeViaNativeBootstrap()
+        return { mode: 'native-bootstrap', result }
+      }
+
       try {
         const response = await api.post(
           '/controller/android-runtime/update',
