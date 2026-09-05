@@ -90,7 +90,24 @@ def test_proc_net_restricted_fallback_retires_one_verified_owned_api(monkeypatch
     monkeypatch.setattr(MODULE, "_listener_pids", lambda *_: set())
     monkeypatch.setattr(MODULE, "_read_environ", lambda *_: {})
     monkeypatch.setattr(MODULE, "_fetch_runtime_identity", lambda *_: _good_identity())
-    monkeypatch.setattr(MODULE, "_pid_alive", lambda *_: False)
+    monkeypatch.setattr(MODULE, "_port_accepting", lambda *_: False)
+    monkeypatch.setattr(MODULE.os, "kill", lambda pid, sig: signaled.append((pid, sig)))
+
+    assert MODULE.retire_stale_api(proc_root=tmp_path / "proc", backend_root=backend, port=8010) == 0
+    assert signaled == [(777, signal.SIGTERM)]
+
+
+def test_released_port_counts_as_retired_even_if_process_state_lingers(monkeypatch, tmp_path):
+    backend = tmp_path / "backend"
+    signaled = []
+    accepting = iter((True, False))
+
+    monkeypatch.setattr(MODULE, "_candidate_api_pids", lambda *_: {777})
+    monkeypatch.setattr(MODULE, "_listener_pids", lambda *_: set())
+    monkeypatch.setattr(MODULE, "_read_environ", lambda *_: {})
+    monkeypatch.setattr(MODULE, "_fetch_runtime_identity", lambda *_: _good_identity())
+    monkeypatch.setattr(MODULE, "_port_accepting", lambda *_: next(accepting))
+    monkeypatch.setattr(MODULE.time, "sleep", lambda *_: None)
     monkeypatch.setattr(MODULE.os, "kill", lambda pid, sig: signaled.append((pid, sig)))
 
     assert MODULE.retire_stale_api(proc_root=tmp_path / "proc", backend_root=backend, port=8010) == 0
