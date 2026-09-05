@@ -70,8 +70,8 @@ def test_form_filler_v3_compiles_without_escape_sequence_warnings():
         compile(source, str(path), "exec")
 
 
-def test_web_package_android_and_backend_release_tracks_are_consistent():
-    web_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+def test_product_release_identity_and_private_package_tracks_are_consistent():
+    product_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
     package = json.loads(
         (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
     )
@@ -87,13 +87,17 @@ def test_web_package_android_and_backend_release_tracks_are_consistent():
 
     assert android_name is not None
     assert android_code is not None
-    assert web_version == "2.1.0"
-    assert APP_VERSION == web_version
-    assert package["version"] == web_version
-    assert package_lock["version"] == web_version
-    assert package_lock["packages"][""]["version"] == web_version
-    assert android_name.group(1) == web_version
+    assert product_version == "2.1.0"
+    assert APP_VERSION == product_version
+    assert android_name.group(1) == product_version
     assert android_code.group(1) == "210"
+
+    # The private npm package is an implementation manifest, not the shipped app version.
+    assert package["private"] is True
+    assert package["version"] == "1.0.0"
+    assert package_lock["version"] == package["version"]
+    assert package_lock["packages"][""]["version"] == package["version"]
+
     assert "from app.version import APP_VERSION" in backend_main
     assert "version=APP_VERSION" in backend_main
     assert backend_main.count('"version": APP_VERSION') == 2
