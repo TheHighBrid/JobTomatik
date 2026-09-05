@@ -14,9 +14,11 @@ SPEC.loader.exec_module(MODULE)
 
 
 def _good_identity() -> dict:
+    revision = "a" * 40
     return {
         "version": "phase12-runtime-identity-v1",
-        "revision": "a" * 40,
+        "revision": revision,
+        "expected_revision": revision,
         "role": "api",
         "known": True,
         "identity_sha256": "b" * 64,
@@ -25,9 +27,8 @@ def _good_identity() -> dict:
     }
 
 
-def test_emergency_python_module_uvicorn_shape_is_narrowly_recognized(tmp_path):
-    backend = tmp_path / "backend"
-    argv = [
+def _emergency_argv(backend: Path) -> list[str]:
+    return [
         str(backend / ".venv/bin/python"),
         "-m",
         "uvicorn",
@@ -37,7 +38,11 @@ def test_emergency_python_module_uvicorn_shape_is_narrowly_recognized(tmp_path):
         "--port",
         "8010",
     ]
-    assert MODULE._is_jobtomatik_api_argv(argv, backend, 8010) is True
+
+
+def test_emergency_python_module_uvicorn_shape_is_narrowly_recognized(tmp_path):
+    backend = tmp_path / "backend"
+    assert MODULE._is_jobtomatik_api_argv(_emergency_argv(backend), backend, 8010) is True
 
     unrelated = [
         "/usr/bin/python3",
@@ -74,29 +79,48 @@ def test_runtime_identity_must_be_nonconsequential_jobtomatik_api():
     assert MODULE._identity_is_jobtomatik_api(bad) is False
 
 
-def test_retirement_signals_only_verified_listener(monkeypatch, tmp_path):
+def test_proc_net_restricted_fallback_retires_one_verified_owned_api(monkeypatch, tmp_path):
     backend = tmp_path / "backend"
-    argv = [
-        str(backend / ".venv/bin/python"),
-        "-m",
-        "uvicorn",
-        "app.main:app",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "8010",
-    ]
-    listener_snapshots = iter(({777}, set()))
     signaled = []
 
-    monkeypatch.setattr(MODULE, "_listener_pids", lambda *_: next(listener_snapshots))
-    monkeypatch.setattr(MODULE, "_read_argv", lambda *_: argv)
+    monkeypatch.setattr(MODULE, "_candidate_api_pids", lambda *_: {777})
+    monkeypatch.setattr(MODULE, "_listener_pids", lambda *_: set())
+    monkeypatch.setattr(MODULE, "_read_environ", lambda *_: {})
     monkeypatch.setattr(MODULE, "_fetch_runtime_identity", lambda *_: _good_identity())
+    monkeypatch.setattr(MODULE, "_pid_alive", lambda *_: False)
     monkeypatch.setattr(MODULE.os, "kill", lambda pid, sig: signaled.append((pid, sig)))
-    monkeypatch.setattr(MODULE.time, "sleep", lambda *_: None)
 
     assert MODULE.retire_stale_api(proc_root=tmp_path / "proc", backend_root=backend, port=8010) == 0
     assert signaled == [(777, signal.SIGTERM)]
+
+
+def test_socket_owner_path_retires_only_intersection(monkeypatch, tmp_path):
+    backend = tmp_path / "backend"
+    identity = _good_identity()
+    monkeypatch.setattr(MODULE, "_candidate_api_pids", lambda *_: {777, 888})
+    monkeypatch.setattr(MODULE, "_listener_pids", lambda *_: {777})
+    monkeypatch.setattr(MODULE, "_read_environ", lambda *_: {})
+
+    pid, source = MODULE._select_verified_pid(
+        proc_root=tmp_path / "proc",
+        backend_root=backend,
+        port=8010,
+        identity=identity,
+    )
+    assert pid == 777
+    assert source == "socket_owner"
+
+
+def test_unknown_or_ambiguous_owned_processes_are_never_signaled(monkeypatch, tmp_path):
+    backend = tmp_path / "backend"
+    signaled = []
+    monkeypatch.setattr(MODULE, "_candidate_api_pids", lambda *_: {777, 888})
+    monkeypatch.setattr(MODULE, "_listener_pids", lambda *_: set())
+    monkeypatch.setattr(MODULE, "_fetch_runtime_identity", lambda *_: _good_identity())
+    monkeypatch.setattr(MODULE.os, "kill", lambda pid, sig: signaled.append((pid, sig)))
+
+    assert MODULE.retire_stale_api(proc_root=tmp_path / "proc", backend_root=backend, port=8010) == 2
+    assert signaled == []
 
 
 def test_sanitizer_runs_verified_retirement_only_after_api_pid_sanitization():
@@ -104,7 +128,6 @@ def test_sanitizer_runs_verified_retirement_only_after_api_pid_sanitization():
         encoding="utf-8"
     )
     api_sanitize = sanitizer.index('sanitize_pid_file api "$RUNTIME_DIR/api.pid"')
-    retire = sanitizer.index("retire_verified_stale_api_without_pid_file")
     assert '[[ -f "$RUNTIME_DIR/api.pid" ]] && return 0' in sanitizer
     assert "retire_stale_android_api.py" in sanitizer
     assert api_sanitize < sanitizer.rindex("retire_verified_stale_api_without_pid_file")
