@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import signal
+import subprocess
 from pathlib import Path
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = BACKEND_ROOT / "scripts" / "retire_stale_android_api.py"
+SANITIZER = BACKEND_ROOT / "scripts" / "sanitize_android_runtime_pid_files.sh"
 SPEC = importlib.util.spec_from_file_location("retire_stale_android_api", SCRIPT)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -123,11 +126,30 @@ def test_unknown_or_ambiguous_owned_processes_are_never_signaled(monkeypatch, tm
     assert signaled == []
 
 
-def test_sanitizer_runs_verified_retirement_only_after_api_pid_sanitization():
-    sanitizer = (BACKEND_ROOT / "scripts/sanitize_android_runtime_pid_files.sh").read_text(
-        encoding="utf-8"
+def test_sanitizer_skips_optional_retirement_without_backend_venv(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    fake_venv = tmp_path / "missing-venv"
+    runtime_dir.mkdir()
+    env = os.environ.copy()
+    env["JOBTOMATIK_RUNTIME_DIR"] = str(runtime_dir)
+    env["JOBTOMATIK_BACKEND_VENV"] = str(fake_venv)
+
+    completed = subprocess.run(
+        ["bash", str(SANITIZER)],
+        check=True,
+        env=env,
+        capture_output=True,
+        text=True,
     )
+    assert "ANDROID_STALE_API_RETIRE_SKIPPED reason=retirer_unavailable" in completed.stdout
+    assert "ANDROID_RUNTIME_PID_FILES_SANITIZED" in completed.stdout
+
+
+def test_sanitizer_runs_verified_retirement_only_after_api_pid_sanitization():
+    sanitizer = SANITIZER.read_text(encoding="utf-8")
     api_sanitize = sanitizer.index('sanitize_pid_file api "$RUNTIME_DIR/api.pid"')
     assert '[[ -f "$RUNTIME_DIR/api.pid" ]] && return 0' in sanitizer
     assert "retire_stale_android_api.py" in sanitizer
+    assert 'PROC_ROOT="${JOBTOMATIK_PROC_ROOT:-/proc}"' in sanitizer
+    assert '--proc-root "$PROC_ROOT"' in sanitizer
     assert api_sanitize < sanitizer.rindex("retire_verified_stale_api_without_pid_file")
