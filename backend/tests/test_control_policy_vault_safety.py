@@ -97,3 +97,34 @@ def test_caseware_bilingual_question_stays_official_language_proficiency():
     )
 
     assert result["canonical_key"] == "official_language_proficiency"
+
+
+@pytest.mark.parametrize(
+    ("descriptor", "expected_key"),
+    [
+        (
+            "cards[c3a70b5e-ccc1-4d86-b4f6-4c206aa203e0][field0] | Yes | "
+            "Are you physically located in Canada and legally authorized to work in Canada for any employer?",
+            "work_authorization",
+        ),
+        (
+            "cards[844edf45-5bb2-4c3e-9b3b-0a0464834f66][field0] | A1 - Beginner | "
+            "What is your level of proficiency in French?",
+            "language_proficiency",
+        ),
+        (
+            "cards[844edf45-5bb2-4c3e-9b3b-0a0464834f66][field1] | Yes | "
+            "Are you fluent in French and English, both verbally and in writing?",
+            "official_language_proficiency",
+        ),
+        (
+            "cards[3a847a72-56f8-489d-9daf-269b095ce598][field0] | Yes | "
+            "Do you have post-secondary education?",
+            "degree_completion",
+        ),
+    ],
+)
+def test_caseware_lever_card_descriptor_classifies_from_human_question(descriptor, expected_key):
+    result = classify_control_question(descriptor)
+
+    assert result["canonical_key"] == expected_key
