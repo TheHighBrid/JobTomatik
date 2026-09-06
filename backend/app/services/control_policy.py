@@ -20,6 +20,20 @@ _EXTRA_PATTERNS = {
         r"(?:consent|agree).{0,50}(?:processing|retaining).{0,30}(?:applicant )?data",
         r"(?:processing|retaining).{0,30}(?:applicant )?data",
     ],
+    # Some Lever employers phrase the catalog's language-proficiency question as
+    # "level of proficiency in French" rather than "language proficiency" or
+    # "proficient in French". Keep this narrow so bilingual English/French
+    # questions still classify as official_language_proficiency.
+    "language_proficiency": [
+        r"\b(?:level of )?proficiency in (?:french|english)\b",
+        r"\b(?:french|english) proficiency(?: level)?\b",
+    ],
+    # A yes/no post-secondary-education question is a completion/attainment
+    # question. It must bind to an explicitly approved education policy rather
+    # than falling through to a custom question or being guessed.
+    "degree_completion": [
+        r"\bpost[- ]?secondary education\b",
+    ],
 }
 
 # ``privacy_consent`` existed in early policy payloads before consent was split into
