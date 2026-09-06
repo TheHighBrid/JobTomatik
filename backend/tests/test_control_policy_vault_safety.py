@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import pytest
 
-from app.services.control_policy import resolve_control_policy
+from app.services.control_policy import classify_control_question, resolve_control_policy
 
 
 def _policy(*, policy_id=1, answer="Yes"):
@@ -73,3 +73,27 @@ def test_control_policy_blocks_conflicting_same_scope_records():
     assert result["can_autofill"] is False
     assert result["blocker_codes"] == ["policy_scope_conflict"]
     assert set(result["conflict_policy_ids"]) == {1, 2}
+
+
+def test_caseware_french_proficiency_maps_to_language_proficiency():
+    result = classify_control_question(
+        "What is your level of proficiency in French?"
+    )
+
+    assert result["canonical_key"] == "language_proficiency"
+
+
+def test_caseware_post_secondary_education_maps_to_degree_completion():
+    result = classify_control_question(
+        "Do you have post-secondary education?"
+    )
+
+    assert result["canonical_key"] == "degree_completion"
+
+
+def test_caseware_bilingual_question_stays_official_language_proficiency():
+    result = classify_control_question(
+        "Are you fluent in both French and English verbally and in writing?"
+    )
+
+    assert result["canonical_key"] == "official_language_proficiency"
