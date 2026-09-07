@@ -23,6 +23,7 @@ import {
   getOperatorAssistedPreflight,
   prepareOperatorAssistedSubmission,
   revalidateAnswerPolicyReview,
+  retireStaleAnswerPolicyReviewForReprepare,
 } from '../api/operatorAssisted'
 import { isApplicationTaskTerminal } from '../applicationTaskRuntime'
 import { shortHash, supervisedBlockerLabel } from '../supervisedPlatforms'
@@ -169,12 +170,26 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
       await refreshAll()
       if (result.resolved) {
         toast.success('Approved answers revalidated. Prepare the filled application again when ready.')
+      } else if (result.fresh_reprepare_available) {
+        toast('This review predates the Lever descriptor fix. Retire it only to run a fresh fill-only preparation.')
       } else {
         toast.error('Some retained employer questions still need a valid approved answer.')
       }
     },
     onError: (error) => toast.error(
       getApiErrorMessage(error, 'The retained questions could not be revalidated.'),
+    ),
+  })
+
+  const retireStaleReviewMutation = useMutation({
+    mutationFn: () => retireStaleAnswerPolicyReviewForReprepare(applicationId, activePolicyReview.id),
+    onSuccess: async () => {
+      setPolicyReviewResult(null)
+      await refreshAll()
+      toast.success('Stale review retired. Fresh fill-only preparation is now required.')
+    },
+    onError: (error) => toast.error(
+      getApiErrorMessage(error, 'The stale review could not be retired safely.'),
     ),
   })
 
@@ -318,7 +333,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                 <button
                   type="button"
                   onClick={() => revalidatePolicyReviewMutation.mutate()}
-                  disabled={revalidatePolicyReviewMutation.isPending}
+                  disabled={revalidatePolicyReviewMutation.isPending || retireStaleReviewMutation.isPending}
                   className="btn-secondary mt-3 inline-flex items-center gap-2"
                 >
                   {revalidatePolicyReviewMutation.isPending
@@ -343,6 +358,25 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                         </li>
                       ))}
                     </ul>
+
+                    {policyReviewResult.fresh_reprepare_available && (
+                      <div className="mt-3 border-t border-violet-100 pt-3">
+                        <p className="text-[11px] leading-relaxed text-violet-700">
+                          These retained records contain the old opaque Lever field identifiers, not the employer question text. The safe recovery is to retire only this stale review, then run a fresh fill-only preparation under the corrected descriptor extractor.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => retireStaleReviewMutation.mutate()}
+                          disabled={retireStaleReviewMutation.isPending}
+                          className="btn-secondary mt-2 inline-flex items-center gap-2"
+                        >
+                          {retireStaleReviewMutation.isPending
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <RefreshCw className="h-4 w-4" />}
+                          Retire stale review for fresh fill-only preparation
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
