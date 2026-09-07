@@ -1,10 +1,11 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.application import ApplicationStatus
 from app.schemas.job import JobOut
+from app.services.manual_review_shape import effective_answer_policy_reason
 
 
 class ApplicationCreate(BaseModel):
@@ -138,6 +139,15 @@ class ManualReviewTaskOut(BaseModel):
     resolution_notes: Optional[str]
     created_at: datetime
     updated_at: Optional[datetime]
+
+    @model_validator(mode="after")
+    def normalize_misclassified_answer_policy_review(self):
+        self.reason_code = effective_answer_policy_reason(
+            reason_code=self.reason_code,
+            summary=self.summary,
+            details=self.details,
+        )
+        return self
 
 
 class SubmissionEvidenceOut(BaseModel):
