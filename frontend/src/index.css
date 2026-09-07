@@ -211,7 +211,7 @@
     border: 1px solid var(--jt-border);
     border-radius: var(--jt-radius-sm);
     color: var(--jt-text-soft);
-    background: linear-gradient(180deg, var(--jt-surface-raised), var(--jt-surface));
+    background: linear-gradient(180deg, var(--jt-surface-raised), var(--jt-surface);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
@@ -371,9 +371,16 @@ tbody tr:hover {
   background: rgba(106, 167, 255, 0.045);
 }
 
-select option {
+/* Secondary defense for remaining native selects; Android WebView often ignores option CSS. */
+select {
   color: var(--jt-text);
-  background: var(--jt-surface);
+  background-color: rgba(8, 18, 32, 0.72);
+  color-scheme: dark;
+}
+
+select option {
+  color: var(--jt-text) !important;
+  background-color: var(--jt-surface) !important;
 }
 
 hr {
