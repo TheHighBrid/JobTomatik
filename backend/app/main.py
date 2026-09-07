@@ -22,6 +22,7 @@ from app.api import (
     intelligence,
     jobs,
     lever_pilot_ledger,
+    manual_review_policies,
     materials,
     notifications,
     operations,
@@ -244,6 +245,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(controller.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
+app.include_router(manual_review_policies.router, prefix="/api")
 app.include_router(supervised_submissions.router, prefix="/api")
 app.include_router(supervised_pilot_roster.router, prefix="/api")
 app.include_router(submission_evidence_reviews.router, prefix="/api")
