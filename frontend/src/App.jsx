@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store'
 import Layout from './components/Layout'
+import RuntimeUiRevisionBoundary from './components/RuntimeUiRevisionBoundary'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const CommandCenter = lazy(() => import('./pages/CommandCenter'))
@@ -29,7 +30,12 @@ const Register = lazy(() => import('./pages/Register'))
 
 function PrivateRoute({ children }) {
   const token = useAuthStore((s) => s.token)
-  return token ? children : <Navigate to="/login" replace />
+  return token ? (
+    <>
+      <RuntimeUiRevisionBoundary />
+      {children}
+    </>
+  ) : <Navigate to="/login" replace />
 }
 
 export default function App() {
