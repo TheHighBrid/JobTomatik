@@ -46,6 +46,53 @@ test('operator approval is bound to one exact retained form and typed exact targ
   assert.equal(operatorPanel.includes('Approve exact application & unlock final submit'), true)
 })
 
+test('answer-policy review can be revalidated without opening or submitting the employer form', () => {
+  assert.equal(
+    operatorApi.includes('/manual-reviews/${reviewId}/revalidate-answer-policies'),
+    true,
+  )
+  assert.equal(operatorPanel.includes('revalidateAnswerPolicyReview'), true)
+  assert.equal(operatorPanel.includes('Recheck approved answers'), true)
+  assert.equal(operatorPanel.includes('This does not open the employer page'), true)
+  assert.equal(operatorPanel.includes('create submission approval, queue a worker, or submit anything'), true)
+  assert.equal(operatorPanel.includes("'ambiguous_question'"), true)
+  assert.equal(operatorPanel.includes("'legal_answer_missing'"), true)
+  assert.equal(operatorPanel.includes("'sensitive_answer_missing'"), true)
+})
+
+test('answer-policy review UI surfaces remaining retained questions instead of silently clearing them', () => {
+  assert.equal(operatorPanel.includes('policyReviewResult?.remaining?.length'), true)
+  assert.equal(operatorPanel.includes('policyReviewResult.satisfied_questions'), true)
+  assert.equal(operatorPanel.includes('item.canonical_key'), true)
+  assert.equal(operatorPanel.includes('item.reason'), true)
+  assert.equal(operatorPanel.includes('item.descriptor'), true)
+})
+
+test('legacy opaque Lever review recovery is separate and remains fill-only', () => {
+  assert.equal(
+    operatorApi.includes('/manual-reviews/${reviewId}/retire-stale-for-reprepare'),
+    true,
+  )
+  assert.equal(operatorPanel.includes('retireStaleAnswerPolicyReviewForReprepare'), true)
+  assert.equal(operatorPanel.includes('policyReviewResult.fresh_reprepare_available'), true)
+  assert.equal(operatorPanel.includes('Retire stale review for fresh fill-only preparation'), true)
+  assert.equal(operatorPanel.includes('run a fresh fill-only preparation under the corrected descriptor extractor'), true)
+  assert.equal(operatorPanel.includes('Fresh fill-only preparation is now required.'), true)
+})
+
+test('legacy encrypted policy can be repaired only by explicit owner re-entry and then rechecked', () => {
+  assert.equal(operatorPanel.includes('updateAnswerPolicy'), true)
+  assert.equal(operatorPanel.includes("includes('policy_encryption_invalid')"), true)
+  assert.equal(operatorPanel.includes('Re-enter the exact answer'), true)
+  assert.equal(operatorPanel.includes('Repair answer & recheck'), true)
+  assert.equal(operatorPanel.includes('answer_value: cleanAnswer'), true)
+  assert.equal(operatorPanel.includes('answer_label: cleanAnswer'), true)
+  assert.equal(operatorPanel.includes('fallback_answers: []'), true)
+  assert.equal(operatorPanel.includes('allow_autofill: true'), true)
+  assert.equal(operatorPanel.includes('confirmed: true'), true)
+  assert.equal(operatorPanel.includes('return revalidateAnswerPolicyReview(applicationId, activePolicyReview.id)'), true)
+})
+
 test('final retained page exposes no generic browser mutation surface', () => {
   assert.equal(finalPanel.includes('submitOperatorAssistedFinalAction'), true)
   assert.equal(finalPanel.includes('sendHandoffAction'), false)
