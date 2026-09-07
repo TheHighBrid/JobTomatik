@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, MutableMapping
 
 POLICY_REVIEW_REASONS = frozenset({
     "ambiguous_question",
@@ -19,6 +19,43 @@ def retained_questions(details: Mapping[str, Any] | None) -> list[dict[str, Any]
     if not isinstance(raw, list):
         return []
     return [item for item in raw if isinstance(item, dict)]
+
+
+def _looks_like_retained_question_item(item: Mapping[str, Any] | None) -> bool:
+    if not isinstance(item, Mapping):
+        return False
+    details = item.get("details")
+    if not isinstance(details, Mapping):
+        return False
+    descriptor = str(details.get("descriptor") or "").strip()
+    control_type = str(details.get("control_type") or "").strip()
+    return bool(descriptor and control_type and "required" in details)
+
+
+def normalize_misclassified_question_review_items(result: MutableMapping[str, Any]) -> int:
+    """Repair malformed question items before manual-review grouping persists them.
+
+    A genuine operator final-submit item has final-action metadata and no employer
+    question descriptor. If a descriptor-bearing required control somehow arrives with
+    the final-submit reason, normalize only that item back to the fail-closed ambiguous
+    question reason. This prevents the contradictory persisted review shape observed on
+    Caseware while leaving the real final-submit boundary untouched.
+    """
+
+    changed = 0
+    raw_items = result.get("review_items") or []
+    if not isinstance(raw_items, list):
+        return 0
+    for item in raw_items:
+        if not isinstance(item, MutableMapping):
+            continue
+        if str(item.get("reason_code") or "") != FINAL_SUBMIT_REASON:
+            continue
+        if not _looks_like_retained_question_item(item):
+            continue
+        item["reason_code"] = "ambiguous_question"
+        changed += 1
+    return changed
 
 
 def is_misclassified_answer_policy_review_shape(
@@ -73,5 +110,6 @@ __all__ = [
     "POLICY_REVIEW_REASONS",
     "effective_answer_policy_reason",
     "is_misclassified_answer_policy_review_shape",
+    "normalize_misclassified_question_review_items",
     "retained_questions",
 ]
