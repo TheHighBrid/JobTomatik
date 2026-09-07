@@ -59,9 +59,7 @@ def _current_question():
     }
 
 
-def _seed(auth_client, *, questions=None):
-    # Auth fixture creates the account used by both the API and test DB.
-    assert auth_client.get("/api/profile").status_code == 200
+def _seed(*, questions=None):
     db = TestingSessionLocal()
     try:
         user = db.query(User).filter(User.email == "test@example.com").one()
@@ -107,7 +105,7 @@ def _seed(auth_client, *, questions=None):
 
 
 def test_caseware_legacy_opaque_review_is_identified_as_reprepare_only(auth_client):
-    app_id, review_id = _seed(auth_client)
+    app_id, review_id = _seed()
 
     response = auth_client.post(
         f"/api/applications/{app_id}/manual-reviews/{review_id}/revalidate-answer-policies"
@@ -135,7 +133,7 @@ def test_caseware_legacy_opaque_review_is_identified_as_reprepare_only(auth_clie
 
 
 def test_caseware_legacy_review_can_be_retired_only_for_fresh_fill_only_reprepare(auth_client):
-    app_id, review_id = _seed(auth_client)
+    app_id, review_id = _seed()
 
     response = auth_client.post(
         f"/api/applications/{app_id}/manual-reviews/{review_id}/retire-stale-for-reprepare"
@@ -172,7 +170,7 @@ def test_caseware_legacy_review_can_be_retired_only_for_fresh_fill_only_reprepar
 
 
 def test_current_human_prompt_review_cannot_use_stale_retirement_shortcut(auth_client):
-    app_id, review_id = _seed(auth_client, questions=[_current_question()])
+    app_id, review_id = _seed(questions=[_current_question()])
 
     response = auth_client.post(
         f"/api/applications/{app_id}/manual-reviews/{review_id}/retire-stale-for-reprepare"
@@ -192,7 +190,7 @@ def test_current_human_prompt_review_cannot_use_stale_retirement_shortcut(auth_c
 
 
 def test_stale_retirement_is_forbidden_when_submission_evidence_exists(auth_client):
-    app_id, review_id = _seed(auth_client)
+    app_id, review_id = _seed()
     db = TestingSessionLocal()
     try:
         db.add(SubmissionEvidence(
