@@ -16,6 +16,7 @@ import {
   getApiErrorMessage,
   getTaskStatus,
   listSupervisedSubmissionApprovals,
+  updateAnswerPolicy,
 } from '../api/client'
 import {
   authorizeOperatorFinalClick,
@@ -50,6 +51,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
   const [confirmation, setConfirmation] = useState('')
   const [prepareTaskId, setPrepareTaskId] = useState('')
   const [policyReviewResult, setPolicyReviewResult] = useState(null)
+  const [policyRepairAnswers, setPolicyRepairAnswers] = useState({})
 
   const activePolicyReview = useMemo(
     () => [...(application?.manual_reviews || [])]
@@ -116,6 +118,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
       queryClient.invalidateQueries({ queryKey: ['application', String(applicationId)] }),
       queryClient.invalidateQueries({ queryKey: ['application', applicationId] }),
       queryClient.invalidateQueries({ queryKey: ['applications'] }),
+      queryClient.invalidateQueries({ queryKey: ['answer-policies'] }),
     ])
   }
 
@@ -139,6 +142,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
 
   useEffect(() => {
     setPolicyReviewResult(null)
+    setPolicyRepairAnswers({})
   }, [applicationId, activePolicyReview?.id])
 
   const prepareMutation = useMutation({
@@ -178,6 +182,36 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
     },
     onError: (error) => toast.error(
       getApiErrorMessage(error, 'The retained questions could not be revalidated.'),
+    ),
+  })
+
+  const repairEncryptedPolicyMutation = useMutation({
+    mutationFn: async ({ policyId, answer }) => {
+      const cleanAnswer = String(answer || '').trim()
+      if (!cleanAnswer) throw new Error('Enter the exact answer before repairing this policy.')
+      await updateAnswerPolicy(policyId, {
+        answer_value: cleanAnswer,
+        answer_label: cleanAnswer,
+        fallback_answers: [],
+        allow_autofill: true,
+        confirmed: true,
+        is_active: true,
+      })
+      return revalidateAnswerPolicyReview(applicationId, activePolicyReview.id)
+    },
+    onSuccess: async (response, variables) => {
+      const result = response.data || {}
+      setPolicyReviewResult(result)
+      setPolicyRepairAnswers((current) => ({ ...current, [variables.policyId]: '' }))
+      await refreshAll()
+      if (result.resolved) {
+        toast.success('Encrypted answer repaired and review cleared. Fresh fill-only preparation is next.')
+      } else {
+        toast.success('Encrypted answer repaired. Remaining questions are still shown below.')
+      }
+    },
+    onError: (error) => toast.error(
+      getApiErrorMessage(error, error?.message || 'The encrypted answer could not be repaired.'),
     ),
   })
 
@@ -333,7 +367,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                 <button
                   type="button"
                   onClick={() => revalidatePolicyReviewMutation.mutate()}
-                  disabled={revalidatePolicyReviewMutation.isPending || retireStaleReviewMutation.isPending}
+                  disabled={revalidatePolicyReviewMutation.isPending || retireStaleReviewMutation.isPending || repairEncryptedPolicyMutation.isPending}
                   className="btn-secondary mt-3 inline-flex items-center gap-2"
                 >
                   {revalidatePolicyReviewMutation.isPending
@@ -347,16 +381,58 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                     <div className="text-xs font-semibold text-violet-900">
                       {policyReviewResult.satisfied_questions}/{policyReviewResult.total_questions} retained questions are ready
                     </div>
-                    <ul className="mt-2 space-y-2 text-xs text-violet-800">
-                      {policyReviewResult.remaining.map((item, index) => (
-                        <li key={`${item.canonical_key || 'question'}-${index}`}>
-                          <span className="font-semibold">{item.canonical_key || 'unclassified question'}:</span>{' '}
-                          {item.reason || 'A valid approved answer is still required.'}
-                          {item.descriptor && (
-                            <div className="mt-0.5 break-words text-[11px] text-violet-600">{item.descriptor}</div>
-                          )}
-                        </li>
-                      ))}
+                    <ul className="mt-2 space-y-3 text-xs text-violet-800">
+                      {policyReviewResult.remaining.map((item, index) => {
+                        const repairableEncryption = Boolean(
+                          item.policy_id
+                          && (item.blocker_codes || []).includes('policy_encryption_invalid')
+                        )
+                        const repairKey = String(item.policy_id || `${item.canonical_key || 'question'}-${index}`)
+                        const repairAnswer = policyRepairAnswers[repairKey] || ''
+                        return (
+                          <li key={`${item.canonical_key || 'question'}-${index}`}>
+                            <span className="font-semibold">{item.canonical_key || 'unclassified question'}:</span>{' '}
+                            {item.reason || 'A valid approved answer is still required.'}
+                            {item.descriptor && (
+                              <div className="mt-0.5 break-words text-[11px] text-violet-600">{item.descriptor}</div>
+                            )}
+
+                            {repairableEncryption && (
+                              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                                <p className="text-[11px] leading-relaxed text-amber-800">
+                                  This saved answer was encrypted with an older vault key and cannot be recovered. Re-enter only this exact answer. JobTomatik will encrypt it with the current key and recheck this review.
+                                </p>
+                                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                                  <input
+                                    className="input flex-1"
+                                    value={repairAnswer}
+                                    onChange={(event) => setPolicyRepairAnswers((current) => ({
+                                      ...current,
+                                      [repairKey]: event.target.value,
+                                    }))}
+                                    placeholder="Re-enter the exact answer"
+                                    autoComplete="off"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn-secondary inline-flex items-center justify-center gap-2"
+                                    disabled={!repairAnswer.trim() || repairEncryptedPolicyMutation.isPending}
+                                    onClick={() => repairEncryptedPolicyMutation.mutate({
+                                      policyId: item.policy_id,
+                                      answer: repairAnswer,
+                                    })}
+                                  >
+                                    {repairEncryptedPolicyMutation.isPending
+                                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                                      : <ShieldCheck className="h-4 w-4" />}
+                                    Repair answer & recheck
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </li>
+                        )
+                      })}
                     </ul>
 
                     {policyReviewResult.fresh_reprepare_available && (
@@ -367,7 +443,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                         <button
                           type="button"
                           onClick={() => retireStaleReviewMutation.mutate()}
-                          disabled={retireStaleReviewMutation.isPending}
+                          disabled={retireStaleReviewMutation.isPending || repairEncryptedPolicyMutation.isPending}
                           className="btn-secondary mt-2 inline-flex items-center gap-2"
                         >
                           {retireStaleReviewMutation.isPending
