@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, List
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
 from app.models.application import (
     Application,
     ApplicationAutomationState,
+    ApplicationStatus,
+    ApplicationEvent,
     ManualReviewReason,
     ManualReviewStatus,
     ManualReviewTask,
+    SubmissionEvidence,
 )
+from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.services.answer_policy import load_runtime_policies
 from app.services.application_state import (
     normalize_state,
@@ -37,6 +43,10 @@ _OPTION_CONTROL_TYPES = {
     "combobox",
     "listbox",
 }
+_LEGACY_LEVER_CARD_RE = re.compile(
+    r"^cards\[[^\]]+\]\[field\d+\]\s*\|\s*[^|]+$",
+    flags=re.IGNORECASE,
+)
 
 
 class ManualReviewPolicyRevalidationError(ValueError):
@@ -49,6 +59,17 @@ def _retained_questions(review: ManualReviewTask) -> List[Dict[str, Any]]:
     if not isinstance(questions, list):
         return []
     return [item for item in questions if isinstance(item, dict)]
+
+
+def _legacy_opaque_lever_descriptor(descriptor: str) -> bool:
+    """Identify the pre-fix Lever descriptor that retained only field name + option.
+
+    The descriptor extraction fix now appends the human employer prompt as another
+    descriptor segment. The old two-part form cannot be safely classified later,
+    because the question text was never persisted in the review.
+    """
+
+    return bool(_LEGACY_LEVER_CARD_RE.fullmatch(str(descriptor or "").strip()))
 
 
 def _option_records(raw_options: Iterable[Dict[str, Any]]) -> List[OptionRecord]:
@@ -87,6 +108,18 @@ def _question_result(
             "ready": False,
             "reason": "The retained review does not contain the employer question text.",
             "blocker_codes": ["retained_question_descriptor_missing"],
+        }
+
+    if _legacy_opaque_lever_descriptor(descriptor):
+        return {
+            "descriptor": descriptor,
+            "canonical_key": retained_key,
+            "ready": False,
+            "reason": (
+                "This review was captured before Lever human question prompts were retained. "
+                "It must be retired only for a mandatory fresh fill-only preparation."
+            ),
+            "blocker_codes": ["legacy_opaque_lever_descriptor"],
         }
 
     resolution = resolve_control_policy(descriptor, policies)
@@ -136,6 +169,130 @@ def _question_result(
     return result
 
 
+def _fresh_reprepare_available(review: ManualReviewTask, results: List[Dict[str, Any]]) -> bool:
+    questions = _retained_questions(review)
+    return bool(
+        questions
+        and len(results) == len(questions)
+        and all(
+            item.get("blocker_codes") == ["legacy_opaque_lever_descriptor"]
+            for item in results
+        )
+    )
+
+
+def _is_lever_apply_url(value: str) -> bool:
+    try:
+        parsed = urlparse(value or "")
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").lower()
+    return (
+        host in {"jobs.lever.co", "jobs.eu.lever.co"}
+        and parsed.path.rstrip("/").endswith("/apply")
+    )
+
+
+def retire_stale_answer_policy_review_for_reprepare(
+    db: Session,
+    application: Application,
+    review: ManualReviewTask,
+) -> Dict[str, Any]:
+    """Retire only a provably stale opaque Lever review so a fresh fill-only pass can run.
+
+    No answer is accepted by this operation. It is intentionally limited to the old
+    descriptor shape produced before human Lever prompts were retained. The next
+    preparation must re-read and re-classify every employer question under the
+    current control engine before any final-submit boundary can exist.
+    """
+
+    if review.reason_code not in POLICY_REVIEW_REASONS:
+        raise ManualReviewPolicyRevalidationError(
+            "This manual review is not an answer-policy review and cannot be retired for reprepare."
+        )
+    if review.status not in {ManualReviewStatus.open.value, ManualReviewStatus.in_progress.value}:
+        raise ManualReviewPolicyRevalidationError("Only an open answer-policy review can be retired for reprepare.")
+    if normalize_state(application.automation_state) != ApplicationAutomationState.needs_review.value:
+        raise ManualReviewPolicyRevalidationError(
+            "The application must be stopped in needs_review before a stale review can be retired."
+        )
+    if application.status == ApplicationStatus.applied:
+        raise ManualReviewPolicyRevalidationError("An applied application cannot be re-prepared.")
+
+    questions = _retained_questions(review)
+    if not questions or not all(
+        _legacy_opaque_lever_descriptor((item.get("details") or {}).get("descriptor", ""))
+        for item in questions
+    ):
+        raise ManualReviewPolicyRevalidationError(
+            "This review contains current or classifiable question evidence and must pass normal policy revalidation."
+        )
+
+    target_url = application.application_target_url or review.blocking_url or ""
+    if not _is_lever_apply_url(target_url):
+        raise ManualReviewPolicyRevalidationError(
+            "Stale-review retirement is restricted to an exact Lever /apply target."
+        )
+
+    live_or_consumed_approval = (
+        db.query(SubmissionApproval.id)
+        .filter(
+            SubmissionApproval.application_id == application.id,
+            SubmissionApproval.status.in_([
+                SubmissionApprovalStatus.active.value,
+                SubmissionApprovalStatus.consumed.value,
+            ]),
+        )
+        .first()
+    )
+    if live_or_consumed_approval:
+        raise ManualReviewPolicyRevalidationError(
+            "A live or consumed submission approval exists, so fresh reprepare is forbidden."
+        )
+
+    sufficient_evidence = (
+        db.query(SubmissionEvidence.id)
+        .filter(
+            SubmissionEvidence.application_id == application.id,
+            SubmissionEvidence.is_sufficient.is_(True),
+        )
+        .first()
+    )
+    if sufficient_evidence:
+        raise ManualReviewPolicyRevalidationError(
+            "Submission evidence exists, so fresh reprepare is forbidden."
+        )
+
+    resolve_manual_review_task(
+        db,
+        application,
+        review,
+        (
+            "Legacy opaque Lever question review retired solely to require a fresh fill-only "
+            "preparation under the current descriptor extractor. No applicant answer was accepted."
+        ),
+    )
+    db.add(ApplicationEvent(
+        application_id=application.id,
+        event_type="legacy_policy_review_retired_for_fresh_reprepare",
+        from_state=normalize_state(application.automation_state),
+        to_state=normalize_state(application.automation_state),
+        payload={
+            "review_id": review.id,
+            "question_count": len(questions),
+            "fresh_reprepare_required": True,
+            "submission_authorized": False,
+        },
+    ))
+    return {
+        "review_id": review.id,
+        "retired": True,
+        "fresh_reprepare_required": True,
+        "submission_authorized": False,
+        "application_state": normalize_state(application.automation_state),
+    }
+
+
 def revalidate_answer_policy_manual_review(
     db: Session,
     application: Application,
@@ -165,6 +322,7 @@ def revalidate_answer_policy_manual_review(
             "total_questions": len(_retained_questions(review)),
             "satisfied_questions": len(_retained_questions(review)),
             "remaining": [],
+            "fresh_reprepare_available": False,
             "application_state": normalize_state(application.automation_state),
         }
 
@@ -183,6 +341,7 @@ def revalidate_answer_policy_manual_review(
                 "reason": "No retained questions were found for safe policy revalidation.",
                 "blocker_codes": ["retained_questions_missing"],
             }],
+            "fresh_reprepare_available": False,
             "application_state": normalize_state(application.automation_state),
         }
 
@@ -214,6 +373,7 @@ def revalidate_answer_policy_manual_review(
             "total_questions": len(results),
             "satisfied_questions": satisfied,
             "remaining": remaining,
+            "fresh_reprepare_available": _fresh_reprepare_available(review, results),
             "application_state": normalize_state(application.automation_state),
         }
 
@@ -253,5 +413,6 @@ def revalidate_answer_policy_manual_review(
         "total_questions": len(results),
         "satisfied_questions": len(results),
         "remaining": [],
+        "fresh_reprepare_available": False,
         "application_state": normalize_state(application.automation_state),
     }
