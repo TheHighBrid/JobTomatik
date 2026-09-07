@@ -211,7 +211,7 @@
     border: 1px solid var(--jt-border);
     border-radius: var(--jt-radius-sm);
     color: var(--jt-text-soft);
-    background: linear-gradient(180deg, var(--jt-surface-raised), var(--jt-surface);
+    background: linear-gradient(180deg, var(--jt-surface-raised), var(--jt-surface));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
