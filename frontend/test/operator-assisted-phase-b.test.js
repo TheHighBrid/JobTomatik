@@ -80,6 +80,19 @@ test('legacy opaque Lever review recovery is separate and remains fill-only', ()
   assert.equal(operatorPanel.includes('Fresh fill-only preparation is now required.'), true)
 })
 
+test('legacy encrypted policy can be repaired only by explicit owner re-entry and then rechecked', () => {
+  assert.equal(operatorPanel.includes('updateAnswerPolicy'), true)
+  assert.equal(operatorPanel.includes("includes('policy_encryption_invalid')"), true)
+  assert.equal(operatorPanel.includes('Re-enter the exact answer'), true)
+  assert.equal(operatorPanel.includes('Repair answer & recheck'), true)
+  assert.equal(operatorPanel.includes('answer_value: cleanAnswer'), true)
+  assert.equal(operatorPanel.includes('answer_label: cleanAnswer'), true)
+  assert.equal(operatorPanel.includes('fallback_answers: []'), true)
+  assert.equal(operatorPanel.includes('allow_autofill: true'), true)
+  assert.equal(operatorPanel.includes('confirmed: true'), true)
+  assert.equal(operatorPanel.includes('return revalidateAnswerPolicyReview(applicationId, activePolicyReview.id)'), true)
+})
+
 test('final retained page exposes no generic browser mutation surface', () => {
   assert.equal(finalPanel.includes('submitOperatorAssistedFinalAction'), true)
   assert.equal(finalPanel.includes('sendHandoffAction'), false)
