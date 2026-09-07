@@ -9,6 +9,7 @@ from app.models.application import (
 )
 from app.models.job import Job, JobSource
 from app.models.user import User
+from app.services.manual_review_shape import normalize_misclassified_question_review_items
 from tests.conftest import TestingSessionLocal
 
 
@@ -77,6 +78,37 @@ def _seed_review(*, reason_code: str, summary: str, details: dict):
         return app.id, review.id
     finally:
         db.close()
+
+
+def test_creation_guard_normalizes_only_descriptor_bearing_question_items():
+    result = {
+        "review_items": [
+            {
+                "reason_code": ManualReviewReason.operator_final_submit_required.value,
+                "summary": "Approved answer required for an employer question.",
+                "details": {
+                    "descriptor": "cards[x][field0] | Yes | Are you legally authorized to work in Canada?",
+                    "control_type": "radio",
+                    "required": True,
+                },
+            },
+            {
+                "reason_code": ManualReviewReason.operator_final_submit_required.value,
+                "summary": "Review the fully filled application and make the final Submit action yourself after exact approval.",
+                "details": {
+                    "handoff_stage": "operator_final_submit",
+                    "operator_final_click_required": True,
+                    "automated_submission_authorized": False,
+                },
+            },
+        ]
+    }
+
+    changed = normalize_misclassified_question_review_items(result)
+
+    assert changed == 1
+    assert result["review_items"][0]["reason_code"] == ManualReviewReason.ambiguous_question.value
+    assert result["review_items"][1]["reason_code"] == ManualReviewReason.operator_final_submit_required.value
 
 
 def test_application_output_exposes_question_bearing_final_reason_as_policy_review(auth_client):
