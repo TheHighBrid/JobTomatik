@@ -11,6 +11,11 @@ export const revalidateAnswerPolicyReview = (applicationId, reviewId) =>
     `/applications/${applicationId}/manual-reviews/${reviewId}/revalidate-answer-policies`,
   )
 
+export const retireStaleAnswerPolicyReviewForReprepare = (applicationId, reviewId) =>
+  api.post(
+    `/applications/${applicationId}/manual-reviews/${reviewId}/retire-stale-for-reprepare`,
+  )
+
 export const createOperatorAssistedApproval = (applicationId, data) =>
   api.post(`/supervised-submissions/applications/${applicationId}/operator-assisted/approvals`, data)
 
