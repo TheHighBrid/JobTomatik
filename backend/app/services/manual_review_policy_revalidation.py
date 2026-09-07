@@ -43,6 +43,10 @@ _OPTION_CONTROL_TYPES = {
     "combobox",
     "listbox",
 }
+_STALE_REPREPARE_BLOCKERS = {
+    "legacy_opaque_lever_descriptor",
+    "retained_question_descriptor_missing",
+}
 _LEGACY_LEVER_CARD_RE = re.compile(
     r"^cards\[[^\]]+\]\[field\d+\]\s*\|\s*[^|]+$",
     flags=re.IGNORECASE,
@@ -70,6 +74,20 @@ def _legacy_opaque_lever_descriptor(descriptor: str) -> bool:
     """
 
     return bool(_LEGACY_LEVER_CARD_RE.fullmatch(str(descriptor or "").strip()))
+
+
+def _stale_lever_question_evidence(question: Dict[str, Any]) -> bool:
+    """Return True only when retained Lever question text is unrecoverably absent.
+
+    Historical reviews exist in two fail-closed shapes: the old two-part opaque
+    descriptor and records whose descriptor was never persisted at all. Neither
+    shape can be reclassified safely from storage, so both require a fresh fill-only
+    preparation to re-read the employer prompt.
+    """
+
+    details = dict(question.get("details") or {})
+    descriptor = str(details.get("descriptor") or "").strip()
+    return not descriptor or _legacy_opaque_lever_descriptor(descriptor)
 
 
 def _option_records(raw_options: Iterable[Dict[str, Any]]) -> List[OptionRecord]:
@@ -175,7 +193,8 @@ def _fresh_reprepare_available(review: ManualReviewTask, results: List[Dict[str,
         questions
         and len(results) == len(questions)
         and all(
-            item.get("blocker_codes") == ["legacy_opaque_lever_descriptor"]
+            set(item.get("blocker_codes") or []) <= _STALE_REPREPARE_BLOCKERS
+            and bool(item.get("blocker_codes"))
             for item in results
         )
     )
@@ -198,12 +217,13 @@ def retire_stale_answer_policy_review_for_reprepare(
     application: Application,
     review: ManualReviewTask,
 ) -> Dict[str, Any]:
-    """Retire only a provably stale opaque Lever review so a fresh fill-only pass can run.
+    """Retire only provably stale Lever question evidence so a fresh fill-only pass can run.
 
-    No answer is accepted by this operation. It is intentionally limited to the old
-    descriptor shape produced before human Lever prompts were retained. The next
-    preparation must re-read and re-classify every employer question under the
-    current control engine before any final-submit boundary can exist.
+    No answer is accepted by this operation. It is limited to retained question
+    records whose employer prompt is unrecoverable from storage: either the old
+    opaque two-part descriptor or a missing descriptor. The next preparation must
+    re-read and re-classify every employer question under the current control engine
+    before any final-submit boundary can exist.
     """
 
     if review.reason_code not in POLICY_REVIEW_REASONS:
@@ -220,10 +240,7 @@ def retire_stale_answer_policy_review_for_reprepare(
         raise ManualReviewPolicyRevalidationError("An applied application cannot be re-prepared.")
 
     questions = _retained_questions(review)
-    if not questions or not all(
-        _legacy_opaque_lever_descriptor((item.get("details") or {}).get("descriptor", ""))
-        for item in questions
-    ):
+    if not questions or not all(_stale_lever_question_evidence(item) for item in questions):
         raise ManualReviewPolicyRevalidationError(
             "This review contains current or classifiable question evidence and must pass normal policy revalidation."
         )
@@ -268,8 +285,9 @@ def retire_stale_answer_policy_review_for_reprepare(
         application,
         review,
         (
-            "Legacy opaque Lever question review retired solely to require a fresh fill-only "
-            "preparation under the current descriptor extractor. No applicant answer was accepted."
+            "Stale Lever question review with unrecoverable prompt evidence retired solely to require "
+            "a fresh fill-only preparation under the current descriptor extractor. No applicant answer "
+            "was accepted."
         ),
     )
     db.add(ApplicationEvent(
