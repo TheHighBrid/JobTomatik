@@ -68,6 +68,18 @@ test('answer-policy review UI surfaces remaining retained questions instead of s
   assert.equal(operatorPanel.includes('item.descriptor'), true)
 })
 
+test('legacy opaque Lever review recovery is separate and remains fill-only', () => {
+  assert.equal(
+    operatorApi.includes('/manual-reviews/${reviewId}/retire-stale-for-reprepare'),
+    true,
+  )
+  assert.equal(operatorPanel.includes('retireStaleAnswerPolicyReviewForReprepare'), true)
+  assert.equal(operatorPanel.includes('policyReviewResult.fresh_reprepare_available'), true)
+  assert.equal(operatorPanel.includes('Retire stale review for fresh fill-only preparation'), true)
+  assert.equal(operatorPanel.includes('run a fresh fill-only preparation under the corrected descriptor extractor'), true)
+  assert.equal(operatorPanel.includes('Fresh fill-only preparation is now required.'), true)
+})
+
 test('final retained page exposes no generic browser mutation surface', () => {
   assert.equal(finalPanel.includes('submitOperatorAssistedFinalAction'), true)
   assert.equal(finalPanel.includes('sendHandoffAction'), false)
