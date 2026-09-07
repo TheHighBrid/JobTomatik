@@ -22,11 +22,17 @@ import {
   createOperatorAssistedApproval,
   getOperatorAssistedPreflight,
   prepareOperatorAssistedSubmission,
+  revalidateAnswerPolicyReview,
 } from '../api/operatorAssisted'
 import { isApplicationTaskTerminal } from '../applicationTaskRuntime'
 import { shortHash, supervisedBlockerLabel } from '../supervisedPlatforms'
 
 const OPERATOR_APPROVAL_SOURCE = 'authenticated_user_operator_assisted'
+const POLICY_REVIEW_REASONS = new Set([
+  'ambiguous_question',
+  'legal_answer_missing',
+  'sensitive_answer_missing',
+])
 
 function HashCard({ label, value }) {
   return (
@@ -42,6 +48,17 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
   const queryClient = useQueryClient()
   const [confirmation, setConfirmation] = useState('')
   const [prepareTaskId, setPrepareTaskId] = useState('')
+  const [policyReviewResult, setPolicyReviewResult] = useState(null)
+
+  const activePolicyReview = useMemo(
+    () => [...(application?.manual_reviews || [])]
+      .filter((review) => (
+        ['open', 'in_progress'].includes(review.status)
+        && POLICY_REVIEW_REASONS.has(review.reason_code)
+      ))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0] || null,
+    [application?.manual_reviews],
+  )
 
   const preflightQuery = useQuery({
     queryKey: ['operator-assisted-preflight', applicationId],
@@ -119,6 +136,10 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
     setConfirmation('')
   }, [applicationId, preflight?.combined_payload_hash, preflight?.operator_handoff_public_id])
 
+  useEffect(() => {
+    setPolicyReviewResult(null)
+  }, [applicationId, activePolicyReview?.id])
+
   const prepareMutation = useMutation({
     mutationFn: () => prepareOperatorAssistedSubmission(applicationId),
     onSuccess: async (response) => {
@@ -137,6 +158,23 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
     },
     onError: (error) => toast.error(
       getApiErrorMessage(error, 'Operator-assisted preparation is blocked.'),
+    ),
+  })
+
+  const revalidatePolicyReviewMutation = useMutation({
+    mutationFn: () => revalidateAnswerPolicyReview(applicationId, activePolicyReview.id),
+    onSuccess: async (response) => {
+      const result = response.data || {}
+      setPolicyReviewResult(result)
+      await refreshAll()
+      if (result.resolved) {
+        toast.success('Approved answers revalidated. Prepare the filled application again when ready.')
+      } else {
+        toast.error('Some retained employer questions still need a valid approved answer.')
+      }
+    },
+    onError: (error) => toast.error(
+      getApiErrorMessage(error, 'The retained questions could not be revalidated.'),
     ),
   })
 
@@ -265,6 +303,50 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                 <li key={blocker}>• {supervisedBlockerLabel(blocker, preflight.platform)}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {activePolicyReview && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+            <div className="flex items-start gap-3">
+              <RefreshCw className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-700" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-violet-950">Answer Vault review</div>
+                <p className="mt-1 text-xs leading-relaxed text-violet-800">
+                  Recheck the retained employer questions against your current approved answers. This does not open the employer page, fill the form, create submission approval, queue a worker, or submit anything.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => revalidatePolicyReviewMutation.mutate()}
+                  disabled={revalidatePolicyReviewMutation.isPending}
+                  className="btn-secondary mt-3 inline-flex items-center gap-2"
+                >
+                  {revalidatePolicyReviewMutation.isPending
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <RefreshCw className="h-4 w-4" />}
+                  Recheck approved answers
+                </button>
+
+                {!!policyReviewResult?.remaining?.length && (
+                  <div className="mt-3 rounded-lg border border-violet-200 bg-white p-3">
+                    <div className="text-xs font-semibold text-violet-900">
+                      {policyReviewResult.satisfied_questions}/{policyReviewResult.total_questions} retained questions are ready
+                    </div>
+                    <ul className="mt-2 space-y-2 text-xs text-violet-800">
+                      {policyReviewResult.remaining.map((item, index) => (
+                        <li key={`${item.canonical_key || 'question'}-${index}`}>
+                          <span className="font-semibold">{item.canonical_key || 'unclassified question'}:</span>{' '}
+                          {item.reason || 'A valid approved answer is still required.'}
+                          {item.descriptor && (
+                            <div className="mt-0.5 break-words text-[11px] text-violet-600">{item.descriptor}</div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
