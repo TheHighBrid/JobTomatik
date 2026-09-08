@@ -16,6 +16,9 @@ from app.services.manual_review_policy_revalidation import (
     revalidate_answer_policy_manual_review,
     retire_stale_answer_policy_review_for_reprepare,
 )
+from app.services.manual_review_policy_visibility import (
+    persist_answer_policy_revalidation_visibility,
+)
 from app.services.manual_review_shape import effective_answer_policy_reason
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -120,6 +123,7 @@ async def revalidate_answer_policy_review(
             review,
             user_id=current_user.id,
         )
+        persist_answer_policy_revalidation_visibility(review, result)
     except ManualReviewPolicyRevalidationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
