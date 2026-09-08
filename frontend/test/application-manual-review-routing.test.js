@@ -3,16 +3,19 @@ import test from 'node:test'
 
 import {
   canOpenManualReviewPage,
+  duplicateOwnerApplicationId,
   routeApplicationManualReviews,
 } from '../src/applicationManualReviewRouting.js'
 
-function review(id, reason_code, created_at, blocking_url = 'https://jobs.lever.co/example/posting/apply') {
+function review(id, reason_code, created_at, blocking_url = 'https://jobs.lever.co/example/posting/apply', details = {}) {
   return {
     id,
     reason_code,
     created_at,
     blocking_url,
+    details,
     status: 'open',
+    summary: 'Manual review required.',
   }
 }
 
@@ -59,4 +62,42 @@ test('resumable browser challenges never expose a second-page escape on other pl
     canOpenManualReviewPage(review(2, 'automation_error', '2026-09-07T17:00:00Z'), 'greenhouse'),
     true,
   )
+})
+
+test('duplicate submission identity routes to the canonical local application', () => {
+  const duplicate = review(
+    4,
+    'safety_gate_blocked',
+    '2026-09-08T06:00:00Z',
+    'https://jobs.lever.co/eqbank/posting/apply',
+    {
+      reason: 'duplicate_submission_identity',
+      existing_application_id: 137,
+      alias_type: 'verified_platform_posting',
+    },
+  )
+  const routed = routeApplicationManualReviews([duplicate])
+
+  assert.equal(duplicateOwnerApplicationId(duplicate), 137)
+  assert.equal(routed.activeManualReview.blocking_url, '/applications/137')
+  assert.match(routed.activeManualReview.summary, /canonical application #137/)
+  assert.equal(canOpenManualReviewPage(routed.activeManualReview, 'lever'), true)
+})
+
+test('duplicate routing fails closed without a valid canonical application id', () => {
+  const malformed = review(
+    5,
+    'safety_gate_blocked',
+    '2026-09-08T06:01:00Z',
+    'https://jobs.lever.co/eqbank/posting/apply',
+    {
+      reason: 'duplicate_submission_identity',
+      existing_application_id: 'not-an-id',
+    },
+  )
+  const routed = routeApplicationManualReviews([malformed])
+
+  assert.equal(duplicateOwnerApplicationId(malformed), null)
+  assert.equal(routed.activeManualReview.blocking_url, 'https://jobs.lever.co/eqbank/posting/apply')
+  assert.equal(canOpenManualReviewPage(routed.activeManualReview, 'lever'), false)
 })
