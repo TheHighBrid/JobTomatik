@@ -23,6 +23,20 @@ def test_linkedin_listing_is_not_treated_as_application_target():
     assert is_valid_application_target(url, url) is False
 
 
+def test_expired_linkedin_jobs_redirect_is_still_a_listing():
+    url = "https://www.linkedin.com/jobs/private-banking-manager-jobs?trk=expired_jd_redirect"
+
+    assert is_listing_source(url) is True
+    assert is_valid_application_target(url, url) is False
+
+
+def test_linkedin_jobs_search_surface_is_a_listing():
+    url = "https://www.linkedin.com/jobs/search/?keywords=software"
+
+    assert is_listing_source(url) is True
+    assert is_valid_application_target(url, url) is False
+
+
 def test_direct_employer_url_initializes_as_resolved_target():
     db = FakeDB()
     job = Job(id=7, title="Fraud Advisor", company="RBC", url="https://jobs.rbc.com/ca/en/job/123")
