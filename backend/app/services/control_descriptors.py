@@ -58,9 +58,10 @@ async def element_descriptor(page, element) -> str:
 
           // Current Lever card controls can expose only cards[uuid][fieldN] on the
           // control itself while the human prompt lives in a nearby wrapper. When that
-          // opaque identity is present, walk only the nearest few ancestors and retain
-          // the first short, control-free human text sibling. This preserves meaning for
-          // policy classification without guessing or selecting an answer.
+          // opaque identity is present, walk only the nearest few ancestors. Structured
+          // label-like nodes are accepted directly. Unstructured sibling text must look
+          // like a question; otherwise fail closed rather than binding a section heading
+          // or explanatory copy to the control.
           if (pieces.some((piece) => /^cards\\[[^\\]]+\\]\\[field\\d+\\]$/i.test(piece))) {
             let node = el.parentElement;
             for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
@@ -79,7 +80,7 @@ async def element_descriptor(page, element) -> str:
                 if (child.contains(el)) continue;
                 if (child.querySelector('input,select,textarea,button,[role="radio"],[role="checkbox"],[role="combobox"]')) continue;
                 const text = usefulPrompt(child.innerText);
-                if (text) {
+                if (text && text.includes('?')) {
                   found = text;
                   break;
                 }
