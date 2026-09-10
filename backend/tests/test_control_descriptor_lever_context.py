@@ -111,6 +111,110 @@ async def test_opaque_card_fallback_does_not_mistake_option_text_for_prompt(page
 
 
 @pytest.mark.asyncio
+async def test_opaque_card_fallback_skips_descriptive_answer_labels(page):
+    """A radio option such as Career Fair must not terminate prompt recovery."""
+    await page.set_content(
+        """
+        <div class="lever-card">
+          <div>How did you hear about us?</div>
+          <div>
+            <label><input data-case="target" type="radio"
+              name="cards[22222222-2222-2222-2222-222222222222][field0]"
+              value="Career Fair" required>Career Fair</label>
+            <label><input type="radio"
+              name="cards[22222222-2222-2222-2222-222222222222][field0]"
+              value="Referral">Referral</label>
+          </div>
+        </div>
+        """
+    )
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert "Career Fair" in descriptor
+    assert "How did you hear about us?" in descriptor
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Desired salary range",
+        "Please describe your relevant experience",
+    ],
+)
+async def test_opaque_card_fallback_retains_statement_style_prompts(page, prompt):
+    """Valid employer prompts do not need to end in a question mark."""
+    await page.set_content(
+        f"""
+        <div class="lever-card">
+          <div>{prompt}</div>
+          <div>
+            <input data-case="target"
+              name="cards[33333333-3333-3333-3333-333333333333][field0]" required>
+          </div>
+        </div>
+        """
+    )
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert prompt in descriptor
+
+
+@pytest.mark.asyncio
+async def test_compound_application_questionnaire_cannot_cross_bind_neighbor_prompt(page):
+    """Plural/compound outer wrappers may not donate another field's prompt."""
+    await page.set_content(
+        """
+        <div class="job-application-questionnaire">
+          <label>Are you legally authorized to work in Canada?</label>
+          <div class="lever-card">
+            <div>Desired salary range</div>
+            <div>
+              <input data-case="target"
+                name="cards[44444444-4444-4444-4444-444444444444][field0]" required>
+            </div>
+          </div>
+          <div class="lever-card">
+            <div>Do you speak French?</div>
+            <div>
+              <input name="cards[55555555-5555-5555-5555-555555555555][field0]" required>
+            </div>
+          </div>
+        </div>
+        """
+    )
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert "Desired salary range" in descriptor
+    assert "legally authorized" not in descriptor
+    assert "Do you speak French?" not in descriptor
+
+
+@pytest.mark.asyncio
+async def test_opaque_card_fallback_stops_before_multi_question_container(page):
+    """If local prompt evidence is absent, another cards[...] field stops ancestor recovery."""
+    await page.set_content(
+        """
+        <div>
+          <div>Desired salary range</div>
+          <div><input data-case="target"
+            name="cards[66666666-6666-6666-6666-666666666666][field0]" required></div>
+          <div><input
+            name="cards[77777777-7777-7777-7777-777777777777][field0]" required></div>
+        </div>
+        """
+    )
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert "Desired salary range" not in descriptor
+    assert descriptor == "cards[66666666-6666-6666-6666-666666666666][field0]"
+
+
+@pytest.mark.asyncio
 async def test_opaque_card_fallback_does_not_bind_unrelated_section_heading(page):
     """If no local question can be proven, keep the opaque descriptor and fail closed."""
     await page.set_content(
