@@ -108,3 +108,28 @@ async def test_opaque_card_fallback_does_not_mistake_option_text_for_prompt(page
 
     assert "Are you based in Canada?" in descriptor
     assert descriptor != "cards[00000000-0000-0000-0000-000000000000][field0] | No"
+
+
+@pytest.mark.asyncio
+async def test_opaque_card_fallback_does_not_bind_unrelated_section_heading(page):
+    """If no local question can be proven, keep the opaque descriptor and fail closed."""
+    await page.set_content(
+        """
+        <section>
+          <div>CS Application Questions</div>
+          <div>
+            <label><input data-case="target" type="radio"
+              name="cards[11111111-1111-1111-1111-111111111111][field0]"
+              value="Yes" required>Yes</label>
+            <label><input type="radio"
+              name="cards[11111111-1111-1111-1111-111111111111][field0]"
+              value="No">No</label>
+          </div>
+        </section>
+        """
+    )
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert "CS Application Questions" not in descriptor
+    assert descriptor == "cards[11111111-1111-1111-1111-111111111111][field0] | Yes"
