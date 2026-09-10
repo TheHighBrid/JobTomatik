@@ -6,6 +6,7 @@ import pytest
 import pytest_asyncio
 
 from app.services.control_descriptors import element_descriptor
+from app.services.control_engine import fill_policy_controls
 from app.services.control_policy import classify_control_question
 
 
@@ -212,6 +213,57 @@ async def test_opaque_card_fallback_stops_before_multi_question_container(page):
 
     assert "Desired salary range" not in descriptor
     assert descriptor == "cards[66666666-6666-6666-6666-666666666666][field0]"
+
+
+@pytest.mark.asyncio
+async def test_opaque_card_fallback_rejects_conventionally_named_sibling_field(page):
+    """A normal sibling field is also a hard ownership boundary for opaque cards."""
+    await page.set_content(
+        """
+        <div class="compound-wrapper">
+          <label for="auth">Are you legally authorized to work in Canada?</label>
+          <input id="auth" name="workAuthorization">
+          <div>
+            <input data-case="target"
+              name="cards[88888888-8888-8888-8888-888888888888][field0]" required>
+          </div>
+        </div>
+        """
+    )
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert "legally authorized" not in descriptor
+    assert descriptor == "cards[88888888-8888-8888-8888-888888888888][field0]"
+
+
+@pytest.mark.asyncio
+async def test_choice_group_container_derives_single_opaque_field_prompt_in_engine(page):
+    """Exercise the real choice-group path where the descriptor subject is a fieldset."""
+    opaque_name = "cards[99999999-9999-9999-9999-999999999999][field0]"
+    await page.set_content(
+        f"""
+        <form>
+          <div class="lever-card">
+            <div>How did you hear about us?</div>
+            <fieldset>
+              <label><input type="radio" name="{opaque_name}" value="Career Fair" required>Career Fair</label>
+              <label><input type="radio" name="{opaque_name}" value="Referral">Referral</label>
+            </fieldset>
+          </div>
+        </form>
+        """
+    )
+
+    outcome = await fill_policy_controls(page, [])
+
+    assert outcome.filled_count == 0
+    assert len(outcome.review_items) == 1
+    descriptor = outcome.review_items[0]["details"]["descriptor"]
+    assert opaque_name in descriptor
+    assert "How did you hear about us?" in descriptor
+    assert not await page.locator(f'input[name="{opaque_name}"][value="Career Fair"]').is_checked()
+    assert not await page.locator(f'input[name="{opaque_name}"][value="Referral"]').is_checked()
 
 
 @pytest.mark.asyncio
