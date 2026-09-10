@@ -3,7 +3,7 @@ import re
 
 async def element_descriptor(page, element) -> str:
     descriptor = await element.evaluate(
-        """(el) => {
+        r"""(el) => {
           const pieces = [];
           const INTERACTIVE_SELECTOR =
             'input,select,textarea,button,[role="radio"],[role="checkbox"],[role="combobox"]';
