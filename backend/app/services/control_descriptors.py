@@ -7,6 +7,7 @@ async def element_descriptor(page, element) -> str:
           const pieces = [];
           const INTERACTIVE_SELECTOR =
             'input,select,textarea,button,[role="radio"],[role="checkbox"],[role="combobox"]';
+          const FIELD_SELECTOR = 'input:not([type="hidden"]),select,textarea';
           const OPAQUE_CARD_RE = /^cards\[[^\]]+\]\[field\d+\]$/i;
           const push = (value) => {
             const clean = String(value || '').replace(/\s+/g, ' ').trim();
@@ -99,22 +100,40 @@ async def element_descriptor(page, element) -> str:
           }
           push(el.closest('label')?.innerText);
 
-          // Current Lever card controls can expose only cards[uuid][fieldN] on the
-          // control while the employer prompt lives in a nearby wrapper. Recover context
-          // only inside the local card field. As soon as an ancestor contains another
-          // opaque card field, stop climbing so prompts cannot cross-bind between fields.
-          const opaqueName = cleanText(el.getAttribute('name'));
-          if (OPAQUE_CARD_RE.test(opaqueName)) {
+          // Usually the opaque identity belongs to the control itself. Native choice
+          // handlers may instead ask for a fieldset/radiogroup descriptor, so derive the
+          // identity only when that group contains exactly one opaque card field name.
+          let opaqueName = cleanText(el.getAttribute('name'));
+          if (!OPAQUE_CARD_RE.test(opaqueName)) opaqueName = '';
+          if (!opaqueName && el.matches?.('fieldset,[role="radiogroup"],[role="group"]')) {
+            const groupOpaqueNames = Array.from(el.querySelectorAll(FIELD_SELECTOR))
+              .map((control) => cleanText(control.getAttribute('name')))
+              .filter((name) => OPAQUE_CARD_RE.test(name));
+            const uniqueOpaqueNames = Array.from(new Set(groupOpaqueNames));
+            if (uniqueOpaqueNames.length === 1) {
+              opaqueName = uniqueOpaqueNames[0];
+              push(opaqueName);
+            }
+          }
+
+          // Current Lever card controls can expose only cards[uuid][fieldN] while the
+          // employer prompt lives in a nearby wrapper. Recover context only inside the
+          // local field. Any other non-hidden form field is an ownership boundary, even
+          // when that sibling uses a conventional name rather than cards[...]. Same-name
+          // radio/checkbox choices are allowed because they belong to the same question.
+          if (opaqueName) {
             let node = el.parentElement;
             for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
-              const cardNames = Array.from(
-                node.querySelectorAll('input[name],select[name],textarea[name]')
-              ).map((control) => cleanText(control.getAttribute('name')))
-                .filter((name) => OPAQUE_CARD_RE.test(name));
+              const fields = Array.from(node.querySelectorAll(FIELD_SELECTOR));
+              const hasForeignField = fields.some((control) => {
+                const name = cleanText(control.getAttribute('name'));
+                return name !== opaqueName;
+              });
 
-              // A different cards[...] field means this ancestor is a multi-question
-              // container, not the local question card. Do not inspect it or anything above it.
-              if (cardNames.some((name) => name !== opaqueName)) break;
+              // A distinct field means this ancestor is a multi-field container. Never
+              // inspect its labels or siblings, because doing so could attach a legal or
+              // sensitive prompt from a neighboring control to this opaque field.
+              if (hasForeignField) break;
 
               const promptText = structuredPrompt(node);
               if (promptText) {
