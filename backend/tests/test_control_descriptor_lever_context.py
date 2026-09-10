@@ -16,7 +16,7 @@ class _LeverRadioElement:
     async def evaluate(self, script):
         # Fast source-level guard for the historical hosted Lever wrapper.
         assert ".application-question" in script
-        assert ":scope > label" in script
+        assert "OPAQUE_CARD_RE" in script
         return (
             "cards[c3a70b5e-ccc1-4d86-b4f6-4c206aa203e0][field0] | Yes | "
             "Are you physically located in Canada and legally authorized to work in Canada for any employer?"
