@@ -59,13 +59,13 @@ async def test_phase_b_257_258_sanitized_html_retains_human_prompts(page):
     await page.set_content(FIXTURE.read_text(encoding="utf-8"))
 
     cases = {
-        "dialog-salary": "What is your target base salary range?",
+        "dialog-salary": "Base salary is one aspect of your total rewards package. What is your target base salary range?",
         "dialog-auth": "Are you legally authorized to work in the Country in which this position is located?",
         "dialog-prior": "Have you worked for DIALOG in the past?",
         "dialog-location": "Are you currently located in the city or surrounding area where this position is based?",
-        "dialog-hybrid": "DIALOG operates in a hybrid work environment",
+        "dialog-hybrid": "DIALOG operates in a hybrid work environment, with team members collaborating at least three days per week in the studio. We believe this approach helps foster creativity and connection. Does this work for you?",
         "dialog-source": "How did you hear about us?",
-        "dialog-clearance": "This role requires Level 2 clearance",
+        "dialog-clearance": "This role requires Level 2 clearance. A background check for the past ten years will need to be completed. Do you see any concerns with this?",
         "policyme-canada": "Are you based in Canada?",
         "policyme-interest": "In 3-5 sentences, please explain why you are interested in this role?",
         "policyme-french": "Do you speak french?",
