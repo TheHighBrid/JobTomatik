@@ -200,7 +200,19 @@ async def collect_native_groups(page, input_type: str) -> List[Tuple[str, Any, L
 
 
 async def choice_option(page, choice, index: int) -> OptionRecord:
-    label = await element_descriptor(page, choice)
+    label = await choice.evaluate(
+        """(el) => {
+          const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+          const aria = clean(el.getAttribute('aria-label'));
+          if (aria) return aria;
+          if (el.labels && el.labels.length) {
+            const labels = Array.from(el.labels).map((item) => clean(item.innerText)).filter(Boolean);
+            if (labels.length) return labels.join(' | ');
+          }
+          return clean(el.innerText || el.textContent);
+        }"""
+    )
+    label = label or await element_descriptor(page, choice)
     value = (
         await choice.get_attribute("value")
         or await choice.get_attribute("data-value")
