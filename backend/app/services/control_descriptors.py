@@ -163,6 +163,7 @@ async def element_descriptor(page, element) -> str:
               }
             }
           }
+          const opaqueChoiceSubject = Boolean(opaqueName && isChoiceControl(el));
 
           const ownsOpaqueField = (node) => {
             if (!opaqueName || !node) return false;
@@ -182,18 +183,23 @@ async def element_descriptor(page, element) -> str:
             });
           };
 
-          // Direct control attributes are explicit ownership evidence. For a compound
-          // opaque group, suppress group-level metadata entirely so it fails closed.
+          // Direct machine identity is safe to retain. For an opaque radio/checkbox,
+          // answer-option semantics (label/ARIA label/description) are deliberately kept
+          // out of the question descriptor so an option cannot classify the employer
+          // question. Choice handlers collect option labels separately for answer mapping.
           if (!unsafeOpaqueGroup) {
-            ['name','id','placeholder','aria-label','autocomplete',
+            ['name','id','placeholder','autocomplete',
              'data-testid','data-qa','data-automation-id'].forEach(
               (name) => push(el.getAttribute(name))
             );
-            if (el.labels) Array.from(el.labels).forEach((label) => push(label.innerText));
-            (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
-              .forEach((id) => push(document.getElementById(id)?.innerText));
-            (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean)
-              .forEach((id) => push(document.getElementById(id)?.innerText));
+            if (!opaqueChoiceSubject) {
+              push(el.getAttribute('aria-label'));
+              if (el.labels) Array.from(el.labels).forEach((label) => push(label.innerText));
+              (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
+                .forEach((id) => push(document.getElementById(id)?.innerText));
+              (el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean)
+                .forEach((id) => push(document.getElementById(id)?.innerText));
+            }
           }
           if (opaqueName && isGroupSubject) push(opaqueName);
 
@@ -219,7 +225,7 @@ async def element_descriptor(page, element) -> str:
             push(group.getAttribute('aria-label'));
             push(group.querySelector(':scope > legend')?.innerText);
           }
-          if (!unsafeOpaqueGroup) push(el.closest('label')?.innerText);
+          if (!unsafeOpaqueGroup && !opaqueChoiceSubject) push(el.closest('label')?.innerText);
 
           // Current Lever controls can expose only cards[uuid][fieldN] while the employer
           // prompt lives nearby. Every ancestor must prove field ownership before any
