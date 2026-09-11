@@ -7,6 +7,7 @@ on:
       - "backend/app/services/answer_policy_catalog_phase_b.py"
       - "backend/app/services/manual_review_policy_revalidation.py"
       - "backend/app/services/control_descriptors.py"
+      - "backend/app/services/form_filler_v2.py"
       - "backend/scripts/probe_lever_phase_b_maple.py"
       - "backend/scripts/certify_lever_live.py"
       - "backend/tests/test_lever_phase_b_maple_259_revalidation.py"
@@ -61,6 +62,7 @@ jobs:
         env:
           REQUIRE_BROWSER_TESTS: "1"
         run: |
+          set -o pipefail
           pytest -q --tb=short -ra \
             tests/test_lever_phase_b_maple_259_revalidation.py \
             tests/test_stale_lever_policy_review_reprepare.py \
@@ -70,6 +72,7 @@ jobs:
 
       - name: Probe the actual Maple Lever question DOM without filling
         run: |
+          set -o pipefail
           python -u scripts/probe_lever_phase_b_maple.py \
             --url "$MAPLE_259_URL" \
             --report maple-259-live-descriptor-probe.json \
@@ -97,6 +100,7 @@ jobs:
           import json
           import os
           from app.config import get_settings
+          from app.services.control_policy import classify_control_question
 
           settings = get_settings()
           assert settings.allow_real_application_submit is False
@@ -108,6 +112,15 @@ jobs:
           assert probe["submit_clicked"] is False
           assert all(probe["expected_prompts"].values())
 
+          descriptors = [item["descriptor"] for item in probe["descriptors"]]
+          def find(fragment):
+              return next(value for value in descriptors if fragment.lower() in value.lower())
+
+          assert classify_control_question(find("Which Canadian province"))["canonical_key"] == "current_canadian_province"
+          assert classify_control_question(find("require employer sponsorship"))["canonical_key"] == "sponsorship_required"
+          assert classify_control_question(find("hourly pay range"))["canonical_key"] == "compensation_range_acceptance"
+          assert classify_control_question(find("bilingual in French and English"))["canonical_key"] == "official_language_proficiency"
+
           report = json.load(open("maple-259-live-fill.json"))
           assert report["final_submit_clicked"] is False
           assert report["passed"] is True
@@ -118,6 +131,20 @@ jobs:
           assert exercise["final_submit_clicked"] is False
           assert exercise["fields_filled"] > 0
           assert exercise["certification_outcome"] in {"ready_to_submit", "manual_challenge_handoff"}
+
+          evidence = list(exercise.get("control_evidence") or [])
+          def evidence_for(fragment):
+              return next(item for item in evidence if fragment.lower() in str(item.get("descriptor") or "").lower())
+
+          assert evidence_for("Which Canadian province")["canonical_key"] == "current_canadian_province"
+          assert evidence_for("require employer sponsorship")["canonical_key"] == "sponsorship_required"
+          assert evidence_for("hourly pay range")["canonical_key"] == "compensation_range_acceptance"
+          assert evidence_for("bilingual in French and English")["canonical_key"] == "official_language_proficiency"
+          assert not any(
+              "pronounce your name" in str(item.get("descriptor") or "").lower()
+              and item.get("canonical_key") == "profile.full_name"
+              for item in evidence
+          ), "Name-pronunciation question was incorrectly filled from profile.full_name"
           PY
 
       - name: Upload Maple 259 proof bundle
