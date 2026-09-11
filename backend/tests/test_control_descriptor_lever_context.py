@@ -19,7 +19,7 @@ class _LeverRadioElement:
         assert ".application-question" in script
         assert "OPAQUE_CARD_RE" in script
         return (
-            "cards[c3a70b5e-ccc1-4d86-b4f6-4c206aa203e0][field0] | Yes | "
+            "cards[c3a70b5e-ccc1-4d86-b4f6-4c206aa203e0][field0] | "
             "Are you physically located in Canada and legally authorized to work in Canada for any employer?"
         )
 
@@ -108,12 +108,12 @@ async def test_opaque_card_fallback_does_not_mistake_option_text_for_prompt(page
     descriptor = await element_descriptor(page, element)
 
     assert "Are you based in Canada?" in descriptor
-    assert descriptor != "cards[00000000-0000-0000-0000-000000000000][field0] | No"
+    assert " | No" not in descriptor
 
 
 @pytest.mark.asyncio
 async def test_opaque_card_fallback_skips_descriptive_answer_labels(page):
-    """A radio option such as Career Fair must not terminate prompt recovery."""
+    """A radio option such as Career Fair stays out of question classification."""
     await page.set_content(
         """
         <div class="lever-card">
@@ -132,7 +132,7 @@ async def test_opaque_card_fallback_skips_descriptive_answer_labels(page):
     element = await page.query_selector('[data-case="target"]')
     descriptor = await element_descriptor(page, element)
 
-    assert "Career Fair" in descriptor
+    assert "Career Fair" not in descriptor
     assert "How did you hear about us?" in descriptor
 
 
@@ -269,16 +269,17 @@ async def test_choice_group_container_derives_single_opaque_field_prompt_in_engi
 @pytest.mark.asyncio
 async def test_opaque_card_fallback_does_not_bind_unrelated_section_heading(page):
     """If no local question can be proven, keep the opaque descriptor and fail closed."""
+    opaque_name = "cards[11111111-1111-1111-1111-111111111111][field0]"
     await page.set_content(
-        """
+        f"""
         <section>
           <div>CS Application Questions</div>
           <div>
             <label><input data-case="target" type="radio"
-              name="cards[11111111-1111-1111-1111-111111111111][field0]"
+              name="{opaque_name}"
               value="Yes" required>Yes</label>
             <label><input type="radio"
-              name="cards[11111111-1111-1111-1111-111111111111][field0]"
+              name="{opaque_name}"
               value="No">No</label>
           </div>
         </section>
@@ -288,7 +289,7 @@ async def test_opaque_card_fallback_does_not_bind_unrelated_section_heading(page
     descriptor = await element_descriptor(page, element)
 
     assert "CS Application Questions" not in descriptor
-    assert descriptor == "cards[11111111-1111-1111-1111-111111111111][field0] | Yes"
+    assert descriptor == opaque_name
 
 
 @pytest.mark.asyncio
@@ -357,7 +358,7 @@ async def test_compound_opaque_group_cannot_donate_legend_before_ownership_check
 
 @pytest.mark.asyncio
 async def test_label_for_answer_option_does_not_terminate_prompt_recovery(page):
-    """Sibling label[for] option text is answer context, not the employer prompt."""
+    """Sibling label[for] option text is option data, not question classification input."""
     opaque_name = "cards[dddddddd-dddd-dddd-dddd-dddddddddddd][field0]"
     await page.set_content(
         f"""
@@ -377,7 +378,7 @@ async def test_label_for_answer_option_does_not_terminate_prompt_recovery(page):
     element = await page.query_selector('[data-case="target"]')
     descriptor = await element_descriptor(page, element)
 
-    assert "Career Fair" in descriptor
+    assert "Career Fair" not in descriptor
     assert "How did you hear about us?" in descriptor
 
 
