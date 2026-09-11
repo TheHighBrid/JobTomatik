@@ -406,3 +406,25 @@ async def test_radiogroup_direct_prompt_is_inspected_before_parent_climb(page):
     assert "How did you hear about us?" in descriptor
     assert not await page.locator(f'input[name="{opaque_name}"][value="Career Fair"]').is_checked()
     assert not await page.locator(f'input[name="{opaque_name}"][value="Referral"]').is_checked()
+
+
+@pytest.mark.asyncio
+async def test_foreign_aria_combobox_is_opaque_ownership_boundary(page):
+    """A custom ARIA field in the same card prevents ancestor prompt donation."""
+    opaque_name = "cards[ffffffff-ffff-ffff-ffff-ffffffffffff][field0]"
+    await page.set_content(
+        f"""
+        <div class="application-question">
+          <div class="question-label">Are you legally authorized to work in Canada?</div>
+          <div><input data-case="target" name="{opaque_name}" required></div>
+          <button type="button" role="combobox" aria-label="Unrelated custom field">Choose</button>
+        </div>
+        """
+    )
+
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert "legally authorized" not in descriptor
+    assert classify_control_question(descriptor)["canonical_key"] != "work_authorization"
+    assert descriptor == opaque_name
