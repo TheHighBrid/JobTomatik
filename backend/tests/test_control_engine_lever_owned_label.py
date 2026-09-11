@@ -4,6 +4,7 @@ import pytest
 import pytest_asyncio
 
 from app.services.control_descriptors import element_descriptor
+from app.services.control_native import choice_option
 
 
 @pytest_asyncio.fixture
@@ -29,8 +30,8 @@ async def page():
 
 
 @pytest.mark.asyncio
-async def test_prompt_like_label_for_answer_is_not_unstructured_prompt(page):
-    """An answer label starting with a prompt verb must not shadow the employer prompt."""
+async def test_prompt_like_answer_label_is_separate_from_question_descriptor(page):
+    """Answer text remains matchable as an option but cannot classify the question."""
     opaque_name = "cards[12121212-1212-1212-1212-121212121212][field0]"
     await page.set_content(
         f"""
@@ -38,9 +39,9 @@ async def test_prompt_like_label_for_answer_is_not_unstructured_prompt(page):
           <div>How did you hear about us?</div>
           <div>
             <input id="contact" data-case="target" type="radio"
-              name="{opaque_name}" value="Please contact me" required>
+              name="{opaque_name}" value="opt-contact" required>
             <label for="contact">Please contact me</label>
-            <input id="other" type="radio" name="{opaque_name}" value="Other">
+            <input id="other" type="radio" name="{opaque_name}" value="opt-other">
             <label for="other">Other</label>
           </div>
         </div>
@@ -49,6 +50,10 @@ async def test_prompt_like_label_for_answer_is_not_unstructured_prompt(page):
 
     element = await page.query_selector('[data-case="target"]')
     descriptor = await element_descriptor(page, element)
+    option = await choice_option(page, element, 0)
 
+    assert opaque_name in descriptor
     assert "How did you hear about us?" in descriptor
-    assert descriptor.index("How did you hear about us?") > descriptor.index(opaque_name)
+    assert "Please contact me" not in descriptor
+    assert option.label == "Please contact me"
+    assert option.value == "opt-contact"
