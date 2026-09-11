@@ -1,8 +1,8 @@
 """Read-only live probe for the Maple Phase B Lever question surface.
 
-This probe never fills or submits the employer form. It disables visible submit
-controls before inspecting production descriptor extraction against the public Lever
-DOM that reproduced Application 259.
+This probe never fills or submits the employer form. It blocks form submission in
+page JavaScript before inspecting production descriptor extraction against the public
+Lever DOM that reproduced Application 259.
 """
 
 from __future__ import annotations
@@ -47,9 +47,19 @@ async def run_probe(url: str) -> dict:
 
             result["submit_controls_disabled"] = await page.evaluate(
                 """() => {
-                  const controls = Array.from(document.querySelectorAll(
-                    'button[type="submit"],input[type="submit"],button:has-text("Submit application")'
-                  ));
+                  window.__jobtomatikSubmitAttempted = false;
+                  for (const form of Array.from(document.forms || [])) {
+                    form.addEventListener('submit', (event) => {
+                      window.__jobtomatikSubmitAttempted = true;
+                      event.preventDefault();
+                      event.stopImmediatePropagation();
+                    }, true);
+                  }
+                  const controls = Array.from(document.querySelectorAll('button,input[type="submit"]'))
+                    .filter((control) => {
+                      const text = String(control.innerText || control.value || '').trim();
+                      return control.type === 'submit' || /submit application/i.test(text);
+                    });
                   for (const control of controls) {
                     control.disabled = true;
                     control.setAttribute('data-jobtomatik-live-probe-disabled', 'true');
@@ -77,6 +87,9 @@ async def run_probe(url: str) -> dict:
                         "error": f"{type(exc).__name__}: {exc}",
                     })
 
+            result["submit_clicked"] = bool(
+                await page.evaluate("() => Boolean(window.__jobtomatikSubmitAttempted)")
+            )
             descriptor_text = "\n".join(
                 item.get("descriptor") or "" for item in result["descriptors"]
             )
