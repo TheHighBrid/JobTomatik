@@ -10,6 +10,7 @@ from app.models.job import Job, JobSource
 from app.models.submission_approval import SubmissionApproval
 from app.models.user import User
 from app.services.answer_policy import classify_question
+from app.services.control_policy import classify_control_question
 from app.services.manual_review_policy_revalidation import (
     _legacy_opaque_lever_descriptor,
 )
@@ -19,10 +20,16 @@ from tests.conftest import TestingSessionLocal
 MAPLE_URL = "https://jobs.lever.co/getmaple/bc85fe3b-31ab-4e85-a895-9636123ce393/apply"
 PROVINCE_NAME = "cards[cf78633b-fdf2-47da-9b47-5204e337dc31][field4]"
 SPONSORSHIP_NAME = "cards[cf78633b-fdf2-47da-9b47-5204e337dc31][field3]"
+COMPENSATION_NAME = "cards[cf78633b-fdf2-47da-9b47-5204e337dc31][field5]"
 PROVINCE_PROMPT = "Which Canadian province are you currently based in?"
 SPONSORSHIP_PROMPT = (
     "Will you now or in the future require employer sponsorship (e.g. a work permit or visa) "
     "to work legally in Canada?"
+)
+COMPENSATION_PROMPT = (
+    "This is a full-time position (40–44 hours per week) with an hourly pay range of $19.35 to $20.75. "
+    "Does this range align with your expectations? Note: Bilingual (French/English) candidates are "
+    "eligible for an additional $2.00 per hour premium."
 )
 
 
@@ -45,8 +52,6 @@ def _maple_questions():
             "summary": "Approved legal answer required for an employer question.",
             "details": {
                 "canonical_key": "custom.unclassified",
-                # This is the exact shape that Application 259 exposed after #493:
-                # only the card name and readable human prompt are retained.
                 "descriptor": f"{SPONSORSHIP_NAME} | {SPONSORSHIP_PROMPT} *",
                 "control_type": "select",
                 "required": True,
@@ -133,7 +138,26 @@ def test_maple_259_readable_two_part_sponsorship_descriptor_is_not_legacy():
     assert _legacy_opaque_lever_descriptor(f"{SPONSORSHIP_NAME} | Type your response") is True
 
 
-def test_maple_259_province_prompt_has_a_standard_answer_policy_family():
+def test_maple_259_current_runtime_classifier_distinguishes_all_three_owner_questions():
+    province = classify_control_question(
+        f"{PROVINCE_NAME} | Type your response | {PROVINCE_PROMPT} *"
+    )
+    sponsorship = classify_control_question(
+        f"{SPONSORSHIP_NAME} | {SPONSORSHIP_PROMPT} *"
+    )
+    compensation = classify_control_question(
+        f"{COMPENSATION_NAME} | {COMPENSATION_PROMPT} *"
+    )
+
+    assert province["canonical_key"] == "current_canadian_province"
+    assert province["sensitivity"] == "standard"
+    assert sponsorship["canonical_key"] == "sponsorship_required"
+    assert sponsorship["sensitivity"] == "legal"
+    assert compensation["canonical_key"] == "compensation_range_acceptance"
+    assert compensation["sensitivity"] == "sensitive"
+
+
+def test_maple_259_shared_catalog_exposes_province_policy_family():
     classification = classify_question(
         f"{PROVINCE_NAME} | Type your response | {PROVINCE_PROMPT} *"
     )
@@ -152,12 +176,12 @@ def test_maple_259_retained_review_revalidates_without_stale_retirement_or_submi
 
     assert response.status_code == 200, response.text
     data = response.json()
-    assert data["ready"] is True
-    assert data["resolved"] is True
-    assert data["satisfied_questions"] == 2
-    assert data["total_questions"] == 2
-    assert data["remaining"] == []
-    assert data["fresh_reprepare_available"] is False
+    assert data["ready"] is True, data
+    assert data["resolved"] is True, data
+    assert data["satisfied_questions"] == 2, data
+    assert data["total_questions"] == 2, data
+    assert data["remaining"] == [], data
+    assert data["fresh_reprepare_available"] is False, data
 
     db = TestingSessionLocal()
     try:
