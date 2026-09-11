@@ -1,0 +1,140 @@
+name: Lever Phase B Maple 259 proof
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/answer_policy.py"
+      - "backend/app/services/answer_policy_catalog_phase_b.py"
+      - "backend/app/services/manual_review_policy_revalidation.py"
+      - "backend/app/services/control_descriptors.py"
+      - "backend/scripts/probe_lever_phase_b_maple.py"
+      - "backend/scripts/certify_lever_live.py"
+      - "backend/tests/test_lever_phase_b_maple_259_revalidation.py"
+      - "backend/tests/test_stale_lever_policy_review_reprepare.py"
+      - "backend/tests/test_control_descriptor_lever_context.py"
+      - "backend/tests/test_control_engine_lever_owned_label.py"
+      - ".github/workflows/lever-phase-b-maple-259-proof.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  maple-259-full-chain-proof:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./lever-phase-b-maple-259-proof.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: lever-phase-b-maple-259-proof-secret
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      LEVER_SUPERVISED_PILOT_ENABLED: "false"
+      AUTOPILOT_ENABLED: "false"
+      MAPLE_259_URL: https://jobs.lever.co/getmaple/bc85fe3b-31ab-4e85-a895-9636123ce393/apply
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Prove retained review and descriptor chain deterministically
+        env:
+          REQUIRE_BROWSER_TESTS: "1"
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_lever_phase_b_maple_259_revalidation.py \
+            tests/test_stale_lever_policy_review_reprepare.py \
+            tests/test_control_descriptor_lever_context.py \
+            tests/test_control_engine_lever_owned_label.py \
+            | tee maple-259-deterministic.txt
+
+      - name: Probe the actual Maple Lever question DOM without filling
+        run: |
+          python -u scripts/probe_lever_phase_b_maple.py \
+            --url "$MAPLE_259_URL" \
+            --report maple-259-live-descriptor-probe.json \
+            | tee maple-259-live-descriptor-probe.txt
+
+      - name: Exercise the actual Maple form with a fictional candidate, never submit
+        id: live_fill
+        run: |
+          set +e
+          python -u scripts/certify_lever_live.py \
+            --urls "$MAPLE_259_URL" \
+            --exercise \
+            --synthetic-resume-path maple-259-synthetic-resume.pdf \
+            --report maple-259-live-fill.json \
+            > maple-259-live-fill.txt 2>&1
+          status=$?
+          cat maple-259-live-fill.txt
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Assert the real-world fill-only safety contract
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from app.config import get_settings
+
+          settings = get_settings()
+          assert settings.allow_real_application_submit is False
+          assert settings.lever_supervised_pilot_enabled is False
+          assert os.environ.get("AUTOPILOT_ENABLED", "").lower() == "false"
+
+          probe = json.load(open("maple-259-live-descriptor-probe.json"))
+          assert probe["passed"] is True
+          assert probe["submit_clicked"] is False
+          assert all(probe["expected_prompts"].values())
+
+          report = json.load(open("maple-259-live-fill.json"))
+          assert report["final_submit_clicked"] is False
+          assert report["passed"] is True
+          exercises = [item for item in report["reports"] if item.get("mode") == "exercise"]
+          assert len(exercises) == 1
+          exercise = exercises[0]
+          assert exercise["adapter"] == "lever"
+          assert exercise["final_submit_clicked"] is False
+          assert exercise["fields_filled"] > 0
+          assert exercise["certification_outcome"] in {"ready_to_submit", "manual_challenge_handoff"}
+          PY
+
+      - name: Upload Maple 259 proof bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lever-phase-b-maple-259-proof
+          path: |
+            backend/maple-259-deterministic.txt
+            backend/maple-259-live-descriptor-probe.json
+            backend/maple-259-live-descriptor-probe.txt
+            backend/maple-259-live-fill.json
+            backend/maple-259-live-fill.txt
+            backend/maple-259-synthetic-resume.pdf
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail if the real-world exercise returned nonzero
+        if: steps.live_fill.outputs.exit_code != '0'
+        run: exit 1
