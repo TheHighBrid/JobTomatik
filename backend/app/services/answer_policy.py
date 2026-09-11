@@ -16,8 +16,10 @@ from app.models.answer_policy import (
     AnswerPolicyProvenance,
     AnswerPolicyScope,
 )
-from app.services.answer_policy_catalog import QUESTION_CATALOG
+from app.services.answer_policy_catalog import QUESTION_CATALOG as BASE_QUESTION_CATALOG
+from app.services.answer_policy_catalog_phase_b import PHASE_B_QUESTION_CATALOG
 
+QUESTION_CATALOG = [*BASE_QUESTION_CATALOG, *PHASE_B_QUESTION_CATALOG]
 _CATALOG_BY_KEY = {item["canonical_key"]: item for item in QUESTION_CATALOG}
 _SCOPE_PRIORITY = {
     AnswerPolicyScope.global_scope.value: 1,
