@@ -155,7 +155,7 @@ async def element_descriptor(page, element) -> str:
             let promptText = structuredPrompt(applicationQuestion);
             if (!promptText) {
               for (const child of Array.from(applicationQuestion.children || [])) {
-                if (child.contains(el) || containsInteractive(child)) continue;
+                if (child.contains(el) || containsInteractive(child) || labelOwnsInteractive(child)) continue;
                 promptText = looksLikeUnstructuredPrompt(child, child.innerText);
                 if (promptText) break;
               }
@@ -192,7 +192,7 @@ async def element_descriptor(page, element) -> str:
 
               let found = '';
               for (const child of Array.from(node.children || [])) {
-                if (child.contains(el) || containsInteractive(child)) continue;
+                if (child.contains(el) || containsInteractive(child) || labelOwnsInteractive(child)) continue;
                 const text = looksLikeUnstructuredPrompt(child, child.innerText);
                 if (text) {
                   found = text;
