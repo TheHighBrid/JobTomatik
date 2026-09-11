@@ -218,6 +218,7 @@ async def choice_option(page, choice, index: int) -> OptionRecord:
           push(el.getAttribute('aria-label'));
           (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
             .forEach((id) => push(document.getElementById(id)?.innerText));
+          if (!values.length) push(el.innerText || el.textContent);
           if (!values.length) push(el.closest('label')?.innerText);
           return values.join(' | ');
         }"""
