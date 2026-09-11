@@ -181,7 +181,7 @@ async def element_descriptor(page, element) -> str:
             let node = isGroupSubject ? el : el.parentElement;
             for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
               if (!ownsOpaqueField(node)) break;
-              if (node !== el && structuralBoundary(node)) break;
+              if (structuralBoundary(node)) break;
 
               const promptText = structuredPrompt(node);
               if (promptText) {
