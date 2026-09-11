@@ -3,7 +3,9 @@ import os
 import pytest
 import pytest_asyncio
 
+from app.services.answer_policy import resolve_runtime_policy
 from app.services.control_descriptors import element_descriptor
+from app.services.control_native import choice_option
 
 
 @pytest_asyncio.fixture
@@ -30,7 +32,7 @@ async def page():
 
 @pytest.mark.asyncio
 async def test_prompt_like_label_for_answer_does_not_stop_prompt_recovery(page):
-    """Prompt-like answer text may remain context but must not hide the employer prompt."""
+    """Opaque answer labels stay option data and cannot enter question classification."""
     opaque_name = "cards[12121212-1212-1212-1212-121212121212][field0]"
     await page.set_content(
         f"""
@@ -49,10 +51,48 @@ async def test_prompt_like_label_for_answer_does_not_stop_prompt_recovery(page):
 
     element = await page.query_selector('[data-case="target"]')
     descriptor = await element_descriptor(page, element)
+    option = await choice_option(page, element, 0)
 
     assert opaque_name in descriptor
-    assert "Please contact me" in descriptor
+    assert "Please contact me" not in descriptor
     assert "How did you hear about us?" in descriptor
+    assert option.label == "Please contact me"
+    assert option.value == "Please contact me"
+
+
+@pytest.mark.asyncio
+async def test_opaque_choice_answer_cannot_cross_bind_legal_policy(page):
+    """Legal-looking answer text cannot classify an unrelated opaque employer question."""
+    opaque_name = "cards[18181818-1818-1818-1818-181818181818][field0]"
+    await page.set_content(
+        f"""
+        <div class="lever-card">
+          <div>Which contact preference do you want?</div>
+          <div>
+            <input id="legal-looking" data-case="target" type="radio"
+              name="{opaque_name}" value="legal-looking-option" required>
+            <label for="legal-looking">I am legally authorized to work in Canada</label>
+            <input id="none" type="radio" name="{opaque_name}" value="none">
+            <label for="none">No preference</label>
+          </div>
+        </div>
+        """
+    )
+
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+    option = await choice_option(page, element, 0)
+    resolved = resolve_runtime_policy(
+        descriptor,
+        [{"id": 1, "canonical_key": "work_authorization", "scope": "global"}],
+    )
+
+    assert "Which contact preference do you want?" in descriptor
+    assert "legally authorized" not in descriptor.lower()
+    assert option.label == "I am legally authorized to work in Canada"
+    assert resolved["canonical_key"] != "work_authorization"
+    assert resolved["matched"] is False
+    assert resolved["can_autofill"] is False
 
 
 @pytest.mark.asyncio
@@ -131,6 +171,7 @@ async def test_nested_owned_answer_label_cannot_become_prompt(page):
     descriptor = await element_descriptor(page, element)
 
     assert opaque_name in descriptor
+    assert "Please contact me" not in descriptor
     assert "How did you hear about us?" in descriptor
 
 
