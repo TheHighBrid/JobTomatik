@@ -5,23 +5,23 @@ async def element_descriptor(page, element) -> str:
     descriptor = await element.evaluate(
         r"""(el) => {
           const pieces = [];
-          const GROUP_SELECTOR = 'fieldset,[role="radiogroup"],[role="group"]';
+          const GROUP_SELECTOR = 'fieldset,[role~="radiogroup"],[role~="group"]';
           const ARIA_WIDGET_SELECTOR = [
-            '[role="button"]', '[role="checkbox"]', '[role="combobox"]',
-            '[role="grid"]', '[role="link"]', '[role="listbox"]',
-            '[role="menu"]', '[role="menubar"]', '[role="menuitem"]',
-            '[role="menuitemcheckbox"]', '[role="menuitemradio"]', '[role="option"]',
-            '[role="radio"]', '[role="radiogroup"]', '[role="scrollbar"]',
-            '[role="searchbox"]', '[role="slider"]', '[role="spinbutton"]',
-            '[role="switch"]', '[role="tab"]', '[role="tablist"]',
-            '[role="textbox"]', '[role="toolbar"]', '[role="tree"]',
-            '[role="treegrid"]', '[role="treeitem"]'
+            '[role~="button"]', '[role~="checkbox"]', '[role~="combobox"]',
+            '[role~="grid"]', '[role~="link"]', '[role~="listbox"]',
+            '[role~="menu"]', '[role~="menubar"]', '[role~="menuitem"]',
+            '[role~="menuitemcheckbox"]', '[role~="menuitemradio"]', '[role~="option"]',
+            '[role~="radio"]', '[role~="radiogroup"]', '[role~="scrollbar"]',
+            '[role~="searchbox"]', '[role~="slider"]', '[role~="spinbutton"]',
+            '[role~="switch"]', '[role~="tab"]', '[role~="tablist"]',
+            '[role~="textbox"]', '[role~="toolbar"]', '[role~="tree"]',
+            '[role~="treegrid"]', '[role~="treeitem"]'
           ].join(',');
           const EDITABLE_SELECTOR = '[contenteditable]:not([contenteditable="false"])';
           const INTERACTIVE_SELECTOR =
             `input,select,textarea,button,${EDITABLE_SELECTOR},${ARIA_WIDGET_SELECTOR}`;
           const OWNERSHIP_CONTROL_SELECTOR =
-            `input:not([type="hidden"]),select,textarea,button,${EDITABLE_SELECTOR},${ARIA_WIDGET_SELECTOR}`;
+            `input:not([type="hidden"]),select,textarea,button,${EDITABLE_SELECTOR},${ARIA_WIDGET_SELECTOR},${GROUP_SELECTOR}`;
           const OPAQUE_CARD_RE = /^cards\[[^\]]+\]\[field\d+\]$/i;
           const push = (value) => {
             const clean = String(value || '').replace(/\s+/g, ' ').trim();
@@ -121,6 +121,14 @@ async def element_descriptor(page, element) -> str:
             }
             return promptResult(candidates);
           };
+          const combinedPrompt = (node, subject) => {
+            const structured = structuredPrompt(node);
+            const unstructured = unstructuredPrompt(node, subject);
+            if (structured.ambiguous || unstructured.ambiguous) {
+              return {text: '', ambiguous: true};
+            }
+            return promptResult([structured.text, unstructured.text]);
+          };
           const structuralBoundary = (node) => {
             if (!node) return true;
             if (node.matches?.('section,form')) return true;
@@ -134,7 +142,8 @@ async def element_descriptor(page, element) -> str:
           // group owns one opaque field only when every non-hidden interactive descendant
           // is the same-name, same-kind radio/checkbox choice. Any foreign native field,
           // editable surface, ARIA widget, repeated non-choice field, mixed choice kind,
-          // or second opaque name makes the group compound and therefore fail closed.
+          // nested structural group, or second opaque name makes the group compound and
+          // therefore fail closed.
           let opaqueName = cleanText(el.getAttribute?.('name'));
           if (!OPAQUE_CARD_RE.test(opaqueName)) opaqueName = '';
           let derivedChoiceKind = choiceKind(el);
@@ -204,17 +213,15 @@ async def element_descriptor(page, element) -> str:
           if (opaqueName && isGroupSubject) push(opaqueName);
 
           // Preserve the established per-question wrapper path, but opaque controls may
-          // use it only after proving that the wrapper owns no foreign field. If multiple
-          // prompt candidates survive the ownership filters, do not choose among them.
+          // use it only after proving that the wrapper owns no foreign field. Structured
+          // and unstructured evidence are considered together so one styled prompt cannot
+          // hide a conflicting plausible sibling. Any ambiguity fails closed.
           const applicationQuestion = el.closest(
             '.application-question,[data-qa="application-question"],[data-testid="application-question"]'
           );
           if (applicationQuestion && !unsafeOpaqueGroup &&
               (!opaqueName || ownsOpaqueField(applicationQuestion))) {
-            let prompt = structuredPrompt(applicationQuestion);
-            if (!prompt.text && !prompt.ambiguous) {
-              prompt = unstructuredPrompt(applicationQuestion, el);
-            }
+            const prompt = combinedPrompt(applicationQuestion, el);
             if (!prompt.ambiguous) push(prompt.text);
           }
 
@@ -238,17 +245,10 @@ async def element_descriptor(page, element) -> str:
               if (!ownsOpaqueField(node)) break;
               if (structuralBoundary(node)) break;
 
-              const structured = structuredPrompt(node);
-              if (structured.ambiguous) break;
-              if (structured.text) {
-                push(structured.text);
-                break;
-              }
-
-              const unstructured = unstructuredPrompt(node, el);
-              if (unstructured.ambiguous) break;
-              if (unstructured.text) {
-                push(unstructured.text);
+              const prompt = combinedPrompt(node, el);
+              if (prompt.ambiguous) break;
+              if (prompt.text) {
+                push(prompt.text);
                 break;
               }
             }
