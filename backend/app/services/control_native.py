@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, List, Tuple
 
 from app.services.answer_policy import resolve_runtime_policy, review_reason_for_question
@@ -20,6 +21,9 @@ from app.services.control_primitives import (
     options_fingerprint,
     policy_answer_candidates,
 )
+
+
+_OPAQUE_CARD_RE = re.compile(r"^cards\[[^\]]+\]\[field\d+\]$", re.IGNORECASE)
 
 
 async def select_options(select) -> List[OptionRecord]:
@@ -200,7 +204,24 @@ async def collect_native_groups(page, input_type: str) -> List[Tuple[str, Any, L
 
 
 async def choice_option(page, choice, index: int) -> OptionRecord:
-    label = await element_descriptor(page, choice)
+    # Option semantics must stay separate from question semantics. In particular, opaque
+    # Lever radios can use human answer labels that resemble another policy family; using
+    # element_descriptor() here would feed those labels back into question classification.
+    label = await choice.evaluate(
+        r"""(el) => {
+          const values = [];
+          const push = (value) => {
+            const clean = String(value || '').replace(/\s+/g, ' ').trim();
+            if (clean && !values.includes(clean)) values.push(clean);
+          };
+          if (el.labels) Array.from(el.labels).forEach((item) => push(item.innerText));
+          push(el.getAttribute('aria-label'));
+          (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
+            .forEach((id) => push(document.getElementById(id)?.innerText));
+          if (!values.length) push(el.closest('label')?.innerText);
+          return values.join(' | ');
+        }"""
+    )
     value = (
         await choice.get_attribute("value")
         or await choice.get_attribute("data-value")
@@ -244,7 +265,9 @@ async def handle_choice_group(
     options = [await choice_option(page, choice, i) for i, choice in enumerate(choices)]
     descriptor = await element_descriptor(page, group or choices[0])
     if group is None and len(choices) == 1:
-        descriptor = options[0].label or descriptor
+        choice_name = await choices[0].get_attribute("name") or ""
+        if not _OPAQUE_CARD_RE.match(choice_name):
+            descriptor = options[0].label or descriptor
 
     signature = f"{group_key}:{input_type}:{options_fingerprint(options)}"
     if signature in processed:
