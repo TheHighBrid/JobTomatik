@@ -8,7 +8,8 @@ async def element_descriptor(page, element) -> str:
           const GROUP_SELECTOR = 'fieldset,[role="radiogroup"],[role="group"]';
           const INTERACTIVE_SELECTOR =
             'input,select,textarea,button,[role="radio"],[role="checkbox"],[role="combobox"]';
-          const FIELD_SELECTOR = 'input:not([type="hidden"]),select,textarea';
+          const OWNERSHIP_CONTROL_SELECTOR =
+            'input:not([type="hidden"]),select,textarea,button,[role="radio"],[role="checkbox"],[role="combobox"]';
           const OPAQUE_CARD_RE = /^cards\[[^\]]+\]\[field\d+\]$/i;
           const push = (value) => {
             const clean = String(value || '').replace(/\s+/g, ' ').trim();
@@ -89,15 +90,15 @@ async def element_descriptor(page, element) -> str:
           };
 
           // Establish opaque identity before reading ancestor/group semantics. A group may
-          // represent one opaque field only when every non-hidden field inside it is the
-          // same-name, same-kind radio/checkbox choice. Any text/select/textarea sibling,
-          // repeated text field, mixed choice kind, or second opaque name makes the group
-          // compound and therefore ineligible to donate prompt text.
+          // represent one opaque field only when every non-hidden interactive field inside
+          // it is the same-name, same-kind radio/checkbox choice. Any text/select/textarea,
+          // button/ARIA field, repeated text field, mixed choice kind, or second opaque name
+          // makes the group compound and therefore ineligible to donate prompt text.
           let opaqueName = cleanText(el.getAttribute?.('name'));
           if (!OPAQUE_CARD_RE.test(opaqueName)) opaqueName = '';
           let unsafeOpaqueGroup = false;
           if (!opaqueName && isGroupSubject) {
-            const groupFields = Array.from(el.querySelectorAll(FIELD_SELECTOR));
+            const groupFields = Array.from(el.querySelectorAll(OWNERSHIP_CONTROL_SELECTOR));
             const opaqueNames = groupFields
               .map((control) => controlName(control))
               .filter((name) => OPAQUE_CARD_RE.test(name));
@@ -118,7 +119,7 @@ async def element_descriptor(page, element) -> str:
           const ownsOpaqueField = (node) => {
             if (!opaqueName || !node) return false;
             const subjectKind = choiceKind(el);
-            const fields = Array.from(node.querySelectorAll(FIELD_SELECTOR));
+            const fields = Array.from(node.querySelectorAll(OWNERSHIP_CONTROL_SELECTOR));
             return !fields.some((control) => {
               if (control === el) return false;
               const kind = choiceKind(control);
