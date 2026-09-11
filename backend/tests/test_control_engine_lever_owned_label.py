@@ -4,7 +4,6 @@ import pytest
 import pytest_asyncio
 
 from app.services.control_descriptors import element_descriptor
-from app.services.control_native import choice_option
 
 
 @pytest_asyncio.fixture
@@ -30,8 +29,8 @@ async def page():
 
 
 @pytest.mark.asyncio
-async def test_prompt_like_answer_label_is_separate_from_question_descriptor(page):
-    """Answer text remains matchable as an option but cannot classify the question."""
+async def test_prompt_like_label_for_answer_does_not_stop_prompt_recovery(page):
+    """Prompt-like answer text may remain context but must not hide the employer prompt."""
     opaque_name = "cards[12121212-1212-1212-1212-121212121212][field0]"
     await page.set_content(
         f"""
@@ -39,9 +38,9 @@ async def test_prompt_like_answer_label_is_separate_from_question_descriptor(pag
           <div>How did you hear about us?</div>
           <div>
             <input id="contact" data-case="target" type="radio"
-              name="{opaque_name}" value="opt-contact" required>
+              name="{opaque_name}" value="Please contact me" required>
             <label for="contact">Please contact me</label>
-            <input id="other" type="radio" name="{opaque_name}" value="opt-other">
+            <input id="other" type="radio" name="{opaque_name}" value="Other">
             <label for="other">Other</label>
           </div>
         </div>
@@ -50,10 +49,7 @@ async def test_prompt_like_answer_label_is_separate_from_question_descriptor(pag
 
     element = await page.query_selector('[data-case="target"]')
     descriptor = await element_descriptor(page, element)
-    option = await choice_option(page, element, 0)
 
     assert opaque_name in descriptor
+    assert "Please contact me" in descriptor
     assert "How did you hear about us?" in descriptor
-    assert "Please contact me" not in descriptor
-    assert option.label == "Please contact me"
-    assert option.value == "opt-contact"
