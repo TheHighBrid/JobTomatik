@@ -289,3 +289,120 @@ async def test_opaque_card_fallback_does_not_bind_unrelated_section_heading(page
 
     assert "CS Application Questions" not in descriptor
     assert descriptor == "cards[11111111-1111-1111-1111-111111111111][field0] | Yes"
+
+
+@pytest.mark.asyncio
+async def test_same_name_non_choice_field_is_not_treated_as_same_question(page):
+    """Repeated text/select fields with one opaque name are ownership boundaries."""
+    opaque_name = "cards[aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa][field0]"
+    await page.set_content(
+        f"""
+        <div class="compound-wrapper">
+          <div class="application-label">Are you legally authorized to work in Canada?</div>
+          <div><input data-case="target" name="{opaque_name}" required></div>
+          <input name="{opaque_name}">
+        </div>
+        """
+    )
+
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert "legally authorized" not in descriptor
+    assert descriptor == opaque_name
+
+
+@pytest.mark.asyncio
+async def test_structured_prompt_inside_section_is_rejected_before_prompt_scan(page):
+    """Section/form containers cannot donate styled prompt text to opaque controls."""
+    opaque_name = "cards[bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb][field0]"
+    await page.set_content(
+        f"""
+        <section>
+          <div class="application-label">Work authorization?</div>
+          <label><input data-case="target" type="radio" name="{opaque_name}" value="Yes" required>Yes</label>
+          <label><input type="radio" name="{opaque_name}" value="No">No</label>
+        </section>
+        """
+    )
+
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert "Work authorization?" not in descriptor
+    assert classify_control_question(descriptor)["canonical_key"] != "work_authorization"
+
+
+@pytest.mark.asyncio
+async def test_compound_opaque_group_cannot_donate_legend_before_ownership_check(page):
+    """A fieldset with any foreign field must not classify its opaque choice group."""
+    opaque_name = "cards[cccccccc-cccc-cccc-cccc-cccccccccccc][field0]"
+    await page.set_content(
+        f"""
+        <fieldset data-case="target-group">
+          <legend>Are you legally authorized to work in Canada?</legend>
+          <label><input type="radio" name="{opaque_name}" value="Yes" required>Yes</label>
+          <label><input type="radio" name="{opaque_name}" value="No">No</label>
+          <input name="notes" value="">
+        </fieldset>
+        """
+    )
+
+    group = await page.query_selector('[data-case="target-group"]')
+    descriptor = await element_descriptor(page, group)
+
+    assert "legally authorized" not in descriptor
+    assert classify_control_question(descriptor)["canonical_key"] != "work_authorization"
+
+
+@pytest.mark.asyncio
+async def test_label_for_answer_option_does_not_terminate_prompt_recovery(page):
+    """Sibling label[for] option text is answer context, not the employer prompt."""
+    opaque_name = "cards[dddddddd-dddd-dddd-dddd-dddddddddddd][field0]"
+    await page.set_content(
+        f"""
+        <div class="lever-card">
+          <div>How did you hear about us?</div>
+          <div>
+            <input id="career" data-case="target" type="radio" name="{opaque_name}"
+              value="Career Fair" required>
+            <label for="career">Career Fair</label>
+            <input id="referral" type="radio" name="{opaque_name}" value="Referral">
+            <label for="referral">Referral</label>
+          </div>
+        </div>
+        """
+    )
+
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert "Career Fair" in descriptor
+    assert "How did you hear about us?" in descriptor
+
+
+@pytest.mark.asyncio
+async def test_radiogroup_direct_prompt_is_inspected_before_parent_climb(page):
+    """The group itself may own a direct prompt when it owns one opaque choice field."""
+    opaque_name = "cards[eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee][field0]"
+    await page.set_content(
+        f"""
+        <div class="lever-card">
+          <div role="radiogroup" data-case="target-group">
+            <div class="prompt">How did you hear about us?</div>
+            <label><input type="radio" name="{opaque_name}" value="Career Fair" required>Career Fair</label>
+            <label><input type="radio" name="{opaque_name}" value="Referral">Referral</label>
+          </div>
+        </div>
+        """
+    )
+
+    outcome = await fill_policy_controls(page, [])
+
+    assert outcome.filled_count == 0
+    assert len(outcome.review_items) == 1
+    descriptor = outcome.review_items[0]["details"]["descriptor"]
+    assert opaque_name in descriptor
+    assert "How did you hear about us?" in descriptor
+    assert not await page.locator(f'input[name="{opaque_name}"][value="Career Fair"]').is_checked()
+    assert not await page.locator(f'input[name="{opaque_name}"][value="Referral"]').is_checked()
