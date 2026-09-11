@@ -219,3 +219,73 @@ async def test_ambiguous_unstructured_prompts_fail_closed(page):
     assert descriptor == opaque_name
     assert "legally authorized" not in descriptor
     assert "Desired salary range" not in descriptor
+
+
+@pytest.mark.asyncio
+async def test_mixed_structured_and_unstructured_prompts_fail_closed(page):
+    """A styled prompt cannot outrank a conflicting plausible unstructured sibling."""
+    opaque_name = "cards[19191919-1919-1919-1919-191919191919][field0]"
+    await page.set_content(
+        f"""
+        <div class="lever-card">
+          <div class="question-label">Are you legally authorized to work in Canada?</div>
+          <div>Desired salary range</div>
+          <div><input data-case="target" name="{opaque_name}" required></div>
+        </div>
+        """
+    )
+
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert descriptor == opaque_name
+    assert "legally authorized" not in descriptor
+    assert "Desired salary range" not in descriptor
+
+
+@pytest.mark.asyncio
+async def test_multi_token_aria_role_is_foreign_ownership_boundary(page):
+    """ARIA fallback-role tokens cannot disappear from opaque ownership checks."""
+    opaque_name = "cards[20202020-2020-2020-2020-202020202020][field0]"
+    await page.set_content(
+        f"""
+        <div class="application-question">
+          <div class="question-label">Are you legally authorized to work in Canada?</div>
+          <div><input data-case="target" name="{opaque_name}" required></div>
+          <div role="switch checkbox" aria-label="Foreign fallback widget"></div>
+        </div>
+        """
+    )
+
+    element = await page.query_selector('[data-case="target"]')
+    descriptor = await element_descriptor(page, element)
+
+    assert descriptor == opaque_name
+    assert "legally authorized" not in descriptor
+
+
+@pytest.mark.asyncio
+async def test_same_name_choices_in_sibling_group_are_foreign_ownership(page):
+    """Same-name same-kind choices in another structural group are not one question."""
+    opaque_name = "cards[21212121-2121-2121-2121-212121212121][field0]"
+    await page.set_content(
+        f"""
+        <div class="application-question">
+          <div class="question-label">Are you legally authorized to work in Canada?</div>
+          <fieldset data-case="target-group">
+            <label><input type="radio" name="{opaque_name}" value="Yes" required>Yes</label>
+            <label><input type="radio" name="{opaque_name}" value="No">No</label>
+          </fieldset>
+          <fieldset>
+            <label><input type="radio" name="{opaque_name}" value="Maybe">Maybe</label>
+            <label><input type="radio" name="{opaque_name}" value="Later">Later</label>
+          </fieldset>
+        </div>
+        """
+    )
+
+    group = await page.query_selector('[data-case="target-group"]')
+    descriptor = await element_descriptor(page, group)
+
+    assert descriptor == opaque_name
+    assert "legally authorized" not in descriptor
