@@ -6,10 +6,22 @@ async def element_descriptor(page, element) -> str:
         r"""(el) => {
           const pieces = [];
           const GROUP_SELECTOR = 'fieldset,[role="radiogroup"],[role="group"]';
+          const ARIA_WIDGET_SELECTOR = [
+            '[role="button"]', '[role="checkbox"]', '[role="combobox"]',
+            '[role="grid"]', '[role="link"]', '[role="listbox"]',
+            '[role="menu"]', '[role="menubar"]', '[role="menuitem"]',
+            '[role="menuitemcheckbox"]', '[role="menuitemradio"]', '[role="option"]',
+            '[role="radio"]', '[role="radiogroup"]', '[role="scrollbar"]',
+            '[role="searchbox"]', '[role="slider"]', '[role="spinbutton"]',
+            '[role="switch"]', '[role="tab"]', '[role="tablist"]',
+            '[role="textbox"]', '[role="toolbar"]', '[role="tree"]',
+            '[role="treegrid"]', '[role="treeitem"]'
+          ].join(',');
+          const EDITABLE_SELECTOR = '[contenteditable]:not([contenteditable="false"])';
           const INTERACTIVE_SELECTOR =
-            'input,select,textarea,button,[role="radio"],[role="checkbox"],[role="combobox"]';
+            `input,select,textarea,button,${EDITABLE_SELECTOR},${ARIA_WIDGET_SELECTOR}`;
           const OWNERSHIP_CONTROL_SELECTOR =
-            'input:not([type="hidden"]),select,textarea,button,[role="radio"],[role="checkbox"],[role="combobox"]';
+            `input:not([type="hidden"]),select,textarea,button,${EDITABLE_SELECTOR},${ARIA_WIDGET_SELECTOR}`;
           const OPAQUE_CARD_RE = /^cards\[[^\]]+\]\[field\d+\]$/i;
           const push = (value) => {
             const clean = String(value || '').replace(/\s+/g, ' ').trim();
@@ -40,10 +52,16 @@ async def element_descriptor(page, element) -> str:
               (node.querySelector && node.querySelector(INTERACTIVE_SELECTOR))
             )
           );
-          const labelOwnsInteractive = (node) => Boolean(
-            node?.matches?.('label') && node.control &&
-            node.control.matches?.(INTERACTIVE_SELECTOR)
+          const labelControlsInteractive = (label) => Boolean(
+            label?.matches?.('label') && label.control &&
+            label.control.matches?.(INTERACTIVE_SELECTOR)
           );
+          const containsOwnedInteractiveLabel = (node) => {
+            if (!node) return false;
+            if (labelControlsInteractive(node)) return true;
+            return Array.from(node.querySelectorAll?.('label') || [])
+              .some((label) => labelControlsInteractive(label));
+          };
           const genericHeading = (value) => {
             const text = cleanText(value).replace(/[:：]$/, '').trim();
             return /^(?:(?:additional|optional|custom|screening|pre[- ]?screening|job|candidate|applicant|cs)\s+)?(?:application\s+)?questions?$|^(?:additional\s+)?(?:application|applicant)\s+information$/i.test(text);
@@ -68,18 +86,40 @@ async def element_descriptor(page, element) -> str:
             }
             return '';
           };
+          const promptResult = (candidates) => {
+            const unique = [];
+            for (const candidate of candidates || []) {
+              const text = cleanText(candidate);
+              if (text && !unique.includes(text)) unique.push(text);
+            }
+            return {
+              text: unique.length === 1 ? unique[0] : '',
+              ambiguous: unique.length > 1,
+            };
+          };
           const structuredPrompt = (node) => {
-            if (!node) return '';
+            if (!node) return promptResult([]);
             const selector =
               'label,legend,.application-label,[class*="question-label"],' +
               '[class*="field-label"],[class*="prompt"],[data-qa*="label"],[data-testid*="label"]';
+            const candidates = [];
             for (const child of Array.from(node.children || [])) {
               if (!child.matches?.(selector)) continue;
-              if (containsInteractive(child) || labelOwnsInteractive(child)) continue;
+              if (containsInteractive(child) || containsOwnedInteractiveLabel(child)) continue;
               const text = usefulPrompt(child.innerText);
-              if (text && !genericHeading(text)) return text;
+              if (text && !genericHeading(text)) candidates.push(text);
             }
-            return '';
+            return promptResult(candidates);
+          };
+          const unstructuredPrompt = (node, subject) => {
+            const candidates = [];
+            for (const child of Array.from(node?.children || [])) {
+              if (child.contains(subject) || containsInteractive(child) ||
+                  containsOwnedInteractiveLabel(child)) continue;
+              const text = looksLikeUnstructuredPrompt(child, child.innerText);
+              if (text) candidates.push(text);
+            }
+            return promptResult(candidates);
           };
           const structuralBoundary = (node) => {
             if (!node) return true;
@@ -89,43 +129,55 @@ async def element_descriptor(page, element) -> str:
             return /(?:^|[-_\s])(?:questions|questionnaire)(?:$|[-_\s])/i.test(hint);
           };
 
-          // Establish opaque identity before reading ancestor/group semantics. A group may
-          // represent one opaque field only when every non-hidden interactive field inside
-          // it is the same-name, same-kind radio/checkbox choice. Any text/select/textarea,
-          // button/ARIA field, repeated text field, mixed choice kind, or second opaque name
-          // makes the group compound and therefore ineligible to donate prompt text.
+          // Establish opaque identity before reading ancestor/group semantics. Every group
+          // subject is validated, even when the group itself carries the opaque name. A
+          // group owns one opaque field only when every non-hidden interactive descendant
+          // is the same-name, same-kind radio/checkbox choice. Any foreign native field,
+          // editable surface, ARIA widget, repeated non-choice field, mixed choice kind,
+          // or second opaque name makes the group compound and therefore fail closed.
           let opaqueName = cleanText(el.getAttribute?.('name'));
           if (!OPAQUE_CARD_RE.test(opaqueName)) opaqueName = '';
+          let derivedChoiceKind = choiceKind(el);
           let unsafeOpaqueGroup = false;
-          if (!opaqueName && isGroupSubject) {
+          if (isGroupSubject) {
             const groupFields = Array.from(el.querySelectorAll(OWNERSHIP_CONTROL_SELECTOR));
-            const opaqueNames = groupFields
-              .map((control) => controlName(control))
-              .filter((name) => OPAQUE_CARD_RE.test(name));
-            const uniqueOpaqueNames = Array.from(new Set(opaqueNames));
-            if (uniqueOpaqueNames.length > 0) {
-              const candidate = uniqueOpaqueNames.length === 1 ? uniqueOpaqueNames[0] : '';
+            const candidateNames = new Set(
+              groupFields
+                .map((control) => controlName(control))
+                .filter((name) => OPAQUE_CARD_RE.test(name))
+            );
+            if (opaqueName) candidateNames.add(opaqueName);
+            if (candidateNames.size > 0) {
+              const candidate = candidateNames.size === 1 ? Array.from(candidateNames)[0] : '';
               const kinds = new Set(groupFields.map((control) => choiceKind(control)).filter(Boolean));
               const ownsOneChoiceField = Boolean(candidate) && kinds.size === 1 &&
                 groupFields.length > 0 &&
                 groupFields.every((control) =>
                   isChoiceControl(control) && controlName(control) === candidate
                 );
-              if (ownsOneChoiceField) opaqueName = candidate;
-              else unsafeOpaqueGroup = true;
+              if (ownsOneChoiceField) {
+                opaqueName = candidate;
+                derivedChoiceKind = Array.from(kinds)[0];
+              } else {
+                unsafeOpaqueGroup = true;
+              }
             }
           }
 
           const ownsOpaqueField = (node) => {
             if (!opaqueName || !node) return false;
-            const subjectKind = choiceKind(el);
-            const fields = Array.from(node.querySelectorAll(OWNERSHIP_CONTROL_SELECTOR));
+            const fields = [];
+            if (node.matches?.(OWNERSHIP_CONTROL_SELECTOR)) fields.push(node);
+            fields.push(...Array.from(node.querySelectorAll?.(OWNERSHIP_CONTROL_SELECTOR) || []));
             return !fields.some((control) => {
               if (control === el) return false;
+              // The target's own structural group may be visible from a wider ancestor;
+              // it is not a foreign field, but any sibling/nested group remains a boundary.
+              if (control.matches?.(GROUP_SELECTOR) && control.contains?.(el)) return false;
               const kind = choiceKind(control);
-              const sameChoice = Boolean(kind) && controlName(control) === opaqueName &&
-                ((isGroupSubject && isChoiceControl(control)) ||
-                 (subjectKind && kind === subjectKind));
+              const sameChoice = Boolean(derivedChoiceKind) &&
+                kind === derivedChoiceKind &&
+                controlName(control) === opaqueName;
               return !sameChoice;
             });
           };
@@ -146,21 +198,18 @@ async def element_descriptor(page, element) -> str:
           if (opaqueName && isGroupSubject) push(opaqueName);
 
           // Preserve the established per-question wrapper path, but opaque controls may
-          // use it only after proving that the wrapper owns no foreign field.
+          // use it only after proving that the wrapper owns no foreign field. If multiple
+          // prompt candidates survive the ownership filters, do not choose among them.
           const applicationQuestion = el.closest(
             '.application-question,[data-qa="application-question"],[data-testid="application-question"]'
           );
           if (applicationQuestion && !unsafeOpaqueGroup &&
               (!opaqueName || ownsOpaqueField(applicationQuestion))) {
-            let promptText = structuredPrompt(applicationQuestion);
-            if (!promptText) {
-              for (const child of Array.from(applicationQuestion.children || [])) {
-                if (child.contains(el) || containsInteractive(child) || labelOwnsInteractive(child)) continue;
-                promptText = looksLikeUnstructuredPrompt(child, child.innerText);
-                if (promptText) break;
-              }
+            let prompt = structuredPrompt(applicationQuestion);
+            if (!prompt.text && !prompt.ambiguous) {
+              prompt = unstructuredPrompt(applicationQuestion, el);
             }
-            push(promptText);
+            if (!prompt.ambiguous) push(prompt.text);
           }
 
           // Group labels are trustworthy for ordinary controls. For opaque Lever fields,
@@ -175,32 +224,25 @@ async def element_descriptor(page, element) -> str:
           // Current Lever controls can expose only cards[uuid][fieldN] while the employer
           // prompt lives nearby. Every ancestor must prove field ownership before any
           // prompt is inspected. Structural section/form/questionnaire containers stop the
-          // climb before structured or unstructured text can be admitted. When the subject
-          // itself is a fieldset/radiogroup, inspect that group first so a direct prompt
-          // child is retained without climbing into a broader container.
+          // climb. Ambiguous local prompt evidence also stops the climb rather than letting
+          // a farther ancestor silently decide which employer question owns the field.
           if (opaqueName) {
             let node = isGroupSubject ? el : el.parentElement;
             for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
               if (!ownsOpaqueField(node)) break;
               if (structuralBoundary(node)) break;
 
-              const promptText = structuredPrompt(node);
-              if (promptText) {
-                push(promptText);
+              const structured = structuredPrompt(node);
+              if (structured.ambiguous) break;
+              if (structured.text) {
+                push(structured.text);
                 break;
               }
 
-              let found = '';
-              for (const child of Array.from(node.children || [])) {
-                if (child.contains(el) || containsInteractive(child) || labelOwnsInteractive(child)) continue;
-                const text = looksLikeUnstructuredPrompt(child, child.innerText);
-                if (text) {
-                  found = text;
-                  break;
-                }
-              }
-              if (found) {
-                push(found);
+              const unstructured = unstructuredPrompt(node, el);
+              if (unstructured.ambiguous) break;
+              if (unstructured.text) {
+                push(unstructured.text);
                 break;
               }
             }
