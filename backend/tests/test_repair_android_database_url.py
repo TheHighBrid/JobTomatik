@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 from scripts.repair_android_database_url import (
     DEFAULT_ANDROID_DATABASE_URL,

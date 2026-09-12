@@ -6,7 +6,6 @@ The generated identity and answers exist solely to exercise public Lever forms i
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple

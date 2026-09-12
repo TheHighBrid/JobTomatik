@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 
 from app.models.certification import CertificationEvidence, ShadowRunSession
 from app.models.user import User
-from app.services import certification_scale
 from app.services.certification_scale import (
     build_release_track,
     canonical_hash,
