@@ -15,6 +15,7 @@ import {
   listAnswerPolicies,
   updateAnswerPolicy,
 } from '../api/client'
+import HighContrastSelect from './HighContrastSelect'
 
 const initialForm = {
   canonical_key: 'work_authorization',
@@ -25,6 +26,26 @@ const initialForm = {
   scope_value: '',
   allow_autofill: false,
 }
+
+const SETUP_MODE_OPTIONS = [
+  { value: 'answer', label: 'Use my answer' },
+  { value: 'decline', label: 'Use my decline/prefer-not answer' },
+  { value: 'ask_each_time', label: 'Ask every time' },
+  { value: 'skip', label: 'Never answer automatically' },
+]
+
+const FORM_MODE_OPTIONS = [
+  { value: 'answer', label: 'Use this answer' },
+  { value: 'decline', label: 'Use a decline/prefer-not answer' },
+  { value: 'ask_each_time', label: 'Ask me every time' },
+  { value: 'skip', label: 'Never answer automatically' },
+]
+
+const SCOPE_OPTIONS = [
+  { value: 'global', label: 'All applications' },
+  { value: 'platform', label: 'One platform/domain' },
+  { value: 'company', label: 'One company' },
+]
 
 function sensitivityClass(value) {
   if (value === 'legal') return 'bg-amber-50 text-amber-700 border-amber-200'
@@ -76,6 +97,14 @@ export default function AnswerPolicyVault() {
 
   const catalogByKey = useMemo(
     () => Object.fromEntries((catalogQuery.data || []).map((item) => [item.canonical_key, item])),
+    [catalogQuery.data]
+  )
+
+  const catalogSelectOptions = useMemo(
+    () => (catalogQuery.data || []).map((item) => ({
+      value: item.canonical_key,
+      label: item.label,
+    })),
     [catalogQuery.data]
   )
 
@@ -283,16 +312,13 @@ export default function AnswerPolicyVault() {
 
                     {row.include && (
                       <div className="mt-3 ml-7 space-y-3">
-                        <select
-                          className="input w-full"
+                        <HighContrastSelect
+                          className="w-full"
                           value={row.mode}
-                          onChange={(event) => updateSetupRow(item.canonical_key, { mode: event.target.value })}
-                        >
-                          <option value="answer">Use my answer</option>
-                          <option value="decline">Use my decline/prefer-not answer</option>
-                          <option value="ask_each_time">Ask every time</option>
-                          <option value="skip">Never answer automatically</option>
-                        </select>
+                          options={SETUP_MODE_OPTIONS}
+                          aria-label={`Policy mode for ${item.label}`}
+                          onChange={(mode) => updateSetupRow(item.canonical_key, { mode })}
+                        />
 
                         {needsAnswer && (
                           <>
@@ -386,15 +412,13 @@ export default function AnswerPolicyVault() {
         </div>
         <div>
           <label className="label">Application question</label>
-          <select
-            className="input w-full"
+          <HighContrastSelect
+            className="w-full"
             value={form.canonical_key}
-            onChange={(event) => setForm((current) => ({ ...current, canonical_key: event.target.value }))}
-          >
-            {(catalogQuery.data || []).map((item) => (
-              <option key={item.canonical_key} value={item.canonical_key}>{item.label}</option>
-            ))}
-          </select>
+            options={catalogSelectOptions}
+            aria-label="Application question"
+            onChange={(canonical_key) => setForm((current) => ({ ...current, canonical_key }))}
+          />
           {selectedCatalog && (
             <div className="flex items-center gap-2 mt-2">
               <span className={`text-[10px] uppercase tracking-wide border rounded-full px-2 py-0.5 ${sensitivityClass(selectedCatalog.sensitivity)}`}>
@@ -408,33 +432,28 @@ export default function AnswerPolicyVault() {
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Policy</label>
-            <select
-              className="input w-full"
+            <HighContrastSelect
+              className="w-full"
               value={form.mode}
-              onChange={(event) => setForm((current) => ({
+              options={FORM_MODE_OPTIONS}
+              aria-label="Policy"
+              onChange={(mode) => setForm((current) => ({
                 ...current,
-                mode: event.target.value,
-                allow_autofill: ['answer', 'decline'].includes(event.target.value) ? current.allow_autofill : false,
+                mode,
+                allow_autofill: ['answer', 'decline'].includes(mode) ? current.allow_autofill : false,
               }))}
-            >
-              <option value="answer">Use this answer</option>
-              <option value="decline">Use a decline/prefer-not answer</option>
-              <option value="ask_each_time">Ask me every time</option>
-              <option value="skip">Never answer automatically</option>
-            </select>
+            />
           </div>
 
           <div>
             <label className="label">Scope</label>
-            <select
-              className="input w-full"
+            <HighContrastSelect
+              className="w-full"
               value={form.scope}
-              onChange={(event) => setForm((current) => ({ ...current, scope: event.target.value, scope_value: '' }))}
-            >
-              <option value="global">All applications</option>
-              <option value="platform">One platform/domain</option>
-              <option value="company">One company</option>
-            </select>
+              options={SCOPE_OPTIONS}
+              aria-label="Scope"
+              onChange={(scope) => setForm((current) => ({ ...current, scope, scope_value: '' }))}
+            />
           </div>
         </div>
 

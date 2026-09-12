@@ -371,9 +371,16 @@ tbody tr:hover {
   background: rgba(106, 167, 255, 0.045);
 }
 
-select option {
+/* Secondary defense for remaining native selects; Android WebView often ignores option CSS. */
+select {
   color: var(--jt-text);
-  background: var(--jt-surface);
+  background-color: rgba(8, 18, 32, 0.72);
+  color-scheme: dark;
+}
+
+select option {
+  color: var(--jt-text) !important;
+  background-color: var(--jt-surface) !important;
 }
 
 hr {
