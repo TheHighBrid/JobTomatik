@@ -13,8 +13,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from PIL import Image, ImageDraw
 
-from app.services.answer_policy import classify_question
 from app.services.control_engine import element_descriptor, normalize_text
+from app.services.control_policy import classify_control_question
 
 SYNTHETIC_CONFIRMATION_TIMESTAMP = "2026-07-15T00:00:00Z"
 SYNTHETIC_TEXT_RESPONSE = (
@@ -32,6 +32,10 @@ _PROFILE_PATTERNS = (
     r"\bportfolio\b|\bwebsite\b|other\s+website",
     r"\bresume\b|\bcv\b",
     r"cover\s*letter",
+)
+_PROFILE_NAME_RESPONSE_ONLY = re.compile(
+    r"\b(?:pronounce|pronunciation|phonetic)\b",
+    flags=re.IGNORECASE,
 )
 _PLACEHOLDER_OPTIONS = {
     "",
@@ -53,6 +57,8 @@ def _is_profile_or_upload(descriptor: str, control_type: str) -> bool:
     normalized = _normalize(descriptor)
     if control_type == "file":
         return True
+    if _PROFILE_NAME_RESPONSE_ONLY.search(normalized):
+        return False
     return any(
         re.search(pattern, normalized, flags=re.IGNORECASE)
         for pattern in _PROFILE_PATTERNS
@@ -112,15 +118,33 @@ def choose_synthetic_answer(
             "current location",
             "where are you located",
             "where are you based",
+            "located in canada",
+            "based in canada",
             "location",
         )
     ):
-        selected = _find_option(options, ("Ottawa", "Canada")) or SYNTHETIC_LOCATION
+        selected = _find_option(options, ("Ottawa", "Canada", "Yes")) or SYNTHETIC_LOCATION
+    elif any(
+        term in question
+        for term in (
+            "salary range",
+            "pay range",
+            "compensation range",
+            "range align",
+            "expectations aligned",
+            "align with your expectations",
+        )
+    ):
+        selected = _find_option(options, ("Yes",)) or "Yes"
+    elif "desired salary" in question and not options:
+        selected = "150000"
     elif any(
         term in question
         for term in (
             "authorized to work",
             "legally authorized",
+            "eligible to work",
+            "legally eligible",
             "work authorization",
         )
     ):
@@ -416,7 +440,7 @@ def build_synthetic_profile(dom_inventory: Dict[str, Any]) -> Dict[str, Any]:
         descriptor = str(record.get("descriptor") or "").strip()
         if not descriptor:
             continue
-        classification = classify_question(descriptor)
+        classification = classify_control_question(descriptor)
         answer = choose_synthetic_answer(
             descriptor,
             list(record.get("options") or []),
