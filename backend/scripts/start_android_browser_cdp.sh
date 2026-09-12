@@ -347,7 +347,11 @@ case "$ACTION" in
       echo "ANDROID_BROWSER_CDP_STOP_ESCALATING signal=KILL" >&2
       stop_browser_processes KILL
       if [[ -n "$supervisor_pid" ]]; then
-        signal_supervisor_if_managed "$supervisor_pid"
+        # A live numeric PID is not enough: Android/Linux may have recycled it.
+        # Clear rejected PIDs so shutdown never waits on an unrelated process.
+        if ! signal_supervisor_if_managed "$supervisor_pid"; then
+          supervisor_pid=""
+        fi
       fi
       if ! wait_for_shutdown "$supervisor_pid"; then
         echo "ANDROID_BROWSER_CDP_STOP_TIMEOUT" >&2
