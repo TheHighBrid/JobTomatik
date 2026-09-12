@@ -8,9 +8,11 @@ on:
       - "backend/app/services/manual_review_policy_revalidation.py"
       - "backend/app/services/control_descriptors.py"
       - "backend/app/services/form_filler_v2.py"
+      - "backend/app/services/lever_certification.py"
       - "backend/scripts/probe_lever_phase_b_maple.py"
       - "backend/scripts/certify_lever_live.py"
       - "backend/tests/test_lever_phase_b_maple_259_revalidation.py"
+      - "backend/tests/test_lever_synthetic_certification.py"
       - "backend/tests/test_stale_lever_policy_review_reprepare.py"
       - "backend/tests/test_control_descriptor_lever_context.py"
       - "backend/tests/test_control_engine_lever_owned_label.py"
@@ -65,6 +67,7 @@ jobs:
           set -o pipefail
           pytest -q --tb=short -ra \
             tests/test_lever_phase_b_maple_259_revalidation.py \
+            tests/test_lever_synthetic_certification.py \
             tests/test_stale_lever_policy_review_reprepare.py \
             tests/test_control_descriptor_lever_context.py \
             tests/test_control_engine_lever_owned_label.py \
