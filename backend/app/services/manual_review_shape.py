@@ -7,6 +7,7 @@ POLICY_REVIEW_REASONS = frozenset({
     "ambiguous_question",
     "legal_answer_missing",
     "sensitive_answer_missing",
+    "unsupported_control",
 })
 FINAL_SUBMIT_REASON = "operator_final_submit_required"
 _POLICY_QUESTION_SUMMARY_RE = re.compile(
