@@ -34,6 +34,7 @@ const POLICY_REVIEW_REASONS = new Set([
   'ambiguous_question',
   'legal_answer_missing',
   'sensitive_answer_missing',
+  'unsupported_control',
 ])
 
 function HashCard({ label, value }) {
