@@ -165,3 +165,49 @@ def test_dossier_fails_closed_when_locked_input_is_not_safe(tmp_path):
     assert "credentialed_form_definition_validation_error" in blockers
     assert dossier["readiness"]["promotion_ready"] is False
     assert dossier["safety"]["final_submit_clicked"] is True
+
+
+def test_safety_summary_reflects_submit_click_from_either_locked_report(tmp_path):
+    fixture = tmp_path / "fixture.xml"
+    handoff = tmp_path / "handoff.xml"
+    _junit(fixture)
+    _junit(handoff)
+
+    for clicked_lane in ("live", "synthetic"):
+        dossier_lane = (
+            "live_public_form_inspection"
+            if clicked_lane == "live"
+            else "synthetic_live_dry_run"
+        )
+        live = tmp_path / f"live-{clicked_lane}.json"
+        synthetic = tmp_path / f"synthetic-{clicked_lane}.json"
+        _write_json(
+            live,
+            {
+                "passed": True,
+                "final_submit_clicked": clicked_lane == "live",
+                "reports": [],
+            },
+        )
+        _write_json(
+            synthetic,
+            {
+                "passed": True,
+                "final_submit_clicked": clicked_lane == "synthetic",
+                "reports": [],
+            },
+        )
+
+        dossier = build_ashby_certification_dossier(
+            fixture_junit=fixture,
+            handoff_junit=handoff,
+            live_smoke_json=live,
+            synthetic_live_json=synthetic,
+            source_commit="abc123",
+            generated_at="2026-08-24T12:00:00Z",
+            adapter_version="1.1.0",
+        )
+
+        assert dossier[dossier_lane]["final_submit_clicked"] is True
+        assert dossier["safety"]["final_submit_clicked"] is True
+        assert dossier["readiness"]["dry_run_certification_ready"] is False
