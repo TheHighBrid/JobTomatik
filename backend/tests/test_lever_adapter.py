@@ -121,7 +121,8 @@ async def test_lever_observed_wave_button_reaches_dry_run_boundary_without_click
     assert result.success is True
     assert result.ready_to_submit is True
     assert result.requires_manual_review is False
-    assert result.submit_clicked is False
+    assert result.step_evidence[-1]["action"] == "ats_final_submit_ready"
+    assert result.step_evidence[-1]["submit_clicked"] is False
     assert await page.locator('#btn-submit').get_attribute('data-clicked') is None
 
     await page.locator('#btn-submit').evaluate('(button) => button.disabled = true')
