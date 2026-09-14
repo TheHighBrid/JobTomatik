@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<body>
+  <!--
+    Sanitized regression specimens derived from the retained descriptor evidence
+    for Phase B applications 257 (DIALOG) and 258 (PolicyMe), paired with the
+    employer-authored question text visible on the corresponding public Lever
+    forms. No applicant-entered values, profile data, approvals, or submission
+    state are retained here.
+  -->
+
+  <section id="dialog-257" data-specimen="257">
+    <!-- DIALOG used several card UUIDs. This shape keeps the prompt outside the
+         input label to reproduce the opaque cards[...] failure mode. -->
+    <div class="application-question card-field">
+      <div class="question-label">Base salary is one aspect of your total rewards package. What is your target base salary range?</div>
+      <div><input data-case="dialog-salary" name="cards[6afdd17e-c699-4fc2-8e12-de356a42282e][field0]" required></div>
+    </div>
+
+    <div class="application-question card-field">
+      <div class="question-label">Are you legally authorized to work in the Country in which this position is located?</div>
+      <div>
+        <label><input data-case="dialog-auth" type="radio" name="cards[b7a760aa-f799-4a5a-b96b-45b6d21ed1e1][field0]" value="Yes" required>Yes</label>
+        <label><input type="radio" name="cards[b7a760aa-f799-4a5a-b96b-45b6d21ed1e1][field0]" value="No">No</label>
+      </div>
+    </div>
+
+    <div class="application-question card-field">
+      <div class="question-label">Have you worked for DIALOG in the past?</div>
+      <div>
+        <label><input data-case="dialog-prior" type="radio" name="cards[b7a760aa-f799-4a5a-b96b-45b6d21ed1e1][field1]" value="Yes" required>Yes</label>
+        <label><input type="radio" name="cards[b7a760aa-f799-4a5a-b96b-45b6d21ed1e1][field1]" value="No">No</label>
+      </div>
+    </div>
+
+    <div class="application-question card-field">
+      <div class="question-label">Are you currently located in the city or surrounding area where this position is based?</div>
+      <div>
+        <label><input data-case="dialog-location" type="radio" name="cards[b980705e-4af7-4c41-955b-31911b57bdd8][field0]" value="Yes" required>Yes</label>
+        <label><input type="radio" name="cards[b980705e-4af7-4c41-955b-31911b57bdd8][field0]" value="No">No</label>
+      </div>
+    </div>
+
+    <div class="application-question card-field">
+      <div class="question-label">DIALOG operates in a hybrid work environment, with team members collaborating at least three days per week in the studio. We believe this approach helps foster creativity and connection. Does this work for you?</div>
+      <div>
+        <label><input data-case="dialog-hybrid" type="radio" name="cards[d4bc6d91-93a3-4abb-8e4d-ff119e1b808e][field0]" value="Yes, I can work in studio at least three days a week" required>Yes, I can work in studio at least three days a week</label>
+        <label><input type="radio" name="cards[d4bc6d91-93a3-4abb-8e4d-ff119e1b808e][field0]" value="I'd like to discuss further">I'd like to discuss further</label>
+      </div>
+    </div>
+
+    <div class="application-question card-field">
+      <div class="question-label">How did you hear about us?</div>
+      <div>
+        <label><input data-case="dialog-source" type="radio" name="cards[6aeae361-9916-427c-be07-11a10acc01bf][field0]" value="Career Fair" required>Career Fair</label>
+        <label><input type="radio" name="cards[6aeae361-9916-427c-be07-11a10acc01bf][field0]" value="Other">Other</label>
+      </div>
+    </div>
+
+    <div class="application-question card-field">
+      <div class="question-label">This role requires Level 2 clearance. A background check for the past ten years will need to be completed. Do you see any concerns with this?</div>
+      <div>
+        <label><input data-case="dialog-clearance" type="radio" name="cards[71e57cd5-7122-43b3-b9ef-b301983ffcaf][field0]" value="Yes" required>Yes</label>
+        <label><input type="radio" name="cards[71e57cd5-7122-43b3-b9ef-b301983ffcaf][field0]" value="No">No</label>
+      </div>
+    </div>
+  </section>
+
+  <section id="policyme-258" data-specimen="258">
+    <!-- PolicyMe reproduced a different live shape: one card UUID with fields
+         0-5. The wrappers intentionally do not use .application-question so the
+         bounded nearest-ancestor fallback is exercised. -->
+    <div class="lever-card current-company-card">
+      <div class="prompt">Current company</div>
+      <div><input data-case="policyme-company" id="org-input" name="org" required></div>
+    </div>
+
+    <div class="lever-card question-card">
+      <div class="prompt">Are you based in Canada?</div>
+      <div>
+        <label><input data-case="policyme-canada" type="radio" name="cards[f8056f26-ebef-4939-822f-7a39881a02b7][field0]" value="No" required>No</label>
+        <label><input type="radio" name="cards[f8056f26-ebef-4939-822f-7a39881a02b7][field0]" value="Yes">Yes</label>
+      </div>
+    </div>
+
+    <div class="lever-card question-card">
+      <div class="prompt">In 3-5 sentences, please explain why you are interested in this role?</div>
+      <div><textarea data-case="policyme-interest" name="cards[f8056f26-ebef-4939-822f-7a39881a02b7][field1]" required></textarea></div>
+    </div>
+
+    <div class="lever-card question-card">
+      <div class="prompt">Do you speak french?</div>
+      <div><input data-case="policyme-french" name="cards[f8056f26-ebef-4939-822f-7a39881a02b7][field2]" required></div>
+    </div>
+
+    <div class="lever-card question-card">
+      <div class="prompt">Do you have experience in the insurance industry?</div>
+      <div><input data-case="policyme-insurance" name="cards[f8056f26-ebef-4939-822f-7a39881a02b7][field3]" required></div>
+    </div>
+
+    <div class="lever-card question-card">
+      <div class="prompt">What is your expected salary range? (Total compensation)</div>
+      <div><input data-case="policyme-salary" name="cards[f8056f26-ebef-4939-822f-7a39881a02b7][field4]" required></div>
+    </div>
+
+    <div class="lever-card question-card">
+      <div class="prompt">How did you hear about this opportunity?</div>
+      <div><input data-case="policyme-source" name="cards[f8056f26-ebef-4939-822f-7a39881a02b7][field5]" required></div>
+    </div>
+  </section>
+</body>
+</html>

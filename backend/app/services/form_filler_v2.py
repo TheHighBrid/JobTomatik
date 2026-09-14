@@ -49,6 +49,11 @@ SAFE_PROFILE_FIELDS: List[Tuple[str, str]] = [
     (r"\byears[\s_](?:of[\s_])?experience\b|\bexperience[\s_]years\b", "years_experience"),
 ]
 
+_NAME_RESPONSE_ONLY = re.compile(
+    r"\b(?:pronounce|pronunciation|phonetic)\b",
+    flags=re.IGNORECASE,
+)
+
 
 def _first_name(profile: Dict[str, Any]) -> str:
     parts = (profile.get("full_name") or "").split()
@@ -100,8 +105,11 @@ def _profile_values(profile: Dict[str, Any], cover_letter: str) -> Dict[str, str
 
 def _safe_field(descriptor: str) -> Optional[str]:
     for pattern, key in SAFE_PROFILE_FIELDS:
-        if re.search(pattern, descriptor, flags=re.IGNORECASE):
-            return key
+        if not re.search(pattern, descriptor, flags=re.IGNORECASE):
+            continue
+        if key == "full_name" and _NAME_RESPONSE_ONLY.search(descriptor):
+            continue
+        return key
     return None
 
 

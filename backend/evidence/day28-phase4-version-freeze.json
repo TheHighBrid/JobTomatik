@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "phase": "day28_phase4_gate",
-  "freeze_source_commit": "4f774e7a1e159f8b2c033c23cad391e14a498dfd",
+  "freeze_source_commit": "2c1132fb5c9dc19b58c6de277d7a1e28ce8648c5",
   "candidate": {
     "adapter": "lever",
     "selection_scope": "unattended_pilot_preparation_only",
@@ -13,7 +13,7 @@
       "maturity": "dry_run",
       "version": "1.1.0",
       "digests": {
-        "adapter_source_sha256": "c678bf46b5ecff82e1bd5179e72bc8707ff7bd72c6d1424a0d639714b9d362bf",
+        "adapter_source_sha256": "f577a32ac3cc195b05deef13639ea4d932b96a371e491be85f2f00a6c3bfbe4c",
         "fixture_regression_sha256": "9efbc84683ad852b64ab146718eb64bda01ab915e8c2bd9b7acda404651c481f",
         "retained_evidence_sha256": "50b25afa82c85c94378bb2440806334fff33de6b68fbf0a58168ae131266b4f3",
         "manifest_live_evidence_sha256": "5c9fd39fca5e3180589a42b9d4ec4d6ec38b856fb59d64e5078592849d89ff86"
@@ -34,7 +34,7 @@
       "version": "1.1.0",
       "digests": {
         "adapter_source_sha256": "c6355f06e9b00e5911d7f34d8eca84aeb2e50bc7a869fc430931e0e1b6651e9d",
-        "fixture_regression_sha256": "10f9a22e3fb21fa6ff8777c543e6db0a2f70f101b8db163ccc83a3c903bc5a7c",
+        "fixture_regression_sha256": "08f46344e3db748fb399614618d57692add0628bac35202835c2a5710cb71820",
         "retained_evidence_sha256": "1ffe75765fdb5c98c086e9b8e373acecaf7a1ed088a9ee276b353723a17012a3",
         "manifest_live_evidence_sha256": "e4e5ba427d4477621fa976c3b65b8d0c33c90f0d52bf6a04100dd7548e43ba31"
       }

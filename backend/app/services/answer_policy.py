@@ -16,8 +16,10 @@ from app.models.answer_policy import (
     AnswerPolicyProvenance,
     AnswerPolicyScope,
 )
-from app.services.answer_policy_catalog import QUESTION_CATALOG
+from app.services.answer_policy_catalog import QUESTION_CATALOG as BASE_QUESTION_CATALOG
+from app.services.answer_policy_catalog_phase_b import PHASE_B_QUESTION_CATALOG
 
+QUESTION_CATALOG = [*BASE_QUESTION_CATALOG, *PHASE_B_QUESTION_CATALOG]
 _CATALOG_BY_KEY = {item["canonical_key"]: item for item in QUESTION_CATALOG}
 _SCOPE_PRIORITY = {
     AnswerPolicyScope.global_scope.value: 1,
@@ -293,6 +295,12 @@ def policy_autofill_blockers(policy: Dict[str, Any]) -> List[str]:
 
 
 def resolve_runtime_policy(question_text: str, policies: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    policies = list(policies)
+    if any((policy.get("source_metadata") or {}).get("question_match_mode") == "exact" for policy in policies):
+        # Legacy fillers must honor the same exact-question contract as recheck.
+        from app.services.control_policy import resolve_control_policy
+
+        return resolve_control_policy(question_text, policies)
     classification = classify_question(question_text)
     normalized = normalize_question_text(question_text)
     candidates: List[Dict[str, Any]] = []

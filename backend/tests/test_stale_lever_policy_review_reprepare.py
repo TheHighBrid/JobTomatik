@@ -38,6 +38,21 @@ def _legacy_questions():
     ]
 
 
+def _missing_descriptor_questions():
+    return [
+        {
+            "reason_code": "ambiguous_question",
+            "summary": "Approved answer required for an employer question.",
+            "details": {
+                "canonical_key": "custom.unclassified",
+                "control_type": "radio",
+                "required": True,
+                "available_options": [],
+            },
+        }
+    ]
+
+
 def _current_question():
     name = "cards[c3a70b5e-ccc1-4d86-b4f6-4c206aa203e0][field0]"
     return {
@@ -132,6 +147,22 @@ def test_caseware_legacy_opaque_review_is_identified_as_reprepare_only(auth_clie
         db.close()
 
 
+def test_caseware_missing_descriptor_review_is_identified_as_reprepare_only(auth_client):
+    app_id, review_id = _seed(questions=_missing_descriptor_questions())
+
+    response = auth_client.post(
+        f"/api/applications/{app_id}/manual-reviews/{review_id}/revalidate-answer-policies"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["resolved"] is False
+    assert data["fresh_reprepare_available"] is True
+    assert data["total_questions"] == 1
+    assert data["satisfied_questions"] == 0
+    assert data["remaining"][0]["blocker_codes"] == ["retained_question_descriptor_missing"]
+
+
 def test_caseware_legacy_review_can_be_retired_only_for_fresh_fill_only_reprepare(auth_client):
     app_id, review_id = _seed()
 
@@ -165,6 +196,31 @@ def test_caseware_legacy_review_can_be_retired_only_for_fresh_fill_only_reprepar
         assert event.payload["fresh_reprepare_required"] is True
         assert event.payload["submission_authorized"] is False
         assert db.query(SubmissionEvidence).filter(SubmissionEvidence.application_id == app_id).count() == 0
+    finally:
+        db.close()
+
+
+def test_caseware_missing_descriptor_review_can_be_retired_for_fresh_reprepare(auth_client):
+    app_id, review_id = _seed(questions=_missing_descriptor_questions())
+
+    response = auth_client.post(
+        f"/api/applications/{app_id}/manual-reviews/{review_id}/retire-stale-for-reprepare"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["retired"] is True
+    assert data["fresh_reprepare_required"] is True
+    assert data["submission_authorized"] is False
+    assert data["application_state"] == ApplicationAutomationState.ready_to_apply.value
+
+    db = TestingSessionLocal()
+    try:
+        app = db.query(Application).filter(Application.id == app_id).one()
+        review = db.query(ManualReviewTask).filter(ManualReviewTask.id == review_id).one()
+        assert app.automation_state == ApplicationAutomationState.ready_to_apply.value
+        assert app.submission_attempt_count == 0
+        assert review.status == ManualReviewStatus.resolved.value
     finally:
         db.close()
 

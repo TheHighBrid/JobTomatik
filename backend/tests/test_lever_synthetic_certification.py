@@ -7,6 +7,7 @@ import pytest_asyncio
 # answer helper that the certification profile uses.
 from app.services import form_filler as _form_filler  # noqa: F401
 from app.services.control_policy import resolve_control_policy
+from app.services.form_filler_v2 import _safe_field
 from app.services.lever_certification import (
     SYNTHETIC_LOCATION,
     build_synthetic_profile,
@@ -120,6 +121,65 @@ def test_desired_salary_uses_numeric_synthetic_value() -> None:
         control_type="text",
     )
     assert answer == "150000"
+
+
+def test_pronunciation_question_is_not_candidate_full_name() -> None:
+    descriptor = (
+        "cards[cf78633b-fdf2-47da-9b47-5204e337dc31][field1] | "
+        "Type your response | We want to get this right. How do we pronounce your name?"
+    )
+    assert _safe_field(descriptor) is None
+    assert _safe_field("name | name-input | Full name ✱") == "full_name"
+
+
+def test_maple_compensation_and_bilingual_controls_get_distinct_runtime_policies() -> None:
+    compensation = (
+        "cards[maple][field5] | This is a full-time position (40–44 hours per week) "
+        "with an hourly pay range of $19.35 to $20.75. Does this range align with "
+        "your expectations? Note: Bilingual (French/English) candidates are eligible "
+        "for an additional $2.00 per hour premium. ✱"
+    )
+    bilingual = (
+        "cards[maple-language][field0] | Are you bilingual in French and English to "
+        "a professional standard (both written and spoken). French language skills "
+        "will be assessed as part of the interview process. ✱"
+    )
+    inventory = {
+        "required_custom_controls": [
+            {
+                "descriptor": compensation,
+                "control_type": "select",
+                "required": True,
+                "options": ["Yes", "No"],
+                "name": "cards[maple][field5]",
+                "id": "",
+            },
+            {
+                "descriptor": bilingual,
+                "control_type": "select",
+                "required": True,
+                "options": ["Yes", "No"],
+                "name": "cards[maple-language][field0]",
+                "id": "",
+            },
+        ],
+        "controls": [],
+    }
+
+    profile = build_synthetic_profile(inventory)
+    policies = profile["answer_policies"]
+    assert [policy["canonical_key"] for policy in policies] == [
+        "compensation_range_acceptance",
+        "official_language_proficiency",
+    ]
+
+    compensation_resolution = resolve_control_policy(compensation, policies)
+    bilingual_resolution = resolve_control_policy(bilingual, policies)
+    assert compensation_resolution["can_autofill"] is True
+    assert compensation_resolution["answer"] == "Yes"
+    assert compensation_resolution["policy"]["canonical_key"] == "compensation_range_acceptance"
+    assert bilingual_resolution["can_autofill"] is True
+    assert bilingual_resolution["policy"]["canonical_key"] == "official_language_proficiency"
 
 
 def test_application_source_group_collapses_to_one_synthetic_policy() -> None:

@@ -20,6 +20,11 @@ import {
   shouldReleaseUnacknowledgedTask,
 } from '../applicationTaskRuntime'
 import {
+  HANDOFF_REVIEW_REASONS,
+  canOpenManualReviewPage,
+  routeApplicationManualReviews,
+} from '../applicationManualReviewRouting'
+import {
   ArrowLeft, Loader2, RefreshCw, Send, Calendar,
   FileText, ExternalLink, AlertCircle, CheckCircle2, LockKeyhole, Route
 } from 'lucide-react'
@@ -30,12 +35,6 @@ import {
 } from '../supervisedPlatforms'
 
 const STATUSES = ['pending', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn']
-const HANDOFF_REVIEW_REASONS = new Set([
-  'captcha_detected',
-  'mfa_required',
-  'login_required',
-  'anti_bot_challenge',
-])
 
 function isLinkedInUrl(value) {
   try {
@@ -277,20 +276,21 @@ export default function ApplicationDetail() {
   const supervisedPlatformConfig = getSupervisedPlatformConfig(supervisedPlatform)
   const supervisedApplication = Boolean(supervisedPlatformConfig)
   const applicationFinished = isFinishedApplication(app)
-  const activeManualReview = [...(app.manual_reviews || [])]
-    .filter((review) => ['open', 'in_progress'].includes(review.status))
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+  const {
+    activeManualReview,
+    operatorFinalSubmitReview,
+    activeHandoffReview,
+    handoffExpected,
+  } = routeApplicationManualReviews(app.manual_reviews || [])
   const targetNavigationReview = activeManualReview?.reason_code === 'application_target_required'
   const linkedInDiscoveryReview = (
     activeManualReview?.reason_code === 'unsupported_platform'
     && isLinkedInUrl(job?.url)
   )
-  const operatorFinalSubmitReview = (
-    activeManualReview?.reason_code === 'operator_final_submit_required'
-  )
-  const handoffExpected = (
-    !activeManualReview
-    || HANDOFF_REVIEW_REASONS.has(activeManualReview.reason_code)
+  const leverCertificationLocked = supervisedPlatform === 'lever' && !applicationFinished
+  const canOpenManualApplicationPage = canOpenManualReviewPage(
+    activeManualReview,
+    supervisedPlatform,
   )
   const submissionBusy = applicationRuntimeBusy({
     submitting,
@@ -318,7 +318,7 @@ export default function ApplicationDetail() {
               </div>
               <StatusBadge status={app.status} />
             </div>
-            {job?.url && (
+            {job?.url && !leverCertificationLocked && (
               <a href={job.url} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-sm text-tomato-600 hover:underline mt-2">
                 View original posting <ExternalLink className="w-3 h-3" />
@@ -352,15 +352,24 @@ export default function ApplicationDetail() {
           <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-3">
             <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Employer application target</div>
             {app.application_target_url ? (
-              <a
-                href={app.application_target_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-flex items-start gap-1 break-all text-tomato-600 hover:underline"
-              >
-                {app.application_target_url}
-                <ExternalLink className="w-3 h-3 mt-1 flex-shrink-0" />
-              </a>
+              leverCertificationLocked ? (
+                <div className="mt-1">
+                  <div className="break-all text-gray-700">{app.application_target_url}</div>
+                  <div className="mt-1 text-xs text-emerald-700">
+                    Direct employer-page opening is locked during supervised Lever Phase B. Use the retained operator-assisted controls below.
+                  </div>
+                </div>
+              ) : (
+                <a
+                  href={app.application_target_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex items-start gap-1 break-all text-tomato-600 hover:underline"
+                >
+                  {app.application_target_url}
+                  <ExternalLink className="w-3 h-3 mt-1 flex-shrink-0" />
+                </a>
+              )
             ) : (
               <div className="mt-1 text-gray-500">
                 {targetStatus === 'requires_human'
@@ -393,7 +402,13 @@ export default function ApplicationDetail() {
                       ? 'This older attempt treated LinkedIn as an unsupported form. Start a new dry run to use the persistent target resolver.'
                       : operatorFinalSubmitReview
                         ? 'The exact employer form is already filled and retained. Use the operator-assisted approval and secure final-submit handoff below. Do not open a fresh application page.'
-                        : 'This attempt reached a step that JobTomatik cannot complete automatically. Review the reason below and open the application page when manual action is required.'}
+                        : leverCertificationLocked && activeHandoffReview?.id === activeManualReview.id
+                          ? 'Use the secure handoff below to complete the protected challenge inside the retained browser. Do not open the employer application in another tab.'
+                          : leverCertificationLocked
+                            ? 'Use the operator-assisted controls below. Direct employer-page opening is disabled for Lever Phase B so answer review, challenge handling, approval, and final action stay inside one certifiable transaction.'
+                            : HANDOFF_REVIEW_REASONS.has(activeManualReview.reason_code)
+                              ? 'Use the secure handoff below instead of opening a second employer page.'
+                              : 'This attempt reached a step that JobTomatik cannot complete automatically. Review the reason below and open the application page when manual action is required.'}
                 </p>
                 <div className="text-xs text-gray-500 mt-2">
                   Reason: {activeManualReview.reason_code.replaceAll('_', ' ')}
@@ -402,7 +417,7 @@ export default function ApplicationDetail() {
             </div>
           </div>
 
-          {activeManualReview.blocking_url && !targetNavigationReview && !operatorFinalSubmitReview && (
+          {canOpenManualApplicationPage && (
             <div className="px-5 py-4">
               <a
                 href={activeManualReview.blocking_url}
@@ -424,7 +439,7 @@ export default function ApplicationDetail() {
       {!applicationFinished && operatorFinalSubmitReview && (
         <OperatorFinalSubmitHandoffPanel applicationId={Number(id)} />
       )}
-      {!applicationFinished && !operatorFinalSubmitReview && handoffExpected && (
+      {!applicationFinished && handoffExpected && (
         <ManualHandoffPanel applicationId={Number(id)} />
       )}
       {!applicationFinished && supervisedPlatform !== 'lever' && (

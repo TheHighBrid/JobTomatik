@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any, Dict, Iterable, List
 
 from app.models.answer_policy import AnswerPolicyMode
@@ -58,7 +59,21 @@ _REASON_BY_CODE = {
 
 
 def _custom_phrase_text(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+    text = unicodedata.normalize("NFKC", str(value or "")).lower()
+    return re.sub(r"[\W_]+", " ", text).strip()
+
+
+def _exact_custom_phrase_matches(phrase: str, question_text: str) -> bool:
+    """Match a complete prompt, including prompts inside retained descriptors."""
+    target = _custom_phrase_text(phrase)
+    parts = question_text.split(" | ")
+    if re.fullmatch(r"cards\[[^\]]+\]\[field\d+\]", parts[0].strip(), flags=re.IGNORECASE):
+        # Lever puts the human prompt last; earlier segments can be answer labels.
+        parts = parts[-1:]
+    return bool(target) and any(
+        target == _custom_phrase_text(part)
+        for part in [question_text, *parts]
+    )
 
 
 def _custom_phrase_matches(phrase: str, question_text: str) -> bool:
@@ -115,18 +130,20 @@ def resolve_control_policy(
         canonical_key = policy.get("canonical_key", "")
         classified_key = classification["canonical_key"]
         score = 0
-        if canonical_key == classified_key:
+        if canonical_key == classified_key and not canonical_key.startswith("custom."):
             score = 200
         elif classified_key in _CANONICAL_POLICY_ALIASES.get(canonical_key, set()):
             score = 150
 
+        exact_match = (policy.get("source_metadata") or {}).get("question_match_mode") == "exact"
+        matches_phrase = _exact_custom_phrase_matches if exact_match else _custom_phrase_matches
         matching_phrases = [
             phrase
             for phrase in policy.get("match_phrases", [])
-            if phrase and _custom_phrase_matches(phrase, question_text)
+            if phrase and matches_phrase(phrase, question_text)
         ]
         if canonical_key.startswith("custom.") and matching_phrases:
-            score = 300 + max(
+            score = (10000 if exact_match else 300) + max(
                 len(_custom_phrase_text(phrase)) for phrase in matching_phrases
             )
 
