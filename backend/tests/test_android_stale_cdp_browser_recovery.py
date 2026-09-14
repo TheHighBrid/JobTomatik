@@ -81,6 +81,13 @@ def test_android_browser_probe_uses_same_real_playwright_cdp_path_as_worker():
     assert "playwright_attach_ready" in probe
     assert "browser_owned_by_jobtomatik" in probe
 
+    runtime = (BACKEND_ROOT / "app/services/browser_runtime.py").read_text(encoding="utf-8")
+    attachment_probe = runtime.split(
+        "async def probe_external_playwright_cdp_attachment", 1
+    )[1].split("\n\nasync def ", 1)[0]
+    assert "_connect_external_playwright_over_cdp" in attachment_probe
+    assert "_select_context_page" not in attachment_probe
+
 
 def test_ordinary_restart_preserves_browser_and_fails_closed_when_playwright_is_stale():
     source = WRAPPER.read_text(encoding="utf-8")
@@ -135,7 +142,8 @@ def test_native_browser_recovery_waits_only_on_verified_supervisor_identity():
     assert 'exec "$SCRIPT_PATH" start "$START_URL"' in recovery_case
 
 
-def test_browser_ownership_uses_exact_profile_and_port_not_executable_basename():
+
+    def test_browser_ownership_uses_exact_profile_and_port_not_executable_basename():
     source = BROWSER.read_text(encoding="utf-8")
     identity = _function_body(source, "browser_identity_matches")
     discovery = _function_body(source, "managed_browser_pids")
