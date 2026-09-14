@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "phase": "day28_phase4_gate",
-  "freeze_source_commit": "2c1132fb5c9dc19b58c6de277d7a1e28ce8648c5",
+  "freeze_source_commit": "d049f8618fa7113377649069e38d6e2493824a9e",
   "candidate": {
     "adapter": "lever",
     "selection_scope": "unattended_pilot_preparation_only",
@@ -34,7 +34,7 @@
       "version": "1.1.0",
       "digests": {
         "adapter_source_sha256": "c6355f06e9b00e5911d7f34d8eca84aeb2e50bc7a869fc430931e0e1b6651e9d",
-        "fixture_regression_sha256": "08f46344e3db748fb399614618d57692add0628bac35202835c2a5710cb71820",
+        "fixture_regression_sha256": "0fb5113489771b59d5b31cf60c694bd2a8d95fd7e5b42a53a34e6136093d8678",
         "retained_evidence_sha256": "1ffe75765fdb5c98c086e9b8e373acecaf7a1ed088a9ee276b353723a17012a3",
         "manifest_live_evidence_sha256": "e4e5ba427d4477621fa976c3b65b8d0c33c90f0d52bf6a04100dd7548e43ba31"
       }
