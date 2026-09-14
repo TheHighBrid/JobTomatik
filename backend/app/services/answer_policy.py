@@ -18,8 +18,30 @@ from app.models.answer_policy import (
 )
 from app.services.answer_policy_catalog import QUESTION_CATALOG as BASE_QUESTION_CATALOG
 from app.services.answer_policy_catalog_phase_b import PHASE_B_QUESTION_CATALOG
+from app.services.answer_policy_catalog_v2 import V2_QUESTION_CATALOG
 
-QUESTION_CATALOG = [*BASE_QUESTION_CATALOG, *PHASE_B_QUESTION_CATALOG]
+
+def _merge_question_catalogs(*catalogs: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep the first authoritative definition for each canonical question key."""
+    merged: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for catalog in catalogs:
+        for item in catalog:
+            key = str(item.get("canonical_key") or "").strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+    return merged
+
+
+# V2 is intentionally first: it narrows ambiguous legacy definitions while the
+# base and Phase B catalogs continue to supply established families not replaced.
+QUESTION_CATALOG = _merge_question_catalogs(
+    V2_QUESTION_CATALOG,
+    BASE_QUESTION_CATALOG,
+    PHASE_B_QUESTION_CATALOG,
+)
 _CATALOG_BY_KEY = {item["canonical_key"]: item for item in QUESTION_CATALOG}
 _SCOPE_PRIORITY = {
     AnswerPolicyScope.global_scope.value: 1,
@@ -39,15 +61,23 @@ def get_catalog_item(canonical_key: str) -> Optional[Dict[str, Any]]:
 
 
 def classify_question(question_text: str) -> Dict[str, str]:
+    """Classify by the longest matched prompt fragment, then catalog precedence."""
     normalized = normalize_question_text(question_text)
-    for item in QUESTION_CATALOG:
-        if any(re.search(pattern, normalized, flags=re.IGNORECASE) for pattern in item["patterns"]):
-            return {
-                "canonical_key": item["canonical_key"],
-                "category": item["category"],
-                "sensitivity": item["sensitivity"],
-                "label": item["label"],
-            }
+    matches: List[tuple[int, int, Dict[str, Any]]] = []
+    for index, item in enumerate(QUESTION_CATALOG):
+        for pattern in item["patterns"]:
+            match = re.search(pattern, normalized, flags=re.IGNORECASE)
+            if match:
+                matches.append((len(match.group(0)), -index, item))
+
+    if matches:
+        _, _, item = max(matches, key=lambda value: (value[0], value[1]))
+        return {
+            "canonical_key": item["canonical_key"],
+            "category": item["category"],
+            "sensitivity": item["sensitivity"],
+            "label": item["label"],
+        }
     return {
         "canonical_key": "custom.unclassified",
         "category": "custom",
