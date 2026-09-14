@@ -86,7 +86,9 @@ class AnswerPolicyCatalogItem(BaseModel):
 
 
 class AnswerPolicyBulkUpsert(BaseModel):
-    items: List[AnswerPolicyCreate] = Field(min_length=1, max_length=75)
+    # Catalog V2 intentionally exceeds the original 75-family ceiling. The
+    # guided UI still sends only rows the owner explicitly includes.
+    items: List[AnswerPolicyCreate] = Field(min_length=1, max_length=150)
 
 
 class AnswerPolicyBulkResult(BaseModel):
