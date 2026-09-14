@@ -40,7 +40,7 @@ def _spawn_fake_owned_browser(*, profile: Path, port: int) -> subprocess.Popen:
             "-c",
             "trap 'exit 0' TERM INT HUP; while :; do sleep 1; done",
             "jobtomatik-test-browser",
-            f"--remote-debugging-address=127.0.0.1",
+            "--remote-debugging-address=127.0.0.1",
             f"--remote-debugging-port={port}",
             f"--user-data-dir={profile}",
         ]

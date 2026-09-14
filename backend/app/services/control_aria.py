@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Tuple
 
 from app.services.answer_policy import resolve_runtime_policy
-from app.services.control_native import handle_choice_group
 from app.services.control_primitives import (
     ControlEngineOutcome,
     OptionRecord,

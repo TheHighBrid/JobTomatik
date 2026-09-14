@@ -92,7 +92,10 @@ def compute_relevance(job: Dict, user_preferences: Dict) -> float:
 
     pref_skills = {str(s).lower() for s in user_preferences.get("skills", [])}
     pref_titles = [str(t).lower() for t in user_preferences.get("preferred_titles", [])]
-    pref_locations = [str(l).lower() for l in user_preferences.get("preferred_locations", [])]
+    pref_locations = [
+        str(location).lower()
+        for location in user_preferences.get("preferred_locations", [])
+    ]
     pref_min_salary = user_preferences.get("min_salary", 0) or 0
 
     job_skills = {str(s).lower() for s in (job.get("skills") or [])}

@@ -13,7 +13,6 @@ from app.services.scheduler_policy import (
     build_search_plan,
     candidate_priority,
     build_scheduler_preview,
-    scheduler_settings,
 )
 from app.tasks.scraping import _run_scheduler_cycle_for_user
 

@@ -1,4 +1,3 @@
-import pytest
 from tests.conftest import TestingSessionLocal
 from app.models.job import Job, JobStatus, JobSource
 

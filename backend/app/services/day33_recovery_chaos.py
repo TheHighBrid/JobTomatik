@@ -34,7 +34,6 @@ from app.services.application_recovery import recover_stale_application_attempt
 from app.services.dead_letter import (
     DEAD_LETTER_KEY,
     DeadLetterError,
-    checkpoint_hash,
     requeue_dead_letter,
     reopen_dead_letter_after_dispatch_failure,
     route_task_to_dead_letter,
