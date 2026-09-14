@@ -305,3 +305,59 @@ def test_non_policy_review_cannot_be_retired_by_policy_revalidation(auth_client)
 
     assert response.status_code == 409
     assert "not an answer-policy review" in response.json()["detail"]
+
+
+def test_unknown_question_can_be_saved_edited_and_reused_on_recheck(auth_client):
+    wording = "Which work arrangement do you prefer?"
+    question = {
+        "reason_code": "ambiguous_question",
+        "details": {
+            "canonical_key": "custom.unclassified",
+            "descriptor": f"cards[custom-card][field0] | Hybrid | {wording}",
+            "control_type": "radio", "required": True,
+            "available_options": [
+                {"label": "Hybrid", "value": "hybrid"},
+                {"label": "Remote", "value": "remote"},
+            ],
+        },
+    }
+    app_id, review_id, _ = _seed_caseware_review(question=question)
+    url = f"/api/applications/{app_id}/manual-reviews/{review_id}/revalidate-answer-policies"
+    missing = auth_client.post(url).json()
+    assert missing["resolved"] is False
+    assert missing["remaining"][0]["available_options"][0]["label"] == "Hybrid"
+    payload = {
+        "canonical_key": "custom.work_arrangement", "match_phrases": [wording],
+        "answer_value": "hybrid", "mode": "answer", "scope": "company",
+        "scope_value": "Other employer", "allow_autofill": True, "confirmed": True,
+        "source_metadata": {"question_match_mode": "exact"},
+    }
+    saved = auth_client.post("/api/profile/answer-policies", json=payload)
+    assert saved.status_code == 201
+    policy_id = saved.json()["id"]
+    assert auth_client.post(url).json()["resolved"] is False
+    # Correct scope without authorization remains a draft.
+    updated = auth_client.patch(f"/api/profile/answer-policies/{policy_id}", json={
+        "scope_value": "Caseware", "allow_autofill": False, "confirmed": False,
+    })
+    assert updated.status_code == 200
+    assert auth_client.post(url).json()["resolved"] is False
+    approved = auth_client.patch(f"/api/profile/answer-policies/{policy_id}", json={
+        "answer_value": "remote", "answer_label": "Remote",
+        "allow_autofill": True, "confirmed": True,
+    })
+    assert approved.status_code == 200
+    result = auth_client.post(url).json()
+    assert result["resolved"] is True
+    assert result["remaining"] == []
+    # A subsequent matching application reuses the saved answer directly.
+    next_app, next_review, _ = _seed_caseware_review(question=question)
+    again = auth_client.post(f"/api/applications/{next_app}/manual-reviews/{next_review}/revalidate-answer-policies")
+    assert again.json()["resolved"] is True
+    db = TestingSessionLocal()
+    try:
+        assert db.query(SubmissionApproval).count() == 0
+        assert db.query(SubmissionEvidence).count() == 0
+        assert db.query(Application).filter(Application.id.in_([app_id, next_app])).count() == 2
+    finally:
+        db.close()

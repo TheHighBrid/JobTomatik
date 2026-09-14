@@ -128,3 +128,58 @@ def test_caseware_lever_card_descriptor_classifies_from_human_question(descripto
     result = classify_control_question(descriptor)
 
     assert result["canonical_key"] == expected_key
+
+
+def _exact_policy(question, answer="Yes", key="custom.saved", policy_id=20):
+    policy = _policy(policy_id=policy_id, answer=answer)
+    policy.update({
+        "canonical_key": key,
+        "match_phrases": [question],
+        "source_metadata": {"question_match_mode": "exact"},
+    })
+    return policy
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize(("saved", "different"), [
+    ("What is your gender identity?", "What is your sexual orientation?"),
+    ("What is your salary expectation?", "What is your total compensation expectation?"),
+    ("What is your salary?", "What is your salary including benefits?"),
+    ("你是否愿意出差？", "你是否愿意搬家？"),
+])
+def test_exact_custom_answers_do_not_cross_question_meanings(saved, different, legacy):
+    from app.services.answer_policy import resolve_runtime_policy
+    resolver = resolve_runtime_policy if legacy else resolve_control_policy
+    policy = _exact_policy(saved)
+    assert resolver(saved, [policy])["can_autofill"] is True
+    assert resolver(different, [policy])["matched"] is False
+
+
+def test_exact_custom_question_accepts_formatting_and_explicit_wording_variations():
+    policy = _exact_policy("Quel est votre prénom ?", answer="Example")
+    policy["match_phrases"].append("What is your first name?")
+    for descriptor in ["QUEL EST VOTRE PRÉNOM!", "cards[abc][field0] | Example | What is your first name?"]:
+        result = resolve_control_policy(descriptor, [policy])
+        assert result["can_autofill"] is True
+        assert result["answer"] == "Example"
+
+
+def test_custom_unclassified_key_is_not_a_catch_all_policy():
+    policy = _exact_policy("Which office would you prefer?", key="custom.unclassified")
+    assert resolve_control_policy("Which team would you prefer?", [policy])["matched"] is False
+
+
+def test_exact_custom_question_does_not_match_a_lever_answer_option():
+    policy = _exact_policy("Yes")
+    descriptor = "cards[abc][field0] | Yes | Are you available on weekends?"
+    assert resolve_control_policy(descriptor, [policy])["matched"] is False
+
+
+def test_exact_custom_answer_wins_over_broad_catalog_and_legacy_keyword_policy():
+    exact = _exact_policy("What is your salary including benefits?", answer="95000 CAD")
+    broad = _policy(answer="75000 CAD")
+    broad.update({"canonical_key": "salary_expectation"})
+    keyword = _policy(answer="80000 CAD")
+    keyword.update({"canonical_key": "custom.salary", "match_phrases": ["salary"]})
+    result = resolve_control_policy("What is your salary including benefits?", [broad, keyword, exact])
+    assert result["answer"] == "95000 CAD"
