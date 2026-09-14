@@ -28,6 +28,8 @@ import {
 } from '../api/operatorAssisted'
 import { isApplicationTaskTerminal } from '../applicationTaskRuntime'
 import { shortHash, supervisedBlockerLabel } from '../supervisedPlatforms'
+import CustomQuestionPolicyForm from './CustomQuestionPolicyForm'
+import { questionFromDescriptor } from '../customQuestionPolicies'
 
 const OPERATOR_APPROVAL_SOURCE = 'authenticated_user_operator_assisted'
 const POLICY_REVIEW_REASONS = new Set([
@@ -391,11 +393,32 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                         const repairKey = String(item.policy_id || `${item.canonical_key || 'question'}-${index}`)
                         const repairAnswer = policyRepairAnswers[repairKey] || ''
                         return (
-                          <li key={`${item.canonical_key || 'question'}-${index}`}>
+                          <li key={item.descriptor || `${item.canonical_key || 'question'}-${index}`}>
                             <span className="font-semibold">{item.canonical_key || 'unclassified question'}:</span>{' '}
                             {item.reason || 'A valid approved answer is still required.'}
                             {item.descriptor && (
                               <div className="mt-0.5 break-words text-[11px] text-violet-600">{item.descriptor}</div>
+                            )}
+
+                            {!repairableEncryption && item.descriptor && !(item.blocker_codes || []).some((code) => [
+                              'legacy_opaque_lever_descriptor', 'retained_question_descriptor_missing',
+                              'retained_options_missing', 'policy_scope_conflict',
+                            ].includes(code)) && (
+                              <details className="mt-2">
+                                <summary className="cursor-pointer font-semibold">Add an answer for this question</summary>
+                                <CustomQuestionPolicyForm
+                                  key={`${activePolicyReview.id}:${item.descriptor}`}
+                                  initialQuestion={questionFromDescriptor(item.descriptor)}
+                                  initialCompany={preflight?.employer || application?.job?.company || ''}
+                                  availableOptions={item.available_options || []}
+                                  recheck
+                                  onSaved={async () => {
+                                    const response = await revalidateAnswerPolicyReview(applicationId, activePolicyReview.id)
+                                    setPolicyReviewResult(response.data || {})
+                                    await refreshAll()
+                                  }}
+                                />
+                              </details>
                             )}
 
                             {repairableEncryption && (

@@ -15,6 +15,7 @@ import {
   listAnswerPolicies,
   updateAnswerPolicy,
 } from '../api/client'
+import CustomQuestionPolicyForm from './CustomQuestionPolicyForm'
 
 const initialForm = {
   canonical_key: 'work_authorization',
@@ -61,6 +62,7 @@ export default function AnswerPolicyVault() {
   const [setupSearch, setSetupSearch] = useState('')
   const [setupRows, setSetupRows] = useState({})
   const [setupConfirmed, setSetupConfirmed] = useState(false)
+  const [editingPolicyId, setEditingPolicyId] = useState(null)
 
   const catalogQuery = useQuery({
     queryKey: ['answer-policy-catalog'],
@@ -379,6 +381,8 @@ export default function AnswerPolicyVault() {
         </div>
       )}
 
+      <CustomQuestionPolicyForm onSaved={invalidate} />
+
       <form onSubmit={submit} className="space-y-4 rounded-xl border border-gray-200 p-4">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Add one policy</h3>
@@ -523,7 +527,7 @@ export default function AnswerPolicyVault() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-900">{catalogItem?.label || policy.canonical_key}</p>
+                        <p className="text-sm font-semibold text-gray-900">{catalogItem?.label || policy.match_phrases?.[0] || policy.canonical_key}</p>
                         <span className={`text-[10px] uppercase tracking-wide border rounded-full px-2 py-0.5 ${sensitivityClass(policy.sensitivity)}`}>
                           {policy.sensitivity}
                         </span>
@@ -560,6 +564,9 @@ export default function AnswerPolicyVault() {
                   </div>
 
                   <div className="flex flex-wrap gap-2 mt-3">
+                    {policy.canonical_key.startsWith('custom.') && (
+                      <button type="button" className="btn-secondary text-xs" onClick={() => setEditingPolicyId(policy.id)}>Edit question and answer</button>
+                    )}
                     {canAuthorize && !authorized && (
                       <button
                         type="button"
@@ -589,6 +596,16 @@ export default function AnswerPolicyVault() {
                       {policy.is_active ? 'Pause policy' : 'Activate policy'}
                     </button>
                   </div>
+                  {editingPolicyId === policy.id && (
+                    <div className="mt-3">
+                      <CustomQuestionPolicyForm
+                        key={policy.id}
+                        policy={policy}
+                        onCancel={() => setEditingPolicyId(null)}
+                        onSaved={async () => { await invalidate(); setEditingPolicyId(null) }}
+                      />
+                    </div>
+                  )}
                 </div>
               )
             })}

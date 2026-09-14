@@ -174,6 +174,10 @@ def _question_result(
         "matched": bool(resolution.get("matched")),
         "can_autofill": bool(resolution.get("can_autofill")),
         "policy_id": (resolution.get("policy") or {}).get("id"),
+        "available_options": [
+            {"label": option.label, "value": option.value, "disabled": option.disabled}
+            for option in _option_records(details.get("available_options") or [])
+        ],
         "ready": False,
         "reason": resolution.get("reason"),
         "blocker_codes": list(resolution.get("blocker_codes") or []),
