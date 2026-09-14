@@ -9,6 +9,8 @@ _PERSISTED_RESULT_KEY = "last_policy_revalidation"
 
 
 def _human_question_label(item: Mapping[str, Any]) -> str:
+    if item.get("kind") == "application_step":
+        return ""
     descriptor = str(item.get("descriptor") or "").strip()
     if descriptor:
         parts = [part.strip() for part in descriptor.split("|") if part.strip()]
@@ -50,10 +52,12 @@ def persist_answer_policy_revalidation_visibility(
         visible.append(f"{label}: {reason}" if label else reason)
 
     suffix = " | ".join(visible)
-    review.summary = (
-        f"{len(remaining)} application question(s) still require an approved answer policy. "
-        f"{suffix}"
-    ).strip()
+    question_count = sum(item.get("kind") != "application_step" for item in remaining)
+    prefix = (
+        f"{question_count} application question(s) still require an approved answer policy. "
+        if question_count else ""
+    )
+    review.summary = f"{prefix}{suffix}".strip()
 
 
 __all__ = ["persist_answer_policy_revalidation_visibility"]

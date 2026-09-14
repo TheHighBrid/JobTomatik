@@ -24,6 +24,7 @@ from app.services.application_state import (
     transition_application_state,
 )
 from app.services.control_policy import resolve_control_policy
+from app.services.manual_review_shape import is_answer_policy_question_item
 from app.services.control_primitives import (
     OptionRecord,
     match_answer_candidates_to_options,
@@ -103,7 +104,7 @@ def _legacy_opaque_lever_descriptor(descriptor: str) -> bool:
     return True
 
 
-def _stale_lever_question_evidence(question: Dict[str, Any]) -> bool:
+def _stale_lever_question_evidence(question: Dict[str, Any], fallback_reason: str = "") -> bool:
     """Return True only when retained Lever question text is unrecoverably absent.
 
     Historical reviews exist in two fail-closed shapes: an old card descriptor whose
@@ -112,6 +113,8 @@ def _stale_lever_question_evidence(question: Dict[str, Any]) -> bool:
     must pass normal policy revalidation instead of stale retirement.
     """
 
+    if not is_answer_policy_question_item(question, fallback_reason):
+        return False
     details = dict(question.get("details") or {})
     descriptor = str(details.get("descriptor") or "").strip()
     return not descriptor or _legacy_opaque_lever_descriptor(descriptor)
@@ -140,7 +143,17 @@ def _option_records(raw_options: Iterable[Dict[str, Any]]) -> List[OptionRecord]
 def _question_result(
     question: Dict[str, Any],
     policies: Iterable[Dict[str, Any]],
+    fallback_reason: str = "",
 ) -> Dict[str, Any]:
+    if not is_answer_policy_question_item(question, fallback_reason):
+        return {
+            "kind": "application_step",
+            "descriptor": "",
+            "canonical_key": None,
+            "ready": False,
+            "reason": question.get("summary") or "An application step needs attention.",
+            "blocker_codes": ["application_step_review_required"],
+        }
     details = dict(question.get("details") or {})
     descriptor = str(details.get("descriptor") or "").strip()
     control_type = str(details.get("control_type") or "").strip().lower()
@@ -271,7 +284,7 @@ def retire_stale_answer_policy_review_for_reprepare(
         raise ManualReviewPolicyRevalidationError("An applied application cannot be re-prepared.")
 
     questions = _retained_questions(review)
-    if not questions or not all(_stale_lever_question_evidence(item) for item in questions):
+    if not questions or not all(_stale_lever_question_evidence(item, review.reason_code) for item in questions):
         raise ManualReviewPolicyRevalidationError(
             "This review contains current or classifiable question evidence and must pass normal policy revalidation."
         )
@@ -409,7 +422,7 @@ def revalidate_answer_policy_manual_review(
         company=company,
     )
 
-    results = [_question_result(question, policies) for question in questions]
+    results = [_question_result(question, policies, review.reason_code) for question in questions]
     remaining = [item for item in results if not item.get("ready")]
     satisfied = len(results) - len(remaining)
 
@@ -419,7 +432,7 @@ def revalidate_answer_policy_manual_review(
             "ready": False,
             "resolved": False,
             "already_resolved": False,
-            "total_questions": len(results),
+            "total_questions": sum(is_answer_policy_question_item(item, review.reason_code) for item in questions),
             "satisfied_questions": satisfied,
             "remaining": remaining,
             "fresh_reprepare_available": _fresh_reprepare_available(review, results),

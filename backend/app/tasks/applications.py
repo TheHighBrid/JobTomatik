@@ -32,6 +32,7 @@ from app.services.cover_letter import generate_cover_letter
 from app.services.form_filler import fill_and_submit_application
 from app.services.handoff_integration import _attach_handoff_session
 from app.services.handoff_session import HandoffSessionError
+from app.services.manual_review_shape import result_review_summary
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -334,7 +335,7 @@ def _create_result_review_tasks(
                 db,
                 app,
                 reason_code,
-                f"{len(items)} application question(s) require an approved answer policy.",
+                result_review_summary(items, reason_code.value),
                 details={
                     "method": method,
                     "questions": items,
