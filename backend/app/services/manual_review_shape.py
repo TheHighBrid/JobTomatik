@@ -24,7 +24,8 @@ def retained_questions(details: Mapping[str, Any] | None) -> list[dict[str, Any]
 
 def is_answer_policy_question_item(item: Mapping[str, Any], fallback_reason: str = "") -> bool:
     """Distinguish field reviews from flow failures stored in the legacy questions list."""
-    reason = str(item.get("reason_code") or fallback_reason or "ambiguous_question")
+    raw_reason = item.get("reason_code") or fallback_reason or "ambiguous_question"
+    reason = str(getattr(raw_reason, "value", raw_reason))
     if reason not in POLICY_REVIEW_REASONS:
         return False
     if reason != "unsupported_control":
