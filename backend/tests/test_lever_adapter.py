@@ -98,6 +98,38 @@ async def test_lever_detection_prefers_lever_adapter(page):
 
 
 @pytest.mark.asyncio
+async def test_lever_observed_wave_button_reaches_dry_run_boundary_without_click(page):
+    # Public Wave form markup observed 2026-09-14. Its final button is type=button,
+    # and data-qa already provides a supported selector. No applicant data is used.
+    await page.set_content('''
+        <form id="application-form">
+          <div class="section page-centered application-form">
+            <label>Full name<input name="name" value="Synthetic Applicant" required></label>
+          </div>
+          <div class="section page-centered application-form last-section-apply">
+            <button id="btn-submit" type="button" class="postings-btn template-btn-submit cerulean"
+                    data-qa="btn-submit" href="#" onclick="this.dataset.clicked='true'">Submit application</button>
+          </div>
+        </form>
+    ''')
+    adapter = LeverAdapter()
+
+    async def filled_step(surface, step):
+        return {"filled_count": 1, "review_items": []}
+
+    result = await run_ats_application_flow(page, adapter, fill_step=filled_step, dry_run=True, log=[])
+    assert result.success is True
+    assert result.ready_to_submit is True
+    assert result.requires_manual_review is False
+    assert result.submit_clicked is False
+    assert await page.locator('#btn-submit').get_attribute('data-clicked') is None
+
+    await page.locator('#btn-submit').evaluate('(button) => button.disabled = true')
+    assert await adapter.find_submit_button(page) is None
+    assert await adapter.visible_submit_control_present(page) is True
+
+
+@pytest.mark.asyncio
 async def test_lever_single_page_upload_controls_and_dry_run_ready(page, tmp_path):
     resume = tmp_path / "resume.pdf"
     resume.write_bytes(b"%PDF-1.4\nJobTomatik Lever certification fixture")

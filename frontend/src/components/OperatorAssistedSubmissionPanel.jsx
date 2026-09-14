@@ -61,10 +61,17 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
       .filter((review) => (
         ['open', 'in_progress'].includes(review.status)
         && POLICY_REVIEW_REASONS.has(review.reason_code)
+        && review.answer_policy_question_count !== 0
       ))
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0] || null,
     [application?.manual_reviews],
   )
+
+  const applicationStepReviews = (application?.manual_reviews || []).filter((review) => (
+    ['open', 'in_progress'].includes(review.status)
+    && POLICY_REVIEW_REASONS.has(review.reason_code)
+    && review.application_step_blockers?.length
+  ))
 
   const preflightQuery = useQuery({
     queryKey: ['operator-assisted-preflight', applicationId],
@@ -358,6 +365,18 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
           </div>
         )}
 
+        {applicationStepReviews.map((review) => (
+          <div key={review.id} className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="text-sm font-semibold text-amber-950">Application step needs attention</div>
+            <ul className="mt-2 space-y-1 text-sm text-amber-900">
+              {review.application_step_blockers.map((reason) => <li key={reason}>{reason}</li>)}
+            </ul>
+            <p className="mt-2 text-xs text-amber-900">
+              Saved answers cannot resolve this application step. Keep any filled application tab open while this is investigated.
+            </p>
+          </div>
+        ))}
+
         {activePolicyReview && (
           <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
             <div className="flex items-start gap-3">
@@ -394,7 +413,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                         const repairAnswer = policyRepairAnswers[repairKey] || ''
                         return (
                           <li key={item.descriptor || `${item.canonical_key || 'question'}-${index}`}>
-                            <span className="font-semibold">{item.canonical_key || 'unclassified question'}:</span>{' '}
+                            <span className="font-semibold">{item.kind === 'application_step' ? 'Application step' : (item.canonical_key || 'unclassified question')}:</span>{' '}
                             {item.reason || 'A valid approved answer is still required.'}
                             {item.descriptor && (
                               <div className="mt-0.5 break-words text-[11px] text-violet-600">{item.descriptor}</div>

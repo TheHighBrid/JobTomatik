@@ -22,6 +22,36 @@ def retained_questions(details: Mapping[str, Any] | None) -> list[dict[str, Any]
     return [item for item in raw if isinstance(item, dict)]
 
 
+def is_answer_policy_question_item(item: Mapping[str, Any], fallback_reason: str = "") -> bool:
+    """Distinguish field reviews from flow failures stored in the legacy questions list."""
+    reason = str(item.get("reason_code") or fallback_reason or "ambiguous_question")
+    if reason not in POLICY_REVIEW_REASONS:
+        return False
+    if reason != "unsupported_control":
+        return True
+    details = item.get("details") or {}
+    # Unsupported controls can be genuine employer fields, including old records
+    # missing their descriptor. Navigation failures instead carry adapter/step data.
+    return isinstance(details, Mapping) and any(
+        key in details
+        for key in ("descriptor", "control_type", "canonical_key", "required", "available_options")
+    )
+
+
+def application_step_blockers(items: list[dict[str, Any]], fallback_reason: str = "") -> list[str]:
+    return list(dict.fromkeys(
+        str(item.get("summary") or "An application step needs attention.")
+        for item in items
+        if not is_answer_policy_question_item(item, fallback_reason)
+    ))
+
+
+def result_review_summary(items: list[dict[str, Any]], fallback_reason: str = "") -> str:
+    count = sum(is_answer_policy_question_item(item, fallback_reason) for item in items)
+    parts = [f"{count} application question(s) require an approved answer policy."] if count else []
+    return " ".join(parts + application_step_blockers(items, fallback_reason))
+
+
 def _looks_like_retained_question_item(item: Mapping[str, Any] | None) -> bool:
     if not isinstance(item, Mapping):
         return False
@@ -113,4 +143,7 @@ __all__ = [
     "is_misclassified_answer_policy_review_shape",
     "normalize_misclassified_question_review_items",
     "retained_questions",
+    "is_answer_policy_question_item",
+    "application_step_blockers",
+    "result_review_summary",
 ]
