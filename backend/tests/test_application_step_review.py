@@ -1,6 +1,6 @@
 import pytest
 
-from app.models.application import Application, ManualReviewStatus, ManualReviewTask
+from app.models.application import Application, ManualReviewReason, ManualReviewStatus, ManualReviewTask
 from app.services.manual_review_shape import is_answer_policy_question_item, result_review_summary
 from tests.conftest import TestingSessionLocal
 from tests.test_misclassified_answer_policy_review_repair import _seed_review
@@ -25,6 +25,10 @@ def test_flow_failure_is_not_a_missing_question():
     assert is_answer_policy_question_item(question)
     assert is_answer_policy_question_item({"reason_code": "ambiguous_question", "details": {}})
     assert not is_answer_policy_question_item({"reason_code": "operator_final_submit_required"})
+    assert is_answer_policy_question_item(
+        {"details": {"control_type": "radio"}},
+        ManualReviewReason.unsupported_control,
+    )
 
 
 @pytest.mark.parametrize("nested_reason", [True, False])
