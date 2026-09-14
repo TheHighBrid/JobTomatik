@@ -33,6 +33,7 @@ POLICY_REVIEW_REASONS = {
     ManualReviewReason.ambiguous_question.value,
     ManualReviewReason.legal_answer_missing.value,
     ManualReviewReason.sensitive_answer_missing.value,
+    ManualReviewReason.unsupported_control.value,
 }
 
 _OPTION_CONTROL_TYPES = {
