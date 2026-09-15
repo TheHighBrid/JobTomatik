@@ -19,6 +19,7 @@ from app.models.answer_policy import (
 from app.services.answer_policy_catalog import QUESTION_CATALOG as BASE_QUESTION_CATALOG
 from app.services.answer_policy_catalog_phase_b import PHASE_B_QUESTION_CATALOG
 from app.services.answer_policy_catalog_v2 import V2_QUESTION_CATALOG
+from app.services.answer_policy_catalog_v2_overrides import V2_OVERRIDE_QUESTION_CATALOG
 
 
 def _merge_question_catalogs(*catalogs: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -35,9 +36,10 @@ def _merge_question_catalogs(*catalogs: Iterable[Dict[str, Any]]) -> List[Dict[s
     return merged
 
 
-# V2 is intentionally first: it narrows ambiguous legacy definitions while the
-# base and Phase B catalogs continue to supply established families not replaced.
+# V2 overrides are intentionally first. They preserve compatibility labels while
+# narrowing legacy patterns that would otherwise swallow more precise V2 families.
 QUESTION_CATALOG = _merge_question_catalogs(
+    V2_OVERRIDE_QUESTION_CATALOG,
     V2_QUESTION_CATALOG,
     BASE_QUESTION_CATALOG,
     PHASE_B_QUESTION_CATALOG,
@@ -395,7 +397,7 @@ def resolve_runtime_policy(question_text: str, policies: Iterable[Dict[str, Any]
         "policy_provenance_unknown": "The answer provenance is unknown.",
         "policy_confidence_low": "The answer confidence is below the automatic-use threshold.",
         "policy_not_confirmed": "The stored answer has not been confirmed by the user.",
-        "policy_consent_missing": "The stored consent record does not authorize automatic use.",
+        "policy_consent_missing": "The stored consent record does not authorize automatic use of this answer.",
         "policy_autofill_not_authorized": "The user has not authorized automatic use of this answer.",
         "policy_answer_missing": "The approved policy has no usable answer value.",
     }
