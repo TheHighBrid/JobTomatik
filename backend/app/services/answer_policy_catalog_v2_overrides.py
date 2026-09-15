@@ -124,9 +124,9 @@ V2_OVERRIDE_QUESTION_CATALOG = [
         "sensitivity": "standard",
         "description": "Your proficiency level with a specifically named software product, system, or tool.",
         "patterns": [
-            r"proficiency (?:with|using|in).{2,100}",
-            r"proficient (?:with|using|in).{2,100}",
-            r"how proficient are you.{0,30}(?:with|using|in).{2,100}",
+            r"proficiency (?:with|using|in)\s+(?!(?:english|french|spanish|arabic|mandarin|cantonese|german|italian|portuguese|japanese|korean)\b).{2,100}",
+            r"proficient (?:with|using|in)\s+(?!(?:english|french|spanish|arabic|mandarin|cantonese|german|italian|portuguese|japanese|korean)\b).{2,100}",
+            r"how proficient are you.{0,30}(?:with|using|in)\s+(?!(?:english|french|spanish|arabic|mandarin|cantonese|german|italian|portuguese|japanese|korean)\b).{2,100}",
             r"rate your proficiency.{2,100}",
         ],
         "setup_group": "Qualifications",
