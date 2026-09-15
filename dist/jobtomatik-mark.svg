@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <defs>
+    <linearGradient id="shell" x1="8" y1="5" x2="100" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#162A4A"/>
+      <stop offset="1" stop-color="#07111F"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="38" y1="42" x2="65" y2="91" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#78B3FF"/>
+      <stop offset="1" stop-color="#2F6BFF"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="70" y1="13" x2="98" y2="43" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD66B"/>
+      <stop offset="1" stop-color="#E8A92B"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="104" height="104" rx="27" fill="url(#shell)"/>
+  <rect x="3.5" y="3.5" width="101" height="101" rx="25.5" fill="none" stroke="#315585" stroke-opacity=".56"/>
+  <path d="M18 42h24M13 53h24" stroke="url(#blue)" stroke-width="6" stroke-linecap="round"/>
+  <path d="M48 22h31v43c0 17-10.7 27-26.5 27S27 82.2 27 68V59h17v8.5c0 5.8 3.3 9.7 8.8 9.7 5.8 0 9.2-4.1 9.2-11.2V38H48V22Z" fill="#F8FAFC"/>
+  <path d="M52.5 55 59 62l-6.5 8-6.5-8 6.5-7Z" fill="#78B3FF"/>
+  <path d="m52.5 67 7.5 17-7.5 8-7.5-8 7.5-17Z" fill="url(#blue)"/>
+  <g fill="url(#gold)">
+    <circle cx="82" cy="28" r="12"/>
+    <rect x="79" y="11" width="6" height="9" rx="2"/>
+    <rect x="79" y="36" width="6" height="9" rx="2"/>
+    <rect x="65" y="25" width="9" height="6" rx="2"/>
+    <rect x="90" y="25" width="9" height="6" rx="2"/>
+  </g>
+  <circle cx="82" cy="28" r="5.2" fill="#10213A"/>
+</svg>
