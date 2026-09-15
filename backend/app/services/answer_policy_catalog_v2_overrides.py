@@ -1,10 +1,28 @@
 """High-priority Catalog V2 compatibility and collision overrides.
 
-These definitions preserve established option labels while replacing legacy broad
-regexes that can swallow a more precise V2 family.
+These definitions preserve established option labels and canonical keys while
+replacing legacy broad regexes that can swallow a more precise V2 family.
 """
 
 V2_OVERRIDE_QUESTION_CATALOG = [
+    {
+        "canonical_key": "sponsorship_required",
+        "label": "Requires employer sponsorship",
+        "category": "sponsorship",
+        "sensitivity": "legal",
+        "description": "Whether employer sponsorship is required now, or in a combined now-or-future employer question.",
+        "patterns": [
+            r"will you now or in the future require.{0,40}(?:employer )?sponsorship",
+            r"do you require (?:employer )?sponsorship",
+            r"require visa sponsorship",
+            r"need (?:employer )?sponsorship",
+            r"immigration sponsorship required",
+        ],
+        "setup_group": "Eligibility",
+        "suggested_answers": ["No", "Yes"],
+        "fallback_suggestions": ["I do not require sponsorship", "No sponsorship required"],
+        "default_mode": "answer",
+    },
     {
         "canonical_key": "race_ethnicity",
         "label": "Combined race and ethnicity",
