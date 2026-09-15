@@ -85,9 +85,11 @@ class RepairTests(unittest.TestCase):
             """)
             for table in repair.PROTECTED_TABLES:
                 db.execute(f"CREATE TABLE {table}(application_id INTEGER)")
-            db.execute("INSERT INTO applications VALUES(261,7,1,'pending','needs_review',NULL,0,'resolved',?)", (URL,))
+            db.execute("INSERT INTO applications VALUES(261,7,1,'pending','needs_review',NULL,3,'resolved',?)", (URL,))
             db.execute("INSERT INTO jobs VALUES(1,?)", (json.dumps({"supervised_target_metadata": {"identity_hash": TARGET, "verified": True, "platform": "lever", "canonical_application_url": URL}}),))
             db.execute("INSERT INTO manual_review_tasks VALUES(250,261,'ambiguous_question','open',?,?,?,NULL,NULL)", ("The retained review does not contain the employer question text.", json.dumps(retained_details()), URL))
+            for number in range(1, 4):
+                db.execute("INSERT INTO application_events(application_id,event_type,payload) VALUES(261,'application_attempt_started',?)", (json.dumps({"attempt": number, "dry_run": True}),))
             db.execute("INSERT INTO application_events(application_id,event_type,payload) VALUES(261,'misclassified_answer_policy_review_repaired',?)", (json.dumps({"review_id": 250, "previous_reason_code": repair.FINAL_REASON, "effective_reason_code": "ambiguous_question"}),))
 
     def snapshot(self):
@@ -105,14 +107,69 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(after, self.snapshot())
         with sqlite3.connect(self.path) as db:
             self.assertEqual(json.loads(db.execute("SELECT details FROM manual_review_tasks").fetchone()[0]), retained_details())
-            self.assertEqual(db.execute("SELECT status,automation_state,submission_attempt_count FROM applications").fetchone(), ("pending", "needs_review", 0))
+            self.assertEqual(db.execute("SELECT status,automation_state,submission_attempt_count FROM applications").fetchone(), ("pending", "needs_review", 3))
             for table in repair.PROTECTED_TABLES:
                 self.assertEqual(db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], 0)
         undo = repair.run(self.path, **self.kw, undo_event=result["event_id"])
         repair.run(self.path, **self.kw, undo_event=result["event_id"], apply=True, expected_digest=undo["snapshot_digest"])
         with sqlite3.connect(self.path) as db:
             self.assertEqual(db.execute("SELECT reason_code FROM manual_review_tasks").fetchone()[0], "ambiguous_question")
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM application_events").fetchone()[0], 3)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM application_events").fetchone()[0], 6)
+            self.assertEqual(db.execute("SELECT submission_attempt_count FROM applications").fetchone()[0], 3)
+            history = [json.loads(row[0]) for row in db.execute("SELECT payload FROM application_events WHERE event_type='application_attempt_started' ORDER BY id")]
+            self.assertEqual(history, [{"attempt": n, "dry_run": True} for n in range(1, 4)])
+
+    def test_zero_attempt_legacy_case_remains_supported(self):
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE applications SET submission_attempt_count=0")
+            db.execute("DELETE FROM application_events WHERE event_type='application_attempt_started'")
+        before = self.snapshot()
+        self.assertEqual(repair.run(self.path, **self.kw)["status"], "preview")
+        self.assertEqual(before, self.snapshot())
+
+    def test_live_missing_malformed_and_duplicate_attempt_history_is_rejected(self):
+        valid = [{"attempt": n, "dry_run": True} for n in range(1, 4)]
+        cases = [(3, valid[:2]), (2, valid), (0, valid), (-1, []), (None, []), (1.5, [])]
+        for value in (False, None, 1, "true"):
+            items = deepcopy(valid)
+            items[1]["dry_run"] = value
+            cases.append((3, items))
+        for value in (1, 4, "2", True):
+            items = deepcopy(valid)
+            items[1]["attempt"] = value
+            cases.append((3, items))
+        items = deepcopy(valid)
+        del items[1]["dry_run"]
+        cases.extend([(3, items), (3, list(reversed(valid))), (1, [[]])])
+        for count, items in cases:
+            with self.subTest(count=count, items=items):
+                with sqlite3.connect(self.path) as db:
+                    db.execute("UPDATE applications SET submission_attempt_count=?", (count,))
+                    db.execute("DELETE FROM application_events WHERE event_type='application_attempt_started'")
+                    for item in items:
+                        db.execute("INSERT INTO application_events(application_id,event_type,payload) VALUES(261,'application_attempt_started',?)", (json.dumps(item),))
+                before = self.snapshot()
+                with self.assertRaises(repair.RepairRefused):
+                    repair.run(self.path, **self.kw)
+                self.assertEqual(before, self.snapshot())
+
+    def test_applied_timestamp_is_rejected_even_with_only_dry_run_history(self):
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE applications SET applied_at='2026-09-15T00:00:00Z'")
+        before = self.snapshot()
+        with self.assertRaisesRegex(repair.RepairRefused, "applied timestamp"):
+            repair.run(self.path, **self.kw)
+        self.assertEqual(before, self.snapshot())
+
+    def test_new_preparation_invalidates_preview_without_resetting_counter(self):
+        preview = repair.run(self.path, **self.kw)
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE applications SET submission_attempt_count=4")
+            db.execute("INSERT INTO application_events(application_id,event_type,payload) VALUES(261,'application_attempt_started',?)", (json.dumps({"attempt": 4, "dry_run": True}),))
+        before = self.snapshot()
+        with self.assertRaisesRegex(repair.RepairRefused, "State changed since preview"):
+            repair.run(self.path, **self.kw, apply=True, expected_digest=preview["snapshot_digest"])
+        self.assertEqual(before, self.snapshot())
 
     def test_changed_state_wrong_owner_and_missing_digest_are_rejected(self):
         preview = repair.run(self.path, **self.kw)

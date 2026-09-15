@@ -24,18 +24,36 @@ misclassification event agree. It also requires an open review, pending
 application, and no approval, submission, evidence, receipt or handoff records.
 Missing schema/evidence causes refusal, not weakened checks.
 
+The worker increments `submission_attempt_count` before filling, including for
+dry-run preparation. The repair therefore preserves that counter and requires a
+complete ordered `application_attempt_started` history: one event per counted
+attempt, integer attempt numbers 1 through the counter, and literal
+`dry_run=true` on every event. Missing, duplicate, non-dry-run or contradictory
+history blocks repair. An applied timestamp or any protected submission record
+still blocks repair regardless of the counter. The counter and history remain
+part of the preview digest, so a new preparation invalidates an older preview.
+
 The command does not restore a usable browser session. A repaired review is
 historical classification only, never evidence of current submit readiness.
 
 ## Validation status
 
-- Eight portable unittest engineering checks passed in the preparation workspace.
+- Twelve portable unittest engineering checks passed in the preparation workspace,
+  including preview/apply/idempotency/undo with three retained dry-run attempts,
+  preservation of their counter/history, stale preview rejection, and refusal of
+  live, missing, malformed or contradictory attempt history.
 - Fixtures reconstruct the sanitized structure from the tablet audit; they are
   not the raw 39-entry production log or a physical-device run.
-- API/persistence regressions were added to the existing focused suite. They
-  must run in the tablet's production dependency environment before acceptance.
-- No live database preview or repair was executed by the package author.
-- No physical Android acceptance, new application preparation or submission ran.
+- The owner ran 19 focused tests on the physical tablet using production Python
+  at `a79c07caed89294860acd54528cdbf0346e5b8d4`; all passed. The subsequent
+  read-only preview refused with `Application has submission state`. That
+  revision incorrectly required a zero counter and its fixture omitted the three
+  preparations reported by the audit. That result does not establish submission.
+- The counter correction has not yet passed a physical-tablet preview. Its
+  reconstructed attempt events are test fixtures, not an export of production
+  history. Actual stored events must independently satisfy the corrected guard.
+- No live database repair, new application preparation or submission was executed
+  by this package. Certification remains 2/10.
 
 ## One bounded on-device handoff
 

@@ -55,7 +55,7 @@ def read_state(db, app_id: int, review_id: int, user_id: int, target_hash: str) 
     require(app_row is not None, "Application/owner mismatch")
     app = dict(app_row)
     require(app["status"] == "pending" and app["automation_state"] == "needs_review", "Application is not pending review")
-    require(app["applied_at"] is None and app["submission_attempt_count"] == 0, "Application has submission state")
+    require(app["applied_at"] is None, "Application has an applied timestamp")
     require(app["application_target_status"] == "resolved", "Application target is unresolved")
     row = db.execute("SELECT * FROM manual_review_tasks WHERE id=? AND application_id=?", (review_id, app_id)).fetchone()
     require(row is not None, "Review/application mismatch")
@@ -75,7 +75,23 @@ def read_state(db, app_id: int, review_id: int, user_id: int, target_hash: str) 
     events = [dict(row) for row in db.execute(
         "SELECT * FROM application_events WHERE application_id=? ORDER BY id", (app_id,),
     )]
+    validate_preparation_attempts(app, events)
     return {"application": app, "review": review, "target": metadata, "events": events}
+
+
+def validate_preparation_attempts(app: dict, events: list[dict]) -> None:
+    # applications.apply increments this counter before filling, including dry runs.
+    # A positive counter alone is neither submission evidence nor proof of safety.
+    count = app["submission_attempt_count"]
+    require(type(count) is int and count >= 0, "Invalid application attempt counter")
+    starts = [object_json(event["payload"]) for event in events
+              if event["event_type"] == "application_attempt_started"]
+    require(len(starts) == count, "Attempt counter does not match retained preparation history")
+    for number, payload in enumerate(starts, 1):
+        require(type(payload.get("attempt")) is int and payload["attempt"] == number,
+                "Retained preparation attempt sequence is incomplete or contradictory")
+        require(payload.get("dry_run") is True,
+                "Retained attempt is not explicitly dry-run preparation")
 
 
 def validate_retained_final_action(state: dict, target_hash: str) -> None:
