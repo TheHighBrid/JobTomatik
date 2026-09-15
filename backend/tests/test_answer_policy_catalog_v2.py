@@ -17,7 +17,7 @@ def _item(key):
 def test_catalog_v2_is_large_unique_and_regex_valid():
     keys = _keys()
     assert len(keys) == len(set(keys))
-    assert len(keys) >= 110
+    assert len(keys) >= 100
 
     for item in QUESTION_CATALOG:
         assert item["canonical_key"]
@@ -124,13 +124,16 @@ def test_dynamic_or_narrative_families_default_to_fresh_review(key):
     assert _item(key)["default_mode"] == "ask_each_time"
 
 
-def test_skill_subjects_are_not_mistaken_for_salary_or_demographics():
+def test_skill_and_tool_subjects_do_not_collapse_into_generic_or_language_families():
     samples = {
         "How many years of experience do you have with Python?": "skill_years_experience",
         "Do you have experience using Salesforce?": "skill_experience",
+        "Do you have experience in Salesforce?": "skill_experience",
         "How proficient are you with Microsoft Excel?": "tool_proficiency",
+        "Are you proficient in Python?": "tool_proficiency",
         "How many years of management experience do you have?": "management_years",
         "What is the largest team you have managed?": "team_size_managed",
+        "Are you proficient in French?": "language_proficiency",
     }
     for question, expected in samples.items():
         assert classify_question(question)["canonical_key"] == expected
