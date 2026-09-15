@@ -108,7 +108,31 @@ def is_misclassified_answer_policy_review_shape(
         return False
     if not _POLICY_QUESTION_SUMMARY_RE.fullmatch(str(summary or "").strip()):
         return False
-    return bool(retained_questions(details))
+    items = retained_questions(details)
+    # The legacy writer used the policy summary for *every* review group,
+    # including genuine final-action items. The container name and summary
+    # therefore cannot establish that a retained item is an employer question.
+    # Only homogeneous, positively identified question records qualify. Mixed
+    # or incomplete groups stay unchanged for explicit review.
+    raw = dict(details or {}).get("questions")
+    return isinstance(raw, list) and len(raw) == len(items) and bool(items) and all(
+        (
+            str(item.get("reason_code") or "") in POLICY_REVIEW_REASONS
+            and is_answer_policy_question_item(item)
+        )
+        or (
+            str(item.get("reason_code") or "") in ("", FINAL_SUBMIT_REASON)
+            and _looks_like_retained_question_item(item)
+        )
+        for item in items
+    ) and not any(
+        isinstance(item.get("details"), Mapping)
+        and (
+            item["details"].get("handoff_stage") == "operator_final_submit"
+            or "operator_final_click_required" in item["details"]
+        )
+        for item in items
+    )
 
 
 def effective_answer_policy_reason(

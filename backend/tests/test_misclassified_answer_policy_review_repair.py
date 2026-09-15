@@ -11,6 +11,7 @@ from app.models.job import Job, JobSource
 from app.models.user import User
 from app.services.manual_review_shape import normalize_misclassified_question_review_items
 from tests.conftest import TestingSessionLocal
+from tests.test_final_submit_review_package import retained_details
 
 
 CASEWARE_URL = "https://jobs.lever.co/caseware/4d0b119c-3cf5-4716-a343-276831f9cc74/apply"
@@ -186,3 +187,49 @@ def test_genuine_final_submit_review_is_not_reclassified(auth_client):
     assert response.status_code == 200
     review = next(item for item in response.json()["manual_reviews"] if item["id"] == review_id)
     assert review["reason_code"] == ManualReviewReason.operator_final_submit_required.value
+
+
+def test_legacy_summary_cannot_demote_genuine_final_item_through_api(auth_client):
+    details = retained_details()
+    app_id, review_id = _seed_review(
+        reason_code=ManualReviewReason.operator_final_submit_required.value,
+        summary="1 application question(s) require an approved answer policy.",
+        details=details,
+    )
+    response = auth_client.get(f"/api/applications/{app_id}")
+    assert response.status_code == 200
+    review = next(row for row in response.json()["manual_reviews"] if row["id"] == review_id)
+    assert review["reason_code"] == ManualReviewReason.operator_final_submit_required.value
+    assert review["answer_policy_question_count"] == 0
+    assert review["summary"] == details["questions"][0]["summary"]
+    for action in ("revalidate-answer-policies", "retire-stale-for-reprepare"):
+        response = auth_client.post(f"/api/applications/{app_id}/manual-reviews/{review_id}/{action}")
+        assert response.status_code == 409
+    with TestingSessionLocal() as db:
+        stored = db.get(ManualReviewTask, review_id)
+        assert stored.reason_code == ManualReviewReason.operator_final_submit_required.value
+        assert stored.details == details
+        assert stored.summary == "1 application question(s) require an approved answer policy."
+        assert db.query(ApplicationEvent).filter_by(
+            application_id=app_id, event_type="misclassified_answer_policy_review_repaired",
+        ).count() == 0
+
+
+def test_final_item_persistence_uses_final_action_summary(auth_client):
+    from app.tasks.applications import _create_result_review_tasks
+
+    details = retained_details()
+    app_id, _ = _seed_review(reason_code="ambiguous_question", summary="Earlier review", details={})
+    with TestingSessionLocal() as db:
+        application = db.get(Application, app_id)
+        _create_result_review_tasks(
+            db, application, {"review_items": details["questions"], "log": details["log"]},
+            "external_url", application.application_target_url,
+        )
+        db.flush()
+        review = db.query(ManualReviewTask).filter_by(
+            application_id=app_id, reason_code=ManualReviewReason.operator_final_submit_required.value,
+        ).one()
+        assert review.summary == details["questions"][0]["summary"]
+        assert review.details["questions"] == details["questions"]
+        assert review.details["log"] == details["log"]
