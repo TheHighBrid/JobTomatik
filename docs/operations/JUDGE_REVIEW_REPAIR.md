@@ -19,7 +19,7 @@ mode is a WAL-aware read-only transaction, not `immutable=1`.
 
 It refuses unless the owner/application/review, verified stored Lever target,
 exact target URL, single final-action item, explicit false submission flags,
-matching ordered browser/final-ready fingerprints, field counts, and original
+matching filled-step/final-ready fingerprints, ordered boundary events, field counts, and original
 misclassification event agree. It also requires an open review, pending
 application, and no approval, submission, evidence, receipt or handoff records.
 Missing schema/evidence causes refusal, not weakened checks.
@@ -36,12 +36,32 @@ part of the preview digest, so a new preparation invalidates an older preview.
 The command does not restore a usable browser session. A repaired review is
 historical classification only, never evidence of current submit readiness.
 
+The owner's read-only extraction of review 250 showed its final three events:
+filled step 1 (19 fields), final-ready with the same fingerprint, then a retained
+browser snapshot about four seconds later with a different fingerprint. The
+cause of this drift is unknown. Equality between those separately captured
+browser states is not a prerequisite for restoring historical classification.
+The repair requires adjacent terminal filled/final-ready/retained events,
+matching filled/final step numbers and field counts, and well-formed fingerprints.
+It preserves all original hashes and records `retained_browser_fingerprint_match`
+in preview/audit alongside `browser_continuity_verified=false` and
+`fresh_handoff_required=true`. Even equal historical hashes do not prove current
+readiness. It neither approves the changed page nor restores a usable handoff.
+
 ## Validation status
 
-- Twelve portable unittest engineering checks passed in the preparation workspace,
+- Fourteen portable unittest engineering checks passed in the preparation workspace,
   including preview/apply/idempotency/undo with three retained dry-run attempts,
   preservation of their counter/history, stale preview rejection, and refusal of
   live, missing, malformed or contradictory attempt history.
+- The owner subsequently ran 23 focused tablet tests at
+  `eea6215536e2b9035038efc982fdf86db63b9f7d`; all passed. The live preview
+  cleared attempt-history validation and refused final/browser hash equality.
+  The corrected fingerprint regression uses the three actual extracted event
+  shapes and hashes, not a full export of the 39-entry log. Local checks cover
+  preserved drift in preview/audit, malformed/contradictory chains and the fresh
+  handoff requirement even when historical hashes match. This fingerprint
+  correction still requires on-device verification and read-only preview.
 - Fixtures reconstruct the sanitized structure from the tablet audit; they are
   not the raw 39-entry production log or a physical-device run.
 - The owner ran 19 focused tests on the physical tablet using production Python
@@ -49,7 +69,7 @@ historical classification only, never evidence of current submit readiness.
   read-only preview refused with `Application has submission state`. That
   revision incorrectly required a zero counter and its fixture omitted the three
   preparations reported by the audit. That result does not establish submission.
-- The counter correction has not yet passed a physical-tablet preview. Its
+- The complete repair has not yet passed a physical-tablet preview. Its
   reconstructed attempt events are test fixtures, not an export of production
   history. Actual stored events must independently satisfy the corrected guard.
 - No live database repair, new application preparation or submission was executed

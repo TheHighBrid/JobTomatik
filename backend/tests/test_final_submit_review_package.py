@@ -39,10 +39,13 @@ def retained_details():
                     "automated_submission_authorized": False,
                     "queue_submission_authorized": False, "target_identity_hash": TARGET},
     }], "log": [
-        {"action": "ats_final_submit_ready", "adapter": "lever", "submit_clicked": False, "fingerprint": "fixture-fingerprint"},
+        {"action": "ats_step_filled", "adapter": "lever", "step": 1, "fields_filled": 19,
+         "entry_fingerprint": "e3f36434ea40fbc6129fb9e0", "filled_fingerprint": "23892850d2a35767a0f7a409"},
+        {"action": "ats_final_submit_ready", "adapter": "lever", "step": 1,
+         "submit_clicked": False, "fingerprint": "23892850d2a35767a0f7a409"},
         {"action": "browser_handoff_retained", "fields_filled": 19,
          "supervised_target_locked": True, "controlled_page_target_id_recorded": True,
-         "current_fingerprint": "fixture-fingerprint"},
+         "current_fingerprint": "7f47ba6680c628474658fb0d"},
     ], "last_policy_revalidation": {"blocker_codes": ["retained_question_descriptor_missing"]}}
 
 
@@ -99,6 +102,11 @@ class RepairTests(unittest.TestCase):
     def test_preview_apply_idempotency_preservation_and_undo(self):
         before = self.snapshot()
         preview = repair.run(self.path, **self.kw)
+        self.assertEqual(preview["boundary_evidence"], {
+            "filled_final_fingerprint_match": True,
+            "retained_browser_fingerprint_match": False,
+            "browser_continuity_verified": False, "fresh_handoff_required": True,
+        })
         self.assertEqual(before, self.snapshot())
         result = repair.run(self.path, **self.kw, apply=True, expected_digest=preview["snapshot_digest"])
         after = self.snapshot()
@@ -106,6 +114,8 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(again["status"], "already_repaired")
         self.assertEqual(after, self.snapshot())
         with sqlite3.connect(self.path) as db:
+            receipt = json.loads(db.execute("SELECT payload FROM application_events WHERE id=?", (result["event_id"],)).fetchone()[0])
+            self.assertEqual(receipt["boundary_evidence"], preview["boundary_evidence"])
             self.assertEqual(json.loads(db.execute("SELECT details FROM manual_review_tasks").fetchone()[0]), retained_details())
             self.assertEqual(db.execute("SELECT status,automation_state,submission_attempt_count FROM applications").fetchone(), ("pending", "needs_review", 3))
             for table in repair.PROTECTED_TABLES:
@@ -188,7 +198,7 @@ class RepairTests(unittest.TestCase):
             details["questions"][0]["details"][key] = value
             cases.append(details)
         details = retained_details()
-        details["log"][1]["current_fingerprint"] = "different"
+        details["log"][2]["current_fingerprint"] = "malformed"
         cases.append(details)
         details = retained_details()
         details["log"].reverse()
@@ -201,6 +211,43 @@ class RepairTests(unittest.TestCase):
                 db.execute("UPDATE manual_review_tasks SET details=?", (json.dumps(details),))
             with self.assertRaises(repair.RepairRefused):
                 repair.run(self.path, **self.kw)
+
+    def test_invalid_filled_final_chain_is_rejected(self):
+        cases = []
+        for index, key, value in ((0, "filled_fingerprint", "b" * 24),
+                                  (0, "step", 2), (1, "step", True),
+                                  (0, "fields_filled", 18), (0, "adapter", "other")):
+            details = retained_details()
+            details["log"][index][key] = value
+            cases.append(details)
+        for index in (0, 1, 2):
+            details = retained_details()
+            del details["log"][index]
+            cases.append(details)
+        details = retained_details()
+        details["log"].append({"action": "unknown_later_activity"})
+        cases.append(details)
+        details = retained_details()
+        details["log"].insert(2, {"action": "unknown_intervening_activity"})
+        cases.append(details)
+        for details in cases:
+            with self.subTest(log=details["log"]):
+                with sqlite3.connect(self.path) as db:
+                    db.execute("UPDATE manual_review_tasks SET details=?", (json.dumps(details),))
+                before = self.snapshot()
+                with self.assertRaises(repair.RepairRefused):
+                    repair.run(self.path, **self.kw)
+                self.assertEqual(before, self.snapshot())
+
+    def test_matching_browser_hash_still_requires_fresh_handoff(self):
+        details = retained_details()
+        details["log"][2]["current_fingerprint"] = details["log"][1]["fingerprint"]
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE manual_review_tasks SET details=?", (json.dumps(details),))
+        preview = repair.run(self.path, **self.kw)
+        self.assertTrue(preview["boundary_evidence"]["retained_browser_fingerprint_match"])
+        self.assertFalse(preview["boundary_evidence"]["browser_continuity_verified"])
+        self.assertTrue(preview["boundary_evidence"]["fresh_handoff_required"])
 
     def test_protected_records_and_missing_original_event_block_repair(self):
         for table in repair.PROTECTED_TABLES:

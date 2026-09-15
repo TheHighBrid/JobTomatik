@@ -94,7 +94,7 @@ def validate_preparation_attempts(app: dict, events: list[dict]) -> None:
                 "Retained attempt is not explicitly dry-run preparation")
 
 
-def validate_retained_final_action(state: dict, target_hash: str) -> None:
+def validate_retained_final_action(state: dict, target_hash: str) -> dict:
     details = object_json(state["review"]["details"])
     items = details.get("questions")
     require(isinstance(items, list) and len(items) == 1 and isinstance(items[0], dict), "Expected exactly one retained final-action item")
@@ -121,17 +121,40 @@ def validate_retained_final_action(state: dict, target_hash: str) -> None:
     require(i < j and final.get("submit_clicked") is False and final.get("adapter") == "lever", "Final-ready evidence contradicts the boundary")
     require(browser.get("supervised_target_locked") is True and browser.get("controlled_page_target_id_recorded") is True, "Controlled browser target was not retained")
     require(browser.get("fields_filled") == data["fields_filled"], "Retained field counts disagree")
-    require(bool(final.get("fingerprint")) and final["fingerprint"] == browser.get("current_fingerprint"), "Final-ready/browser fingerprints disagree")
+    # These are historical classification facts, not a live browser continuity proof.
+    # The retained snapshot is captured later and its different hash must stay visible.
+    require(i >= 1 and j == i + 1 and j == len(log) - 1,
+            "Final-ready/retained events are not the terminal adjacent boundary")
+    filled = log[i - 1]
+    require(filled.get("action") == "ats_step_filled" and filled.get("adapter") == "lever",
+            "Final-ready event lacks its preceding filled-step evidence")
+    step = final.get("step")
+    require(type(step) is int and step > 0 and type(filled.get("step")) is int
+            and filled["step"] == step and type(data.get("steps_completed")) is int
+            and data["steps_completed"] == step, "Filled/final step numbers disagree")
+    require(type(filled.get("fields_filled")) is int
+            and filled["fields_filled"] == data["fields_filled"], "Filled/final field counts disagree")
+    final_hash = final.get("fingerprint")
+    browser_hash = browser.get("current_fingerprint")
+    require(all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{24}", value)
+                for value in (final_hash, browser_hash)), "Malformed retained page fingerprint")
+    require(filled.get("filled_fingerprint") == final_hash,
+            "Filled-step/final-ready fingerprints disagree")
+    return {"filled_final_fingerprint_match": True,
+            "retained_browser_fingerprint_match": final_hash == browser_hash,
+            "browser_continuity_verified": False,
+            "fresh_handoff_required": True}
 
 
 def plan_repair(state: dict, target_hash: str, undo_event: int | None = None) -> dict:
     review = state["review"]
-    validate_retained_final_action(state, target_hash)
+    boundary_evidence = validate_retained_final_action(state, target_hash)
     events = [(event, object_json(event["payload"])) for event in state["events"]]
     base = {
         "application_id": state["application"]["id"], "review_id": review["id"],
         "user_id": state["application"]["user_id"], "target_identity_hash": target_hash,
         "snapshot_digest": digest(state), "submission_authorized": False,
+        "boundary_evidence": boundary_evidence,
         "before": {"reason_code": review["reason_code"], "summary": review["summary"]},
     }
     if undo_event is not None:
@@ -181,6 +204,7 @@ def run(database: Path, *, app_id: int, review_id: int, user_id: int,
             return {"status": "preview", "application_id": app_id, "review_id": review_id,
                     "snapshot_digest": plan["snapshot_digest"], "event_type": plan["event_type"],
                     "before_reason": plan["before"]["reason_code"], "after_reason": plan["after"]["reason_code"],
+                    "boundary_evidence": plan["boundary_evidence"],
                     "submission_authorized": False}
         require(expected_digest == plan["snapshot_digest"], "State changed since preview; refusing mutation")
         db.execute("UPDATE manual_review_tasks SET reason_code=?, summary=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND application_id=?",
