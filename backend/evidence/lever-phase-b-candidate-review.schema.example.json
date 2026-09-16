@@ -1,0 +1,11 @@
+{
+  "schema_version": "lever-phase-b-candidate-review-v1",
+  "generated_at": "REPLACE_AT_GENERATION_TIME",
+  "purpose": "owner_review_before_supervised_phase_b_selection",
+  "selected_by_user": false,
+  "owner_selection_required": true,
+  "authorization_issued": false,
+  "submission_queued": false,
+  "runtime_flags_changed": false,
+  "candidates": []
+}

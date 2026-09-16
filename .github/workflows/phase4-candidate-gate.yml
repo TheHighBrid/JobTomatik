@@ -29,6 +29,7 @@ on:
       - "backend/tests/test_ats_maturity.py"
       - "backend/tests/test_autonomy_release_contract.py"
       - "backend/tests/test_phase4_candidate_gate.py"
+      - "backend/tests/test_phase4_freeze_provenance.py"
       - ".github/workflows/phase4-candidate-gate.yml"
       - "backend/requirements.txt"
       - "frontend/package-lock.json"
@@ -104,6 +105,7 @@ jobs:
             tests/test_ats_maturity.py \
             tests/test_autonomy_release_contract.py \
             tests/test_phase4_candidate_gate.py \
+            tests/test_phase4_freeze_provenance.py \
             --junitxml=phase4-cross-adapter-junit.xml
 
       - name: Run Phase 4 dependency gate
