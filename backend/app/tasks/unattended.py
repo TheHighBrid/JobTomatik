@@ -21,6 +21,7 @@ from app.models.user import User
 from app.services.application_integrity import install_closed_application_task_gate
 from app.services.application_state import create_manual_review_task
 from app.services.certification_scale import ensure_aware
+from app.services.day39_live_worker import enforce_day39_live_worker_gate
 from app.services.full_stack_shadow import (
     ACTIVE_SESSION_STATES,
     finalize_shadow_session,
@@ -368,6 +369,23 @@ def submit_unattended_application_task(
                 decision.code,
             )
             return result
+
+        if effective_shadow_session_id is None and dry_run is False:
+            live_gate = enforce_day39_live_worker_gate(
+                db,
+                app=app,
+                job=job,
+                user=user,
+                dry_run=False,
+                platform=str(decision.metadata.get("platform") or ""),
+            )
+            if live_gate.get("allowed") is not True:
+                logger.warning(
+                    "Blocked live unattended application %s: %s",
+                    application_id,
+                    live_gate.get("error") or live_gate.get("reason"),
+                )
+                return live_gate
     except Retry:
         raise
     except Exception as exc:
