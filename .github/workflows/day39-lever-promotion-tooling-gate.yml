@@ -61,11 +61,14 @@ jobs:
 
       - name: Run promotion, maturity, and release-contract regressions
         run: |
+          # Day 35 is an exact-head historical freeze gate. This Day 39 change
+          # intentionally changes a frozen fixture digest, so Day 35 must fail closed
+          # rather than being rebound by rewriting its retained freeze evidence.
           pytest -q --tb=short -ra \
             tests/test_day39_lever_promotion.py \
             tests/test_ats_maturity.py \
             tests/test_autonomy_release_contract.py \
-            tests/test_day35_operations_rehearsal.py \
+            tests/test_day39_autonomy_contract_semantics.py \
             tests/test_day38_shadow_endurance.py
 
       - name: Prove current retained Lever evidence cannot promote
