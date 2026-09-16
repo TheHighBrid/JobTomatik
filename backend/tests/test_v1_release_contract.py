@@ -121,6 +121,12 @@ def test_exact_artifact_v21_publisher_is_owner_scoped_and_does_not_rebuild():
     assert "npm run android:prepare" not in workflow
     assert "git fetch origin main --no-tags" in workflow
     assert "Release tag $RELEASE_TAG already exists" in workflow
+    assert "github.rest.repos.getReleaseByTag" in workflow
+    assert "Recheck GitHub release absence immediately before publication" in workflow
+    assert "build_identity_sha256" in workflow
+    assert "signing_certificate_sha256" in workflow
+    assert "workflow_conclusion" in workflow
+    assert "reproducible_build" in workflow
     assert "DAY42-READINESS-SHA256.txt" in workflow
 
 
@@ -138,6 +144,11 @@ def test_exact_commit_v21_candidate_builder_is_build_only():
     assert "SIGNING_MODE=release_signed" in workflow
     assert "SIGNING_MODE=development_signed" in workflow
     assert "publication_authorized\": False" in workflow
+    assert "build_identity_sha256" in workflow
+    assert "signing_certificate_sha256" in workflow
+    assert "workflow_path" in workflow
+    assert "workflow_conclusion" in workflow
+    assert "reproducible_build" in workflow
     assert "CANDIDATE-METADATA.json" in workflow
     assert "softprops/action-gh-release" not in workflow
 
@@ -146,6 +157,7 @@ def test_android_apk_workflow_is_build_only_and_cannot_publish():
     workflow = (REPO_ROOT / ".github" / "workflows" / "android-apk.yml").read_text(encoding="utf-8")
     assert "contents: read" in workflow
     assert "contents: write" not in workflow
+    assert "packages: platform-tools" in workflow
     assert "versionCode='210'" in workflow
     assert "versionName='2.1.0'" in workflow
     assert "JobTomatik-v2.1.0-debug.apk" in workflow
