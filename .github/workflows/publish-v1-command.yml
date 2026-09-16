@@ -87,11 +87,12 @@ jobs:
           echo "approved_apk_sha256=$APPROVED_APK_SHA256" >> "$GITHUB_OUTPUT"
           echo "day42_readiness_sha256=$DAY42_READINESS_SHA256" >> "$GITHUB_OUTPUT"
 
-      - name: Verify candidate workflow run identity
+      - name: Verify candidate workflow run identity and release absence
         uses: actions/github-script@v9
         env:
           EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          RELEASE_TAG: v2.1.0
         with:
           script: |
             const runId = Number(process.env.CANDIDATE_RUN_ID);
@@ -115,6 +116,16 @@ jobs:
             }
             if (run.head_sha !== process.env.EXPECTED_SOURCE_COMMIT) {
               core.setFailed(`Candidate workflow head ${run.head_sha} does not match approved source`);
+            }
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: process.env.RELEASE_TAG,
+              });
+              core.setFailed(`Release ${process.env.RELEASE_TAG} already exists; refusing mutable republish.`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
             }
 
   verify-and-publish:
@@ -181,7 +192,12 @@ jobs:
           grep -q "versionCode='210'" candidate/PUBLISH-APK-BADGING.txt
           grep -q "versionName='2.1.0'" candidate/PUBLISH-APK-BADGING.txt
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "candidate/$APK_NAME" > candidate/PUBLISH-APK-SIGNING.txt
-          python - <<'PY'
+          BUILD_INFO_SHA256="$(sha256sum candidate/BUILD-INFO.txt | cut -d' ' -f1)"
+          SIGNING_CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' candidate/PUBLISH-APK-SIGNING.txt | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          [[ "$BUILD_INFO_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$SIGNING_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          export BUILD_INFO_SHA256 SIGNING_CERT_SHA256
+          python3 - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -189,7 +205,16 @@ jobs:
           assert metadata.get('version') == 'jobtomatik-v2.1-release-candidate-v1'
           assert metadata.get('source_revision') == os.environ['SOURCE_COMMIT']
           assert metadata.get('apk_sha256') == os.environ['APPROVED_APK_SHA256']
+          assert metadata.get('build_identity_sha256') == os.environ['BUILD_INFO_SHA256']
+          assert metadata.get('signing_certificate_sha256') == os.environ['SIGNING_CERT_SHA256']
           assert int(metadata.get('workflow_run_id') or 0) == int(os.environ['CANDIDATE_RUN_ID'])
+          assert metadata.get('workflow_path') == '.github/workflows/build-v2-release-candidate.yml'
+          assert metadata.get('workflow_conclusion') == 'success'
+          assert metadata.get('reproducible_build') is True
+          assert metadata.get('source_commit_file_present') is True
+          assert metadata.get('checksums_file_present') is True
+          assert metadata.get('build_info_present') is True
+          assert metadata.get('candidate_metadata_present') is True
           assert metadata.get('publication_authorized') is False
           assert metadata.get('signing_mode') in {'release_signed', 'development_signed'}
           PY
@@ -241,6 +266,23 @@ jobs:
             exit 1
           fi
           test "$(sha256sum "release/$APK_NAME" | cut -d' ' -f1)" = "$APPROVED_APK_SHA256"
+
+      - name: Recheck GitHub release absence immediately before publication
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: v2.1.0
+        with:
+          script: |
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: process.env.RELEASE_TAG,
+              });
+              core.setFailed(`Release ${process.env.RELEASE_TAG} already exists; refusing overwrite.`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
 
       - name: Publish exact approved GitHub release
         uses: softprops/action-gh-release@v3
