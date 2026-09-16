@@ -4,7 +4,9 @@ Effective: 2026-09-08
 
 Owner acceptance rule updated: 2026-09-15
 
-Primary scoreboard: **2 / 10 supervised Lever objective completions**.
+Completion recorded: 2026-09-16
+
+Primary scoreboard: **10 / 10 supervised Lever objective completions**.
 
 Certification runtime artifact is frozen at:
 
@@ -40,7 +42,7 @@ A run counts when owner-reviewed evidence proves the material objective, includi
 
 A bookkeeping, review-shape, handoff-classification, or validator defect that occurs after those facts are already proven does not erase the completed objective. Raw runtime history must remain unchanged and must never be fabricated to make a validator pass.
 
-### Current completed objective rows
+### Completed objective record
 Maple application **247** is the first completed Phase B objective.
 
 Wave HQ application **261** is the second completed Phase B objective. The retained run evidence proves:
@@ -57,7 +59,9 @@ Wave HQ application **261** is the second completed Phase B objective. The retai
 
 The subsequent persisted review/handoff classification failure is a system defect in recognizing the already-proven objective state. It does not reduce the scoreboard.
 
-Current Phase B progress: **2 / 10**.
+On 2026-09-16 the owner-reviewed sprint continued on the frozen certification runtime and reached **10 / 10**. The final stretch included newly created retained Lever applications **262**, **263**, **264**, **265**, **266**, and **267**. Accepted rows reached the exact-target final-submit-ready boundary while automated final submission remained disabled. The runtime database and retained review details remain the authoritative evidence for individual row facts; this runbook does not synthesize or rewrite missing ledger history.
+
+Current Phase B progress: **10 / 10 complete**.
 
 ### Quarantine rule
 If further progress on a candidate requires application-specific historical-state repair, legacy persisted-review recovery, obsolete descriptors, stale vault data, duplicate shells, routing archaeology, or another record-specific implementation repair, do not mutate the retained runtime history merely to satisfy a validator. Preserve the evidence and move engineering repair to a separate lane.
@@ -91,21 +95,24 @@ Engineering fixture work defaults to focused tests only.
 Run the full exact-head release matrix only when promoting a new frozen certification artifact after a valid unfreeze-class safety defect.
 
 ### Candidate runway
-Maintain:
-- **3 fresh ready candidates**; and
-- **3 additional availability-checked bench candidates**.
-
-A paused human-gate candidate does not block the next ready candidate.
+The active certification runway is retired after reaching **10 / 10**. Preserve completed rows and quarantines. Do not reopen retained final-submit boundaries merely to satisfy legacy counters.
 
 ### Downstream lock
-No Day 39-42 or adjacent feature work resumes before Phase B reaches **4 / 10 objective completions**. The existing operator path is the Phase B execution path; needing a new downstream tool is not an exception to this lock.
+The Day 39-42 and adjacent feature-work lock required **4 / 10 objective completions**. That threshold has been exceeded and the feature-work lock is **released** as of 2026-09-16.
+
+This release does not authorize live unattended submission, enable global real-submit flags, or promote Lever maturity. Those remain controlled by their separate repository-defined release gates.
 
 ## Progress rule
 The headline progress metric is the owner-reviewed Phase B objective-completion count.
 
 Direct retained runtime evidence is authoritative for whether the objective was achieved. Internal ledger rows, validators, PRs, commits, workflow runs, test counts, and lines changed are supporting evidence. A validator defect cannot retroactively convert a proven completed objective into a failed run.
 
-Current progress is **2 / 10**.
+Current progress is **10 / 10 complete**.
 
-## Immediate mission
-Move from **2 / 10 -> 4 / 10** on the frozen certification runtime, then continue to **10 / 10**, followed by a separate Lever promotion decision.
+## Post-Phase-B decision
+
+The completion sprint is closed. Resume downstream engineering work.
+
+Lever maturity promotion remains a separate decision. The current canonical `human_reviewed_submit` gate still requires real supervised submission confirmation evidence, duplicate-prevention proof, zero false submitted records, confirmation evidence verification, and an explicit approval reference. The 10/10 objective sprint intentionally stopped at the final-submit-ready boundary with `submit_clicked=false`, so completion of this sprint does not by itself assert those separate confirmation gates.
+
+Until a dedicated promotion PR proves every canonical release gate, Lever remains fail-safe and no autonomous or real-submit flag is enabled.
