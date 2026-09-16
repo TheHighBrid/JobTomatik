@@ -73,6 +73,12 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          # The action's historical default also asks sdkmanager for the retired
+          # legacy "tools" package. Current Android repositories no longer expose
+          # that package, so request only the supported platform tools here; the
+          # exact platform/build-tools are installed explicitly in the next step.
+          packages: platform-tools
 
       - name: Install Android platform
         working-directory: frontend
