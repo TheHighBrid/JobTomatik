@@ -1,0 +1,51 @@
+name: Codacy public API probe
+
+on:
+  push:
+    branches:
+      - codex/codacy-quality-baseline
+    paths:
+      - .github/workflows/codacy-public-api-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe public Codacy endpoints
+        shell: bash
+        run: |
+          set -u
+          mkdir -p codacy-probe
+
+          repo_url='https://app.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik?branch=main'
+          issues_url='https://app.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/issues/search?limit=1000'
+          files_url='https://app.codacy.com/api/v3/organizations/gh/TheHighBrid/repositories/JobTomatik/files?limit=1000'
+
+          curl -sS -L -o codacy-probe/repository.json -w '%{http_code}\n' "$repo_url" > codacy-probe/repository.status || true
+          curl -sS -L -o codacy-probe/issues.json -w '%{http_code}\n' \
+            -X POST "$issues_url" \
+            -H 'Content-Type: application/json' \
+            --data '{}' > codacy-probe/issues.status || true
+          curl -sS -L -o codacy-probe/files.json -w '%{http_code}\n' "$files_url" > codacy-probe/files.status || true
+
+          echo 'Repository endpoint HTTP:' "$(cat codacy-probe/repository.status)"
+          echo 'Issues endpoint HTTP:' "$(cat codacy-probe/issues.status)"
+          echo 'Files endpoint HTTP:' "$(cat codacy-probe/files.status)"
+
+          for f in repository.json issues.json files.json; do
+            echo "===== $f ====="
+            head -c 2000 "codacy-probe/$f" || true
+            echo
+          done
+
+      - name: Upload probe responses
+        uses: actions/upload-artifact@v4
+        with:
+          name: codacy-public-api-probe
+          path: codacy-probe/
+          if-no-files-found: error
+          retention-days: 1
