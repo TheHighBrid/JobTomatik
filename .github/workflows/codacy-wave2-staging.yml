@@ -1,0 +1,156 @@
+name: Codacy wave 2 staging
+
+on:
+  push:
+    branches:
+      - codex/codacy-wave2-staging
+    paths:
+      - .github/workflows/codacy-wave2-staging.yml
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: codex/codacy-wave2-staging
+          fetch-depth: 0
+
+      - name: Apply grounded production fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} occurrence(s), found {count}: {old!r}")
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          for path in (
+              "backend/app/services/lever_phase_b_current_materials.py",
+              "backend/app/services/lever_phase_b_reviewed_materials.py",
+          ):
+              replace_exact(
+                  path,
+                  "        assert material is not None\n",
+                  "        if material is None:\n"
+                  "            raise LeverPhaseBReviewedMaterialsError(\n"
+                  "                \"A required latest material disappeared after completeness validation\"\n"
+                  "            )\n",
+                  expected=2,
+              )
+              replace_exact(
+                  path,
+                  "    assert cover_letter is not None\n",
+                  "    if cover_letter is None:\n"
+                  "        raise LeverPhaseBReviewedMaterialsError(\n"
+                  "            \"The reviewed cover letter disappeared before application synchronization\"\n"
+                  "        )\n",
+              )
+
+          replace_exact(
+              "backend/app/services/lever_pilot_control_request.py",
+              "    assert record is not None\n",
+              "    if record is None:\n        return False\n",
+          )
+
+          runtime = Path("backend/app/services/supervised_runtime_mode.py")
+          text = runtime.read_text(encoding="utf-8")
+          first = (
+              "    if not _common_marker_valid(marker):\n"
+              "        return False\n"
+              "    assert marker is not None\n"
+          )
+          first_new = (
+              "    if not _common_marker_valid(marker):\n"
+              "        return False\n"
+              "    if marker is None:\n"
+              "        return False\n"
+          )
+          if text.count(first) != 1:
+              raise SystemExit("supervised_runtime_mode.py: pending marker assertion context changed")
+          text = text.replace(first, first_new, 1)
+          second = (
+              "    if not _common_marker_valid(marker):\n"
+              "        blockers.append(\"marker_invalid\")\n"
+              "        return result\n"
+              "    assert marker is not None\n"
+          )
+          second_new = (
+              "    if not _common_marker_valid(marker):\n"
+              "        blockers.append(\"marker_invalid\")\n"
+              "        return result\n"
+              "    if marker is None:\n"
+              "        blockers.append(\"marker_invalid\")\n"
+              "        return result\n"
+          )
+          if text.count(second) != 1:
+              raise SystemExit("supervised_runtime_mode.py: active marker assertion context changed")
+          runtime.write_text(text.replace(second, second_new, 1), encoding="utf-8")
+
+          target = Path("backend/app/services/application_target_handoff.py")
+          text = target.read_text(encoding="utf-8")
+          old_import = "from typing import Any, Dict\n"
+          new_import = "from typing import Any, Awaitable, Callable, Dict, cast\n"
+          if text.count(old_import) != 1:
+              raise SystemExit("application_target_handoff.py typing import context changed")
+          text = text.replace(old_import, new_import, 1)
+          old_resolver = (
+              "    resolver = _target_evidence_from_browser\n"
+              "    if callable(resolver):\n"
+              "        return await resolver(page, source_url, log)\n"
+          )
+          new_resolver = (
+              "    resolver = cast(\n"
+              "        Callable[[Any, str, list[Dict[str, Any]]], Awaitable[Dict[str, Any]]] | None,\n"
+              "        _target_evidence_from_browser,\n"
+              "    )\n"
+              "    if resolver is not None:\n"
+              "        return await resolver(page, source_url, log)\n"
+          )
+          if text.count(old_resolver) != 1:
+              raise SystemExit("application_target_handoff.py resolver context changed")
+          target.write_text(text.replace(old_resolver, new_resolver, 1), encoding="utf-8")
+          PY
+
+          python -m py_compile \
+            backend/app/services/lever_phase_b_current_materials.py \
+            backend/app/services/lever_phase_b_reviewed_materials.py \
+            backend/app/services/lever_pilot_control_request.py \
+            backend/app/services/supervised_runtime_mode.py \
+            backend/app/services/application_target_handoff.py
+
+          python -m pip install --disable-pip-version-check --quiet bandit pylint
+          bandit -q -t B101 \
+            backend/app/services/lever_phase_b_current_materials.py \
+            backend/app/services/lever_phase_b_reviewed_materials.py \
+            backend/app/services/lever_pilot_control_request.py \
+            backend/app/services/supervised_runtime_mode.py
+          pylint --disable=all --enable=not-callable backend/app/services/application_target_handoff.py
+          git diff --check
+
+      - name: Commit clean staging wave and remove temporary workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "TheHighBrid"
+          git config user.email "120822557+TheHighBrid@users.noreply.github.com"
+          git add \
+            backend/app/services/lever_phase_b_current_materials.py \
+            backend/app/services/lever_phase_b_reviewed_materials.py \
+            backend/app/services/lever_pilot_control_request.py \
+            backend/app/services/supervised_runtime_mode.py \
+            backend/app/services/application_target_handoff.py
+          git rm -f .github/workflows/codacy-fix-b101.yml .github/workflows/codacy-wave2-staging.yml
+          git commit -m "fix: clear remaining production B101 and resolver error"
+          git push origin HEAD:codex/codacy-wave2-staging
