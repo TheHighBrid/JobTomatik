@@ -113,12 +113,12 @@ def test_android_production_release_workflow_is_fail_closed_and_owner_scoped():
     assert "JOBTOMATIK_KEY_PASSWORD" in workflow
     assert "JOBTOMATIK_RELEASE_CERT_SHA256" in workflow
     assert "test -n \"$KEYSTORE_BASE64\"" in workflow
-    assert "test -n \"$EXPECTED_CERT_SHA256\"" not in workflow
+    assert "EXPECTED_CERT_SHA256=\"$(printf '%s' \"$EXPECTED_CERT_SHA256\"" in workflow
     assert "apksigner" in workflow
     assert "SIGNING_CERT_SHA256" in workflow
     assert "test \"$SIGNING_CERT_SHA256\" = \"$EXPECTED_CERT_SHA256\"" in workflow
     assert "VERSION_CODE\" -gt 210" in workflow
-    assert "versionCode='\$VERSION_CODE'" in workflow
+    assert "versionCode='$VERSION_CODE'" in workflow
     assert "SIGNING_MODE: persistent_release_signed" in workflow
     assert "assembleRelease" in workflow
     assert "assembleDebug" not in workflow
