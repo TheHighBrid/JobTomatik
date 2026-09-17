@@ -1,6 +1,6 @@
 apply plugin: 'com.android.application'
 
-// Release signing is optional and must be provided outside source control.
+// Release signing must be supplied outside source control.
 // Supported environment variables:
 //   JOBTOMATIK_KEYSTORE_PATH
 //   JOBTOMATIK_KEYSTORE_PASSWORD
@@ -37,13 +37,18 @@ android {
     }
 
     signingConfigs {
-        if (releaseSigningConfigured) {
-            release {
-                storeFile file(releaseKeystorePath)
-                storePassword releaseKeystorePassword
-                keyAlias releaseKeyAlias
-                keyPassword releaseKeyPassword
+        release {
+            if (!releaseSigningConfigured) {
+                throw new GradleException(
+                        "Persistent JobTomatik release signing is required. " +
+                        "Set JOBTOMATIK_KEYSTORE_PATH, JOBTOMATIK_KEYSTORE_PASSWORD, " +
+                        "JOBTOMATIK_KEY_ALIAS, and JOBTOMATIK_KEY_PASSWORD outside source control."
+                )
             }
+            storeFile file(releaseKeystorePath)
+            storePassword releaseKeystorePassword
+            keyAlias releaseKeyAlias
+            keyPassword releaseKeyPassword
         }
     }
 
@@ -52,9 +57,7 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (releaseSigningConfigured) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingConfigs.release
         }
     }
 }
