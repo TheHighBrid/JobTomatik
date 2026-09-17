@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
+from app.config import get_settings
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.services.ats_base import page_fingerprint
 from app.services.ats_registry import detect_ats_adapter
@@ -99,7 +100,8 @@ _CONFIRMATION_PATH_FRAGMENTS = (
 
 
 def current_browser_node_id() -> str:
-    return os.getenv("JOBTOMATIK_BROWSER_NODE_ID") or socket.gethostname()
+    configured = os.getenv("JOBTOMATIK_BROWSER_NODE_ID") or get_settings().jobtomatik_browser_node_id
+    return configured or socket.gethostname()
 
 
 def _require_local_affinity(session: ManualHandoffSession) -> None:

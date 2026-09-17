@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     # A positive value is an explicit opt-in that occupies the current worker task.
     application_target_human_wait_seconds: int = Field(default=0, ge=0, le=3600)
 
+    # Runtime-affinity and retained handoff paths must be loadable from backend/.env
+    # because Android-managed API/worker processes intentionally sanitize shell env.
+    jobtomatik_browser_node_id: str = ""
+    handoff_storage_dir: str = "handoff_sessions"
+
     # Defense-in-depth gate for any non-dry-run application attempt.
     # Keep disabled until the active adapter has passed supervised certification.
     allow_real_application_submit: bool = False
