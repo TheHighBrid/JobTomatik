@@ -17,6 +17,15 @@ NATIVE_TMPDIR="${TMPDIR:-${PREFIX:-/data/data/com.termux/files/usr}/tmp}"
 SHARED_CONTROL_DIR="${JOBTOMATIK_SHARED_PILOT_CONTROL_DIR:-$NATIVE_TMPDIR/jobtomatik-pilot-control}"
 MIN_FREE_KB="${JOBTOMATIK_PROMOTION_MIN_FREE_KB:-262144}"
 
+NATIVE_CONTRACT_PATHS=(
+  backend/scripts/jobtomatik_termux_wrapper.sh
+  backend/scripts/jobtomatik_pilot_wrapper.sh
+  backend/scripts/jobtomatik_pilot_control_daemon.sh
+  backend/scripts/jobtomatik_pilot_controller_manager.sh
+  backend/scripts/start_android_browser_cdp.sh
+  backend/scripts/jobtomatik_process_identity.sh
+)
+
 require_native_command() {
   local name="$1"
   if ! command -v "$name" >/dev/null 2>&1; then
@@ -70,7 +79,7 @@ verify_frozen_return_artifact() {
 set -euo pipefail
 repo="$1"
 expected="$2"
-actual="$(git -C "$repo" rev-parse HEAD | tr '[:upper:]' '[:lower:]')"
+actual="$(git -C "$repo" rev-parse HEAD)"
 if [[ "$actual" != "$expected" ]]; then
   echo "Frozen checkout moved: expected=$expected actual=$actual" >&2
   exit 1
@@ -83,23 +92,31 @@ GUEST
 }
 
 prepare_lane() {
+  local contract_blob_args=""
+  local path
+  for path in "${NATIVE_CONTRACT_PATHS[@]}"; do
+    printf -v contract_blob_args '%s %q' "$contract_blob_args" "$path"
+  done
+
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -s -- \
-    "$FROZEN_REPO" "$PROMOTION_REPO" "$EXPECTED_FROZEN_REVISION" "$MIN_FREE_KB" <<'GUEST'
+    "$FROZEN_REPO" "$PROMOTION_REPO" "$EXPECTED_FROZEN_REVISION" "$MIN_FREE_KB" \
+    "${NATIVE_CONTRACT_PATHS[@]}" <<'GUEST'
 set -euo pipefail
 
 source_repo="$1"
 promotion_repo="$2"
 expected_frozen="$3"
 min_free_kb="$4"
+shift 4
+native_paths=("$@")
 marker_rel="backend/.runtime/promotion-lane.json"
-promotion_db_name="jobtomatik-promotion.db"
 
 if [[ ! -d "$source_repo/.git" && ! -f "$source_repo/.git" ]]; then
   echo "Frozen repository is not a Git checkout: $source_repo" >&2
   exit 1
 fi
 
-source_head="$(git -C "$source_repo" rev-parse HEAD | tr '[:upper:]' '[:lower:]')"
+source_head="$(git -C "$source_repo" rev-parse HEAD)"
 if [[ "$source_head" != "$expected_frozen" ]]; then
   echo "Frozen certification checkout must remain exact: expected=$expected_frozen actual=$source_head" >&2
   exit 1
@@ -118,10 +135,18 @@ if [[ ! -f "$source_repo/backend/.env" ]]; then
 fi
 
 git -C "$source_repo" fetch --no-tags origin main
-target_revision="$(git -C "$source_repo" rev-parse origin/main | tr '[:upper:]' '[:lower:]')"
+target_revision="$(git -C "$source_repo" rev-parse origin/main)"
 
-# Sharing the existing Python environment saves device storage. It is permitted only
-# while the exact dependency lock represented by requirements.txt is unchanged.
+for required in backend/requirements.txt; do
+  if ! git -C "$source_repo" cat-file -e "$source_head:$required" 2>/dev/null; then
+    echo "Frozen revision is missing required contract file: $required" >&2
+    exit 1
+  fi
+  if ! git -C "$source_repo" cat-file -e "$target_revision:$required" 2>/dev/null; then
+    echo "Promotion revision is missing required contract file: $required" >&2
+    exit 1
+  fi
+done
 source_requirements="$(git -C "$source_repo" rev-parse "$source_head:backend/requirements.txt")"
 target_requirements="$(git -C "$source_repo" rev-parse "$target_revision:backend/requirements.txt")"
 if [[ "$source_requirements" != "$target_requirements" ]]; then
@@ -129,15 +154,15 @@ if [[ "$source_requirements" != "$target_requirements" ]]; then
   exit 1
 fi
 
-# Native commands remain installed from the frozen runtime. Prove that the scripts
-# those commands came from are byte-identical on the promotion revision before reuse.
-for path in \
-  backend/scripts/jobtomatik_termux_wrapper.sh \
-  backend/scripts/jobtomatik_pilot_wrapper.sh \
-  backend/scripts/jobtomatik_pilot_control_daemon.sh \
-  backend/scripts/jobtomatik_pilot_controller_manager.sh \
-  backend/scripts/start_android_browser_cdp.sh \
-  backend/scripts/jobtomatik_process_identity.sh; do
+for path in "${native_paths[@]}"; do
+  if ! git -C "$source_repo" cat-file -e "$source_head:$path" 2>/dev/null; then
+    echo "Frozen revision is missing native launcher contract file: $path" >&2
+    exit 1
+  fi
+  if ! git -C "$source_repo" cat-file -e "$target_revision:$path" 2>/dev/null; then
+    echo "Promotion revision is missing native launcher contract file: $path" >&2
+    exit 1
+  fi
   source_blob="$(git -C "$source_repo" rev-parse "$source_head:$path")"
   target_blob="$(git -C "$source_repo" rev-parse "$target_revision:$path")"
   if [[ "$source_blob" != "$target_blob" ]]; then
@@ -152,27 +177,15 @@ if [[ -e "$promotion_repo" ]]; then
     echo "Promotion path already exists without a verified lane marker: $promotion_repo" >&2
     exit 1
   fi
-  "$source_repo/backend/.venv/bin/python" - "$promotion_repo" "$expected_frozen" <<'PY'
-import json
-import sqlite3
-import sys
-from pathlib import Path
-
-repo = Path(sys.argv[1]).resolve()
-expected_frozen = sys.argv[2]
-marker_path = repo / "backend/.runtime/promotion-lane.json"
-marker = json.loads(marker_path.read_text(encoding="utf-8"))
-if marker.get("source_frozen_revision") != expected_frozen:
-    raise SystemExit("Existing promotion lane was not derived from the expected frozen runtime")
-db = repo / "backend" / str(marker.get("promotion_database") or "")
-if not db.is_file():
-    raise SystemExit("Existing promotion lane database is missing")
-with sqlite3.connect(db) as connection:
-    result = connection.execute("PRAGMA quick_check").fetchone()
-if not result or result[0] != "ok":
-    raise SystemExit("Existing promotion lane database failed quick_check")
-print(f"JOBTOMATIK_PROMOTION_LANE_ALREADY_PREPARED={marker.get('target_revision')}")
-PY
+  existing_target="$(git -C "$promotion_repo" rev-parse HEAD)"
+  (
+    cd "$promotion_repo/backend"
+    .venv/bin/python scripts/prepare_lever_promotion_lane_state.py verify \
+      --promotion-repo "$promotion_repo" \
+      --expected-frozen-revision "$expected_frozen" \
+      --expected-target-revision "$existing_target"
+  )
+  echo "JOBTOMATIK_PROMOTION_LANE_ALREADY_PREPARED=$existing_target"
   exit 0
 fi
 
@@ -195,135 +208,14 @@ cleanup_partial() {
 trap cleanup_partial ERR INT TERM HUP
 
 ln -s "$source_repo/backend/.venv" "$promotion_repo/backend/.venv"
-
-"$source_repo/backend/.venv/bin/python" - \
-  "$source_repo" "$promotion_repo" "$source_head" "$target_revision" "$promotion_db_name" <<'PY'
-from __future__ import annotations
-
-import hashlib
-import json
-import shutil
-import sqlite3
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-from sqlalchemy.engine import make_url
-
-source_repo = Path(sys.argv[1]).resolve()
-promotion_repo = Path(sys.argv[2]).resolve()
-source_revision = sys.argv[3]
-target_revision = sys.argv[4]
-promotion_db_name = sys.argv[5]
-source_backend = source_repo / "backend"
-promotion_backend = promotion_repo / "backend"
-source_env = source_backend / ".env"
-promotion_env = promotion_backend / ".env"
-
-
-def read_env_value(path: Path, key: str) -> str | None:
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        name, value = line.split("=", 1)
-        if name.strip() == key:
-            value = value.strip()
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-                value = value[1:-1]
-            return value
-    return None
-
-
-def set_env_value(lines: list[str], key: str, value: str) -> list[str]:
-    prefix = f"{key}="
-    updated = []
-    replaced = False
-    for raw in lines:
-        if raw.startswith(prefix):
-            if not replaced:
-                updated.append(f"{key}={value}")
-                replaced = True
-            continue
-        updated.append(raw)
-    if not replaced:
-        if updated and updated[-1] != "":
-            updated.append("")
-        updated.append(f"{key}={value}")
-    return updated
-
-
-database_url = read_env_value(source_env, "DATABASE_URL") or "sqlite:///./jobtomatik.db"
-url = make_url(database_url)
-if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
-    raise SystemExit("Promotion lane requires the physical Android runtime to use a file-backed SQLite database")
-source_db = Path(url.database)
-if not source_db.is_absolute():
-    source_db = (source_backend / source_db).resolve()
-if not source_db.is_file():
-    raise SystemExit(f"Frozen SQLite database is missing: {source_db}")
-
-target_db = promotion_backend / promotion_db_name
-if target_db.exists():
-    raise SystemExit(f"Refusing to overwrite existing promotion database: {target_db}")
-
-# sqlite3.Connection.backup is WAL-aware and produces a consistent point-in-time
-# snapshot without mutating the frozen database, even while the frozen runtime is live.
-source_uri = f"file:{source_db}?mode=ro"
-with sqlite3.connect(source_uri, uri=True) as source, sqlite3.connect(target_db) as target:
-    source.backup(target)
-    check = target.execute("PRAGMA quick_check").fetchone()
-if not check or check[0] != "ok":
-    target_db.unlink(missing_ok=True)
-    raise SystemExit("Promotion database snapshot failed SQLite quick_check")
-
-shutil.copy2(source_env, promotion_env)
-lines = promotion_env.read_text(encoding="utf-8").splitlines()
-safe_values = {
-    "DATABASE_URL": f"sqlite:///./{promotion_db_name}",
-    "ALLOW_REAL_APPLICATION_SUBMIT": "false",
-    "ALLOW_REAL_FOLLOWUP_SEND": "false",
-    "AUTOPILOT_ENABLED": "false",
-    "GREENHOUSE_SUPERVISED_PILOT_ENABLED": "false",
-    "LEVER_SUPERVISED_PILOT_ENABLED": "false",
-}
-for key, value in safe_values.items():
-    lines = set_env_value(lines, key, value)
-promotion_env.write_text("\n".join(lines) + "\n", encoding="utf-8")
-promotion_env.chmod(0o600)
-
-# Preserve files referenced by the copied database without sharing writable inodes
-# back into the frozen certification lane.
-for relative in (Path("backend/uploads"), Path("backend/handoff_sessions"), Path("handoff_sessions")):
-    source = source_repo / relative
-    destination = promotion_repo / relative
-    if source.is_dir() and not destination.exists():
-        shutil.copytree(source, destination)
-
-runtime_dir = promotion_backend / ".runtime"
-runtime_dir.mkdir(parents=True, exist_ok=True)
-sha = hashlib.sha256()
-with target_db.open("rb") as handle:
-    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-        sha.update(chunk)
-marker = {
-    "version": 1,
-    "lane": "lever_promotion_evidence",
-    "source_frozen_revision": source_revision,
-    "target_revision": target_revision,
-    "promotion_database": promotion_db_name,
-    "promotion_database_sha256": sha.hexdigest(),
-    "prepared_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-    "safety_flags": safe_values,
-    "browser_profile_policy": "separate_native_profile_required",
-    "final_submit_authority_created": False,
-}
-(runtime_dir / "promotion-lane.json").write_text(
-    json.dumps(marker, indent=2, sort_keys=True) + "\n",
-    encoding="utf-8",
+(
+  cd "$promotion_repo/backend"
+  .venv/bin/python scripts/prepare_lever_promotion_lane_state.py prepare \
+    --source-repo "$source_repo" \
+    --promotion-repo "$promotion_repo" \
+    --source-revision "$source_head" \
+    --target-revision "$target_revision"
 )
-print(json.dumps(marker, sort_keys=True))
-PY
 
 created=0
 trap - ERR INT TERM HUP
@@ -333,13 +225,8 @@ GUEST
 
 start_lane() {
   prepare_lane
-  # Prove that the frozen lane can be restarted from its already-installed exact
-  # static artifact before stopping anything. This prevents a one-way lane switch.
   verify_frozen_return_artifact
 
-  # Stop both known lane identities before clearing the one shared /tmp request bus.
-  # Each stop command is identity-bound to its own runtime dir/profile and refuses to
-  # signal unrelated processes.
   promotion_stack stop >/dev/null 2>&1 || true
   frozen_stack stop
   archive_shared_control_dir "$FROZEN_RUNTIME_DIR" "before-promotion"
@@ -407,7 +294,12 @@ set -euo pipefail
 repo="$1"
 marker="$repo/backend/.runtime/promotion-lane.json"
 if [[ -f "$marker" ]]; then
-  cat "$marker"
+  target="$(git -C "$repo" rev-parse HEAD)"
+  cd "$repo/backend"
+  .venv/bin/python scripts/prepare_lever_promotion_lane_state.py verify \
+    --promotion-repo "$repo" \
+    --expected-frozen-revision "$(.venv/bin/python -c 'import json; print(json.load(open(".runtime/promotion-lane.json"))["source_frozen_revision"])')" \
+    --expected-target-revision "$target"
 else
   echo "JOBTOMATIK_PROMOTION_LANE_PREPARED=false"
 fi
@@ -422,10 +314,7 @@ case "$ACTION" in
   prepare)
     prepare_lane
     ;;
-  start)
-    start_lane
-    ;;
-  prepare-start)
+  start|prepare-start)
     start_lane
     ;;
   stop)
