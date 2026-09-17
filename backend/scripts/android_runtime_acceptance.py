@@ -36,6 +36,12 @@ from app.services.supervised_runtime_mode import (  # noqa: E402
 )
 from scripts import android_runtime_acceptance_base as _base  # noqa: E402
 
+# Explicit aliases keep the facade's runtime seam visible to static analyzers.
+get_settings = _base.get_settings
+current_revision = _base.current_revision
+runtime_acceptance_path = _base.runtime_acceptance_path
+write_receipt = _base.write_receipt
+
 for _name in dir(_base):
     if _name.startswith("__") or _name in globals():
         continue

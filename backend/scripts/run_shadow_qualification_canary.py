@@ -38,6 +38,14 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.services.operations_policy import SHADOW_TEST_POLICY_PROFILE  # noqa: E402
 from scripts import run_shadow_qualification_canary_base as _base  # noqa: E402
 
+# Explicit aliases preserve the facade contract while making dynamic base seams
+# visible to static analyzers and type-aware review.
+ApplicationAutomationState = _base.ApplicationAutomationState
+ApplicationEvent = _base.ApplicationEvent
+BROWSER_ACTIONS = _base.BROWSER_ACTIONS
+ManualReviewTask = _base.ManualReviewTask
+ShadowRunSession = _base.ShadowRunSession
+
 for _name in dir(_base):
     if _name.startswith("__") or _name in globals():
         continue

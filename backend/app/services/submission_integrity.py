@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from datetime import datetime
-from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from sqlalchemy.orm import Session
