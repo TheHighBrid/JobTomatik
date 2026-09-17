@@ -371,14 +371,13 @@ def resolve_runtime_policy(question_text: str, policies: Iterable[Dict[str, Any]
             "conflict_policy_ids": [item.get("id") for item in conflicts],
         }
 
-    policy = sorted(
+    policy = max(
         top_candidates,
         key=lambda item: (
             _sort_timestamp(item.get("updated_at") or item.get("created_at")),
             item.get("id") or 0,
         ),
-        reverse=True,
-    )[0]
+    )
     mode = policy.get("mode", AnswerPolicyMode.ask_each_time.value)
     answer_candidates = policy_answer_candidates(policy)
     answer = answer_candidates[0] if answer_candidates else None
