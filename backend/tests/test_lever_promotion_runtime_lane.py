@@ -51,15 +51,31 @@ def test_promotion_lane_has_no_embedded_database_mutation_logic_or_submit_arm():
     assert 'PILOT_COMMAND" arm' not in source
 
 
-def test_promotion_lane_isolates_runtime_browser_and_transient_control_state():
+def test_promotion_lane_isolates_runtime_browser_broker_and_transient_control_state():
     source = _source()
 
     assert "$HOME/.jobtomatik-promotion-runtime" in source
     assert "$HOME/.jobtomatik-promotion-chromium" in source
+    assert "redis://localhost:${PROMOTION_REDIS_PORT}/${PROMOTION_REDIS_DB}" in source
+    assert "JOBTOMATIK_ANDROID_REDIS_URL=\"$PROMOTION_REDIS_URL\"" in source
+    assert "JOBTOMATIK_ANDROID_REDIS_URL=\"$FROZEN_REDIS_URL\"" in source
+    assert "start_promotion_redis" in source
+    assert "stop_promotion_redis" in source
+    assert "FLUSHDB" in source
+    assert "promotion-redis.rdb" in source
     assert "JOBTOMATIK_ANDROID_BROWSER_PROFILE=\"$PROMOTION_BROWSER_PROFILE\"" in source
     assert "JOBTOMATIK_ANDROID_RUNTIME_DIR=\"$PROMOTION_RUNTIME_DIR\"" in source
     assert "archive_shared_control_dir" in source
     assert "pilot-control-archives" in source
+
+
+def test_existing_lane_must_match_freshly_fetched_current_main():
+    source = _source()
+    prepare = _function(source, "prepare_lane", "restore_frozen_after_failure")
+
+    assert 'if [[ "$existing_target" != "$target_revision" ]]' in prepare
+    assert "Existing promotion lane is not current main" in prepare
+    assert "Refusing implicit upgrade" in prepare
 
 
 def test_start_proves_frozen_rollback_before_stopping_frozen_lane_and_requires_acceptance():
@@ -67,7 +83,8 @@ def test_start_proves_frozen_rollback_before_stopping_frozen_lane_and_requires_a
     start = _function(source, "start_lane", "stop_lane")
 
     assert start.index("verify_frozen_return_artifact") < start.index("frozen_stack stop")
-    assert start.index("frozen_stack stop") < start.index("promotion_stack start")
+    assert start.index("frozen_stack stop") < start.index("start_promotion_redis")
+    assert start.index("start_promotion_redis") < start.index("promotion_stack start")
     assert "promotion_stack acceptance" in start
     assert "promotion_pilot status" in start
     assert "lever-pilot-runtime.active" in start
@@ -75,19 +92,27 @@ def test_start_proves_frozen_rollback_before_stopping_frozen_lane_and_requires_a
     assert "JOBTOMATIK_PROMOTION_LANE_READY_FAIL_SAFE" in start
 
 
-def test_failed_promotion_start_or_acceptance_attempts_frozen_recovery():
+def test_every_post_stop_failure_path_restores_the_frozen_lane():
     source = _source()
     start = _function(source, "start_lane", "stop_lane")
+    recovery = _function(source, "restore_frozen_after_failure", "start_lane")
 
-    assert start.count("frozen_stack start || true") >= 2
+    assert "frozen_stack start || true" in recovery
+    assert "stop_promotion_redis" in recovery
     assert "failed-promotion-start" in start
     assert "failed-promotion-acceptance" in start
+    assert "unexpected-promotion-pilot-marker" in start
+    assert "failed-promotion-pilot-status" in start
+    assert start.count("restore_frozen_after_failure") >= 4
+    assert "Promotion Redis failed to start; restoring frozen lane" in start
+    assert "frozen_stack start || true" in start
 
 
 def test_return_frozen_never_updates_or_switches_the_frozen_checkout():
     source = _source()
     restore = _function(source, "return_frozen", "status_lane")
 
+    assert "stop_promotion_redis" in restore
     assert "verify_frozen_return_artifact" in restore
     assert "frozen_stack start" in restore
     assert "frozen_stack acceptance" in restore
