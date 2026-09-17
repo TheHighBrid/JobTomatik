@@ -92,12 +92,6 @@ GUEST
 }
 
 prepare_lane() {
-  local contract_blob_args=""
-  local path
-  for path in "${NATIVE_CONTRACT_PATHS[@]}"; do
-    printf -v contract_blob_args '%s %q' "$contract_blob_args" "$path"
-  done
-
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -s -- \
     "$FROZEN_REPO" "$PROMOTION_REPO" "$EXPECTED_FROZEN_REVISION" "$MIN_FREE_KB" \
     "${NATIVE_CONTRACT_PATHS[@]}" <<'GUEST'
@@ -137,16 +131,14 @@ fi
 git -C "$source_repo" fetch --no-tags origin main
 target_revision="$(git -C "$source_repo" rev-parse origin/main)"
 
-for required in backend/requirements.txt; do
-  if ! git -C "$source_repo" cat-file -e "$source_head:$required" 2>/dev/null; then
-    echo "Frozen revision is missing required contract file: $required" >&2
-    exit 1
-  fi
-  if ! git -C "$source_repo" cat-file -e "$target_revision:$required" 2>/dev/null; then
-    echo "Promotion revision is missing required contract file: $required" >&2
-    exit 1
-  fi
-done
+if ! git -C "$source_repo" cat-file -e "$source_head:backend/requirements.txt" 2>/dev/null; then
+  echo "Frozen revision is missing required contract file: backend/requirements.txt" >&2
+  exit 1
+fi
+if ! git -C "$source_repo" cat-file -e "$target_revision:backend/requirements.txt" 2>/dev/null; then
+  echo "Promotion revision is missing required contract file: backend/requirements.txt" >&2
+  exit 1
+fi
 source_requirements="$(git -C "$source_repo" rev-parse "$source_head:backend/requirements.txt")"
 target_requirements="$(git -C "$source_repo" rev-parse "$target_revision:backend/requirements.txt")"
 if [[ "$source_requirements" != "$target_requirements" ]]; then
@@ -289,16 +281,18 @@ status_lane() {
   else
     echo "JOBTOMATIK_PROMOTION_LANE_RUNTIME=DOWN"
   fi
-  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -s -- "$PROMOTION_REPO" <<'GUEST' || true
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -s -- \
+    "$PROMOTION_REPO" "$EXPECTED_FROZEN_REVISION" <<'GUEST' || true
 set -euo pipefail
 repo="$1"
+expected_frozen="$2"
 marker="$repo/backend/.runtime/promotion-lane.json"
 if [[ -f "$marker" ]]; then
   target="$(git -C "$repo" rev-parse HEAD)"
   cd "$repo/backend"
   .venv/bin/python scripts/prepare_lever_promotion_lane_state.py verify \
     --promotion-repo "$repo" \
-    --expected-frozen-revision "$(.venv/bin/python -c 'import json; print(json.load(open(".runtime/promotion-lane.json"))["source_frozen_revision"])')" \
+    --expected-frozen-revision "$expected_frozen" \
     --expected-target-revision "$target"
 else
   echo "JOBTOMATIK_PROMOTION_LANE_PREPARED=false"
