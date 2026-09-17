@@ -242,22 +242,21 @@ def _copy_optional_runtime_state(
     return copied
 
 
-def prepare_state(
-    *,
-    source_repo: Path,
-    promotion_repo: Path,
-    source_revision: str,
-    target_revision: str,
-) -> dict:
-    source_repo = source_repo.resolve()
-    promotion_repo = promotion_repo.resolve()
-    source_backend = source_repo / "backend"
-    promotion_backend = promotion_repo / "backend"
+def _promotion_paths(source_repo: Path, promotion_repo: Path) -> tuple[Path, Path, Path, Path]:
+    source_backend = source_repo.resolve() / "backend"
+    promotion_backend = promotion_repo.resolve() / "backend"
     source_env = source_backend / ".env"
     promotion_env = promotion_backend / ".env"
     if not source_env.is_file():
         raise PromotionLaneStateError(f"Frozen backend .env is missing: {source_env}")
+    return source_backend, promotion_backend, source_env, promotion_env
 
+
+def _snapshot_required_state(
+    source_backend: Path,
+    promotion_backend: Path,
+    source_env: Path,
+) -> tuple[Path, Path, list[dict]]:
     database_url = read_env_value(source_env, "DATABASE_URL") or "sqlite:///./jobtomatik.db"
     source_db = sqlite_database_path(source_backend, database_url)
     target_db = promotion_backend / PROMOTION_DB_NAME
@@ -271,13 +270,20 @@ def prepare_state(
     records = _validated_lever_ledger(source_ledger)
     promotion_ledger = promotion_backend / ISOLATED_ENV_PATHS["LEVER_PILOT_LEDGER_PATH"]
     _copy_file_if_present(source_ledger, promotion_ledger)
+    return target_db, promotion_ledger, records
 
-    copied_state = _copy_optional_runtime_state(source_backend, promotion_backend, source_env)
-    env_values = _write_promotion_env(source_env, promotion_env)
 
-    runtime_dir = promotion_backend / ".runtime"
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    marker = {
+def _promotion_marker(
+    *,
+    source_revision: str,
+    target_revision: str,
+    target_db: Path,
+    promotion_ledger: Path,
+    records: list[dict],
+    copied_state: dict[str, bool],
+    env_values: dict[str, str],
+) -> dict:
+    return {
         "version": 2,
         "lane": "lever_promotion_evidence",
         "source_frozen_revision": source_revision,
@@ -295,6 +301,37 @@ def prepare_state(
         "browser_node_id": env_values["JOBTOMATIK_BROWSER_NODE_ID"],
         "final_submit_authority_created": False,
     }
+
+
+def prepare_state(
+    *,
+    source_repo: Path,
+    promotion_repo: Path,
+    source_revision: str,
+    target_revision: str,
+) -> dict:
+    source_backend, promotion_backend, source_env, promotion_env = _promotion_paths(
+        source_repo,
+        promotion_repo,
+    )
+    target_db, promotion_ledger, records = _snapshot_required_state(
+        source_backend,
+        promotion_backend,
+        source_env,
+    )
+    copied_state = _copy_optional_runtime_state(source_backend, promotion_backend, source_env)
+    env_values = _write_promotion_env(source_env, promotion_env)
+    runtime_dir = promotion_backend / ".runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    marker = _promotion_marker(
+        source_revision=source_revision,
+        target_revision=target_revision,
+        target_db=target_db,
+        promotion_ledger=promotion_ledger,
+        records=records,
+        copied_state=copied_state,
+        env_values=env_values,
+    )
     (runtime_dir / "promotion-lane.json").write_text(
         json.dumps(marker, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -311,14 +348,11 @@ def _assert_env_values(env_file: Path, expected: dict[str, str]) -> None:
             )
 
 
-def verify_state(
-    *,
-    promotion_repo: Path,
+def _load_promotion_marker(
+    promotion_backend: Path,
     expected_frozen_revision: str,
     expected_target_revision: str,
 ) -> dict:
-    promotion_repo = promotion_repo.resolve()
-    promotion_backend = promotion_repo / "backend"
     marker_path = promotion_backend / ".runtime/promotion-lane.json"
     if not marker_path.is_file():
         raise PromotionLaneStateError("Promotion lane marker is missing")
@@ -331,7 +365,10 @@ def verify_state(
         raise PromotionLaneStateError(
             "Promotion lane target revision does not match the worktree revision"
         )
+    return marker
 
+
+def _verify_promotion_database(promotion_backend: Path, marker: dict) -> None:
     db = promotion_backend / str(marker.get("promotion_database") or "")
     if not db.is_file():
         raise PromotionLaneStateError("Promotion lane database is missing")
@@ -340,15 +377,17 @@ def verify_state(
     if not check or check[0] != "ok":
         raise PromotionLaneStateError("Promotion lane database failed SQLite quick_check")
 
-    env_file = promotion_backend / ".env"
-    expected_env = {
+
+def _expected_promotion_env() -> dict[str, str]:
+    return {
         "DATABASE_URL": f"sqlite:///./{PROMOTION_DB_NAME}",
         **SAFE_ENV_VALUES,
         **ISOLATED_ENV_PATHS,
         **CANONICAL_READ_ONLY_PATHS,
     }
-    _assert_env_values(env_file, expected_env)
 
+
+def _verify_promotion_ledger(promotion_backend: Path, marker: dict) -> tuple[list[dict], int]:
     ledger = promotion_backend / ISOLATED_ENV_PATHS["LEVER_PILOT_LEDGER_PATH"]
     records = _validated_lever_ledger(ledger)
     initial_count = int(marker.get("initial_lever_ledger_record_count") or 0)
@@ -356,7 +395,24 @@ def verify_state(
         raise PromotionLaneStateError(
             "Promotion Lever ledger lost retained confirmation evidence after preparation"
         )
+    return records, initial_count
 
+
+def verify_state(
+    *,
+    promotion_repo: Path,
+    expected_frozen_revision: str,
+    expected_target_revision: str,
+) -> dict:
+    promotion_backend = promotion_repo.resolve() / "backend"
+    marker = _load_promotion_marker(
+        promotion_backend,
+        expected_frozen_revision,
+        expected_target_revision,
+    )
+    _verify_promotion_database(promotion_backend, marker)
+    _assert_env_values(promotion_backend / ".env", _expected_promotion_env())
+    records, initial_count = _verify_promotion_ledger(promotion_backend, marker)
     return {
         "ok": True,
         "target_revision": expected_target_revision,
