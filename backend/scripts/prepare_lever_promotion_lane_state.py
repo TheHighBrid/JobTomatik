@@ -67,6 +67,23 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _sha256_prefix(path: Path, size: int) -> str:
+    if size <= 0:
+        raise PromotionLaneStateError("Promotion ledger inherited-prefix size is invalid")
+    digest = hashlib.sha256()
+    remaining = size
+    with path.open("rb") as handle:
+        while remaining:
+            chunk = handle.read(min(1024 * 1024, remaining))
+            if not chunk:
+                raise PromotionLaneStateError(
+                    "Promotion Lever ledger is shorter than its retained inherited prefix"
+                )
+            digest.update(chunk)
+            remaining -= len(chunk)
+    return digest.hexdigest()
+
+
 def _unquote(value: str) -> str:
     value = value.strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
@@ -284,13 +301,14 @@ def _promotion_marker(
     env_values: dict[str, str],
 ) -> dict:
     return {
-        "version": 2,
+        "version": 3,
         "lane": "lever_promotion_evidence",
         "source_frozen_revision": source_revision,
         "target_revision": target_revision,
         "promotion_database": PROMOTION_DB_NAME,
         "promotion_database_sha256": sha256_file(target_db),
         "initial_lever_ledger_record_count": len(records),
+        "initial_lever_ledger_size_bytes": promotion_ledger.stat().st_size,
         "initial_lever_ledger_sha256": sha256_file(promotion_ledger),
         "prepared_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "safety_flags": SAFE_ENV_VALUES,
@@ -387,8 +405,25 @@ def _expected_promotion_env() -> dict[str, str]:
     }
 
 
+def _verify_inherited_ledger_prefix(ledger: Path, marker: dict) -> None:
+    initial_size = int(marker.get("initial_lever_ledger_size_bytes") or 0)
+    expected_digest = str(marker.get("initial_lever_ledger_sha256") or "")
+    if initial_size <= 0 or not expected_digest:
+        raise PromotionLaneStateError(
+            "Promotion lane marker lacks inherited Lever ledger integrity metadata; rebuild the lane"
+        )
+    observed_digest = _sha256_prefix(ledger, initial_size)
+    if observed_digest != expected_digest:
+        raise PromotionLaneStateError(
+            "Promotion Lever ledger inherited confirmation evidence was replaced or mutated"
+        )
+
+
 def _verify_promotion_ledger(promotion_backend: Path, marker: dict) -> tuple[list[dict], int]:
     ledger = promotion_backend / ISOLATED_ENV_PATHS["LEVER_PILOT_LEDGER_PATH"]
+    if not ledger.is_file():
+        raise PromotionLaneStateError("Promotion Lever ledger is missing")
+    _verify_inherited_ledger_prefix(ledger, marker)
     records = _validated_lever_ledger(ledger)
     initial_count = int(marker.get("initial_lever_ledger_record_count") or 0)
     if len(records) < initial_count:
@@ -421,6 +456,7 @@ def verify_state(
         "database_quick_check": "ok",
         "persistent_submit_flags_off": True,
         "isolated_env_paths_verified": True,
+        "inherited_lever_ledger_prefix_verified": True,
     }
 
 
