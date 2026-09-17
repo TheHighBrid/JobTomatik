@@ -9,12 +9,15 @@ Tracking: #514
 The completed September Phase B objective sprint remains frozen at certification
 revision `198b197dfcece6fbf9f3edfc5a92511fd951b484`. Real supervised submissions
 needed for the separate Lever maturity gate must not mutate that checkout, its SQLite
-database, its native Chromium profile, or its retained objective history.
+database, native Chromium profile, filesystem state, or retained objective history.
 
 `backend/scripts/jobtomatik_promotion_lane.sh` creates a second, isolated execution
 lane for new promotion evidence while preserving the frozen lane as a rollback target.
+State preparation is implemented in
+`backend/scripts/prepare_lever_promotion_lane_state.py` so the database snapshot,
+ledger carry-forward, environment rewrite, and path isolation are directly testable.
 
-This helper does **not** arm the supervised pilot, issue an application approval,
+These helpers do **not** arm the supervised pilot, issue an application approval,
 queue an application, click final Submit, or enable any persistent submit/autopilot
 flag.
 
@@ -25,8 +28,11 @@ The promotion lane uses:
 - source-of-truth frozen checkout: `/root/JobTomatik` at exact revision `198b197d...`;
 - current-main sibling worktree: `/root/JobTomatik-promotion`;
 - promotion database: `backend/jobtomatik-promotion.db`;
+- promotion-local mutable state under `backend/.promotion-state/`;
 - promotion native runtime state: `~/.jobtomatik-promotion-runtime`;
 - promotion Chromium profile: `~/.jobtomatik-promotion-chromium`;
+- browser node identity `promotion-evidence-node`, so old retained frozen sessions cannot
+  silently satisfy the promotion browser-affinity contract;
 - the standard localhost API/frontend/CDP ports, but only after the frozen stack has
   been stopped;
 - the standard pilot-control `/tmp` bus, with its transient files archived between
@@ -34,33 +40,76 @@ The promotion lane uses:
 
 Only one lane is active at a time.
 
+## Retained Lever confirmation evidence
+
+The frozen runtime's configured `LEVER_PILOT_LEDGER_PATH` is authoritative for already
+accepted real Lever confirmation evidence. The promotion lane requires that ledger to
+exist and contain at least one structurally valid supervised Phase B record before it
+will prepare.
+
+The ledger is copied into:
+
+`backend/.promotion-state/evidence/lever-pilot-ledger.jsonl`
+
+The source file is never shared by writable inode and is never rewritten. The initial
+record count and SHA-256 are captured in the ignored promotion-lane receipt. Later
+promotion confirmations may append to the isolated copy. Re-entry verification permits
+the isolated ledger to grow but refuses any state where its valid-record count falls
+below the initial retained count.
+
+This preserves Maple application 247 as the existing real confirmation without
+relabeling the separate September 10/10 no-submit objective sprint.
+
+## Filesystem path isolation
+
+A copied `.env` is not trusted as-is. Mutable path settings are rewritten into the
+promotion worktree even if the frozen runtime used absolute paths:
+
+- `UPLOAD_DIR=.promotion-state/uploads`
+- `HANDOFF_STORAGE_DIR=.promotion-state/handoff_sessions`
+- `APPLICATION_BROWSER_PROFILE_DIR=.promotion-state/browser_profiles/jobtomatik-operator`
+- `GREENHOUSE_PILOT_LEDGER_PATH=.promotion-state/evidence/greenhouse-pilot-ledger.jsonl`
+- `GREENHOUSE_PILOT_READINESS_JSON_PATH=.promotion-state/evidence/greenhouse-pilot-readiness.json`
+- `GREENHOUSE_PILOT_READINESS_MARKDOWN_PATH=.promotion-state/evidence/greenhouse-pilot-readiness.md`
+- `LEVER_PILOT_LEDGER_PATH=.promotion-state/evidence/lever-pilot-ledger.jsonl`
+- `LEVER_PILOT_READINESS_JSON_PATH=.promotion-state/evidence/lever-pilot-readiness.json`
+- `LEVER_PILOT_READINESS_MARKDOWN_PATH=.promotion-state/evidence/lever-pilot-readiness.md`
+
+Read-only campaign inputs are normalized back to the promotion checkout's committed
+`evidence/` paths instead of retaining any absolute frozen-checkout location.
+
 ## Preparation contract
 
-`prepare` performs all of the following before creating the worktree:
+`prepare` performs all of the following before the lane can become active:
 
 1. requires the frozen checkout HEAD to equal the exact certification revision;
 2. refuses tracked modifications in the frozen checkout;
 3. fetches `origin/main` without switching the frozen checkout;
-4. proves `backend/requirements.txt` is byte-identical before sharing the existing
-   `.venv`, avoiding a second large dependency installation;
-5. proves the native Termux launcher/pilot/browser scripts are byte-identical between
-   frozen and promotion revisions before reusing the installed native commands;
+4. proves `backend/requirements.txt` exists on both revisions and is byte-identical
+   before sharing the existing `.venv`, avoiding a second large dependency install;
+5. proves each installed native Termux launcher/pilot/browser contract file exists and
+   is byte-identical between frozen and promotion revisions before reusing the native
+   commands;
 6. creates a detached sibling git worktree at exact `origin/main`;
 7. creates a WAL-aware SQLite backup using `sqlite3.Connection.backup` and requires
    `PRAGMA quick_check = ok`;
-8. copies local uploads/handoff files instead of sharing writable inodes;
-9. copies `.env` only into the promotion worktree and forces these persistent switches
-   OFF:
-   - `ALLOW_REAL_APPLICATION_SUBMIT=false`
-   - `ALLOW_REAL_FOLLOWUP_SEND=false`
-   - `AUTOPILOT_ENABLED=false`
-   - `GREENHOUSE_SUPERVISED_PILOT_ENABLED=false`
-   - `LEVER_SUPERVISED_PILOT_ENABLED=false`
-10. writes an ignored `backend/.runtime/promotion-lane.json` receipt containing the
-    frozen revision, promotion revision, database SHA-256, and fail-safe posture.
+8. requires and canonically validates the frozen Lever Phase B runtime ledger, then
+   copies it into isolated promotion state;
+9. copies local uploads, handoff files, and any existing Greenhouse runtime ledger
+   instead of sharing writable inodes;
+10. copies `.env` only into the promotion worktree, rewrites mutable paths, assigns a
+    promotion-only browser node, and forces these persistent switches OFF:
+    - `ALLOW_REAL_APPLICATION_SUBMIT=false`
+    - `ALLOW_REAL_FOLLOWUP_SEND=false`
+    - `AUTOPILOT_ENABLED=false`
+    - `GREENHOUSE_SUPERVISED_PILOT_ENABLED=false`
+    - `LEVER_SUPERVISED_PILOT_ENABLED=false`
+11. writes an ignored `backend/.runtime/promotion-lane.json` receipt containing the
+    frozen revision, promotion revision, database SHA-256, initial Lever-ledger count
+    and digest, isolated-path contract, and fail-safe posture.
 
-An existing verified promotion lane is validated and reused. Its database is never
-overwritten by an ordinary prepare.
+An existing verified promotion lane is validated and reused. Its database and ledger
+are never overwritten by an ordinary prepare.
 
 ## Lane switch contract
 
@@ -123,6 +172,10 @@ jobtomatik-promotion status
 jobtomatik-promotion stop
 jobtomatik-promotion return-frozen
 ```
+
+If preparation reports that the frozen Lever runtime ledger is missing or invalid, do
+not manufacture a replacement. Preserve the frozen checkout and investigate the
+retained Maple evidence path before continuing.
 
 ## Submission boundary
 
