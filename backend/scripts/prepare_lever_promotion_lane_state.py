@@ -15,17 +15,13 @@ import json
 import re
 import shutil
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
 
 from sqlalchemy.engine import make_url
 
-from app.services.lever_pilot_ledger_boundary import validate_phase_b_runtime_ledger
-
 PROMOTION_DB_NAME = "jobtomatik-promotion.db"
-PROMOTION_STATE_ROOT = Path(".promotion-state")
-
 SAFE_ENV_VALUES = {
     "ALLOW_REAL_APPLICATION_SUBMIT": "false",
     "ALLOW_REAL_FOLLOWUP_SEND": "false",
@@ -34,7 +30,6 @@ SAFE_ENV_VALUES = {
     "LEVER_SUPERVISED_PILOT_ENABLED": "false",
     "JOBTOMATIK_BROWSER_NODE_ID": "promotion-evidence-node",
 }
-
 ISOLATED_ENV_PATHS = {
     "UPLOAD_DIR": ".promotion-state/uploads",
     "HANDOFF_STORAGE_DIR": ".promotion-state/handoff_sessions",
@@ -46,20 +41,17 @@ ISOLATED_ENV_PATHS = {
     "LEVER_PILOT_READINESS_JSON_PATH": ".promotion-state/evidence/lever-pilot-readiness.json",
     "LEVER_PILOT_READINESS_MARKDOWN_PATH": ".promotion-state/evidence/lever-pilot-readiness.md",
 }
-
 CANONICAL_READ_ONLY_PATHS = {
     "GREENHOUSE_PILOT_BASELINE_PATH": "evidence/greenhouse-phase-a-baseline.csv",
     "LEVER_PILOT_BASELINE_PATH": "evidence/lever-phase-a-baseline.csv",
     "LEVER_PHASE_B_LAUNCH_PATH": "evidence/lever-phase-b-launch.json",
 }
-
 SOURCE_PATH_DEFAULTS = {
     "UPLOAD_DIR": "uploads",
     "HANDOFF_STORAGE_DIR": "handoff_sessions",
     "GREENHOUSE_PILOT_LEDGER_PATH": "evidence/greenhouse-pilot-ledger.jsonl",
     "LEVER_PILOT_LEDGER_PATH": "evidence/lever-pilot-ledger.jsonl",
 }
-
 _ENV_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=")
 
 
@@ -134,8 +126,9 @@ def backup_sqlite(source_db: Path, target_db: Path) -> None:
     if not source_db.is_file():
         raise PromotionLaneStateError(f"Frozen SQLite database is missing: {source_db}")
     if target_db.exists():
-        raise PromotionLaneStateError(f"Refusing to overwrite existing promotion database: {target_db}")
-
+        raise PromotionLaneStateError(
+            f"Refusing to overwrite existing promotion database: {target_db}"
+        )
     target_db.parent.mkdir(parents=True, exist_ok=True)
     source_uri = source_db.as_uri() + "?mode=ro"
     try:
@@ -174,12 +167,22 @@ def _copy_file_if_present(source: Path, destination: Path) -> bool:
     return True
 
 
+def _validate_runtime_ledger(path: Path) -> list[dict]:
+    backend_root = Path(__file__).resolve().parents[1]
+    backend_text = str(backend_root)
+    if backend_text not in sys.path:
+        sys.path.insert(0, backend_text)
+    from app.services.lever_pilot_ledger_boundary import validate_phase_b_runtime_ledger
+
+    return validate_phase_b_runtime_ledger(path)
+
+
 def _validated_lever_ledger(path: Path) -> list[dict]:
     if not path.is_file():
         raise PromotionLaneStateError(
             "Frozen Lever Phase B runtime ledger is missing; refusing to create a promotion lane that loses retained confirmation evidence"
         )
-    records = validate_phase_b_runtime_ledger(path)
+    records = _validate_runtime_ledger(path)
     if not records:
         raise PromotionLaneStateError(
             "Frozen Lever Phase B runtime ledger contains no valid supervised confirmation records"
@@ -209,7 +212,6 @@ def _copy_optional_runtime_state(
     source_env: Path,
 ) -> dict[str, bool]:
     copied: dict[str, bool] = {}
-
     source_uploads = resolve_runtime_path(
         source_backend,
         read_env_value(source_env, "UPLOAD_DIR"),
@@ -219,7 +221,6 @@ def _copy_optional_runtime_state(
         source_uploads,
         promotion_backend / ISOLATED_ENV_PATHS["UPLOAD_DIR"],
     )
-
     source_handoffs = resolve_runtime_path(
         source_backend,
         read_env_value(source_env, "HANDOFF_STORAGE_DIR"),
@@ -229,7 +230,6 @@ def _copy_optional_runtime_state(
         source_handoffs,
         promotion_backend / ISOLATED_ENV_PATHS["HANDOFF_STORAGE_DIR"],
     )
-
     source_greenhouse_ledger = resolve_runtime_path(
         source_backend,
         read_env_value(source_env, "GREENHOUSE_PILOT_LEDGER_PATH"),
@@ -255,7 +255,6 @@ def prepare_state(
     promotion_backend = promotion_repo / "backend"
     source_env = source_backend / ".env"
     promotion_env = promotion_backend / ".env"
-
     if not source_env.is_file():
         raise PromotionLaneStateError(f"Frozen backend .env is missing: {source_env}")
 
@@ -325,9 +324,13 @@ def verify_state(
         raise PromotionLaneStateError("Promotion lane marker is missing")
     marker = json.loads(marker_path.read_text(encoding="utf-8"))
     if marker.get("source_frozen_revision") != expected_frozen_revision:
-        raise PromotionLaneStateError("Promotion lane was not derived from the expected frozen revision")
+        raise PromotionLaneStateError(
+            "Promotion lane was not derived from the expected frozen revision"
+        )
     if marker.get("target_revision") != expected_target_revision:
-        raise PromotionLaneStateError("Promotion lane target revision does not match the worktree revision")
+        raise PromotionLaneStateError(
+            "Promotion lane target revision does not match the worktree revision"
+        )
 
     db = promotion_backend / str(marker.get("promotion_database") or "")
     if not db.is_file():
@@ -372,19 +375,17 @@ def _path(value: str) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
-
     prepare = subparsers.add_parser("prepare")
     prepare.add_argument("--source-repo", type=_path, required=True)
     prepare.add_argument("--promotion-repo", type=_path, required=True)
     prepare.add_argument("--source-revision", required=True)
     prepare.add_argument("--target-revision", required=True)
-
     verify = subparsers.add_parser("verify")
     verify.add_argument("--promotion-repo", type=_path, required=True)
     verify.add_argument("--expected-frozen-revision", required=True)
     verify.add_argument("--expected-target-revision", required=True)
-
     args = parser.parse_args()
+
     if args.command == "prepare":
         result = prepare_state(
             source_repo=args.source_repo,
