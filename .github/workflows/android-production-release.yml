@@ -1,0 +1,177 @@
+name: Build JobTomatik Android production-signed release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact 40-character current main commit to build
+        required: true
+        type: string
+      version_name:
+        description: Android versionName to package, for example 2.1.1
+        required: true
+        type: string
+      version_code:
+        description: Android versionCode, strictly greater than the current 210 baseline
+        required: true
+        type: number
+      release_tag:
+        description: Unique release tag, for example v2.1.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobtomatik-android-production-release
+  cancel-in-progress: false
+
+env:
+  SOURCE_COMMIT: ${{ inputs.source_commit }}
+  VERSION_NAME: ${{ inputs.version_name }}
+  VERSION_CODE: ${{ inputs.version_code }}
+  RELEASE_TAG: ${{ inputs.release_tag }}
+
+jobs:
+  build-production-release:
+    if: github.actor == 'TheHighBrid'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact current main source and release identity
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]
+          [[ "$VERSION_CODE" -gt 210 ]]
+          [[ "$RELEASE_TAG" == "v$VERSION_NAME" ]]
+          git fetch origin main --no-tags
+          test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
+          git cat-file -e "$SOURCE_COMMIT^{commit}"
+          git checkout --detach "$SOURCE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release tag $RELEASE_TAG already exists" >&2
+            exit 1
+          fi
+          test "$(git grep -m1 -E '^        versionCode [0-9]+$' -- frontend/android/app/build.gradle | awk '{print $2}')" = "$VERSION_CODE"
+          test "$(git grep -m1 -E '^        versionName \"[0-9]+\.[0-9]+\.[0-9]+\"$' -- frontend/android/app/build.gradle | sed -E 's/.*versionName \"([^\"]+)\"/\1/')" = "$VERSION_NAME"
+
+      - name: Verify mandatory persistent signing secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.JOBTOMATIK_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.JOBTOMATIK_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.JOBTOMATIK_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.JOBTOMATIK_KEY_PASSWORD }}
+          EXPECTED_CERT_SHA256: ${{ secrets.JOBTOMATIK_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+          EXPECTED_CERT_SHA256="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
+          [[ "$EXPECTED_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          KEYSTORE_PATH="$RUNNER_TEMP/jobtomatik-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          echo "JOBTOMATIK_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "JOBTOMATIK_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "JOBTOMATIK_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "JOBTOMATIK_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "EXPECTED_CERT_SHA256=$EXPECTED_CERT_SHA256" >> "$GITHUB_ENV"
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Build frontend and synchronize Capacitor
+        run: npm run android:prepare
+
+      - name: Lint and assemble production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          cd android
+          ./gradlew --no-daemon lintRelease assembleRelease
+
+      - name: Verify production APK identity and persistent certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          mkdir -p production-release
+          cp "$APK" "production-release/JobTomatik-$VERSION_NAME.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-BADGING.txt
+          grep -q "package: name='ca.jobtomatik.app'" production-release/APK-BADGING.txt
+          grep -q "versionCode='$VERSION_CODE'" production-release/APK-BADGING.txt
+          grep -q "versionName='$VERSION_NAME'" production-release/APK-BADGING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-SIGNING.txt
+          SIGNING_CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' production-release/APK-SIGNING.txt | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          [[ "$SIGNING_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test "$SIGNING_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+          sha256sum "production-release/JobTomatik-$VERSION_NAME.apk" > "production-release/JobTomatik-$VERSION_NAME.sha256"
+          printf '%s\n' "$SOURCE_COMMIT" > production-release/SOURCE-COMMIT.txt
+          cat > production-release/BUILD-INFO.txt <<EOF
+          JobTomatik Android production-signed build
+          Version name: $VERSION_NAME
+          Android version code: $VERSION_CODE
+          Application ID: ca.jobtomatik.app
+          Signing mode: persistent_release_signed
+          Signing certificate SHA-256: $SIGNING_CERT_SHA256
+          Source commit: $SOURCE_COMMIT
+          Release tag: $RELEASE_TAG
+          Built by: GitHub Actions
+          Publication: not performed by this workflow
+          EOF
+
+      - name: Upload production-signed release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JobTomatik-${{ inputs.version_name }}-production-signed-${{ inputs.source_commit }}
+          path: frontend/production-release/*
+          if-no-files-found: error
+          retention-days: 90
