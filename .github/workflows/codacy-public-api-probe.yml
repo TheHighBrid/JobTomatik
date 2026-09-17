@@ -13,36 +13,124 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Probe public Codacy endpoints
+      - name: Export complete public Codacy baseline
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           mkdir -p codacy-probe
 
-          repo_url='https://app.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik?branch=main'
-          issues_url='https://app.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/issues/search?limit=1000'
-          files_url='https://app.codacy.com/api/v3/organizations/gh/TheHighBrid/repositories/JobTomatik/files?limit=1000'
+          python - <<'PY'
+          import collections
+          import json
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
 
-          curl -sS -L -o codacy-probe/repository.json -w '%{http_code}\n' "$repo_url" > codacy-probe/repository.status || true
-          curl -sS -L -o codacy-probe/issues.json -w '%{http_code}\n' \
-            -X POST "$issues_url" \
-            -H 'Content-Type: application/json' \
-            --data '{}' > codacy-probe/issues.status || true
-          curl -sS -L -o codacy-probe/files.json -w '%{http_code}\n' "$files_url" > codacy-probe/files.status || true
+          OUT = Path("codacy-probe")
+          REPO = "https://app.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik"
+          ISSUES = REPO + "/issues/search"
 
-          echo 'Repository endpoint HTTP:' "$(cat codacy-probe/repository.status)"
-          echo 'Issues endpoint HTTP:' "$(cat codacy-probe/issues.status)"
-          echo 'Files endpoint HTTP:' "$(cat codacy-probe/files.status)"
+          def request_json(url, *, method="GET", body=None):
+              data = None if body is None else json.dumps(body).encode("utf-8")
+              req = urllib.request.Request(url, data=data, method=method)
+              req.add_header("Accept", "application/json")
+              if data is not None:
+                  req.add_header("Content-Type", "application/json")
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  payload = response.read().decode("utf-8")
+                  return response.status, json.loads(payload)
 
-          for f in repository.json issues.json files.json; do
-            echo "===== $f ====="
-            head -c 2000 "codacy-probe/$f" || true
-            echo
-          done
+          status, repository = request_json(REPO + "?branch=main")
+          if status != 200:
+              raise SystemExit(f"repository endpoint failed: {status}")
+          (OUT / "repository.json").write_text(
+              json.dumps(repository, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
 
-      - name: Upload probe responses
+          issues = []
+          cursor = None
+          page = 0
+          while True:
+              page += 1
+              query = {"limit": 1000}
+              if cursor:
+                  query["cursor"] = cursor
+              url = ISSUES + "?" + urllib.parse.urlencode(query)
+              status, payload = request_json(url, method="POST", body={})
+              if status != 200:
+                  raise SystemExit(f"issues endpoint failed on page {page}: {status}")
+              batch = payload.get("data") or []
+              issues.extend(batch)
+              pagination = payload.get("pagination") or {}
+              print(
+                  f"page={page} batch={len(batch)} total_collected={len(issues)} "
+                  f"reported_total={pagination.get('total')}"
+              )
+              cursor = pagination.get("cursor")
+              if not cursor:
+                  break
+
+          (OUT / "issues-all.json").write_text(
+              json.dumps({"data": issues, "count": len(issues)}, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          by_category = collections.Counter()
+          by_level = collections.Counter()
+          by_tool = collections.Counter()
+          by_pattern = collections.Counter()
+          by_file = collections.Counter()
+          by_category_level = collections.Counter()
+          by_tool_pattern = collections.Counter()
+
+          for issue in issues:
+              pattern = issue.get("patternInfo") or {}
+              tool = issue.get("toolInfo") or {}
+              category = str(pattern.get("category") or "Unknown")
+              level = str(pattern.get("level") or pattern.get("severityLevel") or "Unknown")
+              tool_name = str(tool.get("name") or "Unknown")
+              pattern_id = str(pattern.get("id") or "Unknown")
+              file_path = str(issue.get("filePath") or "Unknown")
+              by_category[category] += 1
+              by_level[level] += 1
+              by_tool[tool_name] += 1
+              by_pattern[pattern_id] += 1
+              by_file[file_path] += 1
+              by_category_level[f"{category}|{level}"] += 1
+              by_tool_pattern[f"{tool_name}|{pattern_id}"] += 1
+
+          summary = {
+              "issue_count": len(issues),
+              "by_category": dict(by_category.most_common()),
+              "by_level": dict(by_level.most_common()),
+              "by_tool": dict(by_tool.most_common()),
+              "by_pattern": dict(by_pattern.most_common()),
+              "by_category_level": dict(by_category_level.most_common()),
+              "by_tool_pattern": dict(by_tool_pattern.most_common()),
+              "top_files": dict(by_file.most_common(200)),
+          }
+          (OUT / "issue-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=False) + "\n",
+              encoding="utf-8",
+          )
+
+          print("FINAL_ISSUE_COUNT", len(issues))
+          print("CATEGORY_COUNTS", json.dumps(summary["by_category"], sort_keys=True))
+          print("LEVEL_COUNTS", json.dumps(summary["by_level"], sort_keys=True))
+          print("TOP_TOOLS", json.dumps(dict(by_tool.most_common(20)), sort_keys=True))
+          print("TOP_PATTERNS", json.dumps(dict(by_pattern.most_common(30)), sort_keys=True))
+          PY
+
+          curl -fsSL 'https://api.codacy.com/api/api-docs/swagger.yaml' -o codacy-probe/swagger.yaml
+          grep -niE 'ignored|issues.*overview|overview.*issues|analysis.*tool|findings' codacy-probe/swagger.yaml \
+            | head -n 250 > codacy-probe/swagger-relevant-lines.txt || true
+          echo '===== OpenAPI relevant paths ====='
+          cat codacy-probe/swagger-relevant-lines.txt || true
+
+      - name: Upload complete Codacy baseline
         uses: actions/upload-artifact@v4
         with:
           name: codacy-public-api-probe
