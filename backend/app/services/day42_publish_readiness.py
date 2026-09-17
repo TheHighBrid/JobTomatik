@@ -10,7 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 
 DAY42_PUBLISH_READINESS_VERSION = "day42-publish-readiness-v2.1"
@@ -70,7 +71,7 @@ def _positive_int(value: Any) -> int:
         parsed = int(value)
     except (TypeError, ValueError):
         return 0
-    return parsed if parsed > 0 else 0
+    return max(0, parsed)
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -84,6 +85,140 @@ def expected_day42_publication_acknowledgment(*, revision: str, apk_sha256: str)
     if not commit or not apk:
         return ""
     return f"PUBLISH JOBTOMATIK V2.1.0 {commit[:12]} {apk[:12]}"
+
+
+def _build_day41_checks(
+    audit: Mapping[str, Any],
+    *,
+    audit_revision: str,
+    audit_sha: str,
+) -> dict[str, bool]:
+    return {
+        "day41_passed": audit.get("passed") is True,
+        "day42_entry_eligible": audit.get("day42_entry_eligible") is True,
+        "day41_report_hash_valid": bool(audit_sha),
+        "day41_revision_valid": bool(audit_revision),
+        "day41_did_not_publish": audit.get("publication_authorized") is False,
+        "day41_did_not_authorize_tag": audit.get("release_tag_authorized") is False,
+    }
+
+
+def _build_matrix_checks(
+    matrix: Mapping[str, Any],
+    *,
+    matrix_revision: str,
+    current_head: str,
+    audit_revision: str,
+) -> dict[str, bool]:
+    checks = {
+        "final_matrix_passed": matrix.get("passed") is True,
+        "final_revision_valid": bool(matrix_revision),
+        "final_matrix_exact_head": bool(matrix_revision) and current_head == matrix_revision,
+        "final_revision_matches_day41": bool(audit_revision) and matrix_revision == audit_revision,
+    }
+    workflows = _mapping(matrix.get("workflows"))
+    for workflow_name in DAY42_REQUIRED_WORKFLOWS:
+        checks[f"workflow:{workflow_name}"] = (
+            str(workflows.get(workflow_name) or "").strip().lower() == "success"
+        )
+    return checks
+
+
+def _build_artifact_checks(
+    artifact: Mapping[str, Any],
+    *,
+    matrix_revision: str,
+    artifact_revision: str,
+    apk_sha: str,
+    candidate_run_id: int,
+    candidate_workflow_path: str,
+) -> dict[str, bool]:
+    signing_mode = str(artifact.get("signing_mode") or "").strip().lower()
+    return {
+        "artifact_revision_exact": bool(matrix_revision) and artifact_revision == matrix_revision,
+        "apk_sha256_valid": bool(apk_sha),
+        "build_identity_sha256_valid": bool(_sha256(artifact.get("build_identity_sha256"))),
+        "signing_certificate_sha256_valid": bool(_sha256(artifact.get("signing_certificate_sha256"))),
+        "signing_mode_truthful": signing_mode in {"release_signed", "development_signed"},
+        "candidate_run_id_valid": candidate_run_id > 0,
+        "candidate_workflow_exact": candidate_workflow_path == DAY42_CANDIDATE_WORKFLOW_PATH,
+        "candidate_workflow_succeeded": artifact.get("workflow_conclusion") == "success",
+        "candidate_reproducible": artifact.get("reproducible_build") is True,
+        "source_commit_file_present": artifact.get("source_commit_file_present") is True,
+        "checksums_file_present": artifact.get("checksums_file_present") is True,
+        "build_info_present": artifact.get("build_info_present") is True,
+        "candidate_metadata_present": artifact.get("candidate_metadata_present") is True,
+        "publication_not_pre_authorized_in_candidate": artifact.get("publication_authorized") is False,
+    }
+
+
+def _build_maturity_checks(
+    maturity: Mapping[str, Any],
+    *,
+    matrix_revision: str,
+    manifest_revision: str,
+) -> dict[str, bool]:
+    checks = {
+        "manifest_revision_exact": bool(matrix_revision) and manifest_revision == matrix_revision,
+        "manifest_release_version_exact": str(maturity.get("release_version") or "") == DAY42_RELEASE_VERSION,
+        "manifest_truthful_scope_asserted": maturity.get("truthful_scope_verified") is True,
+        "submission_default_fail_safe": maturity.get("real_submission_default_enabled") is False,
+        "followup_default_fail_safe": maturity.get("real_followup_default_enabled") is False,
+    }
+    adapters = _mapping(maturity.get("adapters"))
+    for name, expected in EXPECTED_ADAPTER_SCOPE.items():
+        observed = _mapping(adapters.get(name))
+        checks[f"adapter:{name}:version"] = str(observed.get("version") or "") == expected["version"]
+        checks[f"adapter:{name}:maturity"] = str(observed.get("maturity") or "") == expected["maturity"]
+        checks[f"adapter:{name}:autonomous"] = observed.get("autonomous_submission_allowed") == expected["autonomous"]
+    return checks
+
+
+def _build_repository_checks(
+    repository: Mapping[str, Any],
+    *,
+    matrix_revision: str,
+    main_revision: str,
+) -> dict[str, bool]:
+    return {
+        "main_revision_exact": bool(matrix_revision) and main_revision == matrix_revision,
+        "release_tag_absent_before_publish": repository.get("release_tag_exists") is False,
+        "github_release_absent_before_publish": repository.get("release_exists") is False,
+        "release_assets_not_preexisting": repository.get("release_assets_exist") is False,
+    }
+
+
+def _build_document_checks(docs: Mapping[str, Any]) -> dict[str, bool]:
+    return {
+        "readme_updated_for_release": docs.get("readme_updated") is True,
+        "changelog_updated_for_release": docs.get("changelog_updated") is True,
+        "release_notes_final": docs.get("release_notes_final") is True,
+        "known_boundaries_final": docs.get("known_boundaries_final") is True,
+        "operator_guide_final": docs.get("operator_guide_final") is True,
+        "incident_runbook_final": docs.get("incident_runbook_final") is True,
+    }
+
+
+def _build_owner_checks(
+    owner: Mapping[str, Any],
+    *,
+    matrix_revision: str,
+    owner_revision: str,
+    apk_sha: str,
+    candidate_run_id: int,
+    owner_candidate_run_id: int,
+    expected_ack: str,
+) -> dict[str, bool]:
+    return {
+        "owner_approved": owner.get("approved") is True,
+        "owner_reference_present": bool(str(owner.get("approval_reference") or "").strip()),
+        "owner_release_version_exact": str(owner.get("release_version") or "") == DAY42_RELEASE_VERSION,
+        "owner_release_tag_exact": str(owner.get("release_tag") or "") == DAY42_RELEASE_TAG,
+        "owner_commit_exact": bool(matrix_revision) and owner_revision == matrix_revision,
+        "owner_apk_sha256_exact": bool(apk_sha) and _sha256(owner.get("approved_apk_sha256")) == apk_sha,
+        "owner_candidate_run_exact": candidate_run_id > 0 and owner_candidate_run_id == candidate_run_id,
+        "owner_acknowledgment_exact": bool(expected_ack) and str(owner.get("acknowledgment") or "") == expected_ack,
+    }
 
 
 def build_day42_publish_readiness(
@@ -123,94 +258,46 @@ def build_day42_publish_readiness(
         apk_sha256=apk_sha,
     )
 
-    day41_checks = {
-        "day41_passed": audit.get("passed") is True,
-        "day42_entry_eligible": audit.get("day42_entry_eligible") is True,
-        "day41_report_hash_valid": bool(audit_sha),
-        "day41_revision_valid": bool(audit_revision),
-        "day41_did_not_publish": audit.get("publication_authorized") is False,
-        "day41_did_not_authorize_tag": audit.get("release_tag_authorized") is False,
-    }
-
-    workflows = _mapping(matrix.get("workflows"))
-    matrix_checks = {
-        "final_matrix_passed": matrix.get("passed") is True,
-        "final_revision_valid": bool(matrix_revision),
-        "final_matrix_exact_head": bool(matrix_revision) and current_head == matrix_revision,
-        "final_revision_matches_day41": bool(audit_revision) and matrix_revision == audit_revision,
-    }
-    for workflow_name in DAY42_REQUIRED_WORKFLOWS:
-        matrix_checks[f"workflow:{workflow_name}"] = (
-            str(workflows.get(workflow_name) or "").strip().lower() == "success"
-        )
-
-    signing_mode = str(artifact.get("signing_mode") or "").strip().lower()
-    artifact_checks = {
-        "artifact_revision_exact": bool(matrix_revision) and artifact_revision == matrix_revision,
-        "apk_sha256_valid": bool(apk_sha),
-        "build_identity_sha256_valid": bool(_sha256(artifact.get("build_identity_sha256"))),
-        "signing_certificate_sha256_valid": bool(_sha256(artifact.get("signing_certificate_sha256"))),
-        "signing_mode_truthful": signing_mode in {"release_signed", "development_signed"},
-        "candidate_run_id_valid": candidate_run_id > 0,
-        "candidate_workflow_exact": candidate_workflow_path == DAY42_CANDIDATE_WORKFLOW_PATH,
-        "candidate_workflow_succeeded": artifact.get("workflow_conclusion") == "success",
-        "candidate_reproducible": artifact.get("reproducible_build") is True,
-        "source_commit_file_present": artifact.get("source_commit_file_present") is True,
-        "checksums_file_present": artifact.get("checksums_file_present") is True,
-        "build_info_present": artifact.get("build_info_present") is True,
-        "candidate_metadata_present": artifact.get("candidate_metadata_present") is True,
-        "publication_not_pre_authorized_in_candidate": artifact.get("publication_authorized") is False,
-    }
-
-    adapters = _mapping(maturity.get("adapters"))
-    maturity_checks = {
-        "manifest_revision_exact": bool(matrix_revision) and manifest_revision == matrix_revision,
-        "manifest_release_version_exact": str(maturity.get("release_version") or "") == DAY42_RELEASE_VERSION,
-        "manifest_truthful_scope_asserted": maturity.get("truthful_scope_verified") is True,
-        "submission_default_fail_safe": maturity.get("real_submission_default_enabled") is False,
-        "followup_default_fail_safe": maturity.get("real_followup_default_enabled") is False,
-    }
-    for name, expected in EXPECTED_ADAPTER_SCOPE.items():
-        observed = _mapping(adapters.get(name))
-        maturity_checks[f"adapter:{name}:version"] = str(observed.get("version") or "") == expected["version"]
-        maturity_checks[f"adapter:{name}:maturity"] = str(observed.get("maturity") or "") == expected["maturity"]
-        maturity_checks[f"adapter:{name}:autonomous"] = observed.get("autonomous_submission_allowed") is expected["autonomous"]
-
-    repository_checks = {
-        "main_revision_exact": bool(matrix_revision) and main_revision == matrix_revision,
-        "release_tag_absent_before_publish": repository.get("release_tag_exists") is False,
-        "github_release_absent_before_publish": repository.get("release_exists") is False,
-        "release_assets_not_preexisting": repository.get("release_assets_exist") is False,
-    }
-
-    document_checks = {
-        "readme_updated_for_release": docs.get("readme_updated") is True,
-        "changelog_updated_for_release": docs.get("changelog_updated") is True,
-        "release_notes_final": docs.get("release_notes_final") is True,
-        "known_boundaries_final": docs.get("known_boundaries_final") is True,
-        "operator_guide_final": docs.get("operator_guide_final") is True,
-        "incident_runbook_final": docs.get("incident_runbook_final") is True,
-    }
-
-    owner_checks = {
-        "owner_approved": owner.get("approved") is True,
-        "owner_reference_present": bool(str(owner.get("approval_reference") or "").strip()),
-        "owner_release_version_exact": str(owner.get("release_version") or "") == DAY42_RELEASE_VERSION,
-        "owner_release_tag_exact": str(owner.get("release_tag") or "") == DAY42_RELEASE_TAG,
-        "owner_commit_exact": bool(matrix_revision) and owner_revision == matrix_revision,
-        "owner_apk_sha256_exact": bool(apk_sha) and _sha256(owner.get("approved_apk_sha256")) == apk_sha,
-        "owner_candidate_run_exact": candidate_run_id > 0 and owner_candidate_run_id == candidate_run_id,
-        "owner_acknowledgment_exact": bool(expected_ack) and str(owner.get("acknowledgment") or "") == expected_ack,
-    }
-
     sections = {
-        "day41": day41_checks,
-        "final_release_matrix": matrix_checks,
-        "candidate_artifact": artifact_checks,
-        "maturity_manifest": maturity_checks,
-        "repository_release_state": repository_checks,
-        "release_documents": document_checks,
-        "owner_authorization": owner_checks,
+        "day41": _build_day41_checks(
+            audit,
+            audit_revision=audit_revision,
+            audit_sha=audit_sha,
+        ),
+        "final_release_matrix": _build_matrix_checks(
+            matrix,
+            matrix_revision=matrix_revision,
+            current_head=current_head,
+            audit_revision=audit_revision,
+        ),
+        "candidate_artifact": _build_artifact_checks(
+            artifact,
+            matrix_revision=matrix_revision,
+            artifact_revision=artifact_revision,
+            apk_sha=apk_sha,
+            candidate_run_id=candidate_run_id,
+            candidate_workflow_path=candidate_workflow_path,
+        ),
+        "maturity_manifest": _build_maturity_checks(
+            maturity,
+            matrix_revision=matrix_revision,
+            manifest_revision=manifest_revision,
+        ),
+        "repository_release_state": _build_repository_checks(
+            repository,
+            matrix_revision=matrix_revision,
+            main_revision=main_revision,
+        ),
+        "release_documents": _build_document_checks(docs),
+        "owner_authorization": _build_owner_checks(
+            owner,
+            matrix_revision=matrix_revision,
+            owner_revision=owner_revision,
+            apk_sha=apk_sha,
+            candidate_run_id=candidate_run_id,
+            owner_candidate_run_id=owner_candidate_run_id,
+            expected_ack=expected_ack,
+        ),
     }
     blockers = [
         f"{section}.{name}"
