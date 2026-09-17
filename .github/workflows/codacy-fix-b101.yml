@@ -47,6 +47,7 @@ jobs:
                   "            raise LeverPhaseBReviewedMaterialsError(\n"
                   "                \"A required latest material disappeared after completeness validation\"\n"
                   "            )\n",
+                  expected=2,
               )
               replace_exact(
                   path,
