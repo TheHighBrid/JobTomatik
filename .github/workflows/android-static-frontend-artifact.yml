@@ -147,7 +147,7 @@ jobs:
           echo "JOBTOMATIK_FRONTEND_ARTIFACT_DIGEST=${{ steps.upload.outputs.artifact-digest }}"
           echo "JOBTOMATIK_FRONTEND_ARTIFACT_REVISION=${GITHUB_SHA}"
 
-      - name: Prove tokenless runtime branch payload locally
+      - name: Prove protected runtime publication is fast-forward compatible
         env:
           ARTIFACT_BRANCH: android-static-frontend-runtime
         run: |
@@ -159,17 +159,31 @@ jobs:
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # Seed a synthetic existing protected-branch snapshot, then prove the
+          # new payload becomes its child instead of replacing branch history.
           git checkout --orphan "$ARTIFACT_BRANCH"
+          git rm -rf . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          mkdir -p dist
+          printf '%s\n' 'synthetic previous runtime' > dist/index.html
+          printf '%s\n' 'synthetic-previous-revision' > JOBTOMATIK_REVISION
+          printf '%s\n' '{"revision":"synthetic-previous-revision"}' > jobtomatik-frontend-manifest.json
+          git add JOBTOMATIK_REVISION jobtomatik-frontend-manifest.json dist
+          git commit -m 'Seed protected runtime branch proof'
+          previous_runtime_commit="$(git rev-parse HEAD)"
+
           git rm -rf . >/dev/null 2>&1 || true
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           cp -a "$publish_dir/." .
           git add JOBTOMATIK_REVISION jobtomatik-frontend-manifest.json dist
           git commit -m "Prove Android static frontend ${GITHUB_SHA}"
 
+          test "$(git rev-parse HEAD^)" = "$previous_runtime_commit"
           test "$(cat JOBTOMATIK_REVISION)" = "$GITHUB_SHA"
           test "$(python -c 'import json; print(json.load(open("jobtomatik-frontend-manifest.json"))["revision"])')" = "$GITHUB_SHA"
           test -f dist/index.html
-          echo "JOBTOMATIK_FRONTEND_RUNTIME_BRANCH_DRY_RUN=${ARTIFACT_BRANCH}"
+          echo "JOBTOMATIK_FRONTEND_RUNTIME_FAST_FORWARD_PROVED=true"
           echo "JOBTOMATIK_FRONTEND_RUNTIME_REVISION=${GITHUB_SHA}"
 
   publish-static-runtime:
@@ -209,12 +223,21 @@ jobs:
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout --orphan "$ARTIFACT_BRANCH"
+
+          # Preserve the protected runtime branch as an append-only snapshot
+          # history. The new runtime commit is a child of the current remote tip,
+          # so the push is a normal fast-forward and requires no rule bypass.
+          git fetch --no-tags --depth=1 origin \
+            "+refs/heads/${ARTIFACT_BRANCH}:refs/remotes/origin/${ARTIFACT_BRANCH}"
+          git checkout -B "$ARTIFACT_BRANCH" "refs/remotes/origin/${ARTIFACT_BRANCH}"
+          previous_runtime_commit="$(git rev-parse HEAD)"
           git rm -rf . >/dev/null 2>&1 || true
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           cp -a "$publish_dir/." .
           git add JOBTOMATIK_REVISION jobtomatik-frontend-manifest.json dist
           git commit -m "Publish Android static frontend ${GITHUB_SHA}"
-          git push --force origin "HEAD:refs/heads/${ARTIFACT_BRANCH}"
+          test "$(git rev-parse HEAD^)" = "$previous_runtime_commit"
+          git push origin "HEAD:refs/heads/${ARTIFACT_BRANCH}"
           echo "JOBTOMATIK_FRONTEND_RUNTIME_BRANCH_PUBLISHED=${ARTIFACT_BRANCH}"
+          echo "JOBTOMATIK_FRONTEND_RUNTIME_PREVIOUS_COMMIT=${previous_runtime_commit}"
           echo "JOBTOMATIK_FRONTEND_RUNTIME_REVISION=${GITHUB_SHA}"
