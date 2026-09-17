@@ -320,6 +320,7 @@ class RetainableBrowserRuntime:
             try:
                 profile.relative_to(self.session_dir)
             except ValueError:
+                # Persistent operator profiles must never be deleted by handoff cleanup.
                 pass
             else:
                 shutil.rmtree(profile, ignore_errors=True)
@@ -371,6 +372,9 @@ async def launch_retainable_browser(
     )
     endpoint = f"http://127.0.0.1:{port}"
 
+    # Android + Ubuntu PRoot can take substantially longer than desktop Linux
+    # to expose the CDP websocket. Give readiness and Playwright attachment
+    # independent retry budgets so a slow first stage cannot starve the second.
     await _wait_for_cdp_endpoint(process, endpoint, log_handle, log_path)
     browser = await _connect_playwright_over_cdp(
         playwright,
