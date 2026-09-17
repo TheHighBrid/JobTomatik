@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from shutil import which
 from subprocess import run
 
 
@@ -20,76 +19,98 @@ def _function(source: str, name: str, next_name: str) -> str:
     return source[start:end]
 
 
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def _require_contains(haystack: str, needle: str) -> None:
+    _require(needle in haystack, f"Expected to find {needle!r}")
+
+
+def _require_absent(haystack: str, needle: str) -> None:
+    _require(needle not in haystack, f"Did not expect to find {needle!r}")
+
+
+def _require_before(haystack: str, first: str, second: str) -> None:
+    _require(
+        haystack.index(first) < haystack.index(second),
+        f"Expected {first!r} before {second!r}",
+    )
+
+
 def test_promotion_lane_shell_is_syntax_valid_and_keeps_frozen_revision_explicit():
-    bash = which("bash")
-    assert bash is not None
-    run([bash, "-n", str(SCRIPT)], check=True)
+    run(
+        ["bash", "-n", "scripts/jobtomatik_promotion_lane.sh"],
+        cwd=BACKEND_ROOT,
+        check=True,
+    )
     source = _source()
 
-    assert "198b197dfcece6fbf9f3edfc5a92511fd951b484" in source
-    assert 'FROZEN_REPO="${JOBTOMATIK_FROZEN_PROOT_REPO:-/root/JobTomatik}"' in source
-    assert 'PROMOTION_REPO="${JOBTOMATIK_PROMOTION_PROOT_REPO:-/root/JobTomatik-promotion}"' in source
-    assert "git -C \"$source_repo\" worktree add --detach" in source
-    assert 'ln -s "$source_repo/backend/.venv"' in source
-    assert 'source_requirements="$(git -C "$source_repo" rev-parse' in source
-    assert 'target_requirements="$(git -C "$source_repo" rev-parse' in source
-    assert "cat-file -e" in source
-    assert "prepare_lever_promotion_lane_state.py prepare" in source
-    assert "prepare_lever_promotion_lane_state.py verify" in source
-    assert STATE_PREPARER.is_file()
+    _require_contains(source, "198b197dfcece6fbf9f3edfc5a92511fd951b484")
+    _require_contains(source, 'FROZEN_REPO="${JOBTOMATIK_FROZEN_PROOT_REPO:-/root/JobTomatik}"')
+    _require_contains(source, 'PROMOTION_REPO="${JOBTOMATIK_PROMOTION_PROOT_REPO:-/root/JobTomatik-promotion}"')
+    _require_contains(source, "git -C \"$source_repo\" worktree add --detach")
+    _require_contains(source, 'ln -s "$source_repo/backend/.venv"')
+    _require_contains(source, 'source_requirements="$(git -C "$source_repo" rev-parse')
+    _require_contains(source, 'target_requirements="$(git -C "$source_repo" rev-parse')
+    _require_contains(source, "cat-file -e")
+    _require_contains(source, "prepare_lever_promotion_lane_state.py prepare")
+    _require_contains(source, "prepare_lever_promotion_lane_state.py verify")
+    _require(STATE_PREPARER.is_file(), "Promotion state preparer must exist")
 
 
 def test_promotion_lane_has_no_embedded_database_mutation_logic_or_submit_arm():
     source = _source()
 
-    assert "source.backup(target)" not in source
-    assert "sqlite3.connect" not in source
-    assert "ALLOW_REAL_APPLICATION_SUBMIT=true" not in source
-    assert "LEVER_SUPERVISED_PILOT_ENABLED=true" not in source
-    assert "AUTOPILOT_ENABLED=true" not in source
-    assert "promotion_pilot arm" not in source
-    assert 'PILOT_COMMAND" arm' not in source
+    _require_absent(source, "source.backup(target)")
+    _require_absent(source, "sqlite3.connect")
+    _require_absent(source, "ALLOW_REAL_APPLICATION_SUBMIT=true")
+    _require_absent(source, "LEVER_SUPERVISED_PILOT_ENABLED=true")
+    _require_absent(source, "AUTOPILOT_ENABLED=true")
+    _require_absent(source, "promotion_pilot arm")
+    _require_absent(source, 'PILOT_COMMAND" arm')
 
 
 def test_promotion_lane_isolates_runtime_browser_broker_and_transient_control_state():
     source = _source()
 
-    assert "$HOME/.jobtomatik-promotion-runtime" in source
-    assert "$HOME/.jobtomatik-promotion-chromium" in source
-    assert "redis://localhost:${PROMOTION_REDIS_PORT}/${PROMOTION_REDIS_DB}" in source
-    assert "JOBTOMATIK_ANDROID_REDIS_URL=\"$PROMOTION_REDIS_URL\"" in source
-    assert "JOBTOMATIK_ANDROID_REDIS_URL=\"$FROZEN_REDIS_URL\"" in source
-    assert "start_promotion_redis" in source
-    assert "stop_promotion_redis" in source
-    assert "FLUSHDB" in source
-    assert "promotion-redis.rdb" in source
-    assert "JOBTOMATIK_ANDROID_BROWSER_PROFILE=\"$PROMOTION_BROWSER_PROFILE\"" in source
-    assert "JOBTOMATIK_ANDROID_RUNTIME_DIR=\"$PROMOTION_RUNTIME_DIR\"" in source
-    assert "archive_shared_control_dir" in source
-    assert "pilot-control-archives" in source
+    _require_contains(source, "$HOME/.jobtomatik-promotion-runtime")
+    _require_contains(source, "$HOME/.jobtomatik-promotion-chromium")
+    _require_contains(source, "redis://localhost:${PROMOTION_REDIS_PORT}/${PROMOTION_REDIS_DB}")
+    _require_contains(source, "JOBTOMATIK_ANDROID_REDIS_URL=\"$PROMOTION_REDIS_URL\"")
+    _require_contains(source, "JOBTOMATIK_ANDROID_REDIS_URL=\"$FROZEN_REDIS_URL\"")
+    _require_contains(source, "start_promotion_redis")
+    _require_contains(source, "stop_promotion_redis")
+    _require_contains(source, "FLUSHDB")
+    _require_contains(source, "promotion-redis.rdb")
+    _require_contains(source, "JOBTOMATIK_ANDROID_BROWSER_PROFILE=\"$PROMOTION_BROWSER_PROFILE\"")
+    _require_contains(source, "JOBTOMATIK_ANDROID_RUNTIME_DIR=\"$PROMOTION_RUNTIME_DIR\"")
+    _require_contains(source, "archive_shared_control_dir")
+    _require_contains(source, "pilot-control-archives")
 
 
 def test_existing_lane_must_match_freshly_fetched_current_main():
     source = _source()
     prepare = _function(source, "prepare_lane", "restore_frozen_after_failure")
 
-    assert 'if [[ "$existing_target" != "$target_revision" ]]' in prepare
-    assert "Existing promotion lane is not current main" in prepare
-    assert "Refusing implicit upgrade" in prepare
+    _require_contains(prepare, 'if [[ "$existing_target" != "$target_revision" ]]')
+    _require_contains(prepare, "Existing promotion lane is not current main")
+    _require_contains(prepare, "Refusing implicit upgrade")
 
 
 def test_start_proves_frozen_rollback_before_stopping_frozen_lane_and_requires_acceptance():
     source = _source()
     start = _function(source, "start_lane", "stop_lane")
 
-    assert start.index("verify_frozen_return_artifact") < start.index("frozen_stack stop")
-    assert start.index("frozen_stack stop") < start.index("start_promotion_redis")
-    assert start.index("start_promotion_redis") < start.index("promotion_stack start")
-    assert "promotion_stack acceptance" in start
-    assert "promotion_pilot status" in start
-    assert "lever-pilot-runtime.active" in start
-    assert "lever-pilot-runtime.pending" in start
-    assert "JOBTOMATIK_PROMOTION_LANE_READY_FAIL_SAFE" in start
+    _require_before(start, "verify_frozen_return_artifact", "frozen_stack stop")
+    _require_before(start, "frozen_stack stop", "start_promotion_redis")
+    _require_before(start, "start_promotion_redis", "promotion_stack start")
+    _require_contains(start, "promotion_stack acceptance")
+    _require_contains(start, "promotion_pilot status")
+    _require_contains(start, "lever-pilot-runtime.active")
+    _require_contains(start, "lever-pilot-runtime.pending")
+    _require_contains(start, "JOBTOMATIK_PROMOTION_LANE_READY_FAIL_SAFE")
 
 
 def test_every_post_stop_failure_path_restores_the_frozen_lane():
@@ -97,25 +118,25 @@ def test_every_post_stop_failure_path_restores_the_frozen_lane():
     start = _function(source, "start_lane", "stop_lane")
     recovery = _function(source, "restore_frozen_after_failure", "start_lane")
 
-    assert "frozen_stack start || true" in recovery
-    assert "stop_promotion_redis" in recovery
-    assert "failed-promotion-start" in start
-    assert "failed-promotion-acceptance" in start
-    assert "unexpected-promotion-pilot-marker" in start
-    assert "failed-promotion-pilot-status" in start
-    assert start.count("restore_frozen_after_failure") >= 4
-    assert "Promotion Redis failed to start; restoring frozen lane" in start
-    assert "frozen_stack start || true" in start
+    _require_contains(recovery, "frozen_stack start || true")
+    _require_contains(recovery, "stop_promotion_redis")
+    _require_contains(start, "failed-promotion-start")
+    _require_contains(start, "failed-promotion-acceptance")
+    _require_contains(start, "unexpected-promotion-pilot-marker")
+    _require_contains(start, "failed-promotion-pilot-status")
+    _require(start.count("restore_frozen_after_failure") >= 4, "Expected at least four recovery paths")
+    _require_contains(start, "Promotion Redis failed to start; restoring frozen lane")
+    _require_contains(start, "frozen_stack start || true")
 
 
 def test_return_frozen_never_updates_or_switches_the_frozen_checkout():
     source = _source()
     restore = _function(source, "return_frozen", "status_lane")
 
-    assert "stop_promotion_redis" in restore
-    assert "verify_frozen_return_artifact" in restore
-    assert "frozen_stack start" in restore
-    assert "frozen_stack acceptance" in restore
-    assert "git switch" not in restore
-    assert "git pull" not in restore
-    assert "update" not in restore
+    _require_contains(restore, "stop_promotion_redis")
+    _require_contains(restore, "verify_frozen_return_artifact")
+    _require_contains(restore, "frozen_stack start")
+    _require_contains(restore, "frozen_stack acceptance")
+    _require_absent(restore, "git switch")
+    _require_absent(restore, "git pull")
+    _require_absent(restore, "update")
