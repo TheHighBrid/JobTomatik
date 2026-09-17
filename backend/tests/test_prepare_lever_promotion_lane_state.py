@@ -11,9 +11,20 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = BACKEND_ROOT / "scripts/prepare_lever_promotion_lane_state.py"
 
 
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+def _require_equal(actual, expected, label: str) -> None:
+    if actual != expected:
+        raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
+
+
 def _load_module():
     spec = importlib.util.spec_from_file_location("prepare_lever_promotion_lane_state", SCRIPT)
-    assert spec and spec.loader
+    if spec is None or spec.loader is None:
+        raise AssertionError("Unable to load promotion lane state module")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -30,42 +41,21 @@ def _write_db(path: Path, value: str = "frozen") -> None:
 def _read_db_value(path: Path) -> str:
     with sqlite3.connect(path) as connection:
         row = connection.execute("SELECT value FROM proof").fetchone()
-    assert row
+    if row is None:
+        raise AssertionError(f"Expected proof row in {path}")
     return str(row[0])
 
 
-def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monkeypatch):
-    module = _load_module()
-    source_repo = tmp_path / "frozen"
-    promotion_repo = tmp_path / "promotion"
-    source_backend = source_repo / "backend"
-    promotion_backend = promotion_repo / "backend"
-    source_backend.mkdir(parents=True)
-    promotion_backend.mkdir(parents=True)
-
-    source_db = source_backend / "jobtomatik.db"
-    _write_db(source_db)
-
-    uploads = tmp_path / "absolute-source-uploads"
-    uploads.mkdir()
-    (uploads / "resume_1.pdf").write_bytes(b"pdf")
-    handoffs = tmp_path / "absolute-source-handoffs"
-    handoffs.mkdir()
-    (handoffs / "retained.json").write_text("{}\n", encoding="utf-8")
-    lever_ledger = tmp_path / "absolute-source-lever-ledger.jsonl"
-    lever_ledger.write_text('{"mode":"supervised","specimen":"maple"}\n', encoding="utf-8")
-    greenhouse_ledger = tmp_path / "absolute-source-greenhouse-ledger.jsonl"
-    greenhouse_ledger.write_text('{"mode":"supervised"}\n', encoding="utf-8")
-
+def _write_source_env(source_backend: Path, paths: dict[str, Path]) -> Path:
     source_env = source_backend / ".env"
     source_env.write_text(
         "\n".join(
             [
                 "DATABASE_URL=sqlite:///./jobtomatik.db",
-                f"UPLOAD_DIR={uploads}",
-                f"HANDOFF_STORAGE_DIR={handoffs}",
-                f"LEVER_PILOT_LEDGER_PATH={lever_ledger}",
-                f"GREENHOUSE_PILOT_LEDGER_PATH={greenhouse_ledger}",
+                f"UPLOAD_DIR={paths['uploads']}",
+                f"HANDOFF_STORAGE_DIR={paths['handoffs']}",
+                f"LEVER_PILOT_LEDGER_PATH={paths['lever_ledger']}",
+                f"GREENHOUSE_PILOT_LEDGER_PATH={paths['greenhouse_ledger']}",
                 "ALLOW_REAL_APPLICATION_SUBMIT=true",
                 "ALLOW_REAL_FOLLOWUP_SEND=true",
                 "AUTOPILOT_ENABLED=true",
@@ -77,7 +67,65 @@ def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monk
         + "\n",
         encoding="utf-8",
     )
+    return source_env
 
+
+def _create_source_state(tmp_path: Path, source_backend: Path) -> tuple[dict[str, Path], Path]:
+    uploads = tmp_path / "absolute-source-uploads"
+    uploads.mkdir()
+    (uploads / "resume_1.pdf").write_bytes(b"pdf")
+    handoffs = tmp_path / "absolute-source-handoffs"
+    handoffs.mkdir()
+    (handoffs / "retained.json").write_text("{}\n", encoding="utf-8")
+    lever_ledger = tmp_path / "absolute-source-lever-ledger.jsonl"
+    lever_ledger.write_text('{"mode":"supervised","specimen":"maple"}\n', encoding="utf-8")
+    greenhouse_ledger = tmp_path / "absolute-source-greenhouse-ledger.jsonl"
+    greenhouse_ledger.write_text('{"mode":"supervised"}\n', encoding="utf-8")
+    paths = {
+        "uploads": uploads,
+        "handoffs": handoffs,
+        "lever_ledger": lever_ledger,
+        "greenhouse_ledger": greenhouse_ledger,
+    }
+    return paths, _write_source_env(source_backend, paths)
+
+
+def _verify_prepared_state(module, source_env: Path, promotion_backend: Path, paths: dict[str, Path], marker: dict) -> Path:
+    promotion_db = promotion_backend / module.PROMOTION_DB_NAME
+    _require_equal(_read_db_value(promotion_db), "frozen", "promotion database snapshot")
+    _require_equal(marker["initial_lever_ledger_record_count"], 1, "initial Lever ledger count")
+    _require_equal(marker["final_submit_authority_created"], False, "submit authority marker")
+
+    promotion_env = promotion_backend / ".env"
+    _require_equal(module.read_env_value(promotion_env, "ALLOW_REAL_APPLICATION_SUBMIT"), "false", "real submit flag")
+    _require_equal(module.read_env_value(promotion_env, "ALLOW_REAL_FOLLOWUP_SEND"), "false", "follow-up flag")
+    _require_equal(module.read_env_value(promotion_env, "AUTOPILOT_ENABLED"), "false", "autopilot flag")
+    _require_equal(module.read_env_value(promotion_env, "LEVER_SUPERVISED_PILOT_ENABLED"), "false", "Lever pilot flag")
+    _require_equal(module.read_env_value(promotion_env, "JOBTOMATIK_BROWSER_NODE_ID"), "promotion-evidence-node", "browser node")
+    _require_equal(module.read_env_value(promotion_env, "UPLOAD_DIR"), ".promotion-state/uploads", "upload path")
+    _require_equal(module.read_env_value(promotion_env, "HANDOFF_STORAGE_DIR"), ".promotion-state/handoff_sessions", "handoff path")
+    _require_equal(module.read_env_value(promotion_env, "LEVER_PILOT_LEDGER_PATH"), ".promotion-state/evidence/lever-pilot-ledger.jsonl", "Lever ledger path")
+
+    _require_equal((promotion_backend / ".promotion-state/uploads/resume_1.pdf").read_bytes(), b"pdf", "copied upload")
+    _require((promotion_backend / ".promotion-state/handoff_sessions/retained.json").is_file(), "Retained handoff must be copied")
+    copied_ledger = promotion_backend / ".promotion-state/evidence/lever-pilot-ledger.jsonl"
+    _require_equal(copied_ledger.read_bytes(), paths["lever_ledger"].read_bytes(), "copied Lever ledger")
+    _require_equal(module.read_env_value(source_env, "ALLOW_REAL_APPLICATION_SUBMIT"), "true", "frozen submit flag")
+    _require_equal(module.read_env_value(source_env, "UPLOAD_DIR"), str(paths["uploads"]), "frozen upload path")
+    return copied_ledger
+
+
+def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monkeypatch):
+    module = _load_module()
+    source_repo = tmp_path / "frozen"
+    promotion_repo = tmp_path / "promotion"
+    source_backend = source_repo / "backend"
+    promotion_backend = promotion_repo / "backend"
+    source_backend.mkdir(parents=True)
+    promotion_backend.mkdir(parents=True)
+    source_db = source_backend / "jobtomatik.db"
+    _write_db(source_db)
+    paths, source_env = _create_source_state(tmp_path, source_backend)
     monkeypatch.setattr(
         module,
         "_validate_runtime_ledger",
@@ -90,30 +138,8 @@ def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monk
         source_revision="a" * 40,
         target_revision="b" * 40,
     )
-
-    promotion_db = promotion_backend / module.PROMOTION_DB_NAME
-    assert _read_db_value(source_db) == "frozen"
-    assert _read_db_value(promotion_db) == "frozen"
-    assert marker["initial_lever_ledger_record_count"] == 1
-    assert marker["final_submit_authority_created"] is False
-
-    promotion_env = promotion_backend / ".env"
-    assert module.read_env_value(promotion_env, "ALLOW_REAL_APPLICATION_SUBMIT") == "false"
-    assert module.read_env_value(promotion_env, "ALLOW_REAL_FOLLOWUP_SEND") == "false"
-    assert module.read_env_value(promotion_env, "AUTOPILOT_ENABLED") == "false"
-    assert module.read_env_value(promotion_env, "LEVER_SUPERVISED_PILOT_ENABLED") == "false"
-    assert module.read_env_value(promotion_env, "JOBTOMATIK_BROWSER_NODE_ID") == "promotion-evidence-node"
-    assert module.read_env_value(promotion_env, "UPLOAD_DIR") == ".promotion-state/uploads"
-    assert module.read_env_value(promotion_env, "HANDOFF_STORAGE_DIR") == ".promotion-state/handoff_sessions"
-    assert module.read_env_value(promotion_env, "LEVER_PILOT_LEDGER_PATH") == ".promotion-state/evidence/lever-pilot-ledger.jsonl"
-
-    assert (promotion_backend / ".promotion-state/uploads/resume_1.pdf").read_bytes() == b"pdf"
-    assert (promotion_backend / ".promotion-state/handoff_sessions/retained.json").is_file()
-    copied_ledger = promotion_backend / ".promotion-state/evidence/lever-pilot-ledger.jsonl"
-    assert copied_ledger.read_bytes() == lever_ledger.read_bytes()
-    assert module.read_env_value(source_env, "ALLOW_REAL_APPLICATION_SUBMIT") == "true"
-    assert module.read_env_value(source_env, "UPLOAD_DIR") == str(uploads)
-
+    _require_equal(_read_db_value(source_db), "frozen", "source database")
+    copied_ledger = _verify_prepared_state(module, source_env, promotion_backend, paths, marker)
     copied_ledger.write_text(
         copied_ledger.read_text(encoding="utf-8") + '{"mode":"supervised","specimen":"second"}\n',
         encoding="utf-8",
@@ -123,9 +149,9 @@ def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monk
         expected_frozen_revision="a" * 40,
         expected_target_revision="b" * 40,
     )
-    assert verified["ok"] is True
-    assert verified["lever_ledger_record_count"] == 2
-    assert verified["initial_lever_ledger_record_count"] == 1
+    _require_equal(verified["ok"], True, "verification result")
+    _require_equal(verified["lever_ledger_record_count"], 2, "verified Lever ledger count")
+    _require_equal(verified["initial_lever_ledger_record_count"], 1, "verified initial count")
 
 
 def test_prepare_state_refuses_to_drop_missing_lever_confirmation_ledger(tmp_path, monkeypatch):
@@ -162,4 +188,4 @@ def test_backup_sqlite_refuses_to_overwrite_existing_promotion_database(tmp_path
 
     with pytest.raises(module.PromotionLaneStateError, match="Refusing to overwrite"):
         module.backup_sqlite(source, target)
-    assert _read_db_value(target) == "existing"
+    _require_equal(_read_db_value(target), "existing", "existing promotion database")
