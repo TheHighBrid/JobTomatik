@@ -174,9 +174,12 @@ def test_static_artifact_workflow_builds_every_main_revision_and_publishes_git_r
     assert "android-static-frontend-runtime" in workflow
     assert 'git fetch --no-tags --depth=1 origin' in workflow
     assert 'git checkout -B "$ARTIFACT_BRANCH" "refs/remotes/origin/${ARTIFACT_BRANCH}"' in workflow
-    assert 'test "$(git rev-parse HEAD^)" = "$previous_runtime_commit"' in workflow
-    assert 'git push origin "HEAD:refs/heads/${ARTIFACT_BRANCH}"' in workflow
-    assert "git push --force origin" not in workflow
+    if 'test "$(git rev-parse HEAD^)" = "$previous_runtime_commit"' not in workflow:
+        raise AssertionError("runtime publication must preserve the previous snapshot as parent")
+    if 'git push origin "HEAD:refs/heads/${ARTIFACT_BRANCH}"' not in workflow:
+        raise AssertionError("runtime publication must use a normal fast-forward push")
+    if "git push --force origin" in workflow:
+        raise AssertionError("runtime publication must never force-push the protected branch")
 
     assert '"fetch",' in installer
     assert '"archive",' in installer
