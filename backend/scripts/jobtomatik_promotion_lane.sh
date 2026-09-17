@@ -24,6 +24,10 @@ MIN_FREE_KB="${JOBTOMATIK_PROMOTION_MIN_FREE_KB:-262144}"
 PROOT_COMMAND=""
 REDIS_SERVER_BIN=""
 REDIS_CLI_BIN=""
+BROWSER_COMMAND=""
+PILOT_CONTROLLER_COMMAND=""
+PILOT_CONTROLLER_MANAGER_COMMAND=""
+PROCESS_IDENTITY_HELPER=""
 
 NATIVE_CONTRACT_PATHS=(
   backend/scripts/jobtomatik_termux_wrapper.sh
@@ -93,8 +97,6 @@ start_promotion_redis() {
     fi
   fi
 
-  # A promotion lane never inherits queued work from an earlier interrupted lane.
-  # Its SQLite/ledger evidence persists separately; the broker is intentionally fresh.
   "$REDIS_CLI_BIN" -h 127.0.0.1 -p "$PROMOTION_REDIS_PORT" -n "$PROMOTION_REDIS_DB" FLUSHDB >/dev/null
   echo "JOBTOMATIK_PROMOTION_REDIS_READY url=$PROMOTION_REDIS_URL"
 }
@@ -103,14 +105,18 @@ stop_promotion_redis() {
   local pid=""
   pid="$(cat "$PROMOTION_REDIS_PID_FILE" 2>/dev/null || true)"
   if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-    if promotion_redis_identity_matches "$pid"; then
-      kill -TERM "$pid" 2>/dev/null || true
-      for _ in {1..30}; do
-        kill -0 "$pid" 2>/dev/null || break
-        sleep 0.2
-      done
-    else
+    if ! promotion_redis_identity_matches "$pid"; then
       echo "Promotion Redis PID file is stale; unrelated process was not signaled." >&2
+      return 1
+    fi
+    kill -TERM "$pid" 2>/dev/null || return 1
+    for _ in {1..30}; do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.2
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "Promotion Redis did not stop cleanly; refusing to claim containment." >&2
+      return 1
     fi
   fi
   rm -f "$PROMOTION_REDIS_PID_FILE"
@@ -122,6 +128,9 @@ promotion_stack() {
   JOBTOMATIK_ANDROID_BROWSER_PROFILE="$PROMOTION_BROWSER_PROFILE" \
   JOBTOMATIK_DEPLOYMENT_RESTART_MARKER="$PROMOTION_DEPLOYMENT_MARKER" \
   JOBTOMATIK_ANDROID_REDIS_URL="$PROMOTION_REDIS_URL" \
+  JOBTOMATIK_BROWSER_COMMAND="$BROWSER_COMMAND" \
+  JOBTOMATIK_PILOT_CONTROLLER_MANAGER="$PILOT_CONTROLLER_MANAGER_COMMAND" \
+  JOBTOMATIK_PROCESS_IDENTITY_HELPER="$PROCESS_IDENTITY_HELPER" \
     "$STACK_COMMAND" "$@"
 }
 
@@ -131,6 +140,9 @@ promotion_pilot() {
   JOBTOMATIK_ANDROID_BROWSER_PROFILE="$PROMOTION_BROWSER_PROFILE" \
   JOBTOMATIK_DEPLOYMENT_RESTART_MARKER="$PROMOTION_DEPLOYMENT_MARKER" \
   JOBTOMATIK_ANDROID_REDIS_URL="$PROMOTION_REDIS_URL" \
+  JOBTOMATIK_STACK_COMMAND="$STACK_COMMAND" \
+  JOBTOMATIK_PILOT_CONTROLLER_COMMAND="$PILOT_CONTROLLER_COMMAND" \
+  JOBTOMATIK_PROCESS_IDENTITY_HELPER="$PROCESS_IDENTITY_HELPER" \
     "$PILOT_COMMAND" "$@"
 }
 
@@ -139,6 +151,9 @@ frozen_stack() {
   JOBTOMATIK_ANDROID_RUNTIME_DIR="$FROZEN_RUNTIME_DIR" \
   JOBTOMATIK_ANDROID_BROWSER_PROFILE="$FROZEN_BROWSER_PROFILE" \
   JOBTOMATIK_ANDROID_REDIS_URL="$FROZEN_REDIS_URL" \
+  JOBTOMATIK_BROWSER_COMMAND="$BROWSER_COMMAND" \
+  JOBTOMATIK_PILOT_CONTROLLER_MANAGER="$PILOT_CONTROLLER_MANAGER_COMMAND" \
+  JOBTOMATIK_PROCESS_IDENTITY_HELPER="$PROCESS_IDENTITY_HELPER" \
     "$STACK_COMMAND" "$@"
 }
 
@@ -174,6 +189,50 @@ backend/.venv/bin/python backend/scripts/install_android_static_frontend_artifac
   --wait-seconds 0 >/dev/null
 GUEST
   echo "JOBTOMATIK_FROZEN_RETURN_ARTIFACT_VERIFIED=$EXPECTED_FROZEN_REVISION"
+}
+
+expected_contract_digest() {
+  local source_path="$1"
+  "$PROOT_COMMAND" login "$PROOT_DISTRO" --shared-tmp -- bash -s -- \
+    "$FROZEN_REPO" "$EXPECTED_FROZEN_REVISION" "$source_path" <<'GUEST'
+set -euo pipefail
+repo="$1"
+expected="$2"
+path="$3"
+actual="$(git -C "$repo" rev-parse HEAD)"
+if [[ "$actual" != "$expected" ]]; then
+  echo "Frozen checkout moved during native contract attestation." >&2
+  exit 1
+fi
+git -C "$repo" show "$expected:$path" | sha256sum | awk '{print $1}'
+GUEST
+}
+
+verify_installed_native_contracts() {
+  local installed_paths=(
+    "$STACK_COMMAND"
+    "$PILOT_COMMAND"
+    "$PILOT_CONTROLLER_COMMAND"
+    "$PILOT_CONTROLLER_MANAGER_COMMAND"
+    "$BROWSER_COMMAND"
+    "$PROCESS_IDENTITY_HELPER"
+  )
+  local index source_path installed_path expected_digest observed_digest
+  for index in "${!NATIVE_CONTRACT_PATHS[@]}"; do
+    source_path="${NATIVE_CONTRACT_PATHS[$index]}"
+    installed_path="${installed_paths[$index]}"
+    if [[ ! -f "$installed_path" ]]; then
+      echo "Installed native launcher is missing: $installed_path" >&2
+      return 1
+    fi
+    expected_digest="$(expected_contract_digest "$source_path")"
+    observed_digest="$(sha256sum "$installed_path" | awk '{print $1}')"
+    if [[ -z "$expected_digest" || "$observed_digest" != "$expected_digest" ]]; then
+      echo "Installed native launcher drift detected: $installed_path source=$source_path" >&2
+      return 1
+    fi
+  done
+  echo "JOBTOMATIK_PROMOTION_NATIVE_CONTRACTS_ATTESTED=$EXPECTED_FROZEN_REVISION"
 }
 
 prepare_lane() {
@@ -302,24 +361,40 @@ echo "JOBTOMATIK_PROMOTION_LANE_PREPARED=$target_revision"
 GUEST
 }
 
+contain_promotion_stack() {
+  local label="$1"
+  if ! promotion_stack stop; then
+    echo "Promotion stack stop failed during $label; frozen lane remains blocked." >&2
+    return 1
+  fi
+  if ! stop_promotion_redis; then
+    echo "Promotion Redis stop failed during $label; frozen lane remains blocked." >&2
+    return 1
+  fi
+  archive_shared_control_dir "$PROMOTION_RUNTIME_DIR" "$label"
+}
+
 restore_frozen_after_failure() {
   local label="$1"
-  promotion_stack stop >/dev/null 2>&1 || true
-  stop_promotion_redis
-  archive_shared_control_dir "$PROMOTION_RUNTIME_DIR" "$label"
-  frozen_stack start || true
+  contain_promotion_stack "$label" || return 1
+  frozen_stack start || return 1
 }
 
 start_lane() {
+  verify_installed_native_contracts
   prepare_lane
   verify_frozen_return_artifact
-  promotion_stack stop >/dev/null 2>&1 || true
+  if ! promotion_stack stop; then
+    echo "Unable to prove the prior promotion stack is stopped; leaving frozen lane untouched." >&2
+    exit 1
+  fi
   stop_promotion_redis
   frozen_stack stop
   archive_shared_control_dir "$FROZEN_RUNTIME_DIR" "before-promotion"
 
   if ! start_promotion_redis; then
     echo "Promotion Redis failed to start; restoring frozen lane." >&2
+    stop_promotion_redis || true
     frozen_stack start || true
     exit 1
   fi
@@ -352,16 +427,19 @@ start_lane() {
 }
 
 stop_lane() {
-  promotion_stack stop || true
-  stop_promotion_redis
-  archive_shared_control_dir "$PROMOTION_RUNTIME_DIR" "promotion-stop"
+  if ! contain_promotion_stack "promotion-stop"; then
+    echo "JOBTOMATIK_PROMOTION_LANE_STOP_UNVERIFIED" >&2
+    return 1
+  fi
   echo "JOBTOMATIK_PROMOTION_LANE_STOPPED"
 }
 
 return_frozen() {
-  promotion_stack stop || true
-  stop_promotion_redis
-  archive_shared_control_dir "$PROMOTION_RUNTIME_DIR" "before-frozen-return"
+  verify_installed_native_contracts
+  if ! contain_promotion_stack "before-frozen-return"; then
+    echo "Refusing frozen-lane startup because promotion containment is unverified." >&2
+    return 1
+  fi
   verify_frozen_return_artifact
   frozen_stack start
   frozen_stack acceptance
@@ -420,16 +498,26 @@ fi
 require_native_command proot-distro
 require_native_command "$STACK_COMMAND"
 require_native_command "$PILOT_COMMAND"
+require_native_command jobtomatik-browser
+require_native_command jobtomatik-pilot-controller
+require_native_command jobtomatik-pilot-controller-manager
+require_native_command jobtomatik_process_identity.sh
 require_native_command redis-server
 require_native_command redis-cli
+require_native_command sha256sum
 PROOT_COMMAND="$(command -v proot-distro)"
 STACK_COMMAND="$(command -v "$STACK_COMMAND")"
 PILOT_COMMAND="$(command -v "$PILOT_COMMAND")"
+BROWSER_COMMAND="$(command -v jobtomatik-browser)"
+PILOT_CONTROLLER_COMMAND="$(command -v jobtomatik-pilot-controller)"
+PILOT_CONTROLLER_MANAGER_COMMAND="$(command -v jobtomatik-pilot-controller-manager)"
+PROCESS_IDENTITY_HELPER="$(command -v jobtomatik_process_identity.sh)"
 REDIS_SERVER_BIN="$(command -v redis-server)"
 REDIS_CLI_BIN="$(command -v redis-cli)"
 
 case "$ACTION" in
   prepare)
+    verify_installed_native_contracts
     prepare_lane
     ;;
   start|prepare-start)
