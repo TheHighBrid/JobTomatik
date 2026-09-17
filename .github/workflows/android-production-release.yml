@@ -66,7 +66,7 @@ jobs:
             echo "Release tag $RELEASE_TAG already exists" >&2
             exit 1
           fi
-          test "$(git grep -m1 -E '^        versionCode [0-9]+$' -- frontend/android/app/build.gradle | awk '{print $2}')" = "$VERSION_CODE"
+          test "$(git grep -m1 -E '^        versionCode [0-9]+$' -- frontend/android/app/build.gradle | awk '{print $3}')" = "$VERSION_CODE"
           test "$(git grep -m1 -E '^        versionName \"[0-9]+\.[0-9]+\.[0-9]+\"$' -- frontend/android/app/build.gradle | sed -E 's/.*versionName \"([^\"]+)\"/\1/')" = "$VERSION_NAME"
 
       - name: Verify mandatory persistent signing secrets
