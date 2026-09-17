@@ -235,7 +235,7 @@ jobs:
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           cp -a "$publish_dir/." .
           git add JOBTOMATIK_REVISION jobtomatik-frontend-manifest.json dist
-          git commit -m "Publish Android static frontend ${GITHUB_SHA}"
+          git commit --allow-empty -m "Publish Android static frontend ${GITHUB_SHA}"
           test "$(git rev-parse HEAD^)" = "$previous_runtime_commit"
           git push origin "HEAD:refs/heads/${ARTIFACT_BRANCH}"
           echo "JOBTOMATIK_FRONTEND_RUNTIME_BRANCH_PUBLISHED=${ARTIFACT_BRANCH}"
