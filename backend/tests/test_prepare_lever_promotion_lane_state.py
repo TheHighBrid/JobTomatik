@@ -94,6 +94,7 @@ def _verify_prepared_state(module, source_env: Path, promotion_backend: Path, pa
     promotion_db = promotion_backend / module.PROMOTION_DB_NAME
     _require_equal(_read_db_value(promotion_db), "frozen", "promotion database snapshot")
     _require_equal(marker["initial_lever_ledger_record_count"], 1, "initial Lever ledger count")
+    _require(marker["initial_lever_ledger_size_bytes"] > 0, "Initial ledger byte size must be retained")
     _require_equal(marker["final_submit_authority_created"], False, "submit authority marker")
 
     promotion_env = promotion_backend / ".env"
@@ -115,7 +116,7 @@ def _verify_prepared_state(module, source_env: Path, promotion_backend: Path, pa
     return copied_ledger
 
 
-def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monkeypatch):
+def _prepared_lane(tmp_path: Path, monkeypatch):
     module = _load_module()
     source_repo = tmp_path / "frozen"
     promotion_repo = tmp_path / "promotion"
@@ -131,15 +132,19 @@ def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monk
         "_validate_runtime_ledger",
         lambda path: [{"mode": "supervised"} for line in path.read_text().splitlines() if line],
     )
-
     marker = module.prepare_state(
         source_repo=source_repo,
         promotion_repo=promotion_repo,
         source_revision="a" * 40,
         target_revision="b" * 40,
     )
-    _require_equal(_read_db_value(source_db), "frozen", "source database")
     copied_ledger = _verify_prepared_state(module, source_env, promotion_backend, paths, marker)
+    return module, source_db, promotion_repo, copied_ledger
+
+
+def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monkeypatch):
+    module, source_db, promotion_repo, copied_ledger = _prepared_lane(tmp_path, monkeypatch)
+    _require_equal(_read_db_value(source_db), "frozen", "source database")
     copied_ledger.write_text(
         copied_ledger.read_text(encoding="utf-8") + '{"mode":"supervised","specimen":"second"}\n',
         encoding="utf-8",
@@ -152,6 +157,23 @@ def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monk
     _require_equal(verified["ok"], True, "verification result")
     _require_equal(verified["lever_ledger_record_count"], 2, "verified Lever ledger count")
     _require_equal(verified["initial_lever_ledger_record_count"], 1, "verified initial count")
+    _require_equal(verified["inherited_lever_ledger_prefix_verified"], True, "inherited prefix proof")
+
+
+def test_verify_state_rejects_replaced_inherited_lever_confirmation_prefix(tmp_path, monkeypatch):
+    module, _, promotion_repo, copied_ledger = _prepared_lane(tmp_path, monkeypatch)
+    copied_ledger.write_text(
+        '{"mode":"supervised","specimen":"replacement"}\n'
+        '{"mode":"supervised","specimen":"second"}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(module.PromotionLaneStateError, match="inherited confirmation evidence"):
+        module.verify_state(
+            promotion_repo=promotion_repo,
+            expected_frozen_revision="a" * 40,
+            expected_target_revision="b" * 40,
+        )
 
 
 def test_prepare_state_refuses_to_drop_missing_lever_confirmation_ledger(tmp_path, monkeypatch):
