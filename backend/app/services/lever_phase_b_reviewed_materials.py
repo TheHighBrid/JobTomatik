@@ -655,7 +655,10 @@ def review_retained_lever_materials(
     current_evidence_digest = _evidence_digest(eligible)
     critical_errors: list[str] = []
     for material in materials.values():
-        assert material is not None
+        if material is None:
+            raise LeverPhaseBReviewedMaterialsError(
+                "A required latest material disappeared after completeness validation"
+            )
         preparation = _preparation_snapshot(material)
         if preparation.get("posting_sha256") != posting_sha256:
             critical_errors.append(
@@ -676,7 +679,10 @@ def review_retained_lever_materials(
 
     reviewed_at = _utcnow()
     for material in materials.values():
-        assert material is not None
+        if material is None:
+            raise LeverPhaseBReviewedMaterialsError(
+                "A required latest material disappeared after completeness validation"
+            )
         material.source_snapshot = {
             **(material.source_snapshot or {}),
             "user_review": {
@@ -720,7 +726,10 @@ def review_retained_lever_materials(
 
     _required_resume_path(user)
     cover_letter = materials["cover_letter"]
-    assert cover_letter is not None
+    if cover_letter is None:
+        raise LeverPhaseBReviewedMaterialsError(
+            "The reviewed cover letter disappeared before application synchronization"
+        )
     application.cover_letter = cover_letter.content
     application.resume_path = user.resume_path
     _resolve_material_review_tasks(db, application.id, notes=notes)

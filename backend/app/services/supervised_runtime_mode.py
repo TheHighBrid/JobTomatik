@@ -180,7 +180,8 @@ def pending_runtime_marker_active(
     marker = load_marker(path)
     if not _common_marker_valid(marker):
         return False
-    assert marker is not None
+    if marker is None:
+        return False
     if marker.get("state") != MARKER_STATE_PENDING:
         return False
 
@@ -387,7 +388,9 @@ def runtime_lease_status(
     if not _common_marker_valid(marker):
         blockers.append("marker_invalid")
         return result
-    assert marker is not None
+    if marker is None:
+        blockers.append("marker_invalid")
+        return result
     if marker.get("state") != MARKER_STATE_ACTIVE:
         blockers.append("marker_not_active")
         return result

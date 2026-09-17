@@ -280,7 +280,8 @@ def _owner_record_matches(
 ) -> bool:
     if not _record_signature_valid(record, secret_key):
         return False
-    assert record is not None
+    if record is None:
+        return False
     try:
         owner_id = int(record.get("user_id"))
     except (TypeError, ValueError):
