@@ -35,7 +35,7 @@ jobs:
         working-directory: frontend
     steps:
       - name: Check out repository history
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -53,21 +53,21 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
 
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "20.19.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Set up Java
-        uses: actions/setup-java@v6.0.0
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
         with:
           packages: platform-tools
 
@@ -160,19 +160,22 @@ jobs:
           Candidate workflow run: $GITHUB_RUN_ID
           EOF
           BUILD_IDENTITY_SHA256="$(sha256sum release-candidate/BUILD-INFO.txt | cut -d' ' -f1)"
-          python - <<PY
+          export APK_SHA256 BUILD_IDENTITY_SHA256 SIGNING_CERT_SHA256
+          python - <<'PY'
           import json
+          import os
           from pathlib import Path
+
           payload = {
               "version": "jobtomatik-v2.1-release-candidate-v1",
-              "source_revision": "$SOURCE_COMMIT",
-              "apk_sha256": "$APK_SHA256",
-              "build_identity_sha256": "$BUILD_IDENTITY_SHA256",
-              "signing_certificate_sha256": "$SIGNING_CERT_SHA256",
-              "signing_mode": "$SIGNING_MODE",
-              "day41_audit_reference": "$DAY41_AUDIT_REFERENCE",
+              "source_revision": os.environ["SOURCE_COMMIT"],
+              "apk_sha256": os.environ["APK_SHA256"],
+              "build_identity_sha256": os.environ["BUILD_IDENTITY_SHA256"],
+              "signing_certificate_sha256": os.environ["SIGNING_CERT_SHA256"],
+              "signing_mode": os.environ["SIGNING_MODE"],
+              "day41_audit_reference": os.environ["DAY41_AUDIT_REFERENCE"],
               "workflow_path": ".github/workflows/build-v2-release-candidate.yml",
-              "workflow_run_id": int("$GITHUB_RUN_ID"),
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
               "workflow_conclusion": "success",
               "reproducible_build": True,
               "source_commit_file_present": True,
@@ -187,7 +190,7 @@ jobs:
           PY
 
       - name: Upload immutable prepublication candidate
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: JobTomatik-v2.1.0-candidate-${{ inputs.source_commit }}
           path: frontend/release-candidate/*
