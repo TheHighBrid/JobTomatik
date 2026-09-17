@@ -58,8 +58,10 @@ def install_application_attempt_result_guard() -> None:
             raise ApplicationAttemptCheckpointLost(
                 "Application attempt checkpoint changed before result persistence"
             )
-        assert _ORIGINAL_RECORD_RESULT_EVIDENCE is not None
-        _ORIGINAL_RECORD_RESULT_EVIDENCE(db, checked, result)
+        recorder = _ORIGINAL_RECORD_RESULT_EVIDENCE
+        if recorder is None:
+            raise RuntimeError("Application result evidence recorder is unavailable")
+        recorder(db, checked, result)
 
     application_tasks._record_result_evidence = guarded_record_result_evidence
     handoff_tasks._record_result_evidence = guarded_record_result_evidence
