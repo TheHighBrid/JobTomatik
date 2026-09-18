@@ -102,37 +102,11 @@ jobs:
       - name: Build frontend and synchronize Capacitor
         run: npm run android:prepare
 
-      - name: Materialize ephemeral release signing files
+      - name: Assemble production APK with protected signing material
         uses: ./.github/actions/android-signing-material
         with:
           signing_bundle_base64: ${{ secrets.JOBTOMATIK_ANDROID_SIGNING_BUNDLE_BASE64 }}
 
-      - name: Validate signing identity and assemble production APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          SIGNING_DIR="$RUNNER_TEMP/jobtomatik-signing"
-          KEYSTORE_PATH="$SIGNING_DIR/release.jks"
-          STORE_PASSWORD="$(cat "$SIGNING_DIR/store-password")"
-          KEY_ALIAS="$(cat "$SIGNING_DIR/key-alias")"
-          KEY_PASSWORD="$(cat "$SIGNING_DIR/key-password")"
-          test -s "$KEYSTORE_PATH"
-          test -n "$STORE_PASSWORD"
-          test -n "$KEY_ALIAS"
-          test -n "$KEY_PASSWORD"
-          keytool -list \
-            -keystore "$KEYSTORE_PATH" \
-            -storepass "$STORE_PASSWORD" \
-            -alias "$KEY_ALIAS" >/dev/null
-          chmod +x android/gradlew
-          (
-            export JOBTOMATIK_KEYSTORE_PATH="$KEYSTORE_PATH"
-            export JOBTOMATIK_KEYSTORE_PASSWORD="$STORE_PASSWORD"
-            export JOBTOMATIK_KEY_ALIAS="$KEY_ALIAS"
-            export JOBTOMATIK_KEY_PASSWORD="$KEY_PASSWORD"
-            cd android
-            ./gradlew --no-daemon lintRelease assembleRelease
-          )
 
       - name: Verify production APK identity and persistent certificate
         shell: bash
@@ -178,11 +152,6 @@ jobs:
           Built by: GitHub Actions
           Publication: not performed by this workflow
           EOF
-
-      - name: Remove ephemeral signing files
-        if: always()
-        shell: bash
-        run: rm -rf "$RUNNER_TEMP/jobtomatik-signing"
 
       - name: Upload production-signed release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
