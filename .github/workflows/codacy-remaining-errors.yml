@@ -1,0 +1,42 @@
+name: Codacy remaining Security Error probe
+
+on:
+  push:
+    branches:
+      - codex/codacy-frozen-verify
+    paths:
+      - .github/workflows/codacy-remaining-errors.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Query remaining main Security Errors
+        run: |
+          set -euo pipefail
+          body='{"levels":["Error"],"categories":["Security"]}'
+          curl --fail-with-body -sS -X POST \
+            'https://app.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/issues/search?limit=1000' \
+            -H 'Accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d "$body" > /tmp/codacy.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("/tmp/codacy.json").read_text())
+          rows=[]
+          for x in p.get("data",[]):
+              rows.append({
+                  "filePath":x.get("filePath"),
+                  "lineNumber":x.get("lineNumber"),
+                  "pattern":(x.get("patternInfo") or {}).get("id"),
+                  "tool":(x.get("toolInfo") or {}).get("name"),
+                  "message":x.get("message"),
+              })
+          print("TOTAL", p.get("pagination",{}).get("total"))
+          print(json.dumps(rows,indent=2,sort_keys=True))
+          PY
