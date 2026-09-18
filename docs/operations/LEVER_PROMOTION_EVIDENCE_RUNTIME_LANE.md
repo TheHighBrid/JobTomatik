@@ -124,6 +124,8 @@ Read-only campaign inputs are normalized back to the promotion checkout's commit
     - `AUTOPILOT_ENABLED=false`
     - `GREENHOUSE_SUPERVISED_PILOT_ENABLED=false`
     - `LEVER_SUPERVISED_PILOT_ENABLED=false`
+During optional handoff-state copy, Chromium process-instance artifacts named `SingletonLock`, `SingletonSocket`, and `SingletonCookie` are intentionally excluded. They are transient browser ownership markers rather than retained application evidence, and stale/broken instances must not block isolated-lane preparation.
+
 12. writes an ignored `backend/.runtime/promotion-lane.json` receipt containing the
     frozen revision, promotion revision, database SHA-256, initial Lever-ledger count
     and digest, isolated-path contract, and fail-safe posture.
