@@ -60,6 +60,12 @@ def test_promotion_lane_shell_is_syntax_valid_and_pins_source_revision_once():
     _require_contains(source, 'PROMOTION_REPO="${JOBTOMATIK_PROMOTION_PROOT_REPO:-/root/JobTomatik-promotion}"')
     _require_contains(source, "git -C \"$source_repo\" worktree add --detach")
     _require_contains(source, 'ln -s "$source_repo/backend/.venv"')
+    _require_contains(source, "verify_python_environment_requirements.py")
+    _require_before(
+        source,
+        "verify_python_environment_requirements.py",
+        "prepare_lever_promotion_lane_state.py prepare",
+    )
     _require_contains(source, 'source_requirements="$(git -C "$source_repo" rev-parse')
     _require_contains(source, 'target_requirements="$(git -C "$source_repo" rev-parse')
     _require_contains(source, "cat-file -e")
