@@ -119,7 +119,11 @@ def test_android_production_release_workflow_is_fail_closed_and_deterministic():
     assert "JOBTOMATIK_KEY_ALIAS" in workflow
     assert "JOBTOMATIK_KEY_PASSWORD" in workflow
     assert "JOBTOMATIK_RELEASE_CERT_SHA256" in workflow
+    assert "vars.JOBTOMATIK_RELEASE_CERT_SHA256" in workflow
+    assert "./.github/actions/android-signing-material" in workflow
     assert "GITHUB_ENV" not in workflow
+    assert "JOBTOMATIK_KEYSTORE_PASSWORD: ${{ secrets." not in workflow
+    assert "JOBTOMATIK_KEY_PASSWORD: ${{ secrets." not in workflow
     assert "apksigner" in workflow
     assert "SIGNING_CERT_SHA256" in workflow
     assert 'test "$SIGNING_CERT_SHA256" = "$EXPECTED_CERT_SHA256"' in workflow
@@ -131,6 +135,24 @@ def test_android_production_release_workflow_is_fail_closed_and_deterministic():
     assert "softprops/action-gh-release" not in workflow
     assert "Publication: not performed by this workflow" in workflow
     assert "create-release" not in workflow
+
+
+
+
+def test_android_signing_material_action_writes_only_ephemeral_mode_0600_files():
+    action = (REPO_ROOT / ".github" / "actions" / "android-signing-material" / "action.yml").read_text(encoding="utf-8")
+    script = (REPO_ROOT / ".github" / "actions" / "android-signing-material" / "index.js").read_text(encoding="utf-8")
+    assert "using: node20" in action
+    assert "keystore_base64:" in action
+    assert "keystore_password:" in action
+    assert "key_alias:" in action
+    assert "key_password:" in action
+    assert "RUNNER_TEMP" in script
+    assert "jobtomatik-signing" in script
+    assert "mode: 0o600" in script
+    assert "::add-mask::" in script
+    assert "GITHUB_ENV" not in script
+    assert "GITHUB_OUTPUT" not in script
 
 
 def test_exact_artifact_v21_publisher_is_owner_scoped_and_does_not_rebuild():
