@@ -43,7 +43,7 @@ def _require_before(haystack: str, first: str, second: str) -> None:
     )
 
 
-def test_promotion_lane_shell_is_syntax_valid_and_keeps_frozen_revision_explicit():
+def test_promotion_lane_shell_is_syntax_valid_and_pins_source_revision_once():
     run(
         ["bash", "-n", "scripts/jobtomatik_promotion_lane.sh"],
         cwd=BACKEND_ROOT,
@@ -51,7 +51,11 @@ def test_promotion_lane_shell_is_syntax_valid_and_keeps_frozen_revision_explicit
     )
     source = _source()
 
-    _require_contains(source, "198b197dfcece6fbf9f3edfc5a92511fd951b484")
+    _require_contains(source, 'EXPECTED_FROZEN_REVISION="${JOBTOMATIK_FROZEN_REVISION:-}"')
+    _require_contains(source, "resolve_source_revision")
+    _require_contains(source, 'git -C "$repo" rev-parse HEAD')
+    _require_contains(source, 'SOURCE_REVISION_PIN_MODE="captured_at_invocation"')
+    _require_absent(source, "198b197dfcece6fbf9f3edfc5a92511fd951b484")
     _require_contains(source, 'FROZEN_REPO="${JOBTOMATIK_FROZEN_PROOT_REPO:-/root/JobTomatik}"')
     _require_contains(source, 'PROMOTION_REPO="${JOBTOMATIK_PROMOTION_PROOT_REPO:-/root/JobTomatik-promotion}"')
     _require_contains(source, "git -C \"$source_repo\" worktree add --detach")

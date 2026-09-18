@@ -5,7 +5,8 @@ ACTION="${1:-status}"
 PROOT_DISTRO="${JOBTOMATIK_PROOT_DISTRO:-ubuntu}"
 FROZEN_REPO="${JOBTOMATIK_FROZEN_PROOT_REPO:-/root/JobTomatik}"
 PROMOTION_REPO="${JOBTOMATIK_PROMOTION_PROOT_REPO:-/root/JobTomatik-promotion}"
-EXPECTED_FROZEN_REVISION="${JOBTOMATIK_FROZEN_REVISION:-198b197dfcece6fbf9f3edfc5a92511fd951b484}"
+EXPECTED_FROZEN_REVISION="${JOBTOMATIK_FROZEN_REVISION:-}"
+SOURCE_REVISION_PIN_MODE="explicit"
 STACK_COMMAND="${JOBTOMATIK_STACK_COMMAND:-jobtomatik}"
 PILOT_COMMAND="${JOBTOMATIK_PILOT_COMMAND:-jobtomatik-pilot}"
 FROZEN_RUNTIME_DIR="${JOBTOMATIK_FROZEN_ANDROID_RUNTIME_DIR:-$HOME/.jobtomatik-runtime}"
@@ -44,6 +45,30 @@ require_native_command() {
     echo "Required native command is unavailable: $name" >&2
     exit 1
   fi
+}
+
+resolve_source_revision() {
+  if [[ -n "$EXPECTED_FROZEN_REVISION" ]]; then
+    if [[ ! "$EXPECTED_FROZEN_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+      echo "JOBTOMATIK_FROZEN_REVISION must be a full 40-character commit SHA." >&2
+      exit 2
+    fi
+    SOURCE_REVISION_PIN_MODE="explicit"
+    return 0
+  fi
+
+  EXPECTED_FROZEN_REVISION="$(
+    "$PROOT_COMMAND" login "$PROOT_DISTRO" --shared-tmp -- bash -s -- "$FROZEN_REPO" <<'GUEST'
+set -euo pipefail
+repo="$1"
+git -C "$repo" rev-parse HEAD
+GUEST
+  )"
+  if [[ ! "$EXPECTED_FROZEN_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "Unable to capture a valid source checkout revision from $FROZEN_REPO." >&2
+    exit 2
+  fi
+  SOURCE_REVISION_PIN_MODE="captured_at_invocation"
 }
 
 promotion_redis_identity_matches() {
@@ -450,6 +475,7 @@ status_lane() {
   echo "FROZEN_REPO=$FROZEN_REPO"
   echo "PROMOTION_REPO=$PROMOTION_REPO"
   echo "EXPECTED_FROZEN_REVISION=$EXPECTED_FROZEN_REVISION"
+  echo "SOURCE_REVISION_PIN_MODE=$SOURCE_REVISION_PIN_MODE"
   echo "PROMOTION_RUNTIME_DIR=$PROMOTION_RUNTIME_DIR"
   echo "PROMOTION_BROWSER_PROFILE=$PROMOTION_BROWSER_PROFILE"
   echo "PROMOTION_REDIS_URL=$PROMOTION_REDIS_URL"
@@ -514,6 +540,8 @@ PILOT_CONTROLLER_MANAGER_COMMAND="$(command -v jobtomatik-pilot-controller-manag
 PROCESS_IDENTITY_HELPER="$(command -v jobtomatik_process_identity.sh)"
 REDIS_SERVER_BIN="$(command -v redis-server)"
 REDIS_CLI_BIN="$(command -v redis-cli)"
+
+resolve_source_revision
 
 case "$ACTION" in
   prepare)
