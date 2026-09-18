@@ -1,0 +1,18 @@
+name: Materialize Android signing material
+description: Write protected Android signing inputs to ephemeral runner files.
+inputs:
+  keystore_base64:
+    description: Base64-encoded persistent release keystore
+    required: true
+  keystore_password:
+    description: Keystore password
+    required: true
+  key_alias:
+    description: Signing key alias
+    required: true
+  key_password:
+    description: Signing key password
+    required: true
+runs:
+  using: node20
+  main: index.js
