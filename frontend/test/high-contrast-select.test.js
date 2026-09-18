@@ -65,6 +65,7 @@ test('HighContrastSelect uses Headless UI rather than native option elements', (
   assert.equal(selectSource.includes('ListboxButton'), true)
   assert.equal(selectSource.includes('ListboxOptions'), true)
   assert.equal(selectSource.includes('getHighContrastOptionStyles'), true)
+  assert.equal(selectSource.includes("width: 'var(--anchor-width)'"), true)
   assert.equal(/^\s*<option(?:\s|>)/m.test(selectSource), false)
   assert.equal(/^\s*<select(?:\s|>)/m.test(selectSource), false)
 })
