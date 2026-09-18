@@ -57,7 +57,7 @@ def _table_counts(connection: sqlite3.Connection) -> dict[str, int]:
         escaped = name.replace('"', '""')
         result[name] = int(
             connection.execute(  # nosemgrep: Semgrep_python.lang.security.audit.formatted-sql-query.formatted-sql-query, Semgrep_python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query, Semgrep_python_sql_rule-hardcoded-sql-expression
-                f'SELECT COUNT(*) FROM "{escaped}"'
+                f'SELECT COUNT(*) FROM "{escaped}"'  # nosec B608
             ).fetchone()[0]
         )
     return result
