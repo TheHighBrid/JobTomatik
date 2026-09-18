@@ -109,6 +109,21 @@ jobs:
       - name: Run dependency verification gate
         run: bash scripts/verify.sh dependencies
 
+      - name: Capture frontend production npm audit evidence
+        working-directory: frontend
+        run: |
+          npm audit --omit=dev --json > npm-audit-production.json || true
+          python ../scripts/validate_npm_audit.py npm-audit-production.json
+
+      - name: Upload frontend npm audit evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reproducible-verification-npm-audit
+          path: frontend/npm-audit-production.json
+          if-no-files-found: error
+          retention-days: 14
+
   backend-browser-migration:
     runs-on: ubuntu-22.04
     timeout-minutes: 75
