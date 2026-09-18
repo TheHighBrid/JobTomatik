@@ -72,6 +72,32 @@ jobs:
                       raise SystemExit(f"non-exact top-level version remains: {name}={spec}")
           PY
 
+          cp package-lock.json /tmp/package-lock.before-audit-fix.json
+          npm audit fix --package-lock-only --ignore-scripts
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          before=json.loads(Path("/tmp/package-lock.before-audit-fix.json").read_text())
+          after=json.loads(Path("package-lock.json").read_text())
+          before_packages=before["packages"]
+          after_packages=after["packages"]
+          changed_versions=[]
+          for path in sorted(set(before_packages) | set(after_packages)):
+              old=(before_packages.get(path) or {}).get("version")
+              new=(after_packages.get(path) or {}).get("version")
+              if old != new:
+                  changed_versions.append((path, old, new))
+                  if not (path == "node_modules/brace-expansion" or path.endswith("/node_modules/brace-expansion")):
+                      raise SystemExit(
+                          f"npm audit fix attempted unrelated package version change: {path}: {old} -> {new}"
+                      )
+          if not changed_versions:
+              raise SystemExit("npm audit fix did not patch the vulnerable brace-expansion tree")
+          print("AUDIT_VERSION_CHANGES", changed_versions)
+          PY
+
           npm ci
           npm test
           npm run build
