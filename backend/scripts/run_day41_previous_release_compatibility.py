@@ -305,7 +305,7 @@ def main() -> int:
     base_env = dict(os.environ)
     base_env.update(
         {
-            "SECRET_KEY": "day41-previous-release-compatibility-ci-only-secret-key",
+            "SECRET_KEY": "day41-previous-release-compatibility-ci-only-secret-key",  # nosec B105
             "REDIS_URL": "redis://localhost:6379/0",
             "AI_PROVIDER": "template",
             "DEV_MOCK_JOBS": "false",
