@@ -15,11 +15,11 @@ Before running the production-signed build, configure one protected secret for t
 JOBTOMATIK_ANDROID_SIGNING_BUNDLE_BASE64
 ```
 
-The secret is base64-encoded JSON with four fields: `keystore_base64`, `keystore_password`, `key_alias`, and `key_password`. Keep the entire bundle outside source control.
+The secret is base64-encoded JSON containing exactly four ordered strings: the keystore bytes encoded as base64, the keystore unlock material, the key alias, and the key unlock material. The order is part of the private operator contract; keep the entire bundle outside source control.
 
 Configure the public certificate fingerprint separately as the protected environment/repository **variable** `JOBTOMATIK_RELEASE_CERT_SHA256`. A certificate fingerprint is public verification material, not a private signing secret.
 
-The workflow never maps private signing values into workflow step `env` or `GITHUB_ENV`. A local Node action receives one opaque bundle input, unpacks it only inside the runner, writes mode-0600 files under `RUNNER_TEMP`, validates the keystore, launches the release Gradle process with credentials only in that child process environment, and removes the ephemeral files in a `finally` cleanup before returning.
+The workflow never maps private signing values into workflow step `env` or `GITHUB_ENV`. A local Node action receives one opaque bundle input, unpacks it only inside the runner, writes mode-0600 files under `RUNNER_TEMP`, validates the keystore, and launches Gradle with only the ephemeral signing-directory path in the child environment. Gradle reads the protected values directly from those files. The action removes the entire directory in a `finally` cleanup before returning.
 
 ## Production build contract
 
