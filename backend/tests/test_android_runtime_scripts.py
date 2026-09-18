@@ -246,3 +246,26 @@ def test_android_update_always_fast_forwards_authoritative_main():
     assert "activate_stack restart" not in executable_update_case
     assert "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING" in executable_update_case
     assert 'exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart' in executable_update_case
+
+
+def test_android_update_syncs_and_attests_backend_environment_before_reexec():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    update_case = wrapper.split("  update)\n", 1)[1].split("    ;;", 1)[0]
+
+    assert "verify_python_environment_requirements.py" in wrapper
+    assert "pip install --disable-pip-version-check -r backend/requirements.txt" in wrapper
+    assert update_case.index("update_main") < update_case.index("sync_backend_environment")
+    assert update_case.index("sync_backend_environment") < update_case.index("install_native_commands")
+    assert update_case.index("install_native_commands") < update_case.index("exec ")
+
+
+def test_runtime_sensitive_actions_fail_closed_on_python_environment_drift():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+
+    for action in ("start", "restart", "status", "acceptance"):
+        section = wrapper.split(f"  {action})\n", 1)[1].split("    ;;", 1)[0]
+        assert "verify_backend_environment" in section

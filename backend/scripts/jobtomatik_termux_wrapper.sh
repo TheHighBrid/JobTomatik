@@ -223,6 +223,16 @@ stop_stack_supervisor() {
   rm -f "$STACK_PID_FILE"
 }
 
+verify_backend_environment() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO'; backend/.venv/bin/python backend/scripts/verify_python_environment_requirements.py --requirements backend/requirements.txt"
+}
+
+sync_backend_environment() {
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO'; backend/.venv/bin/python -m pip install --disable-pip-version-check -r backend/requirements.txt; backend/.venv/bin/python backend/scripts/verify_python_environment_requirements.py --requirements backend/requirements.txt"
+}
+
 install_native_commands() {
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "cd '$PROOT_REPO' && bash backend/scripts/install_android_native_browser_launcher.sh"
@@ -253,6 +263,7 @@ activate_stack() {
 
 case "$ACTION" in
   start)
+    verify_backend_environment
     # `jobtomatik start` is idempotent. Never recycle the external authenticated
     # Chromium while the managed stack is already live and healthy because that could
     # interrupt an in-flight application session.
@@ -266,6 +277,7 @@ case "$ACTION" in
     fi
     ;;
   restart)
+    verify_backend_environment
     stop_stack_supervisor
     # Preserve the authenticated native browser on every ordinary restart. A marker
     # written by the freshly installed launcher is the only authority for one bounded
@@ -274,12 +286,14 @@ case "$ACTION" in
     activate_stack restart "$browser_recovery_mode"
     ;;
   status)
+    verify_backend_environment
     "$BROWSER_COMMAND" status || true
     run_stack_foreground status
     run_frontend_guard status
     pilot_controller_status || true
     ;;
   acceptance)
+    verify_backend_environment
     "$BROWSER_COMMAND" status
     run_stack_foreground status
     run_frontend_guard status
@@ -301,6 +315,7 @@ case "$ACTION" in
     ;;
   update)
     update_main
+    sync_backend_environment
     install_native_commands
     # Never call activate_stack restart from this pre-update shell: Bash parsed this
     # launcher before the git pull, so its functions can belong to the previous

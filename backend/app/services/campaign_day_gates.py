@@ -53,6 +53,10 @@ def _greenhouse_summary(readiness: Mapping[str, Any]) -> Dict[str, Any]:
     return dict(nested if isinstance(nested, Mapping) else readiness)
 
 
+def _submission_noun(count: int) -> str:
+    return "submission" if count == 1 else "submissions"
+
+
 def _checkpoint(
     day: int, title: str, passed: bool, facts: Dict[str, Any], blockers: list[str]
 ) -> Dict[str, Any]:
@@ -441,7 +445,8 @@ def build_day_12_22_report(
                 + (
                     [
                         f"obtain exact user approvals and independently verify "
-                        f"{target - confirmed} more distinct submissions"
+                        f"{target - confirmed} more distinct "
+                        f"{_submission_noun(target - confirmed)}"
                     ]
                     if confirmed < target
                     else []

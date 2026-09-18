@@ -22,9 +22,9 @@
       "global_and_eu_hosts_covered": true,
       "thirty_distinct_lever_sites": true,
       "thirty_qualifying_dry_runs": true,
+      "three_supervised_confirmed_submissions": false,
       "zero_duplicate_submissions": true,
-      "zero_false_submitted_records": true,
-      "three_supervised_confirmed_submissions": false
+      "zero_false_submitted_records": true
     },
     "manual_challenge_boundary_count": 1,
     "manual_challenge_encounter_count": 1,
