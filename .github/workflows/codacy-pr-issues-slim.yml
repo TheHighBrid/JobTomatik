@@ -1,4 +1,4 @@
-name: Codacy current PR new issue probe
+name: Codacy current PR metadata probe
 
 on:
   push:
@@ -15,23 +15,29 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 3
     steps:
-      - name: Print exact current PR new issues
+      - name: Print current PR metadata and new issues
         shell: bash
         run: |
           set -euo pipefail
-          url='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516/issues?status=new&limit=100'
-          curl --fail-with-body -sS -H 'Accept: application/json' "$url" > /tmp/issues.json
+          base='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516'
+          curl --fail-with-body -sS -H 'Accept: application/json' "$base" > /tmp/meta.json
+          curl --fail-with-body -sS -H 'Accept: application/json' "$base/issues?status=new&limit=100" > /tmp/new.json
           python - <<'PY'
           import json
           from pathlib import Path
-          p=json.loads(Path("/tmp/issues.json").read_text())
-          print("ANALYZED", p.get("analyzed"))
-          print("COUNT", len(p.get("data") or []))
-          for x in p.get("data") or []:
+          meta=json.loads(Path("/tmp/meta.json").read_text())
+          new=json.loads(Path("/tmp/new.json").read_text())
+          print("META",json.dumps({
+              "head":(meta.get("pullRequest") or {}).get("headCommitSha"),
+              "isUpToStandards":meta.get("isUpToStandards"),
+              "fixedIssues":meta.get("fixedIssues"),
+              "newIssues":meta.get("newIssues"),
+              "newComplexity":meta.get("newComplexity"),
+          },sort_keys=True))
+          print("NEW_ANALYZED",new.get("analyzed"))
+          for x in new.get("data") or []:
               ci=x.get("commitIssue") or x
-              print(json.dumps({
-                  "deltaType":x.get("deltaType"),
-                  "issueId":ci.get("issueId"),
+              print("NEW",json.dumps({
                   "filePath":ci.get("filePath"),
                   "lineNumber":ci.get("lineNumber"),
                   "lineText":ci.get("lineText"),
