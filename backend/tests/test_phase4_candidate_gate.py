@@ -120,11 +120,12 @@ def test_phase4_publishes_remaining_supervised_and_shadow_boundaries():
     blockers = set(gate["candidate"]["remaining_blockers"])
     thresholds = gate["autonomy_contract_thresholds"]
 
-    assert "ten_distinct_supervised_confirmed_submissions_missing" in blockers
+    assert "required_supervised_confirmed_submissions_missing" in blockers
     assert "independent_success_review_missing" in blockers
     assert "separate_explicit_promotion_approval_missing" in blockers
     assert "signed_exact_commit_autonomy_release_manifest_missing" in blockers
-    assert thresholds["minimum_supervised_attempts"] == 10
+    assert thresholds["minimum_supervised_attempts"] == 3
+    assert thresholds["minimum_distinct_confirmed_submissions"] == 3
     assert thresholds["minimum_success_rate"] == 0.98
     assert any(item.startswith("shadow:four_hour_unattended_passed") for item in blockers)
     assert any(item.startswith("shadow:eight_hour_unattended_passed") for item in blockers)
