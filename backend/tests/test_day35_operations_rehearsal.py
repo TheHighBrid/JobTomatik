@@ -253,7 +253,7 @@ def test_provisional_recommendation_retains_future_shadow_and_supervised_blocker
         gate["provisional_autonomy_recommendation"]["remaining_autonomy_contract_blockers"]
     )
 
-    assert "ten_distinct_supervised_confirmed_submissions_missing" in blockers
+    assert "required_supervised_confirmed_submissions_missing" in blockers
     assert "signed_exact_commit_autonomy_release_manifest_missing" in blockers
     assert any(item.startswith("shadow:four_hour_unattended_passed") for item in blockers)
     assert any(item.startswith("shadow:eight_hour_unattended_passed") for item in blockers)
