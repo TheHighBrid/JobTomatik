@@ -79,7 +79,7 @@ jobs:
           summary = readiness['summary']
           assert summary['qualifying_dry_run_count'] >= 30
           assert summary['supervised_confirmed_count'] == 0
-          assert summary['gates']['ten_supervised_confirmed_submissions'] is False
+          assert summary['gates']['three_supervised_confirmed_submissions'] is False
           assert summary['promotion_ready'] is False
           PY
 
