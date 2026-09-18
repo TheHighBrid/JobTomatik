@@ -1,4 +1,4 @@
-name: Codacy current PR metadata probe
+name: Codacy current fixed export
 
 on:
   push:
@@ -11,40 +11,51 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  export:
     runs-on: ubuntu-slim
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
-      - name: Print current PR metadata and new issues
+      - name: Export current fixed issues for PR 516
         shell: bash
         run: |
           set -euo pipefail
-          base='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516'
-          curl --fail-with-body -sS -H 'Accept: application/json' "$base" > /tmp/meta.json
-          curl --fail-with-body -sS -H 'Accept: application/json' "$base/issues?status=new&limit=100" > /tmp/new.json
+          mkdir -p /tmp/codacy-current
           python - <<'PY'
-          import json
+          import json, urllib.parse, urllib.request
           from pathlib import Path
-          meta=json.loads(Path("/tmp/meta.json").read_text())
-          new=json.loads(Path("/tmp/new.json").read_text())
-          print("META",json.dumps({
-              "head":(meta.get("pullRequest") or {}).get("headCommitSha"),
-              "isUpToStandards":meta.get("isUpToStandards"),
-              "fixedIssues":meta.get("fixedIssues"),
-              "newIssues":meta.get("newIssues"),
-              "newComplexity":meta.get("newComplexity"),
-          },sort_keys=True))
-          print("NEW_ANALYZED",new.get("analyzed"))
-          for x in new.get("data") or []:
-              ci=x.get("commitIssue") or x
-              print("NEW",json.dumps({
-                  "filePath":ci.get("filePath"),
-                  "lineNumber":ci.get("lineNumber"),
-                  "lineText":ci.get("lineText"),
-                  "message":ci.get("message"),
-                  "pattern":(ci.get("patternInfo") or {}).get("id"),
-                  "category":(ci.get("patternInfo") or {}).get("category"),
-                  "level":(ci.get("patternInfo") or {}).get("level"),
-                  "tool":(ci.get("toolInfo") or {}).get("name"),
-              },sort_keys=True))
+
+          base='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516'
+          def get(url):
+              req=urllib.request.Request(url,headers={'Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=60) as r:
+                  return json.loads(r.read().decode())
+
+          meta=get(base)
+          rows=[]
+          cursor=None
+          while True:
+              q={'status':'fixed','limit':100}
+              if cursor:
+                  q['cursor']=cursor
+              payload=get(base+'/issues?'+urllib.parse.urlencode(q))
+              rows.extend(payload.get('data') or [])
+              cursor=(payload.get('pagination') or {}).get('cursor')
+              if not cursor:
+                  break
+          out={
+              'head':(meta.get('pullRequest') or {}).get('headCommitSha'),
+              'fixedIssues':meta.get('fixedIssues'),
+              'newIssues':meta.get('newIssues'),
+              'isUpToStandards':meta.get('isUpToStandards'),
+              'count':len(rows),
+              'data':rows,
+          }
+          Path('/tmp/codacy-current/fixed.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n')
+          print(json.dumps({k:out[k] for k in ('head','fixedIssues','newIssues','isUpToStandards','count')},sort_keys=True))
           PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codacy-pr-516-current-fixed
+          path: /tmp/codacy-current/fixed.json
+          if-no-files-found: error
+          retention-days: 1
