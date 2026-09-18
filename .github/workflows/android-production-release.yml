@@ -136,7 +136,7 @@ jobs:
       - name: Verify production APK identity and persistent certificate
         shell: bash
         env:
-          EXPECTED_CERT_SHA256: ${{ secrets.JOBTOMATIK_RELEASE_CERT_SHA256 }}
+          EXPECTED_CERT_SHA256: ${{ vars.JOBTOMATIK_RELEASE_CERT_SHA256 }}
           VERSION_CODE: ${{ steps.identity.outputs.version_code }}
           VERSION_NAME: ${{ steps.identity.outputs.version_name }}
           SOURCE_COMMIT: ${{ steps.identity.outputs.source_commit }}
@@ -177,6 +177,11 @@ jobs:
           Built by: GitHub Actions
           Publication: not performed by this workflow
           EOF
+
+      - name: Remove ephemeral signing files
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/jobtomatik-signing"
 
       - name: Upload production-signed release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
