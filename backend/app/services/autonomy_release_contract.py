@@ -17,11 +17,18 @@ AUTONOMY_RELEASE_SCHEMA_VERSION = "autonomy_release_v2"
 AUTONOMY_RELEASE_CONTRACT_VERSION = "day39_v2"
 AUTONOMY_SIGNATURE_METHOD = "hmac-sha256"
 MIN_SIGNING_KEY_BYTES = 32
-# The roadmap's supervised gate is ten distinct confirmed submissions. Sustained
-# autonomy evidence starts from that established sample and must additionally pass
-# the 4h, 8h, and 24h unattended shadow gates below.
+# Default autonomous reliability minimum for adapters without an explicit override.
+# Lever uses a smaller owner-approved supervised sample while retaining every other
+# autonomous promotion gate, including independent review, shadow runs, recovery,
+# policy controls, zero duplicates, and zero false submitted records.
 MIN_RELIABILITY_ATTEMPTS = 10
 MIN_DISTINCT_CONFIRMED_SUBMISSIONS = 10
+ADAPTER_RELIABILITY_MINIMUMS = {
+    "lever": {
+        "attempts": 3,
+        "distinct_confirmed_submissions": 3,
+    },
+}
 MIN_SUCCESS_RATE = 0.98
 MAX_AUTOMATIC_RETRIES_PER_ATTEMPT = 1
 REQUIRED_RECOVERY_DRILLS = (
@@ -109,15 +116,37 @@ def compute_autonomy_manifest_signature(
     return f"{AUTONOMY_SIGNATURE_METHOD}:{signature}"
 
 
-def autonomy_release_contract_requirements() -> Dict[str, Any]:
+def autonomy_reliability_thresholds(adapter_name: str | None = None) -> Dict[str, int]:
+    """Return adapter-specific supervised reliability minima."""
+    adapter = str(adapter_name or "").strip().lower()
+    override = ADAPTER_RELIABILITY_MINIMUMS.get(adapter, {})
+    return {
+        "minimum_reliability_attempts": int(
+            override.get("attempts", MIN_RELIABILITY_ATTEMPTS)
+        ),
+        "minimum_distinct_confirmed_submissions": int(
+            override.get(
+                "distinct_confirmed_submissions",
+                MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+            )
+        ),
+    }
+
+
+def autonomy_release_contract_requirements(
+    adapter_name: str | None = None,
+) -> Dict[str, Any]:
     """Return the machine-readable post-shadow autonomous promotion requirements."""
+    thresholds = autonomy_reliability_thresholds(adapter_name)
     return {
         "contract_version": AUTONOMY_RELEASE_CONTRACT_VERSION,
         "schema_version": AUTONOMY_RELEASE_SCHEMA_VERSION,
         "target_maturity": "certified_autonomous",
         "reliability_evidence_type": "supervised_real_submission",
-        "minimum_reliability_attempts": MIN_RELIABILITY_ATTEMPTS,
-        "minimum_distinct_confirmed_submissions": MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+        "minimum_reliability_attempts": thresholds["minimum_reliability_attempts"],
+        "minimum_distinct_confirmed_submissions": thresholds[
+            "minimum_distinct_confirmed_submissions"
+        ],
         "all_confirmed_successes_require_independent_review": True,
         "minimum_success_rate": MIN_SUCCESS_RATE,
         "maximum_automatic_retries_per_attempt": MAX_AUTOMATIC_RETRIES_PER_ATTEMPT,
@@ -178,7 +207,7 @@ def validate_autonomy_release_manifest(
             "passed": False,
             "checks": {"manifest_present": False},
             "missing": ["manifest_present"],
-            "requirements": autonomy_release_contract_requirements(),
+            "requirements": autonomy_release_contract_requirements(adapter_name),
         }
 
     _record_check(
@@ -217,6 +246,11 @@ def validate_autonomy_release_manifest(
     reliability = manifest.get("reliability_window")
     if not isinstance(reliability, Mapping):
         reliability = {}
+    reliability_thresholds = autonomy_reliability_thresholds(adapter_name)
+    minimum_attempts = reliability_thresholds["minimum_reliability_attempts"]
+    minimum_distinct = reliability_thresholds[
+        "minimum_distinct_confirmed_submissions"
+    ]
     evidence_type = str(reliability.get("evidence_type") or "").strip().lower()
     attempts = reliability.get("attempts")
     successes = reliability.get("confirmed_successes")
@@ -232,7 +266,7 @@ def validate_autonomy_release_manifest(
     attempts_valid = (
         isinstance(attempts, int)
         and not isinstance(attempts, bool)
-        and attempts >= MIN_RELIABILITY_ATTEMPTS
+        and attempts >= minimum_attempts
     )
     successes_valid = (
         isinstance(successes, int)
@@ -244,7 +278,7 @@ def validate_autonomy_release_manifest(
         isinstance(distinct_successes, int)
         and not isinstance(distinct_successes, bool)
         and isinstance(successes, int)
-        and MIN_DISTINCT_CONFIRMED_SUBMISSIONS <= distinct_successes <= successes
+        and minimum_distinct <= distinct_successes <= successes
     )
     independent_review_valid = (
         isinstance(independently_reviewed, int)
@@ -404,5 +438,5 @@ def validate_autonomy_release_manifest(
         "manifest_digest": digest or None,
         "computed_manifest_digest": expected_digest,
         "attestation_key_id": key_id or None,
-        "requirements": autonomy_release_contract_requirements(),
+        "requirements": autonomy_release_contract_requirements(adapter_name),
     }

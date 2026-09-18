@@ -151,7 +151,7 @@ def test_phase_b_days_and_promotion_require_phase_a_even_when_phase_b_is_green()
         "thirty_distinct_lever_sites": False,
         "global_and_eu_hosts_covered": False,
         "all_phase_a_records_have_successful_matching_inspection": False,
-        "ten_supervised_confirmed_submissions": True,
+        "three_supervised_confirmed_submissions": True,
         "zero_false_submitted_records": True,
         "zero_duplicate_submissions": True,
         "all_uncertain_outcomes_remain_uncertain": True,
@@ -163,7 +163,7 @@ def test_phase_b_days_and_promotion_require_phase_a_even_when_phase_b_is_green()
         "summary": {
             "qualifying_dry_run_count": 0,
             "distinct_site_count": 0,
-            "supervised_confirmed_count": 10,
+            "supervised_confirmed_count": 3,
             "regions_covered": [],
             "canonical_maturity": "dry_run",
             "promotion_ready": True,

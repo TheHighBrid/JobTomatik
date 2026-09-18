@@ -28,6 +28,7 @@ from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_evidence_review import SubmissionEvidenceReview
 from app.models.user import User
+from app.services.lever_readiness_hardening import PHASE_B_REQUIRED_RECORDS
 from app.services.supervised_pilot_roster import EXECUTION_FLAG_BLOCKERS
 from app.services.supervised_platforms import get_supervised_platform_policy
 from app.services.supervised_submission import build_supervised_preflight
@@ -111,8 +112,8 @@ def _pilot_progress(
         }
         phase_a_complete = all(phase_a_gate_state.values())
         phase_b_complete = bool(
-            confirmed >= 10
-            and gates.get("ten_supervised_confirmed_submissions") is True
+            confirmed >= PHASE_B_REQUIRED_RECORDS
+            and gates.get("three_supervised_confirmed_submissions") is True
             and all(phase_b_gate_state.values())
         )
         return {
@@ -132,8 +133,8 @@ def _pilot_progress(
             "phase_b_raw_confirmed_records": int(
                 summary.get("raw_supervised_confirmed_count") or confirmed
             ),
-            "phase_b_target": 10,
-            "phase_b_remaining": max(0, 10 - confirmed),
+            "phase_b_target": PHASE_B_REQUIRED_RECORDS,
+            "phase_b_remaining": max(0, PHASE_B_REQUIRED_RECORDS - confirmed),
             "phase_b_complete": phase_b_complete,
             "phase_b_safety_gate_state": phase_b_gate_state,
             "phase_b_safety_blockers": sorted(
@@ -148,8 +149,8 @@ def _pilot_progress(
         "phase_a_distinct_employers": employers,
         "phase_a_complete": dry_runs >= 30 and employers >= 30,
         "phase_b_confirmed_records": confirmed,
-        "phase_b_target": 10,
-        "phase_b_remaining": max(0, 10 - confirmed),
+        "phase_b_target": PHASE_B_REQUIRED_RECORDS,
+        "phase_b_remaining": max(0, PHASE_B_REQUIRED_RECORDS - confirmed),
         "phase_b_complete": confirmed >= 10,
         "readiness_available": bool(summary),
     }

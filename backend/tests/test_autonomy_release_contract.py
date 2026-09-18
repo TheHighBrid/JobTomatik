@@ -12,6 +12,7 @@ from app.services.autonomy_release_contract import (
     MIN_SUCCESS_RATE,
     REQUIRED_SHADOW_CHECKS,
     autonomy_release_contract_requirements,
+    autonomy_reliability_thresholds,
     compute_autonomy_manifest_digest,
     compute_autonomy_manifest_signature,
     validate_autonomy_release_manifest,
@@ -116,6 +117,44 @@ def test_valid_signed_manifest_satisfies_day27_contract():
     assert result["requirements"]["trusted_runtime_signing_key_required"] is True
     assert result["requirements"]["day39_promotion_blocked_until_shadow_checks_pass"] is True
 
+
+
+def test_lever_uses_three_confirmed_supervised_submissions():
+    thresholds = autonomy_reliability_thresholds("lever")
+    assert thresholds == {
+        "minimum_reliability_attempts": 3,
+        "minimum_distinct_confirmed_submissions": 3,
+    }
+
+    manifest = valid_manifest(adapter_name="lever")
+    manifest["reliability_window"].update(
+        {
+            "attempts": 3,
+            "confirmed_successes": 3,
+            "distinct_confirmed_submissions": 3,
+            "independently_reviewed_successes": 3,
+            "success_rate": 1.0,
+        }
+    )
+    _resign(manifest)
+    result = validate_autonomy_release_manifest(
+        manifest,
+        adapter_name="lever",
+        adapter_version="1.1.0",
+        trusted_signing_key=TEST_SIGNING_KEY,
+    )
+
+    assert result["passed"] is True
+    assert result["requirements"]["minimum_reliability_attempts"] == 3
+    assert result["requirements"]["minimum_distinct_confirmed_submissions"] == 3
+
+
+def test_non_lever_adapters_keep_ten_attempt_default():
+    thresholds = autonomy_reliability_thresholds("ashby")
+    assert thresholds == {
+        "minimum_reliability_attempts": MIN_RELIABILITY_ATTEMPTS,
+        "minimum_distinct_confirmed_submissions": MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+    }
 
 def test_manifest_requires_a_separate_trusted_signing_key():
     manifest = valid_manifest()
@@ -278,8 +317,10 @@ def test_machine_readable_schema_tracks_contract_shape():
 
     assert schema["properties"]["schema_version"]["const"] == AUTONOMY_RELEASE_SCHEMA_VERSION
     reliability = schema["properties"]["reliability_window"]
-    assert reliability["properties"]["attempts"]["minimum"] == MIN_RELIABILITY_ATTEMPTS
-    assert reliability["properties"]["distinct_confirmed_submissions"]["minimum"] == MIN_DISTINCT_CONFIRMED_SUBMISSIONS
+    assert reliability["properties"]["attempts"]["minimum"] == 3
+    assert reliability["properties"]["distinct_confirmed_submissions"]["minimum"] == 3
+    assert schema["allOf"][0]["else"]["properties"]["reliability_window"]["properties"]["attempts"]["minimum"] == MIN_RELIABILITY_ATTEMPTS
+    assert schema["allOf"][0]["else"]["properties"]["reliability_window"]["properties"]["distinct_confirmed_submissions"]["minimum"] == MIN_DISTINCT_CONFIRMED_SUBMISSIONS
     assert reliability["properties"]["evidence_type"]["const"] == "supervised_real_submission"
     assert reliability["properties"]["success_rate"]["minimum"] == MIN_SUCCESS_RATE
     assert schema["properties"]["attestation"]["properties"]["method"]["const"] == AUTONOMY_SIGNATURE_METHOD

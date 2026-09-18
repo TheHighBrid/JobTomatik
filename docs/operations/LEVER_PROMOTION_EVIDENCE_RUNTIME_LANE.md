@@ -221,3 +221,14 @@ For each #514 specimen, the ordinary supervised contract still applies separatel
 - independent evidence review before the #514 scoreboard advances.
 
 Maple application 247 remains immutable confirmed evidence and must never be retried.
+
+
+## September 18 owner quota amendment
+
+The current Lever promotion-evidence quota is **3 genuine confirmed submissions**, not 10.
+
+The current execution run is explicitly **three fresh supervised Lever submissions**. The inherited Maple 247 record remains immutable historical promotion evidence, but it does not reduce this run from three fresh applications to two.
+
+Do not continue collecting supervised certification submissions after the three fresh applications in this run have been completed and reconciled. A failed, expired, or nonqualifying candidate is replaced by another fresh candidate; it does not increase the quota.
+
+All per-application controls remain unchanged: exact target identity, truthful approved payload, exact one-time approval, one final-submit action maximum, strong confirmation evidence, independent review, duplicate prevention, and fail-closed handling of uncertain outcomes.

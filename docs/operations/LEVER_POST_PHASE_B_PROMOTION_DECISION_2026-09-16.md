@@ -57,3 +57,12 @@ This unlock means implementation, tests, diagnostics, release preparation, shado
 ## Owner direction
 
 The owner explicitly directed the project to proceed after Phase B completion. This record treats that direction as authorization to execute the post-Phase-B decision workflow and resume downstream engineering. It does not waive any repository-defined evidence gate for submission-capable maturity.
+
+
+## September 18, 2026 owner amendment
+
+The owner changed the Lever supervised promotion-evidence sample from ten genuine confirmed submissions to **three**.
+
+This amendment changes only the sample-size threshold. It does not relax exact target binding, truthful answer policy, one-time approval, one final-submit action maximum, strong employer confirmation evidence, independent review, duplicate prevention, false-submission protection, or uncertain-outcome handling.
+
+Current execution direction is to perform **three fresh supervised Lever submissions**. If a candidate expires or becomes unusable, replace that candidate rather than extending the quota beyond three.

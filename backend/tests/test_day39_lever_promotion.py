@@ -43,8 +43,8 @@ def _promotion():
     return value
 
 
-def _lever_readiness(count=10):
-    complete = count >= 10
+def _lever_readiness(count=3):
+    complete = count >= 3
     return {
         "ledger_sha256": "1" * 64,
         "runtime_ledger_sha256": "2" * 64 if count else None,
@@ -55,7 +55,7 @@ def _lever_readiness(count=10):
             "duplicate_submission_count": 0,
             "uncertain_status_violation_count": 0,
             "gates": {
-                "ten_supervised_confirmed_submissions": complete,
+                "three_supervised_confirmed_submissions": complete,
                 "all_success_evidence_independently_reviewed": complete,
                 "all_evidence_hashes_match_consumed_approvals": complete,
                 "zero_false_submitted_records": True,
@@ -208,7 +208,7 @@ def _owner(commit=REVISION):
     }
 
 
-def _build(*, count=10, key=KEY, owner=None):
+def _build(*, count=3, key=KEY, owner=None):
     return build_day39_lever_promotion(
         promotion_readiness=_promotion(),
         lever_readiness=_lever_readiness(count),
@@ -229,7 +229,7 @@ def test_phase_b_zero_of_ten_cannot_generate_promotion():
 
     assert result["promotion_record_generated"] is False
     assert result["autonomy_release"] is None
-    assert "phase_b_ten_safe_confirmations" in result["blockers"]
+    assert "phase_b_three_safe_confirmations" in result["blockers"]
     assert "phase_b_all_successes_reviewed" in result["blockers"]
     assert result["real_submission_enabled"] is False
     assert result["live_window_authorized"] is False

@@ -139,7 +139,7 @@ def test_ready_outcome_requires_successful_matching_inspection(tmp_path):
 def test_phase_b_threshold_uses_only_fully_safe_evidence(tmp_path, mutation):
     baseline = tmp_path / "phase-a.csv"
     ledger = tmp_path / "phase-b.jsonl"
-    records = [_phase_b_record(index) for index in range(10)]
+    records = [_phase_b_record(index) for index in range(3)]
 
     if mutation == "missing_confirmation":
         records[0]["confirmation_evidence_reference"] = ""
@@ -158,24 +158,24 @@ def test_phase_b_threshold_uses_only_fully_safe_evidence(tmp_path, mutation):
     )
     summary = payload["summary"]
 
-    assert summary["raw_supervised_confirmed_count"] == 10
-    assert summary["supervised_confirmed_count"] < 10
-    assert summary["gates"]["ten_supervised_confirmed_submissions"] is False
+    assert summary["raw_supervised_confirmed_count"] == 3
+    assert summary["supervised_confirmed_count"] < 3
+    assert summary["gates"]["three_supervised_confirmed_submissions"] is False
     assert summary["supervised_pilot_evidence_complete"] is False
 
 
-def test_ten_fully_safe_phase_b_records_satisfy_only_the_phase_b_gate(tmp_path):
+def test_three_fully_safe_phase_b_records_satisfy_only_the_phase_b_gate(tmp_path):
     baseline = tmp_path / "phase-a.csv"
     ledger = tmp_path / "phase-b.jsonl"
-    _write_phase_b(ledger, [_phase_b_record(index) for index in range(10)])
+    _write_phase_b(ledger, [_phase_b_record(index) for index in range(3)])
 
     payload = harden_lever_readiness(
         _base_readiness(), baseline_path=baseline, ledger_path=ledger
     )
     summary = payload["summary"]
 
-    assert summary["supervised_confirmed_count"] == 10
-    assert summary["gates"]["ten_supervised_confirmed_submissions"] is True
+    assert summary["supervised_confirmed_count"] == 3
+    assert summary["gates"]["three_supervised_confirmed_submissions"] is True
     assert summary["gates"]["all_success_evidence_independently_reviewed"] is True
     assert summary["gates"]["all_evidence_hashes_match_consumed_approvals"] is True
     assert summary["supervised_pilot_evidence_complete"] is False
@@ -215,7 +215,7 @@ def test_candidate_rows_without_retained_artifacts_fail_closed(tmp_path):
 def test_duplicate_indicator_on_blocked_phase_b_record_fails_duplicate_gate(tmp_path):
     baseline = tmp_path / "phase-a.csv"
     ledger = tmp_path / "phase-b.jsonl"
-    records = [_phase_b_record(index) for index in range(10)]
+    records = [_phase_b_record(index) for index in range(3)]
     blocked = _phase_b_record(99)
     blocked.update({
         "final_status": "blocked",
@@ -227,8 +227,8 @@ def test_duplicate_indicator_on_blocked_phase_b_record_fails_duplicate_gate(tmp_
     summary = harden_lever_readiness(
         _base_readiness(), baseline_path=baseline, ledger_path=ledger
     )["summary"]
-    assert summary["raw_supervised_confirmed_count"] == 10
-    assert summary["supervised_confirmed_count"] == 10
+    assert summary["raw_supervised_confirmed_count"] == 3
+    assert summary["supervised_confirmed_count"] == 3
     assert summary["duplicate_submission_count"] == 1
     assert summary["gates"]["zero_duplicate_submissions"] is False
     assert summary["supervised_pilot_evidence_complete"] is False

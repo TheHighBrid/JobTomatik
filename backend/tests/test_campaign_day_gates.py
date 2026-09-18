@@ -12,7 +12,7 @@ LEVER_PHASE_A = {
     "all_manual_challenges_remain_needs_review": True,
 }
 LEVER_PHASE_B = {
-    "ten_supervised_confirmed_submissions": True,
+    "three_supervised_confirmed_submissions": True,
     "zero_false_submitted_records": True,
     "zero_duplicate_submissions": True,
     "all_uncertain_outcomes_remain_uncertain": True,
@@ -129,7 +129,7 @@ def test_current_evidence_blocks_day_22_and_reports_every_failed_gate():
     day22 = report["checkpoints"][-1]
     assert day22["passed"] is False
     assert day22["facts"]["exact_backlog"] == [
-        "ten_supervised_confirmed_submissions",
+        "three_supervised_confirmed_submissions",
         "all_success_evidence_independently_reviewed",
         "explicit_release_approval_reference",
         "human_reviewed_submit_ready",
@@ -280,7 +280,7 @@ def test_all_checkpoints_can_complete_only_from_all_required_inputs(tmp_path):
     lever = _lever(
         30,
         30,
-        10,
+        3,
         lever_gates,
         promotion_ready=True,
         manual_challenge_encounter_count=2,
