@@ -142,6 +142,32 @@ def _prepared_lane(tmp_path: Path, monkeypatch):
     return module, source_db, promotion_repo, copied_ledger
 
 
+def test_copy_directory_skips_transient_chromium_singletons_but_keeps_session_data(tmp_path):
+    module = _load_module()
+    source = tmp_path / "handoffs"
+    destination = tmp_path / "promotion-handoffs"
+    profile = source / "session-1" / "profile"
+    profile.mkdir(parents=True)
+    (source / "session-1" / "metadata.json").write_text('{"kept": true}\n', encoding="utf-8")
+    (profile / "Preferences").write_text('{"profile": true}\n', encoding="utf-8")
+
+    for name in module.CHROMIUM_TRANSIENT_SINGLETON_NAMES:
+        (profile / name).symlink_to(tmp_path / f"missing-{name}")
+
+    _require_equal(
+        module._copy_directory_if_present(source, destination),
+        True,
+        "handoff directory copied",
+    )
+    _require((destination / "session-1/metadata.json").is_file(), "Handoff metadata must be retained")
+    _require((destination / "session-1/profile/Preferences").is_file(), "Durable browser profile data must be retained")
+    for name in module.CHROMIUM_TRANSIENT_SINGLETON_NAMES:
+        _require(
+            not (destination / "session-1/profile" / name).exists(),
+            f"Transient Chromium singleton {name} must not be copied",
+        )
+
+
 def test_prepare_state_snapshots_sqlite_and_rehomes_mutable_paths(tmp_path, monkeypatch):
     module, source_db, promotion_repo, copied_ledger = _prepared_lane(tmp_path, monkeypatch)
     _require_equal(_read_db_value(source_db), "frozen", "source database")
