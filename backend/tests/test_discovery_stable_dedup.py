@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from app.models.job import Job, JobSource, JobStatus
 from app.models.user import User
 from app.services.discovery_dedup import partition_new_discovery_jobs
@@ -10,6 +12,7 @@ from app.services.job_identity import (
     provider_posting_id,
     stable_external_id,
 )
+from app.services.job_scraper import _uid
 
 
 def _linkedin_job(url: str, external_id: str) -> dict:
@@ -31,6 +34,19 @@ def _linkedin_job(url: str, external_id: str) -> dict:
             "reason": "LinkedIn listing pages are discovery-only",
         },
     }
+
+
+def test_fallback_uid_uses_sha256_with_legacy_width():
+    source = "linkedin"
+    company = "Example Bank"
+    title = "Fraud Analyst"
+    url = "https://example.test/jobs/42"
+    raw = f"{source}-{company}-{title}-{url}"
+
+    generated = _uid(source, company, title, url)
+
+    assert generated == hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    assert len(generated) == 16
 
 
 def test_linkedin_tracking_variants_share_one_provider_identity():
