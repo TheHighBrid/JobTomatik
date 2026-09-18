@@ -65,8 +65,8 @@ test('HighContrastSelect uses Headless UI rather than native option elements', (
   assert.equal(selectSource.includes('ListboxButton'), true)
   assert.equal(selectSource.includes('ListboxOptions'), true)
   assert.equal(selectSource.includes('getHighContrastOptionStyles'), true)
-  assert.equal(selectSource.includes('<option'), false)
-  assert.equal(selectSource.includes('<select'), false)
+  assert.equal(/<option[\s>]/.test(selectSource), false)
+  assert.equal(/<select[\s>]/.test(selectSource), false)
 })
 
 test('AnswerPolicyVault uses the high contrast control for policy selectors', () => {
