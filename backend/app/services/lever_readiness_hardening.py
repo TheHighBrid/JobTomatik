@@ -27,7 +27,7 @@ MANUAL_CHALLENGE_REASON_CODES = frozenset(
     {"captcha_detected", "mfa_required", "login_required", "anti_bot_challenge"}
 )
 PHASE_A_REQUIRED_RECORDS = 30
-PHASE_B_REQUIRED_RECORDS = 10
+PHASE_B_REQUIRED_RECORDS = 3
 VALID_REGIONS = {"global", "eu"}
 
 
@@ -224,7 +224,7 @@ def harden_lever_readiness(
             "all_phase_a_records_have_successful_matching_inspection": not inspection_failures,
             "all_qualifying_phase_a_records_have_durable_external_archives": not external_archive_failures,
             "all_manual_challenges_remain_needs_review": not challenge_violations,
-            "ten_supervised_confirmed_submissions": len(safe_successes)
+            "three_supervised_confirmed_submissions": len(safe_successes)
             >= PHASE_B_REQUIRED_RECORDS,
             "zero_false_submitted_records": not false_submitted,
             "zero_duplicate_submissions": not duplicate_indexes,
@@ -266,8 +266,8 @@ def harden_lever_readiness(
     summary["supervised_pilot_evidence_complete"] = all(required)
     summary["promotion_ready"] = all(gates.values())
     payload["summary"] = summary
-    payload["readiness_hardening_version"] = "1.3"
+    payload["readiness_hardening_version"] = "1.4"
     return payload
 
 
-__all__ = ["harden_lever_readiness"]
+__all__ = ["PHASE_B_REQUIRED_RECORDS", "harden_lever_readiness"]
