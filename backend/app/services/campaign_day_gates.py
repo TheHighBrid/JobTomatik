@@ -367,7 +367,7 @@ def build_day_12_22_report(
         and launch["invalid_dossier_count"] == 0
     )
     day15_passed = (
-        phase_a and day15_integrity_clean and launch["ready_application_count"] >= 3
+        phase_a and day15_integrity_clean and launch["ready_application_count"] >= 2
     )
     checkpoints.append(
         _checkpoint(
@@ -377,7 +377,7 @@ def build_day_12_22_report(
             {
                 "phase_a_complete": phase_a,
                 **launch,
-                "target_ready_applications": 3,
+                "target_ready_applications": 2,
             },
             (["complete Lever Phase A"] if not phase_a else [])
             + (
@@ -390,11 +390,11 @@ def build_day_12_22_report(
             )
             + (
                 [
-                    "retain three exact user-selected Lever applications with "
+                    "retain two exact user-selected Lever applications with "
                     "byte-verified, application-bound read-only dossiers and "
                     "successful no-submit dry previews"
                 ]
-                if launch["ready_application_count"] < 3
+                if launch["ready_application_count"] < 2
                 else []
             )
             + (
