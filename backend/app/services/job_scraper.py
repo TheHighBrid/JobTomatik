@@ -9,7 +9,7 @@ external URL, email, or manual lanes.
 
 import asyncio
 import hashlib
-import random
+import secrets
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -22,6 +22,8 @@ from app.config import get_settings
 from app.services.apply_resolver import resolve_application_method
 
 settings = get_settings()
+
+_rng = secrets.SystemRandom()
 
 BANKING_COMPANIES = [
     "RBC", "TD Bank", "Scotiabank", "BMO", "CIBC", "Tangerine",
@@ -75,8 +77,8 @@ def _uid(source: str, company: str, title: str, url: str = "") -> str:
 
 
 def _mock_salary(salary_min: Optional[int], salary_max: Optional[int]):
-    base = random.randint(55, 85) * 1000
-    spread = random.randint(8, 22) * 1000
+    base = _rng.randint(55, 85) * 1000
+    spread = _rng.randint(8, 22) * 1000
     lo = salary_min or base
     hi = salary_max or (lo + spread)
     return lo, hi
@@ -87,11 +89,11 @@ def _build_mock_jobs(keywords: str, location: Optional[str], salary_min: Optiona
     titles = next((v for k, v in MOCK_TITLES_BY_KW.items() if k in kw_lower), MOCK_TITLES_BY_KW["default"])
     jobs = []
     for _ in range(count):
-        company = random.choice(BANKING_COMPANIES)
-        title = random.choice(titles)
-        loc = location or random.choice(MOCK_LOCATIONS)
+        company = _rng.choice(BANKING_COMPANIES)
+        title = _rng.choice(titles)
+        loc = location or _rng.choice(MOCK_LOCATIONS)
         sal_lo, sal_hi = _mock_salary(salary_min, salary_max)
-        desc = random.choice(MOCK_DESCRIPTIONS).format(title=title, skill=keywords)
+        desc = _rng.choice(MOCK_DESCRIPTIONS).format(title=title, skill=keywords)
         url = f"https://example.com/jobs/{_uid(source, company, title)}"
         jobs.append({
             "external_id": _uid(source, company, title, url),
@@ -106,7 +108,7 @@ def _build_mock_jobs(keywords: str, location: Optional[str], salary_min: Optiona
             "requirements": f"Experience with {keywords}, fraud review, KYC, AML, banking compliance, case documentation",
             "url": url,
             "source": source if source in {"linkedin", "indeed", "glassdoor", "jobbank", "manual"} else "manual",
-            "posted_at": (datetime.utcnow() - timedelta(days=random.randint(0, 14))).isoformat(),
+            "posted_at": (datetime.utcnow() - timedelta(days=_rng.randint(0, 14))).isoformat(),
             "raw_data": {"application_method": "manual", "reason": "mock job"},
         })
     return jobs
