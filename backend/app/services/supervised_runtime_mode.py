@@ -48,7 +48,7 @@ RUNTIME_CMDLINE_TOKENS = {
     "api": ("uvicorn", "app.main:app"),
     "worker": ("celery", "app.celery_app", "worker"),
 }
-LAUNCH_TOKEN_ENV_KEY = "JOBTOMATIK_LEVER_PILOT_LAUNCH_TOKEN"
+LAUNCH_TOKEN_ENV_KEY = "JOBTOMATIK_LEVER_PILOT_LAUNCH_TOKEN"  # nosec B105
 REVISION_RE = re.compile(r"^[0-9a-f]{7,64}$")
 MIN_LAUNCH_TOKEN_LENGTH = 32
 ACTIVE_LEASE_TTL_SECONDS = 60 * 60

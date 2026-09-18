@@ -427,7 +427,7 @@ def build_supervised_pilot_record(
         else datetime.utcnow().isoformat(),
         "employer": str(job.company or "").strip() or None,
         "role": str(job.title or "").strip() or None,
-        "board_token": None,
+        "board_token": None,  # nosec B105
         "job_id": str(job.external_id or job.id),
         "application_url": approval.application_url,
         "adapter": "greenhouse",

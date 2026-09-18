@@ -65,7 +65,7 @@ async def build_synthetic_profile_for_page(
         "policy_count": len(profile["answer_policies"]),
         "custom_questions_source": "hosted_dom",
         "public_posting_api_exposes_form_configuration": False,
-        "token_backed_screening_configuration_supported": True,
+        "token_backed_screening_configuration_supported": True,  # nosec B105
     }
     return profile, metadata
 

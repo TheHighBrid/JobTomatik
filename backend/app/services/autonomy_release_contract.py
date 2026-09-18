@@ -144,7 +144,7 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
         "minimum_signing_key_bytes": MIN_SIGNING_KEY_BYTES,
         "trusted_runtime_signing_key_required": True,
         "approval_must_bind_exact_release_commit": True,
-        "day39_promotion_blocked_until_shadow_checks_pass": True,
+        "day39_promotion_blocked_until_shadow_checks_pass": True,  # nosec B105
         "runtime_eligibility_requires_certified_autonomous": True,
     }
 

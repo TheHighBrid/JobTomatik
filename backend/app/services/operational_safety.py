@@ -146,7 +146,7 @@ def _posting_identity(url: str) -> str:
     platform = platform_key_for_url(canonical)
     parts = [part for part in (parsed.path or "").split("/") if part]
 
-    token = ""
+    token = ""  # nosec B105
     if platform == "greenhouse":
         query_identifiers: Dict[str, str] = {}
         for key, value in parse_qsl(parsed.query, keep_blank_values=True):

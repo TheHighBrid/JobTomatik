@@ -94,7 +94,7 @@ def run_dead_letter_recovery_drill(
     try:
         user = User(
             email="dead-letter-drill@example.test",
-            hashed_password="dead-letter-drill",
+            hashed_password="dead-letter-drill",  # nosec B106
             full_name="Dead Letter Drill",
             is_active=True,
         )

@@ -110,7 +110,7 @@ def run_recovery_incident_drill(
     try:
         user = User(
             email="recovery-drill@example.test",
-            hashed_password="synthetic-recovery-drill",
+            hashed_password="synthetic-recovery-drill",  # nosec B106
             full_name="Synthetic Recovery Drill",
             is_active=True,
         )

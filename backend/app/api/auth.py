@@ -39,7 +39,7 @@ async def register(user_in: UserCreate, db: Session = Depends(get_db)):
         logger.warning("Welcome email delivery failed for user_id=%s", user.id)
 
     token = create_access_token({"sub": str(user.id)})
-    return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))
+    return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))  # nosec B106
 
 
 @router.post("/login", response_model=Token)
@@ -55,4 +55,4 @@ async def login(
             detail="Incorrect email or password",
         )
     token = create_access_token({"sub": str(user.id)})
-    return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))
+    return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))  # nosec B106
