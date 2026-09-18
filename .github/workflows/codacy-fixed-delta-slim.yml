@@ -1,0 +1,38 @@
+name: Codacy fixed delta slim
+
+on:
+  push:
+    branches:
+      - codex/codacy-fixed-delta-slim
+    paths:
+      - .github/workflows/codacy-fixed-delta-slim.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-slim
+    timeout-minutes: 3
+    steps:
+      - name: Export fixed PR issues
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/codacy-fixed
+          url='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516/issues?status=fixed&limit=1000'
+          curl --fail-with-body -sS -H 'Accept: application/json' "$url" > /tmp/codacy-fixed/fixed.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("/tmp/codacy-fixed/fixed.json").read_text())
+          print("ANALYZED", p.get("analyzed"))
+          print("COUNT", len(p.get("data") or []))
+          print("TOTAL", (p.get("pagination") or {}).get("total"))
+          PY
+      - name: Upload fixed delta
+        uses: actions/upload-artifact@v4
+        with:
+          name: codacy-pr516-fixed-delta
+          path: /tmp/codacy-fixed/fixed.json
+          retention-days: 1
