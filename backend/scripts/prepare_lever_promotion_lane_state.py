@@ -14,6 +14,12 @@ import hashlib
 import json
 import re
 import shutil
+
+CHROMIUM_TRANSIENT_SINGLETON_NAMES = {
+    "SingletonLock",
+    "SingletonSocket",
+    "SingletonCookie",
+}
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -160,6 +166,10 @@ def backup_sqlite(source_db: Path, target_db: Path) -> None:
         raise PromotionLaneStateError("Promotion database snapshot failed SQLite quick_check")
 
 
+def _ignore_transient_browser_singletons(_directory: str, names: list[str]) -> set[str]:
+    return CHROMIUM_TRANSIENT_SINGLETON_NAMES.intersection(names)
+
+
 def _copy_directory_if_present(source: Path, destination: Path) -> bool:
     if not source.exists():
         return False
@@ -168,7 +178,11 @@ def _copy_directory_if_present(source: Path, destination: Path) -> bool:
     if destination.exists():
         raise PromotionLaneStateError(f"Refusing to overwrite isolated directory: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    shutil.copytree(
+        source,
+        destination,
+        ignore=_ignore_transient_browser_singletons,
+    )
     return True
 
 
