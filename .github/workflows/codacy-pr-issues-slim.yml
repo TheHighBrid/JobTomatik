@@ -15,37 +15,37 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 3
     steps:
-      - name: Fetch exact new PR issues
+      - name: Fetch exact PR analysis and deltas
         shell: bash
         run: |
           set -euo pipefail
-          url='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516/issues?status=new&limit=100'
-          curl --fail-with-body -sS -H 'Accept: application/json' "$url" > /tmp/issues.json
+          base='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516'
+          curl --fail-with-body -sS -H 'Accept: application/json' "$base" > /tmp/pr.json
+          curl --fail-with-body -sS -H 'Accept: application/json' "$base/issues?status=all&limit=100" > /tmp/issues-all.json
+          curl --fail-with-body -sS -H 'Accept: application/json' "$base/issues?status=new&limit=100" > /tmp/issues-new.json
           python - <<'PY'
           import json
           from pathlib import Path
-          p=json.loads(Path("/tmp/issues.json").read_text())
-          data=p.get("data") or []
-          print("ANALYZED", p.get("analyzed"))
-          print("PAGINATION", json.dumps(p.get("pagination") or {}, sort_keys=True))
-          print("COUNT", len(data))
-          for x in data:
-              ci=x.get("commitIssue") or x
-              pi=ci.get("patternInfo") or x.get("patternInfo") or {}
-              ti=ci.get("toolInfo") or x.get("toolInfo") or {}
-              row={
-                  "issueId": x.get("issueId") or x.get("id"),
-                  "filePath": ci.get("filePath") or x.get("filePath"),
-                  "lineNumber": ci.get("lineNumber") or x.get("lineNumber"),
-                  "pattern": pi.get("id"),
-                  "category": pi.get("category"),
-                  "level": pi.get("level") or pi.get("severityLevel"),
-                  "tool": ti.get("name"),
-                  "message": ci.get("message") or x.get("message"),
-                  "deltaType": x.get("deltaType"),
-                  "lineText": ci.get("lineText"),
-                  "falsePositiveProbability": ci.get("falsePositiveProbability"),
-                  "falsePositiveReason": ci.get("falsePositiveReason"),
-              }
-              print(json.dumps(row, sort_keys=True))
+          pr=json.loads(Path("/tmp/pr.json").read_text())
+          print("PR_META", json.dumps(pr, sort_keys=True))
+          for label,name in [("ALL","/tmp/issues-all.json"),("NEW","/tmp/issues-new.json")]:
+              p=json.loads(Path(name).read_text())
+              print(label+"_ANALYZED", p.get("analyzed"))
+              print(label+"_COUNT", len(p.get("data") or []))
+              print(label+"_PAGINATION", json.dumps(p.get("pagination"), sort_keys=True))
+              for x in p.get("data") or []:
+                  ci=x.get("commitIssue") or {}
+                  pi=ci.get("patternInfo") or {}
+                  ti=ci.get("toolInfo") or {}
+                  row={
+                      "deltaType":x.get("deltaType"),
+                      "filePath":ci.get("filePath"),
+                      "lineNumber":ci.get("lineNumber"),
+                      "pattern":pi.get("id"),
+                      "category":pi.get("category"),
+                      "level":pi.get("level") or pi.get("severityLevel"),
+                      "tool":ti.get("name"),
+                      "message":ci.get("message"),
+                  }
+                  print(label+"_ISSUE", json.dumps(row, sort_keys=True))
           PY
