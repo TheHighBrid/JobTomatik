@@ -71,7 +71,7 @@ def read_state(db, app_id: int, review_id: int, user_id: int, target_hash: str) 
     for table in PROTECTED_TABLES:
         # Table names are constants, never user input. Missing schema fails closed.
         require(db.execute(  # nosemgrep: Semgrep_python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query, Semgrep_python_sql_rule-hardcoded-sql-expression
-            f"SELECT COUNT(*) FROM {table} WHERE application_id=?", (app_id,)
+            f"SELECT COUNT(*) FROM {table} WHERE application_id=?", (app_id,)  # nosec B608
         ).fetchone()[0] == 0,
                 f"Application has protected records in {table}")
     events = [dict(row) for row in db.execute(
