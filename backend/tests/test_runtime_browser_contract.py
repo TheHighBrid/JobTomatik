@@ -117,7 +117,7 @@ def test_playwright_attachment_gets_fresh_budget_after_slow_cdp_startup(
     expected_browser = object()
 
     class FakeChromium:
-        async def connect_over_cdp(self, endpoint, timeout):
+        async def connect_over_cdp(self, endpoint, timeout, **kwargs):
             attempts.append((loop.time(), endpoint, timeout))
             if len(attempts) == 1:
                 raise RuntimeError("CDP websocket still stabilizing")
