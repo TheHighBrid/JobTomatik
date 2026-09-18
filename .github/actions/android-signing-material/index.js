@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 function requiredInput(name) {
   const key = 'INPUT_' + name.toUpperCase();
@@ -20,6 +21,19 @@ function requiredText(bundle, key) {
 
 function mask(value) {
   process.stdout.write('::add-mask::' + value + '\n');
+}
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    stdio: 'inherit',
+    ...options,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(command + ' exited with status ' + result.status);
+  }
 }
 
 const bundleText = requiredInput('SIGNING_BUNDLE_BASE64').replace(/\s+/g, '');
@@ -61,22 +75,50 @@ for (const value of [
 }
 
 const runnerTemp = process.env.RUNNER_TEMP;
-if (!runnerTemp) {
-  throw new Error('RUNNER_TEMP is unavailable');
+const workspace = process.env.GITHUB_WORKSPACE;
+if (!runnerTemp || !workspace) {
+  throw new Error('Runner workspace paths are unavailable');
 }
 
 const dir = path.join(runnerTemp, 'jobtomatik-signing');
+const keystorePath = path.join(dir, 'release.jks');
+const storePasswordPath = path.join(dir, 'store-password');
+const keyAliasPath = path.join(dir, 'key-alias');
+const keyPasswordPath = path.join(dir, 'key-password');
+
 fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+fs.writeFileSync(keystorePath, decodedKeystore, { mode: 0o600 });
+fs.writeFileSync(storePasswordPath, storePassword, { mode: 0o600 });
+fs.writeFileSync(keyAliasPath, keyAlias, { mode: 0o600 });
+fs.writeFileSync(keyPasswordPath, keyPassword, { mode: 0o600 });
 
-const files = {
-  'release.jks': decodedKeystore,
-  'store-password': Buffer.from(storePassword, 'utf8'),
-  'key-alias': Buffer.from(keyAlias, 'utf8'),
-  'key-password': Buffer.from(keyPassword, 'utf8'),
-};
+try {
+  run('keytool', [
+    '-list',
+    '-keystore',
+    keystorePath,
+    '-storepass:file',
+    storePasswordPath,
+    '-alias',
+    keyAlias,
+  ]);
 
-for (const [name, content] of Object.entries(files)) {
-  fs.writeFileSync(path.join(dir, name), content, { mode: 0o600 });
+  const androidDir = path.join(workspace, 'frontend', 'android');
+  const gradlew = path.join(androidDir, 'gradlew');
+  fs.chmodSync(gradlew, 0o755);
+
+  run(gradlew, ['--no-daemon', 'lintRelease', 'assembleRelease'], {
+    cwd: androidDir,
+    env: {
+      ...process.env,
+      JOBTOMATIK_KEYSTORE_PATH: keystorePath,
+      JOBTOMATIK_KEYSTORE_PASSWORD: storePassword,
+      JOBTOMATIK_KEY_ALIAS: keyAlias,
+      JOBTOMATIK_KEY_PASSWORD: keyPassword,
+    },
+  });
+
+  process.stdout.write('Production Android release APK assembled with protected signing material.\n');
+} finally {
+  fs.rmSync(dir, { recursive: true, force: true });
 }
-
-process.stdout.write('Android signing material prepared in ephemeral runner storage.\n');
