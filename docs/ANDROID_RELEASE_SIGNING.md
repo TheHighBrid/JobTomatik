@@ -19,7 +19,7 @@ The secret is base64-encoded JSON with four fields: `keystore_base64`, `keystore
 
 Configure the public certificate fingerprint separately as the protected environment/repository **variable** `JOBTOMATIK_RELEASE_CERT_SHA256`. A certificate fingerprint is public verification material, not a private signing secret.
 
-The workflow never maps private signing values into workflow step `env` or `GITHUB_ENV`. A local Node action receives one opaque bundle input, unpacks it only inside the runner, writes mode-0600 files under `RUNNER_TEMP`, and the Gradle step reads them only for the lifetime of that single signing process. The files are removed with an `always()` cleanup step.
+The workflow never maps private signing values into workflow step `env` or `GITHUB_ENV`. A local Node action receives one opaque bundle input, unpacks it only inside the runner, writes mode-0600 files under `RUNNER_TEMP`, validates the keystore, launches the release Gradle process with credentials only in that child process environment, and removes the ephemeral files in a `finally` cleanup before returning.
 
 ## Production build contract
 
