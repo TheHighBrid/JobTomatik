@@ -301,15 +301,16 @@ wait_for_shutdown() {
 }
 
 signal_supervisor_if_managed() {
-  local pid="$1"
+  local signal_name="$1"
+  local pid="$2"
   if ! kill -0 "$pid" 2>/dev/null; then
     return 0
   fi
   if supervisor_identity_matches "$pid"; then
-    jobtomatik_signal_if_identity TERM "$pid" "$SCRIPT_PATH" "supervise" || true
+    jobtomatik_signal_if_identity "$signal_name" "$pid" "$SCRIPT_PATH" "supervise" || true
     return 0
   fi
-  echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$pid action=not_signaled" >&2
+  echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$pid action=not_signaled signal=$signal_name" >&2
 }
 
 supervisor_signal_handler() {
@@ -340,14 +341,14 @@ case "$ACTION" in
     # JobTomatik profile and CDP port, not to a brittle executable basename.
     stop_browser_processes TERM
     if [[ -n "$supervisor_pid" ]]; then
-      signal_supervisor_if_managed "$supervisor_pid"
+      signal_supervisor_if_managed TERM "$supervisor_pid"
     fi
 
     if ! wait_for_shutdown "$supervisor_pid"; then
       echo "ANDROID_BROWSER_CDP_STOP_ESCALATING signal=KILL" >&2
       stop_browser_processes KILL
       if [[ -n "$supervisor_pid" ]]; then
-        signal_supervisor_if_managed "$supervisor_pid"
+        signal_supervisor_if_managed KILL "$supervisor_pid"
       fi
       if ! wait_for_shutdown "$supervisor_pid"; then
         echo "ANDROID_BROWSER_CDP_STOP_TIMEOUT" >&2
@@ -415,7 +416,7 @@ case "$ACTION" in
             echo "ANDROID_BROWSER_CDP_CONNECTED"
             exit 0
           fi
-          signal_supervisor_if_managed "$old_pid"
+          signal_supervisor_if_managed TERM "$old_pid"
         else
           echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$old_pid action=not_signaled" >&2
         fi
