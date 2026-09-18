@@ -1,4 +1,4 @@
-name: Codacy PR delta export slim
+name: Codacy current PR new issue probe
 
 on:
   push:
@@ -11,53 +11,34 @@ permissions:
   contents: read
 
 jobs:
-  export:
+  probe:
     runs-on: ubuntu-slim
-    timeout-minutes: 4
+    timeout-minutes: 3
     steps:
-      - name: Export complete PR deltas
+      - name: Print exact current PR new issues
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/codacy-pr-delta
+          url='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516/issues?status=new&limit=100'
+          curl --fail-with-body -sS -H 'Accept: application/json' "$url" > /tmp/issues.json
           python - <<'PY'
-          import json, urllib.parse, urllib.request
+          import json
           from pathlib import Path
-
-          BASE='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516'
-
-          def get(url):
-              req=urllib.request.Request(url,headers={'Accept':'application/json'})
-              with urllib.request.urlopen(req,timeout=60) as r:
-                  return json.loads(r.read().decode())
-
-          meta=get(BASE)
-          Path('/tmp/codacy-pr-delta/meta.json').write_text(json.dumps(meta,indent=2,sort_keys=True)+'\n')
-
-          for status in ('fixed','new','all'):
-              rows=[]
-              cursor=None
-              while True:
-                  q={'status':status,'limit':100}
-                  if cursor:
-                      q['cursor']=cursor
-                  p=get(BASE+'/issues?'+urllib.parse.urlencode(q))
-                  rows.extend(p.get('data') or [])
-                  cursor=(p.get('pagination') or {}).get('cursor')
-                  if not cursor:
-                      analyzed=p.get('analyzed')
-                      break
-              Path(f'/tmp/codacy-pr-delta/{status}.json').write_text(
-                  json.dumps({'analyzed':analyzed,'data':rows,'count':len(rows)},indent=2,sort_keys=True)+'\n'
-              )
-              print(status.upper(),len(rows))
-          print('HEAD',meta.get('pullRequest',{}).get('headCommitSha'))
-          print('UP_TO_STANDARDS',meta.get('isUpToStandards'))
-          print('FIXED',meta.get('fixedIssues'),'NEW',meta.get('newIssues'))
+          p=json.loads(Path("/tmp/issues.json").read_text())
+          print("ANALYZED", p.get("analyzed"))
+          print("COUNT", len(p.get("data") or []))
+          for x in p.get("data") or []:
+              ci=x.get("commitIssue") or x
+              print(json.dumps({
+                  "deltaType":x.get("deltaType"),
+                  "issueId":ci.get("issueId"),
+                  "filePath":ci.get("filePath"),
+                  "lineNumber":ci.get("lineNumber"),
+                  "lineText":ci.get("lineText"),
+                  "message":ci.get("message"),
+                  "pattern":(ci.get("patternInfo") or {}).get("id"),
+                  "category":(ci.get("patternInfo") or {}).get("category"),
+                  "level":(ci.get("patternInfo") or {}).get("level"),
+                  "tool":(ci.get("toolInfo") or {}).get("name"),
+              },sort_keys=True))
           PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: codacy-pr-516-delta
-          path: /tmp/codacy-pr-delta/
-          if-no-files-found: error
-          retention-days: 1
