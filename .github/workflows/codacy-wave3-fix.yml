@@ -240,12 +240,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -q pytest==9.1.1 defusedxml==0.7.1
-          PYTHONPATH=backend python -m pytest -q backend/tests/test_ashby_readiness.py
-          python - <<'PY'
+          python -m pip install -q defusedxml==0.7.1
+          PYTHONPATH=backend python - <<'PY'
           from pathlib import Path
-          from defusedxml import ElementTree as ET
           from defusedxml.common import EntitiesForbidden
+          from app.services.ashby_readiness import _junit_summary
+
+          valid = Path("/tmp/jobtomatik-valid-junit.xml")
+          valid.write_text(
+              '<testsuite tests="1" failures="0" errors="0" skipped="0">'
+              '<testcase name="ok"/></testsuite>',
+              encoding="utf-8",
+          )
+          summary = _junit_summary(valid)
+          if summary != {
+              "tests": 1,
+              "failures": 0,
+              "errors": 0,
+              "skipped": 0,
+              "passed": True,
+          }:
+              raise SystemExit(f"unexpected JUnit summary: {summary!r}")
 
           malicious = Path("/tmp/jobtomatik-xxe.xml")
           malicious.write_text(
@@ -254,7 +269,7 @@ jobs:
               encoding="utf-8",
           )
           try:
-              ET.parse(malicious)
+              _junit_summary(malicious)
           except EntitiesForbidden:
               pass
           else:
