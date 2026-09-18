@@ -157,7 +157,14 @@ def test_android_signing_material_action_writes_only_ephemeral_mode_0600_files()
     assert "JOBTOMATIK_KEYSTORE_PASSWORD" not in script
     assert "JOBTOMATIK_KEY_PASSWORD" not in script
     assert "JOBTOMATIK_SIGNING_DIR" in script
-    assert "delete gradleEnv.INPUT_SIGNING_BUNDLE_BASE64" in script
+    assert "delete process.env.INPUT_SIGNING_BUNDLE_BASE64" in script
+    assert "const childEnv = {}" in script
+    assert "'PATH'," in script
+    assert "'JAVA_HOME'," in script
+    assert "'ANDROID_HOME'," in script
+    assert "ACTIONS_RUNTIME_TOKEN" not in script
+    assert "ACTIONS_ID_TOKEN_REQUEST_TOKEN" not in script
+    assert "env: childEnv" in script
     assert "env: gradleEnv" in script
     assert "env: { ...process.env" not in script
     assert "material-1" in script
