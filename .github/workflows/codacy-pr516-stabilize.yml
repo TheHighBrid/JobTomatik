@@ -1,0 +1,72 @@
+name: Codacy PR 516 stabilization validation
+
+on:
+  push:
+    branches:
+      - codex/codacy-pr516-stabilize
+    paths:
+      - .github/workflows/codacy-pr516-stabilize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout stabilization candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: codex/codacy-pr516-stabilize
+          fetch-depth: 0
+
+      - name: Validate exact Codacy corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q -r backend/requirements.txt ruff bandit
+
+          python -m py_compile             backend/app/config.py             backend/app/services/ashby_readiness.py             backend/app/services/browser_runtime_base.py             backend/app/services/day41_database_restore.py             backend/scripts/repair_final_submit_review.py
+
+          ruff check             --select I001,RUF100,ASYNC220             backend/app/config.py             backend/app/services/ashby_readiness.py             backend/app/services/browser_runtime_base.py
+
+          bandit -q -t B105,B608             backend/app/config.py             backend/app/services/day41_database_restore.py             backend/scripts/repair_final_submit_review.py
+
+          git diff --check 96e6a065008fe8c1bf1dbfa3602a1a87a368ede0...HEAD
+
+      - name: Verify frozen adapter blobs are unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in             backend/app/services/ats_base.py             backend/app/services/ats_greenhouse.py             backend/app/services/ats_smartrecruiters.py
+          do
+            test "$(git rev-parse HEAD:$path)" = "$(git rev-parse 96e6a065008fe8c1bf1dbfa3602a1a87a368ede0:$path)"
+          done
+
+      - name: Run affected safety regressions
+        working-directory: backend
+        env:
+          APP_ENV: test
+          DATABASE_URL: sqlite:///./codacy-stabilize.db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: jobtomatik-codacy-stabilization-test-key-000000000
+          AI_PROVIDER: template
+          DEV_MOCK_JOBS: "false"
+          ALLOW_REAL_APPLICATION_SUBMIT: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q             tests/test_day35_operations_rehearsal.py             tests/test_phase4_candidate_gate.py             tests/test_browser_handoff_runtime.py
+
+      - name: Remove validation workflow and retain clean candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/codacy-pr516-stabilize.yml
+          git diff --check
+          git config user.name "TheHighBrid"
+          git config user.email "120822557+TheHighBrid@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: retain validated Codacy stabilization candidate"
+          git push origin HEAD:codex/codacy-pr516-stabilize
