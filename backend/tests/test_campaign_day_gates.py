@@ -129,7 +129,7 @@ def test_current_evidence_blocks_day_22_and_reports_every_failed_gate():
     day22 = report["checkpoints"][-1]
     assert day22["passed"] is False
     assert day22["facts"]["exact_backlog"] == [
-        "three_supervised_confirmed_submissions",
+        "ten_supervised_confirmed_submissions",
         "all_success_evidence_independently_reviewed",
         "explicit_release_approval_reference",
         "human_reviewed_submit_ready",
