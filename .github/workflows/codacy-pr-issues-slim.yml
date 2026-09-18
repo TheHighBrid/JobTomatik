@@ -1,0 +1,46 @@
+name: Codacy PR issue probe slim
+
+on:
+  push:
+    branches:
+      - codex/codacy-pr-issues-slim
+    paths:
+      - .github/workflows/codacy-pr-issues-slim.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-slim
+    timeout-minutes: 3
+    steps:
+      - name: Fetch exact new PR issues
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516/issues?status=new&limit=100'
+          curl --fail-with-body -sS -H 'Accept: application/json' "$url" > /tmp/issues.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("/tmp/issues.json").read_text())
+          data=p.get("data") or []
+          print("COUNT", len(data))
+          for x in data:
+              ci=x.get("commitIssue") or x
+              pi=ci.get("patternInfo") or x.get("patternInfo") or {}
+              ti=ci.get("toolInfo") or x.get("toolInfo") or {}
+              row={
+                  "issueId": x.get("issueId") or x.get("id"),
+                  "filePath": ci.get("filePath") or x.get("filePath"),
+                  "lineNumber": ci.get("lineNumber") or x.get("lineNumber"),
+                  "pattern": pi.get("id"),
+                  "category": pi.get("category"),
+                  "level": pi.get("level") or pi.get("severityLevel"),
+                  "tool": ti.get("name"),
+                  "message": ci.get("message") or x.get("message"),
+                  "status": x.get("status"),
+              }
+              print(json.dumps(row, sort_keys=True))
+          PY
