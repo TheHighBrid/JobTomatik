@@ -42,6 +42,10 @@ def _source_value(value: Any) -> str:
     return _normalized(getattr(value, "value", value)).replace(" ", "_") or "unknown"
 
 
+def _host_matches(host: str, domain: str) -> bool:
+    return host == domain or host.endswith("." + domain)
+
+
 def provider_posting_id(
     source: Any,
     url: str,
@@ -127,13 +131,14 @@ def canonical_employer_apply_url(value: Any) -> str | None:
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
         return None
     host = parsed.netloc.lower().split("@")[-1].split(":")[0].removeprefix("www.")
-    is_workday = host.endswith("myworkdayjobs.com")
+    is_workday = _host_matches(host, "myworkdayjobs.com")
+    is_greenhouse = _host_matches(host, "greenhouse.io")
     if host not in _EMPLOYER_ATS_HOSTS and not is_workday:
         return None
 
     path = re.sub(r"/{2,}", "/", parsed.path or "/").rstrip("/") or "/"
     query = ""
-    if "greenhouse.io" in host:
+    if is_greenhouse:
         values = parse_qs(parsed.query)
         gh_jid = (values.get("gh_jid") or values.get("gh_jid[]") or [None])[0]
         if gh_jid:
