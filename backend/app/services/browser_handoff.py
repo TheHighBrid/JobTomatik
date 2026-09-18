@@ -133,7 +133,7 @@ async def _connect_local_cdp(session: ManualHandoffSession):
     manager = async_playwright()
     playwright = await manager.start()
     try:
-        browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
+        browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000, no_defaults=True)
     except Exception:
         await playwright.stop()
         raise BrowserHandoffUnavailable("The retained browser process is no longer reachable.")
