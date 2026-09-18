@@ -9,18 +9,17 @@ The repository never stores the release keystore, private key, certificate passw
 
 ## Required protected secrets
 
-Before running the production-signed build, configure these secrets for the protected `android-production-release` environment or repository:
+Before running the production-signed build, configure one protected secret for the `android-production-release` environment or repository:
 
 ```text
-JOBTOMATIK_KEYSTORE_BASE64
-JOBTOMATIK_KEYSTORE_PASSWORD
-JOBTOMATIK_KEY_ALIAS
-JOBTOMATIK_KEY_PASSWORD
+JOBTOMATIK_ANDROID_SIGNING_BUNDLE_BASE64
 ```
+
+The secret is base64-encoded JSON with four fields: `keystore_base64`, `keystore_password`, `key_alias`, and `key_password`. Keep the entire bundle outside source control.
 
 Configure the public certificate fingerprint separately as the protected environment/repository **variable** `JOBTOMATIK_RELEASE_CERT_SHA256`. A certificate fingerprint is public verification material, not a private signing secret.
 
-The workflow never maps private signing values into workflow step `env` or `GITHUB_ENV`. A local Node action receives the protected secrets as action inputs, writes mode-0600 files under `RUNNER_TEMP`, and the Gradle step reads them only for the lifetime of that single signing process. The files are removed with an `always()` cleanup step.
+The workflow never maps private signing values into workflow step `env` or `GITHUB_ENV`. A local Node action receives one opaque bundle input, unpacks it only inside the runner, writes mode-0600 files under `RUNNER_TEMP`, and the Gradle step reads them only for the lifetime of that single signing process. The files are removed with an `always()` cleanup step.
 
 ## Production build contract
 
