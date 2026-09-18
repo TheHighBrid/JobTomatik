@@ -107,8 +107,12 @@ jobs:
                       f"    resume_token: str,  # nosemgrep: {HARD_TOKEN}\n",
                   ),
                   (
-                      "    lease_token: str,\n",
-                      f"    lease_token: str,  # nosemgrep: {HARD_TOKEN}\n",
+                      "    user_id: int,\n"
+                      "    lease_token: str,\n"
+                      "    allowed_statuses: tuple[str, ...] = (HandoffSessionStatus.claimed.value,),\n",
+                      "    user_id: int,\n"
+                      f"    lease_token: str,  # nosemgrep: {HARD_TOKEN}\n"
+                      "    allowed_statuses: tuple[str, ...] = (HandoffSessionStatus.claimed.value,),\n",
                   ),
               ],
               "backend/app/services/lever_phase_a_provenance.py": [
