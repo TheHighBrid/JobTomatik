@@ -149,6 +149,7 @@ def test_npm_audit_validator_rejects_any_production_vulnerability(tmp_path: Path
         tmp_path,
         {
             "vulnerabilities": {
+                "react-router": {"via": [{"url": "https://example.test/advisory"}]},
             }
         },
     )
@@ -162,7 +163,6 @@ def test_npm_audit_validator_rejects_empty_or_missing_provenance(tmp_path: Path)
         tmp_path,
         {
             "vulnerabilities": {
-                "react-router": {"via": [{"url": REVIEWED_ADVISORY}]},
                 "unproven-package": {"via": []},
                 "missing-provenance": {},
             }
