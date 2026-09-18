@@ -59,6 +59,7 @@ async def _connect_external_playwright_over_cdp(playwright: Any, endpoint: str) 
             return await playwright.chromium.connect_over_cdp(
                 endpoint,
                 timeout=attempt_timeout_ms,
+                no_defaults=True,
             )
         except Exception as exc:
             attach_error = str(exc)
