@@ -18,6 +18,7 @@ SCRIPT_PATH="$(cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")"
 SCRIPT_DIR="$(dirname -- "$SCRIPT_PATH")"
 PROCESS_IDENTITY_HELPER="${JOBTOMATIK_PROCESS_IDENTITY_HELPER:-$SCRIPT_DIR/jobtomatik_process_identity.sh}"
 MAX_LOG_BYTES="${JOBTOMATIK_ANDROID_MAX_LOG_BYTES:-5242880}"
+SHUTDOWN_WAIT_ATTEMPTS="${JOBTOMATIK_ANDROID_SHUTDOWN_WAIT_ATTEMPTS:-40}"
 
 if [[ ! -r "$PROCESS_IDENTITY_HELPER" ]]; then
   echo "JobTomatik Android process-identity helper is missing: $PROCESS_IDENTITY_HELPER" >&2
@@ -285,7 +286,11 @@ stop_browser_processes() {
 wait_for_shutdown() {
   local supervisor_pid="${1:-}"
   local index
-  for ((index = 0; index < 40; index += 1)); do
+  local attempts="$SHUTDOWN_WAIT_ATTEMPTS"
+  if [[ ! "$attempts" =~ ^[0-9]+$ ]] || (( attempts < 1 )); then
+    attempts=40
+  fi
+  for ((index = 0; index < attempts; index += 1)); do
     local supervisor_gone=true
     if [[ -n "$supervisor_pid" ]] \
       && kill -0 "$supervisor_pid" 2>/dev/null \
