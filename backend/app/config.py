@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 # Deliberately invalid development placeholder; sensitive modes reject it.
-DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"  # noqa
+DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"  # noqa  # nosec B105
 PLACEHOLDER_SECRET_MARKERS = (
     "change-me",
     "replace-with",
