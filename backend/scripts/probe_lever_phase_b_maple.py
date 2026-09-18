@@ -7,6 +7,8 @@ Lever DOM that reproduced Application 259.
 
 from __future__ import annotations
 
+import logging
+
 import argparse
 import asyncio
 import json
@@ -41,8 +43,8 @@ async def run_probe(url: str) -> dict:
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
             try:
                 await page.wait_for_load_state("networkidle", timeout=12000)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in probe_lever_phase_b_maple.py: %s", type(exc).__name__)
             result["loaded_url"] = page.url
 
             result["submit_controls_disabled"] = await page.evaluate(

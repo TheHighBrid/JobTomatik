@@ -8,6 +8,8 @@ result is retained in the owning ShadowRunCycle observability snapshot.
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -212,13 +214,13 @@ async def _browser_crash_drill_async() -> dict[str, Any]:
         if first is not None:
             try:
                 await release_application_browser(first)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in day37_shadow_incidents.py: %s", type(exc).__name__)
         if second is not None:
             try:
                 await release_application_browser(second)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in day37_shadow_incidents.py: %s", type(exc).__name__)
 
     return {
         "passed": bool(destroyed and recovered and first_target and second_target and first_target != second_target),
@@ -260,8 +262,8 @@ async def _stale_posting_drill_async() -> dict[str, Any]:
         if runtime is not None:
             try:
                 await release_application_browser(runtime)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in day37_shadow_incidents.py: %s", type(exc).__name__)
 
     detected = dict(detected or {})
     return {

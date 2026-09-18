@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -82,8 +84,8 @@ async def fill_upload_fields(
         try:
             if not await element.is_visible() or not await element.is_enabled():
                 continue
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in upload_handler.py: %s", type(exc).__name__)
 
         descriptor = await element_descriptor(surface, element)
         upload_type = _classify_upload(f" {descriptor} ")

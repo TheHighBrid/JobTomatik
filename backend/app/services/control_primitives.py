@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import hashlib
 import json
 import re
@@ -257,8 +259,8 @@ async def is_actionable(element) -> bool:
     try:
         if not await element.is_visible():
             return False
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).debug("Suppressed non-fatal exception in control_primitives.py: %s", type(exc).__name__)
     if await element.get_attribute("disabled") is not None:
         return False
     if await element.get_attribute("readonly") is not None:

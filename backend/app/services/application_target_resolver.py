@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from typing import Any, Dict, List
 
 from app.services.application_entry_runtime import open_application_entry
@@ -43,8 +45,8 @@ async def _controlled_page_target_id(page: Any) -> str:
         if cdp_session is not None:
             try:
                 await cdp_session.detach()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in application_target_resolver.py: %s", type(exc).__name__)
 
 
 async def resolve_application_target_with_browser(source_url: str) -> Dict[str, Any]:

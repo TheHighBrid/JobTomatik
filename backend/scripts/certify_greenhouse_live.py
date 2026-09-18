@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import re
 import traceback
@@ -91,8 +92,8 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
             report["navigation_warning"] = str(exc)[:500]
         try:
             await page.wait_for_load_state("networkidle", timeout=12000)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_greenhouse_live.py: %s", type(exc).__name__)
 
         report["loaded_url"] = page.url
         report["title"] = await page.title()
@@ -142,8 +143,8 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
     finally:
         try:
             await page.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_greenhouse_live.py: %s", type(exc).__name__)
 
 
 def _manual_challenge_ready(result: Dict[str, Any], submit_clicked: bool) -> bool:

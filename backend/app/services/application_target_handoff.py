@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from typing import Any, Dict
 
 from app.models.application import Application
@@ -88,8 +90,8 @@ async def _page_target_id(context: Any, page: Any) -> str:
         if cdp_session is not None:
             try:
                 await cdp_session.detach()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in application_target_handoff.py: %s", type(exc).__name__)
 
 
 async def _retained_target_page(
@@ -158,8 +160,8 @@ async def _fallback_target_evidence(
         evidence = await application_form_evidence(active_page)
         form_detected = bool(evidence.present)
         form_evidence = evidence.as_dict()
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).debug("Suppressed non-fatal exception in application_target_handoff.py: %s", type(exc).__name__)
     if not form_detected:
         return {
             "status": "none",
@@ -201,8 +203,8 @@ async def _observed_target_evidence(
                 "trusted_ats_adapter": None,
                 "trusted_ats_adapter_version": None,
             }
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).debug("Suppressed non-fatal exception in application_target_handoff.py: %s", type(exc).__name__)
 
     resolver = _target_evidence_from_browser
     if callable(resolver):

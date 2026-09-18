@@ -17,6 +17,8 @@ confirmation verifier.
 
 from __future__ import annotations
 
+import logging
+
 from contextvars import ContextVar
 from typing import Any, Dict
 from urllib.parse import urlsplit
@@ -81,8 +83,8 @@ async def passive_verification_state(page: Any) -> Dict[str, Any]:
                 key: bool(observed.get(key))
                 for key in globals_state
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).debug("Suppressed non-fatal exception in operator_assisted_live_pilot_hardening.py: %s", type(exc).__name__)
 
     iframe_sources: list[str] = []
     try:
@@ -90,8 +92,8 @@ async def passive_verification_state(page: Any) -> Dict[str, Any]:
             source = str(await element.get_attribute("src") or "")
             if source:
                 iframe_sources.append(source)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).debug("Suppressed non-fatal exception in operator_assisted_live_pilot_hardening.py: %s", type(exc).__name__)
 
     hcaptcha_loaded = bool(
         globals_state["hcaptcha"]
@@ -200,8 +202,8 @@ def install_operator_assisted_live_pilot_hardening() -> None:
         from app.api import handoffs as handoff_api
 
         handoff_api.verify_browser_handoff_completion = hardened_verify_completion
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).debug("Suppressed non-fatal exception in operator_assisted_live_pilot_hardening.py: %s", type(exc).__name__)
 
     _INSTALLED = True
 

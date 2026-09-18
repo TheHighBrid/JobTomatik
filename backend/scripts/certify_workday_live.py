@@ -7,6 +7,8 @@ boundary, and optionally exercises the safe form path with a fictional profile.
 
 from __future__ import annotations
 
+import logging
+
 import argparse
 import asyncio
 import json
@@ -57,15 +59,15 @@ async def _load_surface(url: str, browser) -> Tuple[Any, Any, Any, List[Dict[str
             log.append({"action": "navigation_warning", "detail": str(exc)[:500]})
         try:
             await page.wait_for_load_state("networkidle", timeout=15000)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_workday_live.py: %s", type(exc).__name__)
         adapter = await detect_ats_adapter(page, page.url or url)
         surface = await adapter.resolve_surface(page)
         await adapter.prepare(surface, log)
         try:
             await page.wait_for_load_state("networkidle", timeout=12000)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_workday_live.py: %s", type(exc).__name__)
         surface = await adapter.resolve_surface(page)
         return page, adapter, surface, log
     except Exception:
@@ -150,8 +152,8 @@ async def inspect_live_url(url: str, browser) -> Dict[str, Any]:
         if page is not None:
             try:
                 await page.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_workday_live.py: %s", type(exc).__name__)
 
 
 def _manual_result_boundary(result: Dict[str, Any], submit_clicked: bool) -> Optional[str]:
@@ -208,8 +210,8 @@ async def _profile_for_url(url: str, browser) -> Tuple[Dict[str, Any], Dict[str,
         if page is not None:
             try:
                 await page.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_workday_live.py: %s", type(exc).__name__)
 
 
 async def exercise_live_url(

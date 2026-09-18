@@ -14,6 +14,8 @@ This facade changes only the external Android CDP attachment contract:
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -189,8 +191,8 @@ async def controlled_page_target_id(page: Any) -> str:
         if cdp_session is not None:
             try:
                 await cdp_session.detach()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in browser_runtime.py: %s", type(exc).__name__)
 
 
 async def release_application_browser(
@@ -224,10 +226,10 @@ async def release_application_browser(
             is_closed = getattr(page, "is_closed", None)
             if not callable(is_closed) or not bool(is_closed()):
                 await page.close(run_before_unload=False)
-        except Exception:
+        except Exception as exc:
             # Cleanup must never turn a completed/failed application result into a
             # second failure. The browser itself remains externally owned and alive.
-            pass
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in browser_runtime.py: %s", type(exc).__name__)
         finally:
             setattr(runtime, _CONTROLLED_PAGE_OWNERSHIP_ATTR, False)
 

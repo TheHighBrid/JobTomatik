@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import re
 import traceback
@@ -52,15 +53,15 @@ async def _load_application_surface(
             log.append({"action": "navigation_warning", "detail": str(exc)[:500]})
         try:
             await page.wait_for_load_state("networkidle", timeout=15000)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_smartrecruiters_live.py: %s", type(exc).__name__)
         adapter = await detect_ats_adapter(page, page.url or url)
         surface = await adapter.resolve_surface(page)
         await adapter.prepare(surface, log)
         try:
             await page.wait_for_load_state("networkidle", timeout=12000)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_smartrecruiters_live.py: %s", type(exc).__name__)
         surface = await adapter.resolve_surface(page)
         return page, adapter, surface, log
     except Exception:
@@ -173,8 +174,8 @@ async def inspect_live_url(url: str, browser: Any) -> Dict[str, Any]:
         if page is not None:
             try:
                 await page.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_smartrecruiters_live.py: %s", type(exc).__name__)
 
 
 def _manual_challenge_ready(result: Dict[str, Any], submit_clicked: bool) -> bool:
@@ -228,8 +229,8 @@ async def _build_profile_for_url(
         if page is not None:
             try:
                 await page.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in certify_smartrecruiters_live.py: %s", type(exc).__name__)
 
 
 async def exercise_live_url(
