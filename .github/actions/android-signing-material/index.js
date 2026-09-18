@@ -25,6 +25,9 @@ function run(command, args, options = {}) {
 }
 
 const encodedBundle = requiredInput('SIGNING_BUNDLE_BASE64').replace(/\s+/g, '');
+// Do not leave the opaque GitHub Actions input available to child processes.
+delete process.env.INPUT_SIGNING_BUNDLE_BASE64;
+
 if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encodedBundle)) {
   throw new Error('Signing bundle is not valid base64 text');
 }
@@ -58,6 +61,25 @@ const dir = path.join(runnerTemp, 'jobtomatik-signing');
 const identityPath = path.join(dir, 'identity.jks');
 const item1Path = path.join(dir, 'material-1');
 
+const childEnv = {};
+for (const name of [
+  'PATH',
+  'HOME',
+  'JAVA_HOME',
+  'ANDROID_HOME',
+  'ANDROID_SDK_ROOT',
+  'GRADLE_USER_HOME',
+  'RUNNER_TEMP',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'LANG',
+  'LC_ALL',
+  'CI',
+]) {
+  if (process.env[name]) childEnv[name] = process.env[name];
+}
+
 fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 fs.writeFileSync(identityPath, identityBytes, { mode: 0o600 });
 fs.writeFileSync(item1Path, item1, { mode: 0o600 });
@@ -73,17 +95,13 @@ try {
     item1Path,
     '-alias',
     item2,
-  ]);
+  ], { env: childEnv });
 
   const androidDir = path.join(workspace, 'frontend', 'android');
   const gradlew = path.join(androidDir, 'gradlew');
   fs.chmodSync(gradlew, 0o755);
 
-  const gradleEnv = { ...process.env, JOBTOMATIK_SIGNING_DIR: dir };
-  // GitHub JavaScript actions expose inputs as INPUT_* environment variables.
-  // Do not propagate the opaque signing bundle into Gradle or its descendants.
-  delete gradleEnv.INPUT_SIGNING_BUNDLE_BASE64;
-
+  const gradleEnv = { ...childEnv, JOBTOMATIK_SIGNING_DIR: dir };
   run(gradlew, ['--no-daemon', 'lintRelease', 'assembleRelease'], {
     cwd: androidDir,
     env: gradleEnv,
