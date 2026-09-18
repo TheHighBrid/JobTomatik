@@ -1,4 +1,5 @@
 name: Codacy Wave 5 Bandit literal verification
+# rerun-after-additional-literals
 
 on:
   push:
