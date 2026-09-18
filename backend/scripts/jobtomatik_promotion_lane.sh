@@ -373,6 +373,11 @@ cleanup_partial() {
 trap cleanup_partial ERR INT TERM HUP
 ln -s "$source_repo/backend/.venv" "$promotion_repo/backend/.venv"
 (
+  cd "$promotion_repo"
+  backend/.venv/bin/python backend/scripts/verify_python_environment_requirements.py \
+    --requirements backend/requirements.txt
+)
+(
   cd "$promotion_repo/backend"
   .venv/bin/python scripts/prepare_lever_promotion_lane_state.py prepare \
     --source-repo "$source_repo" \
