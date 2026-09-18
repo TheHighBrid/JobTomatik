@@ -102,36 +102,40 @@ jobs:
       - name: Build frontend and synchronize Capacitor
         run: npm run android:prepare
 
-      - name: Decode ephemeral release keystore
-        id: keystore
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.JOBTOMATIK_KEYSTORE_BASE64 }}
-        run: |
-          set -euo pipefail
-          test -n "$KEYSTORE_BASE64"
-          KEYSTORE_PATH="$RUNNER_TEMP/jobtomatik-release.jks"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
-          test -s "$KEYSTORE_PATH"
-          chmod 600 "$KEYSTORE_PATH"
-          echo "path=$KEYSTORE_PATH" >> "$GITHUB_OUTPUT"
+      - name: Materialize ephemeral release signing files
+        uses: ./.github/actions/android-signing-material
+        with:
+          keystore_base64: ${{ secrets.JOBTOMATIK_KEYSTORE_BASE64 }}
+          keystore_password: ${{ secrets.JOBTOMATIK_KEYSTORE_PASSWORD }}
+          key_alias: ${{ secrets.JOBTOMATIK_KEY_ALIAS }}
+          key_password: ${{ secrets.JOBTOMATIK_KEY_PASSWORD }}
 
       - name: Validate signing identity and assemble production APK
         shell: bash
-        env:
-          JOBTOMATIK_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
-          JOBTOMATIK_KEYSTORE_PASSWORD: ${{ secrets.JOBTOMATIK_KEYSTORE_PASSWORD }}
-          JOBTOMATIK_KEY_ALIAS: ${{ secrets.JOBTOMATIK_KEY_ALIAS }}
-          JOBTOMATIK_KEY_PASSWORD: ${{ secrets.JOBTOMATIK_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$JOBTOMATIK_KEYSTORE_PASSWORD"
-          test -n "$JOBTOMATIK_KEY_ALIAS"
-          test -n "$JOBTOMATIK_KEY_PASSWORD"
-          keytool -list             -keystore "$JOBTOMATIK_KEYSTORE_PATH"             -storepass "$JOBTOMATIK_KEYSTORE_PASSWORD"             -alias "$JOBTOMATIK_KEY_ALIAS" >/dev/null
+          SIGNING_DIR="$RUNNER_TEMP/jobtomatik-signing"
+          KEYSTORE_PATH="$SIGNING_DIR/release.jks"
+          STORE_PASSWORD="$(cat "$SIGNING_DIR/store-password")"
+          KEY_ALIAS="$(cat "$SIGNING_DIR/key-alias")"
+          KEY_PASSWORD="$(cat "$SIGNING_DIR/key-password")"
+          test -s "$KEYSTORE_PATH"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+          keytool -list \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" >/dev/null
           chmod +x android/gradlew
-          cd android
-          ./gradlew --no-daemon lintRelease assembleRelease
+          (
+            export JOBTOMATIK_KEYSTORE_PATH="$KEYSTORE_PATH"
+            export JOBTOMATIK_KEYSTORE_PASSWORD="$STORE_PASSWORD"
+            export JOBTOMATIK_KEY_ALIAS="$KEY_ALIAS"
+            export JOBTOMATIK_KEY_PASSWORD="$KEY_PASSWORD"
+            cd android
+            ./gradlew --no-daemon lintRelease assembleRelease
+          )
 
       - name: Verify production APK identity and persistent certificate
         shell: bash
