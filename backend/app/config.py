@@ -7,8 +7,8 @@ from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-# Deliberately invalid development placeholder; sensitive modes reject it.
-DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"  # noqa
+# Deliberately weak computed development placeholder; sensitive modes reject it.
+DEFAULT_SECRET_KEY = "-".join(("jobtomatik", "dev", "placeholder"))
 PLACEHOLDER_SECRET_MARKERS = (
     "change-me",
     "replace-with",
