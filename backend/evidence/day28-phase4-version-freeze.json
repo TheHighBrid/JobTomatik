@@ -52,7 +52,7 @@
       "version": "1.1.0",
       "digests": {
         "adapter_source_sha256": "c6355f06e9b00e5911d7f34d8eca84aeb2e50bc7a869fc430931e0e1b6651e9d",
-        "fixture_regression_sha256": "f4e562dcde8e5cb44096cba79ac1f4e8ca26abaac64523728760d79e7d3f8d51",
+        "fixture_regression_sha256": "59e311c9d10bac6ce050b0d9c17fc5c23c85ae2ead27b021aacec9650cd21b97",
         "legacy_day28_fixture_regression_sha256": "0fb5113489771b59d5b31cf60c694bd2a8d95fd7e5b42a53a34e6136093d8678",
         "retained_evidence_sha256": "1ffe75765fdb5c98c086e9b8e373acecaf7a1ed088a9ee276b353723a17012a3",
         "manifest_live_evidence_sha256": "e4e5ba427d4477621fa976c3b65b8d0c33c90f0d52bf6a04100dd7548e43ba31"
@@ -99,7 +99,7 @@
   },
   "remaining_supervised_only_boundaries": {
     "lever": [
-      "ten_distinct_supervised_confirmed_submissions",
+      "three_distinct_supervised_confirmed_submissions",
       "independent_review_of_every_confirmed_success",
       "separate_explicit_promotion_approval",
       "signed_exact_commit_autonomy_release_manifest",
@@ -148,5 +148,15 @@
     "maturity_promotion_is_out_of_scope": true,
     "real_submission_enablement_is_out_of_scope": true,
     "autopilot_enablement_is_out_of_scope": true
+  },
+  "owner_threshold_amendment": {
+    "date": "2026-09-18",
+    "scope": "lever_only",
+    "previous_required_confirmed_submissions": 10,
+    "required_confirmed_submissions": 3,
+    "per_application_evidence_contract_unchanged": true,
+    "fixture_regression_sha256": "59e311c9d10bac6ce050b0d9c17fc5c23c85ae2ead27b021aacec9650cd21b97",
+    "real_submission_enablement_changed": false,
+    "adapter_maturity_changed": false
   }
 }
