@@ -162,7 +162,7 @@ jobs:
           run-id: ${{ needs.authorize-exact-release.outputs.candidate_run_id }}
 
       - name: Set up Android verification tools
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
         with:
           packages: platform-tools
 
@@ -285,7 +285,7 @@ jobs:
             }
 
       - name: Publish exact approved GitHub release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: v2.1.0
           target_commitish: ${{ needs.authorize-exact-release.outputs.source_commit }}

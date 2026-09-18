@@ -128,7 +128,7 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
 
       - name: Install Android platform
         shell: bash
@@ -259,7 +259,7 @@ jobs:
           path: release
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: v1.0.0
           target_commitish: ${{ env.RELEASE_SOURCE_SHA }}
