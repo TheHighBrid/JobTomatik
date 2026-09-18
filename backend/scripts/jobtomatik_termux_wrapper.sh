@@ -246,7 +246,6 @@ update_main() {
 activate_stack() {
   local action="$1"
   local browser_recovery_mode="${2:-preserve}"
-  verify_backend_environment
   sanitize_runtime_pid_files
   ensure_static_frontend_artifact
   "$BROWSER_COMMAND" start
