@@ -180,7 +180,7 @@ def repair_android_runtime_secret(
         "changed": True,
         "backup_path": backup_path,
         "vault_key_preserved": vault_key_preserved,
-        "secret_key_safe": True,
+        "secret_key_safe": True,  # nosec B105
     }
 
 
