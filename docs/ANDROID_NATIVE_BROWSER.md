@@ -228,3 +228,16 @@ The runtime manager never uses broad process matching to terminate arbitrary ter
 Runtime attestation proves exact code identity only. It cannot turn on real application submission, recruiter outreach, adapter maturity, supervised approval, or release authorization.
 
 Do not expose port `9222` to the public network. The remote-debugging address remains bound to `127.0.0.1`.
+
+
+## Termux Chromium compatibility
+
+The Android/native browser lane intentionally pins Playwright 1.61.x while the
+Termux X11 repository provides Chromium 149.x. Playwright 1.61 is the matching
+release line for Chromium 149. External CDP attachment uses `no_defaults=True`
+so attaching JobTomatik to the retained native browser does not apply Playwright
+default-context overrides before inventory/ownership checks complete.
+
+If native Chromium moves to a new major version, update the Playwright pin and
+re-run the real Android CDP acceptance gate together rather than upgrading either
+side independently.
