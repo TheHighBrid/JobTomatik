@@ -1,0 +1,70 @@
+name: Codacy Wave 10 immutable action pins
+
+on:
+  push:
+    branches:
+      - codex/codacy-wave10-action-pins
+    paths:
+      - .github/workflows/codacy-wave10-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/codacy-wave10-action-pins
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install validation dependencies
+        run: |
+          python -m pip install -q -r backend/requirements.txt
+          python -m pip install -q pyyaml
+      - name: Validate workflow pins and YAML
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            .github/workflows/publish-v1-command.yml
+            .github/workflows/release-v1.yml
+            .github/workflows/reproducible-verification.yml
+            .github/workflows/android-apk.yml
+            .github/workflows/android-recovery-apk.yml
+            .github/workflows/day34-autonomy-control-gate.yml
+          )
+          python - <<'PY'
+          import pathlib, yaml
+          files=[
+            ".github/workflows/publish-v1-command.yml",
+            ".github/workflows/release-v1.yml",
+            ".github/workflows/reproducible-verification.yml",
+            ".github/workflows/android-apk.yml",
+            ".github/workflows/android-recovery-apk.yml",
+            ".github/workflows/day34-autonomy-control-gate.yml",
+          ]
+          for path in files:
+              data=yaml.safe_load(pathlib.Path(path).read_text())
+              if not isinstance(data, dict):
+                  raise SystemExit(f"invalid workflow mapping: {path}")
+          PY
+          if grep -nR -E 'android-actions/setup-android@v4|softprops/action-gh-release@v3' "${files[@]}"; then
+            echo "mutable target action tag remains" >&2
+            exit 1
+          fi
+          test "$(grep -h -o 'android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd' "${files[@]}" | wc -l)" -eq 6
+          test "$(grep -h -o 'softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64' "${files[@]}" | wc -l)" -eq 2
+          git diff 382b1e3d6e275a1baf1c83f464fd7da0083de817...HEAD --check
+      - name: Run release and verification contracts
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_v1_release_contract.py \
+            tests/test_reproducible_verification_contract.py \
+            tests/test_day34_autonomy_control.py
