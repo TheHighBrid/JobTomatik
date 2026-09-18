@@ -79,8 +79,8 @@ class FakeChromium:
         self.calls = []
         self.browser = browser or FakeBrowser()
 
-    async def connect_over_cdp(self, endpoint, timeout):
-        self.calls.append((endpoint, timeout))
+    async def connect_over_cdp(self, endpoint, timeout, **kwargs):
+        self.calls.append((endpoint, timeout, kwargs))
         return self.browser
 
 
