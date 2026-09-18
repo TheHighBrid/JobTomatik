@@ -123,6 +123,7 @@ def test_android_production_release_workflow_is_fail_closed_and_deterministic():
     assert "secrets.JOBTOMATIK_KEY_PASSWORD" not in workflow
     assert "keystore_password:" not in workflow
     assert "key_password:" not in workflow
+    assert "password" not in workflow.lower()
     assert "apksigner" in workflow
     assert "SIGNING_CERT_SHA256" in workflow
     assert 'test "$SIGNING_CERT_SHA256" = "$EXPECTED_CERT_SHA256"' in workflow
@@ -151,6 +152,11 @@ def test_android_signing_material_action_writes_only_ephemeral_mode_0600_files()
     assert "::add-mask::" in script
     assert "GITHUB_ENV" not in script
     assert "GITHUB_OUTPUT" not in script
+    assert "spawnSync" in script
+    assert "keytool" in script
+    assert "assembleRelease" in script
+    assert "JOBTOMATIK_KEYSTORE_PASSWORD" in script
+    assert "fs.rmSync" in script
 
 
 def test_exact_artifact_v21_publisher_is_owner_scoped_and_does_not_rebuild():
