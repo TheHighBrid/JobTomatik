@@ -22,7 +22,7 @@ LEVER_PHASE_A_GATES = (
     "all_manual_challenges_remain_needs_review",
 )
 LEVER_PHASE_B_GATES = (
-    "ten_supervised_confirmed_submissions",
+    "three_supervised_confirmed_submissions",
     "zero_false_submitted_records",
     "zero_duplicate_submissions",
     "all_uncertain_outcomes_remain_uncertain",
@@ -367,7 +367,7 @@ def build_day_12_22_report(
         and launch["invalid_dossier_count"] == 0
     )
     day15_passed = (
-        phase_a and day15_integrity_clean and launch["ready_application_count"] >= 2
+        phase_a and day15_integrity_clean and launch["ready_application_count"] >= 3
     )
     checkpoints.append(
         _checkpoint(
@@ -377,7 +377,7 @@ def build_day_12_22_report(
             {
                 "phase_a_complete": phase_a,
                 **launch,
-                "target_ready_applications": 2,
+                "target_ready_applications": 3,
             },
             (["complete Lever Phase A"] if not phase_a else [])
             + (
@@ -390,11 +390,11 @@ def build_day_12_22_report(
             )
             + (
                 [
-                    "retain two exact user-selected Lever applications with "
+                    "retain three exact user-selected Lever applications with "
                     "byte-verified, application-bound read-only dossiers and "
                     "successful no-submit dry previews"
                 ]
-                if launch["ready_application_count"] < 2
+                if launch["ready_application_count"] < 3
                 else []
             )
             + (
@@ -415,7 +415,7 @@ def build_day_12_22_report(
         )
     )
 
-    for day, target in ((16, 2), (17, 4), (18, 6), (19, 8), (20, 10)):
+    for day, target in ((16, 1), (17, 2), (18, 3), (19, 3), (20, 3)):
         passed = (
             phase_a
             and confirmed >= target
