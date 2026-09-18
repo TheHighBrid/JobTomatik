@@ -1,0 +1,30 @@
+name: Codacy PR 516 new issue probe
+
+on:
+  push:
+    branches:
+      - codex/codacy-pr516-new-issues-probe
+    paths:
+      - .github/workflows/codacy-pr516-new-issues-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch exact new PR issues
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body -sS             'https://api.codacy.com/api/v3/analysis/organizations/gh/TheHighBrid/repositories/JobTomatik/pull-requests/516/issues?status=new&limit=100'             -H 'Accept: application/json' > /tmp/pr-issues.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("/tmp/pr-issues.json").read_text())
+          print("TOTAL", (payload.get("pagination") or {}).get("total"))
+          print(json.dumps(payload.get("data", []), indent=2, sort_keys=True))
+          PY
