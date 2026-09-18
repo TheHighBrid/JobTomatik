@@ -26,7 +26,7 @@ flag.
 
 The promotion lane uses:
 
-- source-of-truth frozen checkout: `/root/JobTomatik` at exact revision `198b197d...`;
+- source-state checkout: `/root/JobTomatik`, whose exact HEAD is captured once at helper invocation (or explicitly pinned with `JOBTOMATIK_FROZEN_REVISION`);
 - current-main sibling worktree: `/root/JobTomatik-promotion`;
 - promotion database: `backend/jobtomatik-promotion.db`;
 - promotion-local mutable state under `backend/.promotion-state/`;
@@ -100,7 +100,7 @@ Read-only campaign inputs are normalized back to the promotion checkout's commit
 
 `prepare` performs all of the following before the lane can become active:
 
-1. requires the frozen checkout HEAD to equal the exact certification revision;
+1. captures the source checkout HEAD once at invocation, or honors an explicit `JOBTOMATIK_FROZEN_REVISION`, and requires the checkout to remain on that exact revision for the full operation;
 2. refuses tracked modifications in the frozen checkout;
 3. fetches `origin/main` without switching the frozen checkout;
 4. proves `backend/requirements.txt` exists on both revisions and is byte-identical
@@ -168,7 +168,7 @@ the frozen checkout.
 ## Installation on the frozen phone
 
 Do not switch or update the frozen checkout. Fetching Git objects is safe because it
-does not alter HEAD or the working tree.
+does not alter HEAD or the working tree. The helper no longer assumes the active source checkout is still at the historical September certification SHA; it pins the checkout that actually owns the retained runtime state at invocation and still fails if that checkout moves during preparation.
 
 From native Termux, install the helper from current `origin/main`:
 
