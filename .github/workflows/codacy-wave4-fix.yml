@@ -44,24 +44,22 @@ jobs:
           # Production: preserve public-module monkeypatch seams while removing dynamic globals()[name].
           replace_exact(
               "backend/scripts/run_shadow_qualification_canary.py",
-              '''    for name in _PATCHABLE_BASE_SEAMS:
-              if name in globals():
-                  setattr(_base, name, globals()[name])
-          # These two are intentionally resolved on every invocation so a focused
-          # test can replace the public wait/snapshot seam without touching the base.
-          _base._application_snapshot = globals()["_application_snapshot"]
-          _base._wait_for_application_path = globals()["_wait_for_application_path"]
-          ''',
-              '''    public_module = sys.modules[__name__]
-          for name in _PATCHABLE_BASE_SEAMS:
-              # Names come only from the fixed allowlist above. getattr preserves the
-              # established public-module monkeypatch seam without exposing arbitrary globals.
-              setattr(_base, name, getattr(public_module, name))
-          # These two are intentionally resolved on every invocation so a focused
-          # test can replace the public wait/snapshot seam without touching the base.
-          _base._application_snapshot = getattr(public_module, "_application_snapshot")
-          _base._wait_for_application_path = getattr(public_module, "_wait_for_application_path")
-          ''',
+              "    for name in _PATCHABLE_BASE_SEAMS:\n"
+              "        if name in globals():\n"
+              "            setattr(_base, name, globals()[name])\n"
+              "    # These two are intentionally resolved on every invocation so a focused\n"
+              "    # test can replace the public wait/snapshot seam without touching the base.\n"
+              "    _base._application_snapshot = globals()[\"_application_snapshot\"]\n"
+              "    _base._wait_for_application_path = globals()[\"_wait_for_application_path\"]\n",
+              "    public_module = sys.modules[__name__]\n"
+              "    for name in _PATCHABLE_BASE_SEAMS:\n"
+              "        # Names come only from the fixed allowlist above. getattr preserves the\n"
+              "        # established public-module monkeypatch seam without exposing arbitrary globals.\n"
+              "        setattr(_base, name, getattr(public_module, name))\n"
+              "    # These two are intentionally resolved on every invocation so a focused\n"
+              "    # test can replace the public wait/snapshot seam without touching the base.\n"
+              "    _base._application_snapshot = getattr(public_module, \"_application_snapshot\")\n"
+              "    _base._wait_for_application_path = getattr(public_module, \"_wait_for_application_path\")\n",
           )
 
           # Test-only subprocess fixtures. Commands are test-controlled; retain behavior.
