@@ -11,7 +11,7 @@ import asyncio
 import hashlib
 import secrets
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus
 
@@ -72,7 +72,7 @@ def _headers() -> Dict[str, str]:
 
 
 def _uid(source: str, company: str, title: str, url: str = "") -> str:
-    raw = f"{source}-{company}-{title}-{url or datetime.utcnow().date()}"
+    raw = f"{source}-{company}-{title}-{url or datetime.now(timezone.utc).date()}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -108,7 +108,7 @@ def _build_mock_jobs(keywords: str, location: Optional[str], salary_min: Optiona
             "requirements": f"Experience with {keywords}, fraud review, KYC, AML, banking compliance, case documentation",
             "url": url,
             "source": source if source in {"linkedin", "indeed", "glassdoor", "jobbank", "manual"} else "manual",
-            "posted_at": (datetime.utcnow() - timedelta(days=_rng.randint(0, 14))).isoformat(),
+            "posted_at": (datetime.now(timezone.utc) - timedelta(days=_rng.randint(0, 14))).isoformat(),
             "raw_data": {"application_method": "manual", "reason": "mock job"},
         })
     return jobs
