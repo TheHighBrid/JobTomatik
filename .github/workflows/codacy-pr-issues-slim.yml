@@ -26,6 +26,8 @@ jobs:
           from pathlib import Path
           p=json.loads(Path("/tmp/issues.json").read_text())
           data=p.get("data") or []
+          print("ANALYZED", p.get("analyzed"))
+          print("PAGINATION", json.dumps(p.get("pagination") or {}, sort_keys=True))
           print("COUNT", len(data))
           for x in data:
               ci=x.get("commitIssue") or x
@@ -40,7 +42,10 @@ jobs:
                   "level": pi.get("level") or pi.get("severityLevel"),
                   "tool": ti.get("name"),
                   "message": ci.get("message") or x.get("message"),
-                  "status": x.get("status"),
+                  "deltaType": x.get("deltaType"),
+                  "lineText": ci.get("lineText"),
+                  "falsePositiveProbability": ci.get("falsePositiveProbability"),
+                  "falsePositiveReason": ci.get("falsePositiveReason"),
               }
               print(json.dumps(row, sort_keys=True))
           PY
