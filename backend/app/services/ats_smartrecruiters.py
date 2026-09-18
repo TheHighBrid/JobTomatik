@@ -151,7 +151,7 @@ async def fetch_smartrecruiters_posting(
 
 
 async def fetch_smartrecruiters_configuration(
-    smart_token: str,
+    smart_token: str,  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
     posting_uuid: str,
     *,
     language: str = "en",

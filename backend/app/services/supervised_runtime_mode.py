@@ -253,7 +253,7 @@ def _managed_process_identity(
 def create_owner_bound_marker(
     owner_pid: int,
     *,
-    launch_token: str,
+    launch_token: str,  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
     runtime_revision: str,
     path: Path = DEFAULT_MARKER_PATH,
 ) -> dict[str, Any]:

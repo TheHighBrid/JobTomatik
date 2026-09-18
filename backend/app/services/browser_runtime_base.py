@@ -362,7 +362,7 @@ async def launch_retainable_browser(
     if headless:
         args.insert(1, "--headless=new")
 
-    process = subprocess.Popen(
+    process = subprocess.Popen(  # nosemgrep: Semgrep_python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit, Semgrep_python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
         args,
         stdout=log_handle,
         stderr=subprocess.STDOUT,

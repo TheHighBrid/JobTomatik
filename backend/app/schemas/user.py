@@ -82,7 +82,7 @@ class UserProfile(BaseModel):
 
 
 class Token(BaseModel):
-    access_token: str
+    access_token: str  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
     token_type: str
     user: UserOut
 

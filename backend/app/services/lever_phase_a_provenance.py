@@ -334,7 +334,7 @@ def verify_retention_artifact_bundle(
 
 def fetch_verified_retention_artifact(
     *,
-    github_token: str,
+    github_token: str,  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
     local_report_path: Path,
     evidence_root: Path,
     review_id: str,

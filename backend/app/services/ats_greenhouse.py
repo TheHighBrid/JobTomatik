@@ -78,7 +78,7 @@ def parse_greenhouse_job_url(url: str) -> Tuple[Optional[str], Optional[str]]:
 
 
 async def fetch_greenhouse_job_schema(
-    board_token: str,
+    board_token: str,  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
     job_id: str,
     *,
     timeout: float = 15.0,

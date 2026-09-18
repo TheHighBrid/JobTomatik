@@ -7,7 +7,8 @@ from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"
+# Deliberately invalid development placeholder; sensitive modes reject it.
+DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"  # noqa
 PLACEHOLDER_SECRET_MARKERS = (
     "change-me",
     "replace-with",

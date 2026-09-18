@@ -50,13 +50,13 @@ class HandoffTokenInvalid(HandoffSessionError):
 @dataclass
 class IssuedHandoffSession:
     session: ManualHandoffSession
-    resume_token: str
+    resume_token: str  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
 
 
 @dataclass
 class ClaimedHandoffSession:
     session: ManualHandoffSession
-    lease_token: str
+    lease_token: str  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
 
 
 def _now() -> datetime:
@@ -244,7 +244,7 @@ def claim_handoff_session(
     session: ManualHandoffSession,
     *,
     user_id: int,
-    resume_token: str,
+    resume_token: str,  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
 ) -> ClaimedHandoffSession:
     now = _now()
     _expire_if_needed(db, session, now)
@@ -283,7 +283,7 @@ def verify_handoff_lease(
     session: ManualHandoffSession,
     *,
     user_id: int,
-    lease_token: str,
+    lease_token: str,  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
     allowed_statuses: tuple[str, ...] = (HandoffSessionStatus.claimed.value,),
 ) -> None:
     now = _now()

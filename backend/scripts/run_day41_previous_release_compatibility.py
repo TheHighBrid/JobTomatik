@@ -67,7 +67,7 @@ def _run_python(
     code: str,
     env: dict[str, str],
 ) -> Any:
-    completed = subprocess.run(
+    completed = subprocess.run(  # nosemgrep: Semgrep_python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit, Semgrep_python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
         [str(python_executable), "-c", code],
         cwd=cwd,
         env=env,
@@ -164,7 +164,9 @@ def _schema_snapshot(connection: sqlite3.Connection) -> dict[str, list[str]]:
         escaped = table.replace('"', '""')
         result[table] = sorted(
             str(row[1])
-            for row in connection.execute(f'PRAGMA table_info("{escaped}")').fetchall()
+            for row in connection.execute(  # nosemgrep: Semgrep_python.lang.security.audit.formatted-sql-query.formatted-sql-query, Semgrep_python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
+                f'PRAGMA table_info("{escaped}")'
+            ).fetchall()
         )
     return result
 

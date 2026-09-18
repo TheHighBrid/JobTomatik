@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
-import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as ET
 
 
 DOSSIER_SCHEMA_VERSION = "1.0"

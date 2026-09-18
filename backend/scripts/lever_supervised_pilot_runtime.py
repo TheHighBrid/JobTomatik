@@ -224,7 +224,7 @@ def preflight_arm(env_file: Path = ENV_FILE) -> dict[str, Any]:
 
 def create_marker(
     owner_pid: int,
-    launch_token: str,
+    launch_token: str,  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
     marker_path: Path = DEFAULT_MARKER_PATH,
 ) -> dict[str, Any]:
     """Create a non-authorizing owner-bound pending transition marker."""

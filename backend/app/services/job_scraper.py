@@ -71,7 +71,7 @@ def _headers() -> Dict[str, str]:
 
 def _uid(source: str, company: str, title: str, url: str = "") -> str:
     raw = f"{source}-{company}-{title}-{url or datetime.utcnow().date()}"
-    return hashlib.md5(raw.encode()).hexdigest()[:16]
+    return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:16]  # nosemgrep: Semgrep_python_crypto_rule-hash-md5
 
 
 def _mock_salary(salary_min: Optional[int], salary_max: Optional[int]):

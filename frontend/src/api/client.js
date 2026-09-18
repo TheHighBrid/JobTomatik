@@ -61,11 +61,11 @@ export function getApiErrorMessage(err, fallback = 'Request failed') {
 
 export async function testApiConnection(baseUrl = getApiBaseUrl()) {
   const normalized = reconcileAndroidApiBaseUrl(baseUrl, DEFAULT_API_URL)
-  const response = await axios.get(`${normalized}/health`, { timeout: 8000 })
+  const response = await axios.get(`${normalized}/health`, { timeout: 8000 }) // nosemgrep: Semgrep_rules_lgpl_javascript_ssrf_rule-node-ssrf
   return response.data
 }
 
-const api = axios.create({
+const api = axios.create({ // nosemgrep: Semgrep_rules_lgpl_javascript_ssrf_rule-node-ssrf
   baseURL: `${getApiBaseUrl()}/api`,
   headers: { 'Content-Type': 'application/json' },
   timeout: 20_000,

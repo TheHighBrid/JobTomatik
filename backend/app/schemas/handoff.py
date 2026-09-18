@@ -33,7 +33,7 @@ class HandoffSessionOut(BaseModel):
 
 class HandoffIssuedOut(BaseModel):
     session: HandoffSessionOut
-    resume_token: str
+    resume_token: str  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
 
 
 class HandoffClaimRequest(BaseModel):
@@ -42,7 +42,7 @@ class HandoffClaimRequest(BaseModel):
 
 class HandoffClaimOut(BaseModel):
     session: HandoffSessionOut
-    lease_token: str
+    lease_token: str  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
 
 
 class HandoffLeaseRequest(BaseModel):

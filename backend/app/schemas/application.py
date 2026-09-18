@@ -141,7 +141,7 @@ class ManualReviewTaskOut(BaseModel):
     application_step_blockers: List[str] = Field(default_factory=list)
     blocking_url: Optional[str]
     screenshot_path: Optional[str]
-    resume_token: Optional[str]
+    resume_token: Optional[str]  # nosemgrep: Semgrep_codacy.yaml.security.hard-coded-tokens
     expires_at: Optional[datetime]
     resolved_at: Optional[datetime]
     resolution_notes: Optional[str]
