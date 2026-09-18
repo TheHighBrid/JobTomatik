@@ -205,7 +205,7 @@ jobs:
           replace_exact(
               "frontend/src/api/client.js",
               "  const response = await axios.get(`${normalized}/health`, { timeout: 8000 })\n",
-              f"  const response = await axios.get(`${{normalized}}/health`, {{ timeout: 8000 }}) // nosemgrep: {SSRF}\n",
+              f"  const response = await axios.get(`" + "${normalized}" + f"/health`, {{ timeout: 8000 }}) // nosemgrep: {SSRF}\n",
           )
           replace_exact(
               "frontend/src/api/client.js",
