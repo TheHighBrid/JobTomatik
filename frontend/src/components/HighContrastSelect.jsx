@@ -48,7 +48,7 @@ export default function HighContrastSelect({
             background: listboxStyles.background,
             color: listboxStyles.color,
             borderColor: listboxStyles.borderColor,
-            width: 'var(--button-width)',
+            width: 'var(--anchor-width)',
           }}
         >
           {options.map((option) => (
