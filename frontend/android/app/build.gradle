@@ -18,6 +18,16 @@ def releaseSigningConfigured = [
         releaseKeyAlias,
         releaseKeyPassword,
 ].every { value -> value != null && value.toString().trim() }
+def releaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.toLowerCase().contains('release')
+}
+if (releaseTaskRequested && !releaseSigningConfigured) {
+    throw new GradleException(
+            "Persistent JobTomatik release signing is required. " +
+            "Set JOBTOMATIK_KEYSTORE_PATH, JOBTOMATIK_KEYSTORE_PASSWORD, " +
+            "JOBTOMATIK_KEY_ALIAS, and JOBTOMATIK_KEY_PASSWORD outside source control."
+    )
+}
 
 android {
     namespace "ca.jobtomatik.app"
@@ -38,17 +48,12 @@ android {
 
     signingConfigs {
         release {
-            if (!releaseSigningConfigured) {
-                throw new GradleException(
-                        "Persistent JobTomatik release signing is required. " +
-                        "Set JOBTOMATIK_KEYSTORE_PATH, JOBTOMATIK_KEYSTORE_PASSWORD, " +
-                        "JOBTOMATIK_KEY_ALIAS, and JOBTOMATIK_KEY_PASSWORD outside source control."
-                )
+            if (releaseSigningConfigured) {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
             }
-            storeFile file(releaseKeystorePath)
-            storePassword releaseKeystorePassword
-            keyAlias releaseKeyAlias
-            keyPassword releaseKeyPassword
         }
     }
 
