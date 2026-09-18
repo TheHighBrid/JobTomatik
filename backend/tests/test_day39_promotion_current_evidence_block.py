@@ -10,6 +10,6 @@ def test_current_retained_lever_evidence_is_not_promotion_ready():
 
     assert summary["qualifying_dry_run_count"] >= 30
     assert summary["supervised_confirmed_count"] == 0
-    assert summary["gates"]["ten_supervised_confirmed_submissions"] is False
+    assert summary["gates"]["three_supervised_confirmed_submissions"] is False
     assert summary["promotion_ready"] is False
     assert summary["canonical_maturity"] == "dry_run"
