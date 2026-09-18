@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 import re
 from datetime import datetime
@@ -310,7 +312,8 @@ async def navigate_job_board_listing(page, log: List[Dict[str, Any]]) -> Dict[st
         try:
             href = await anchor.get_attribute("href") or ""
             text = normalize_text(await anchor.inner_text())
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in browser_navigation.py: %s", type(exc).__name__)
             continue
         if not _probable_apply_href(href, scan_url) and not any(
             hint in text for hint in APPLY_LINK_HINTS
@@ -384,7 +387,8 @@ async def captcha_response_state(page: Any) -> Dict[str, Any]:
                     "selector": selector,
                     "length": len(value or ""),
                 })
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in browser_navigation.py: %s", type(exc).__name__)
             continue
     return {
         "responses": responses,
@@ -427,7 +431,8 @@ async def _visible_challenge_element(page: Any, selector: str) -> Optional[Dict[
                 "source": source[:300],
                 "visible": True,
             }
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in browser_navigation.py: %s", type(exc).__name__)
             continue
     return None
 

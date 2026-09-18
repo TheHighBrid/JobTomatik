@@ -9,6 +9,8 @@ fail-closed option collection behavior.
 
 from __future__ import annotations
 
+import logging
+
 from typing import Any
 
 from app.services import control_aria
@@ -40,7 +42,8 @@ async def _exact_id_combobox_options(page: Any, combobox: Any):
                 if await candidate.is_visible():
                     listbox = candidate
                     break
-            except Exception:
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in greenhouse_aria_id_widget.py: %s", type(exc).__name__)
                 continue
 
     handles = await listbox.query_selector_all('[role="option"]') if listbox else []

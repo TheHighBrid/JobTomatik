@@ -7,6 +7,8 @@ never opens an application form or performs an application action.
 
 from __future__ import annotations
 
+import logging
+
 import argparse
 import json
 from pathlib import Path
@@ -116,7 +118,8 @@ def select_candidates(
                     if details_response.status_code != 200:
                         continue
                     details = details_response.json()
-                except Exception:
+                except Exception as exc:
+                    logging.getLogger(__name__).debug("Suppressed non-fatal exception in select_smartrecruiters_candidates.py: %s", type(exc).__name__)
                     continue
                 apply_url = str(details.get("applyUrl") or "").strip()
                 if details.get("active") is not True or not apply_url:

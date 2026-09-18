@@ -8,6 +8,8 @@ never become application targets.
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 import re
 from contextlib import asynccontextmanager
@@ -188,7 +190,8 @@ async def _opener_correlated_ids(page: Any) -> set[int]:
             opener = opener_getter()
             if hasattr(opener, "__await__"):
                 opener = await opener
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in application_entry_runtime.py: %s", type(exc).__name__)
             continue
         if _actual_page(opener) is actual_page:
             correlated.add(id(candidate))

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import hashlib
 import os
 import signal
@@ -237,7 +239,8 @@ async def _click_resend_code_control(page: Any) -> None:
             if await locator.is_visible() and await locator.is_enabled():
                 await locator.click()
                 return
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in browser_handoff.py: %s", type(exc).__name__)
             continue
     raise BrowserHandoffError(
         "No visible resend-code control was found. Use Go back or click the control directly in the browser image."
@@ -341,7 +344,8 @@ async def _captcha_response_state(page) -> Dict[str, Any]:
             for element in await page.query_selector_all(selector):
                 value = await element.input_value()
                 lengths.append({"selector": selector, "length": len(value or "")})
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in browser_handoff.py: %s", type(exc).__name__)
             continue
     return {
         "responses": lengths,

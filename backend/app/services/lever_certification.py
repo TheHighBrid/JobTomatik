@@ -6,6 +6,8 @@ The generated identity and answers exist solely to exercise public Lever forms i
 
 from __future__ import annotations
 
+import logging
+
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -273,7 +275,8 @@ async def _control_options(surface: Any, element: Any, control_type: str) -> Lis
                     label = str((await option.inner_text()) or "").strip()
                     if label:
                         options.append(label)
-            except Exception:
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in lever_certification.py: %s", type(exc).__name__)
                 continue
     return list(dict.fromkeys(options))
 
@@ -327,7 +330,8 @@ async def inspect_lever_application_dom(surface: Any) -> Dict[str, Any]:
                     "id": await element.get_attribute("id") or "",
                 }
             )
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in lever_certification.py: %s", type(exc).__name__)
             continue
 
     return {

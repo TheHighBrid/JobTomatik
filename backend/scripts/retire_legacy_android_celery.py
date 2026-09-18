@@ -12,6 +12,8 @@ The helper never sends an OS signal and never terminates a shell or PRoot sessio
 
 from __future__ import annotations
 
+import logging
+
 import argparse
 import socket
 from typing import Iterable
@@ -123,7 +125,8 @@ def retire_workers(
                 destination=[worker_name],
                 reply=False,
             )
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in retire_legacy_android_celery.py: %s", type(exc).__name__)
             continue
     return selected
 

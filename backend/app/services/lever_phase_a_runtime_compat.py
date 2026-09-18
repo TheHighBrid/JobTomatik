@@ -9,6 +9,8 @@ salary-alignment questions.
 
 from __future__ import annotations
 
+import logging
+
 import re
 import sys
 from typing import Any, Dict, Iterable, Optional
@@ -116,7 +118,8 @@ async def _visible_captcha_evidence(page: Any) -> Optional[Dict[str, Any]]:
     for selector in selectors:
         try:
             elements = await page.query_selector_all(selector)
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in lever_phase_a_runtime_compat.py: %s", type(exc).__name__)
             continue
         for element in elements:
             try:
@@ -231,7 +234,8 @@ async def _visible_captcha_evidence(page: Any) -> Optional[Dict[str, Any]]:
                     "hit_tested": presentation.get("hitTested"),
                     "visible": True,
                 }
-            except Exception:
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in lever_phase_a_runtime_compat.py: %s", type(exc).__name__)
                 continue
     return None
 

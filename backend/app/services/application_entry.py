@@ -7,6 +7,8 @@ final submission control.
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 import re
 from dataclasses import dataclass
@@ -426,7 +428,8 @@ async def _live_candidate_element(candidate: ApplyCandidate) -> Any:
             try:
                 text = await action_text(element)
                 href = str(await element.get_attribute("href") or "")
-            except Exception:
+            except Exception as exc:
+                logging.getLogger(__name__).debug("Suppressed non-fatal exception in application_entry.py: %s", type(exc).__name__)
                 continue
             if candidate.href and href == candidate.href:
                 return element

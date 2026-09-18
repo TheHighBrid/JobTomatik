@@ -8,6 +8,8 @@ returns to that ATS adapter so platform-specific Apply/login behavior stays inta
 
 from __future__ import annotations
 
+import logging
+
 import asyncio
 import html as html_lib
 import re
@@ -258,7 +260,8 @@ async def _scan_safe_candidates(
         try:
             locator = page.locator(selector)
             count = min(int(await locator.count()), 100)
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in employer_application_entry.py: %s", type(exc).__name__)
             continue
         for index in range(count):
             element = locator.nth(index)

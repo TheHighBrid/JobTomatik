@@ -8,6 +8,8 @@ digit verification.
 
 from __future__ import annotations
 
+import logging
+
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -141,7 +143,8 @@ async def _same_shell_phone_control(
             score, descriptor = await _phone_candidate_score(surface, candidate)
             if score > 0:
                 scored.append((score, candidate, descriptor))
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in greenhouse_phone_widget.py: %s", type(exc).__name__)
             continue
 
     if not scored:
@@ -222,7 +225,8 @@ async def _reconcile_phone_review(
             })
             if not already_verified:
                 reconciled += 1
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in greenhouse_phone_widget.py: %s", type(exc).__name__)
             continue
     return reconciled
 

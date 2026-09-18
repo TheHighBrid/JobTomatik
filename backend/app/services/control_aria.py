@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from typing import Any, Dict, Iterable, List, Tuple
 
 from app.services.answer_policy import resolve_runtime_policy
@@ -60,7 +62,8 @@ async def _visible_listboxes(page) -> List[Any]:
         try:
             if await candidate.is_visible():
                 visible.append(candidate)
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).debug("Suppressed non-fatal exception in control_aria.py: %s", type(exc).__name__)
             continue
     return visible
 
