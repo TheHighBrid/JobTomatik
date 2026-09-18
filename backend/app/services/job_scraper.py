@@ -74,7 +74,7 @@ def _uid(source: str, company: str, title: str, url: str = "") -> str:
     # Legacy external_id compatibility only. This digest is not an auth, integrity,
     # password, signature, or secret-protection primitive.
     # codeql[py/weak-sensitive-data-hashing]
-    return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:16]  # nosemgrep: Semgrep_python_crypto_rule-hash-md5, Semgrep_python.lang.security.insecure-hash-algorithms-md5.insecure-hash-algorithm-md5
+    return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:16]  # nosemgrep
 
 
 def _mock_salary(salary_min: Optional[int], salary_max: Optional[int]):
