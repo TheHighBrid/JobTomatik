@@ -130,7 +130,7 @@ def test_android_production_release_workflow_is_fail_closed_and_deterministic():
     assert 'test "$VERSION_CODE" -gt 210' in workflow
     assert "MAX_PREVIOUS_VERSION_CODE" in workflow
     assert 'test "$VERSION_CODE" -gt "$MAX_PREVIOUS_VERSION_CODE"' in workflow
-    assert "assembleRelease" in workflow
+    assert "assembleRelease" not in workflow
     assert "assembleDebug" not in workflow
     assert "softprops/action-gh-release" not in workflow
     assert "Publication: not performed by this workflow" in workflow
