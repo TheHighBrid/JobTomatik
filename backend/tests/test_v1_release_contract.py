@@ -114,16 +114,15 @@ def test_android_production_release_workflow_is_fail_closed_and_deterministic():
     assert "ref: main" in workflow
     assert "persist-credentials: false" in workflow
     assert "git rev-parse origin/main" in workflow
-    assert "JOBTOMATIK_KEYSTORE_BASE64" in workflow
-    assert "JOBTOMATIK_KEYSTORE_PASSWORD" in workflow
-    assert "JOBTOMATIK_KEY_ALIAS" in workflow
-    assert "JOBTOMATIK_KEY_PASSWORD" in workflow
+    assert "JOBTOMATIK_ANDROID_SIGNING_BUNDLE_BASE64" in workflow
     assert "JOBTOMATIK_RELEASE_CERT_SHA256" in workflow
     assert "vars.JOBTOMATIK_RELEASE_CERT_SHA256" in workflow
     assert "./.github/actions/android-signing-material" in workflow
     assert "GITHUB_ENV" not in workflow
-    assert "JOBTOMATIK_KEYSTORE_PASSWORD: ${{ secrets." not in workflow
-    assert "JOBTOMATIK_KEY_PASSWORD: ${{ secrets." not in workflow
+    assert "secrets.JOBTOMATIK_KEYSTORE_PASSWORD" not in workflow
+    assert "secrets.JOBTOMATIK_KEY_PASSWORD" not in workflow
+    assert "keystore_password:" not in workflow
+    assert "key_password:" not in workflow
     assert "apksigner" in workflow
     assert "SIGNING_CERT_SHA256" in workflow
     assert 'test "$SIGNING_CERT_SHA256" = "$EXPECTED_CERT_SHA256"' in workflow
@@ -143,10 +142,9 @@ def test_android_signing_material_action_writes_only_ephemeral_mode_0600_files()
     action = (REPO_ROOT / ".github" / "actions" / "android-signing-material" / "action.yml").read_text(encoding="utf-8")
     script = (REPO_ROOT / ".github" / "actions" / "android-signing-material" / "index.js").read_text(encoding="utf-8")
     assert "using: node20" in action
-    assert "keystore_base64:" in action
-    assert "keystore_password:" in action
-    assert "key_alias:" in action
-    assert "key_password:" in action
+    assert "signing_bundle_base64:" in action
+    assert "keystore_password:" not in action
+    assert "key_password:" not in action
     assert "RUNNER_TEMP" in script
     assert "jobtomatik-signing" in script
     assert "mode: 0o600" in script
