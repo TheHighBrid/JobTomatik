@@ -216,7 +216,7 @@ def preflight_arm(env_file: Path = ENV_FILE) -> dict[str, Any]:
     return {
         **persisted,
         "configuration_valid": True,
-        "secret_key_safe_for_sensitive_runtime": True,
+        "secret_key_safe_for_sensitive_runtime": True,  # nosec B105
         "ephemeral_runtime_marker_required": True,
         "runtime_revision": _runtime_revision(),
     }
@@ -354,7 +354,7 @@ def status(env_file: Path = ENV_FILE) -> dict[str, Any]:
             **result,
             "configuration_valid": False,
             "configuration_error": f"{type(exc).__name__}: {exc}",
-            "secret_key_safe_for_sensitive_runtime": None,
+            "secret_key_safe_for_sensitive_runtime": None,  # nosec B105
             "runtime_marker_state": (marker or {}).get("state"),
             "runtime_lease_active": bool(lease.get("active")),
             "runtime_lease_blockers": list(lease.get("blockers") or []),
