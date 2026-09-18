@@ -148,7 +148,7 @@ def test_android_signing_material_action_writes_only_ephemeral_mode_0600_files()
     assert "RUNNER_TEMP" in script
     assert "jobtomatik-signing" in script
     assert "mode: 0o600" in script
-    assert "::add-mask::" in script
+    assert "::add-mask::" not in script
     assert "GITHUB_ENV" not in script
     assert "GITHUB_OUTPUT" not in script
     assert "spawnSync" in script
@@ -157,6 +157,9 @@ def test_android_signing_material_action_writes_only_ephemeral_mode_0600_files()
     assert "JOBTOMATIK_KEYSTORE_PASSWORD" not in script
     assert "JOBTOMATIK_KEY_PASSWORD" not in script
     assert "JOBTOMATIK_SIGNING_DIR" in script
+    assert "delete gradleEnv.INPUT_SIGNING_BUNDLE_BASE64" in script
+    assert "env: gradleEnv" in script
+    assert "env: { ...process.env" not in script
     assert "material-1" in script
     assert "material-2" in script
     assert "material-3" in script
