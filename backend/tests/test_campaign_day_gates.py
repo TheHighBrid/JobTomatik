@@ -97,7 +97,7 @@ def _write_dossier(root, application_id):
     }
 
 
-def _launch(root, count=3):
+def _launch(root, count=2):
     return {
         "schema_version": "1.1",
         "applications": [
@@ -177,7 +177,7 @@ def test_day_15_uses_retained_launch_evidence_not_readiness_only(tmp_path):
     )
     day15 = _day(complete, 15)
     assert day15["passed"] is True
-    assert day15["facts"]["ready_application_count"] == 3
+    assert day15["facts"]["ready_application_count"] == 2
     assert day15["facts"]["invalid_dossier_count"] == 0
 
 
