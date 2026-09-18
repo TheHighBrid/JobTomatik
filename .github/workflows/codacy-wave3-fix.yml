@@ -117,19 +117,33 @@ jobs:
               ],
               "backend/app/services/lever_phase_a_provenance.py": [
                   (
+                      "def fetch_verified_retention_artifact(\n"
+                      "    *,\n"
                       "    github_token: str,\n",
+                      "def fetch_verified_retention_artifact(\n"
+                      "    *,\n"
                       f"    github_token: str,  # nosemgrep: {HARD_TOKEN}\n",
                   ),
               ],
               "backend/app/services/supervised_runtime_mode.py": [
                   (
+                      "def create_owner_bound_marker(\n"
+                      "    owner_pid: int,\n"
+                      "    *,\n"
                       "    launch_token: str,\n",
+                      "def create_owner_bound_marker(\n"
+                      "    owner_pid: int,\n"
+                      "    *,\n"
                       f"    launch_token: str,  # nosemgrep: {HARD_TOKEN}\n",
                   ),
               ],
               "backend/scripts/lever_supervised_pilot_runtime.py": [
                   (
+                      "def create_marker(\n"
+                      "    owner_pid: int,\n"
                       "    launch_token: str,\n",
+                      "def create_marker(\n"
+                      "    owner_pid: int,\n"
                       f"    launch_token: str,  # nosemgrep: {HARD_TOKEN}\n",
                   ),
               ],
