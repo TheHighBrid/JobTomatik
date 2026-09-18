@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+
 from defusedxml import ElementTree as ET
 
 
