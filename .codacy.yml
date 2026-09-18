@@ -1,0 +1,7 @@
+---
+engines:
+  bandit:
+    exclude_paths:
+      - "backend/tests/**"
+exclude_paths:
+  - "releases/v1.00-beta.md"
