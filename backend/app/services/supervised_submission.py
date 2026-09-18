@@ -273,7 +273,7 @@ def _greenhouse_form_schema_status(application_url: str) -> Dict[str, Any]:
         "checked": True,
         "verified": False,
         "status_code": None,
-        "board_token": None,
+        "board_token": None,  # nosec B105
         "job_id": None,
         "schema_hash": None,
         "fingerprint_version": FORM_SCHEMA_FINGERPRINT_VERSION,
