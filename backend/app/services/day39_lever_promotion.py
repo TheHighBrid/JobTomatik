@@ -18,8 +18,7 @@ from app.services.ats_maturity import AUTONOMY_RELEASE_GATES
 from app.services.autonomy_release_contract import (
     AUTONOMY_RELEASE_SCHEMA_VERSION,
     AUTONOMY_SIGNATURE_METHOD,
-    MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
-    MIN_RELIABILITY_ATTEMPTS,
+    autonomy_reliability_thresholds,
     REQUIRED_POLICY_CONTROLS,
     REQUIRED_RECOVERY_DRILLS,
     REQUIRED_SHADOW_CHECKS,
@@ -33,6 +32,13 @@ DAY39_LEVER_PROMOTION_VERSION = "day39-lever-promotion-v1"
 DAY39_LEVER_ADAPTER = "lever"
 DAY39_LEVER_VERSION = "1.1.0"
 DAY39_TARGET_MATURITY = "certified_autonomous"
+LEVER_AUTONOMY_THRESHOLDS = autonomy_reliability_thresholds(DAY39_LEVER_ADAPTER)
+LEVER_MIN_RELIABILITY_ATTEMPTS = LEVER_AUTONOMY_THRESHOLDS[
+    "minimum_reliability_attempts"
+]
+LEVER_MIN_DISTINCT_CONFIRMATIONS = LEVER_AUTONOMY_THRESHOLDS[
+    "minimum_distinct_confirmed_submissions"
+]
 
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -353,9 +359,9 @@ def build_day39_lever_promotion(
         == DAY39_LEVER_ADAPTER
         and str(promotion.get("target_adapter_version") or "") == DAY39_LEVER_VERSION
         and str(promotion.get("target_maturity") or "") == DAY39_TARGET_MATURITY,
-        "phase_b_ten_safe_confirmations": phase_b_count
-        >= MIN_DISTINCT_CONFIRMED_SUBMISSIONS
-        and gates.get("ten_supervised_confirmed_submissions") is True,
+        "phase_b_three_safe_confirmations": phase_b_count
+        >= LEVER_MIN_DISTINCT_CONFIRMATIONS
+        and gates.get("three_supervised_confirmed_submissions") is True,
         "phase_b_all_successes_reviewed": gates.get(
             "all_success_evidence_independently_reviewed"
         )
@@ -370,7 +376,7 @@ def build_day39_lever_promotion(
             "all_uncertain_outcomes_remain_uncertain"
         )
         is True,
-        "phase_b_minimum_success_rate": raw_phase_b_count >= MIN_RELIABILITY_ATTEMPTS
+        "phase_b_minimum_success_rate": raw_phase_b_count >= LEVER_MIN_RELIABILITY_ATTEMPTS
         and success_rate >= 0.98,
         "phase4_lever_identity_exact": str(lever_freeze.get("version") or "")
         == DAY39_LEVER_VERSION
