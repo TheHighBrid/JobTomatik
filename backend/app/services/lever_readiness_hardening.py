@@ -112,6 +112,9 @@ def harden_lever_readiness(
     payload = dict(readiness)
     summary = dict(payload.get("summary") or {})
     gates = dict(summary.get("gates") or {})
+    # September 18 owner amendment replaced the Lever 10-confirmation quota with 3.
+    # Do not let a stale retained/readiness projection keep the retired gate alive.
+    gates.pop("ten_supervised_confirmed_submissions", None)
 
     phase_a = _phase_a_rows(baseline_path)
     phase_a_candidates = [
