@@ -80,7 +80,7 @@ def _new_session():
 def _create_user_and_job(db) -> tuple[User, Job]:
     user = User(
         email="day33-recovery@example.test",
-        hashed_password="day33-recovery-test-only",
+        hashed_password="day33-recovery-test-only",  # nosec B106
         full_name="Day 33 Recovery Drill",
         is_active=True,
         profile_data={},
