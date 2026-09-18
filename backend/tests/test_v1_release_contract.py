@@ -17,11 +17,19 @@ def test_android_gradle_wrapper_is_portable():
     assert "validateDistributionUrl=true" in wrapper
 
 
-def test_android_release_config_contains_no_committed_signing_secret():
+def test_android_release_config_contains_no_committed_signing_secret_and_fails_closed():
     build_gradle = (REPO_ROOT / "frontend" / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
     assert "versionCode 210" in build_gradle
     assert 'versionName "2.1.0"' in build_gradle
     assert "JOBTOMATIK_KEYSTORE_PATH" in build_gradle
+    assert "JOBTOMATIK_KEYSTORE_PASSWORD" in build_gradle
+    assert "JOBTOMATIK_KEY_ALIAS" in build_gradle
+    assert "JOBTOMATIK_KEY_PASSWORD" in build_gradle
+    assert "Persistent JobTomatik release signing is required" in build_gradle
+    assert "distributionReleaseTaskRequested" in build_gradle
+    assert "assemble|bundle|package|publish" in build_gradle
+    assert "signingConfig signingConfigs.release" in build_gradle
+    assert "contains('release')" not in build_gradle
     assert "/home/user/JobTomatik" not in build_gradle
     assert "jobtomatik123" not in build_gradle
 
@@ -87,9 +95,42 @@ def test_release_documentation_is_present():
         REPO_ROOT / "SECURITY.md",
         REPO_ROOT / "docs" / "SETUP_TUTORIAL.md",
         REPO_ROOT / "docs" / "FULL_AUDIT_2026-07-27.md",
+        REPO_ROOT / "docs" / "ANDROID_RELEASE_SIGNING.md",
     ]
     missing = [str(path.relative_to(REPO_ROOT)) for path in required if not path.is_file()]
     assert not missing, f"Missing release documentation: {missing}"
+
+
+def test_android_production_release_workflow_is_fail_closed_and_deterministic():
+    workflow_path = REPO_ROOT / ".github" / "workflows" / "android-production-release.yml"
+    workflow = workflow_path.read_text(encoding="utf-8")
+    assert workflow_path.is_file()
+    assert "workflow_dispatch:" in workflow
+    assert "inputs:" not in workflow
+    assert "github.actor == 'TheHighBrid'" in workflow
+    assert "environment: android-production-release" in workflow
+    assert "contents: read" in workflow
+    assert "contents: write" not in workflow
+    assert "ref: main" in workflow
+    assert "persist-credentials: false" in workflow
+    assert "git rev-parse origin/main" in workflow
+    assert "JOBTOMATIK_KEYSTORE_BASE64" in workflow
+    assert "JOBTOMATIK_KEYSTORE_PASSWORD" in workflow
+    assert "JOBTOMATIK_KEY_ALIAS" in workflow
+    assert "JOBTOMATIK_KEY_PASSWORD" in workflow
+    assert "JOBTOMATIK_RELEASE_CERT_SHA256" in workflow
+    assert "GITHUB_ENV" not in workflow
+    assert "apksigner" in workflow
+    assert "SIGNING_CERT_SHA256" in workflow
+    assert 'test "$SIGNING_CERT_SHA256" = "$EXPECTED_CERT_SHA256"' in workflow
+    assert 'test "$VERSION_CODE" -gt 210' in workflow
+    assert "MAX_PREVIOUS_VERSION_CODE" in workflow
+    assert 'test "$VERSION_CODE" -gt "$MAX_PREVIOUS_VERSION_CODE"' in workflow
+    assert "assembleRelease" in workflow
+    assert "assembleDebug" not in workflow
+    assert "softprops/action-gh-release" not in workflow
+    assert "Publication: not performed by this workflow" in workflow
+    assert "create-release" not in workflow
 
 
 def test_exact_artifact_v21_publisher_is_owner_scoped_and_does_not_rebuild():
