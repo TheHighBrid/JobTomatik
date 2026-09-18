@@ -14,8 +14,9 @@ class _SuccessfulChromium:
     def __init__(self):
         self.timeouts: list[int] = []
 
-    async def connect_over_cdp(self, endpoint, timeout):
+    async def connect_over_cdp(self, endpoint, timeout, no_defaults=False):
         assert endpoint == "http://127.0.0.1:9222"
+        assert no_defaults is True
         self.timeouts.append(int(timeout))
         return object()
 
