@@ -1,0 +1,61 @@
+name: Codacy Wave 9 exception continue
+
+on:
+  push:
+    branches:
+      - codex/codacy-wave9-exception-continue
+    paths:
+      - .github/workflows/codacy-wave9-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/codacy-wave9-exception-continue
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend validation dependencies
+        run: |
+          python -m pip install -q -r backend/requirements.txt
+          python -m pip install -q ruff bandit
+      - name: Compile and scan claimed Wave 9 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            backend/app/services/application_entry.py
+            backend/app/services/lever_certification.py
+            backend/app/services/control_aria.py
+            backend/app/services/application_entry_runtime.py
+            backend/app/services/employer_application_entry.py
+            backend/app/services/greenhouse_aria_id_widget.py
+            backend/scripts/retire_legacy_android_celery.py
+            backend/app/services/browser_handoff.py
+            backend/app/services/lever_phase_a_runtime_compat.py
+            backend/app/services/browser_navigation.py
+            backend/scripts/select_smartrecruiters_candidates.py
+            backend/app/services/greenhouse_phone_widget.py
+          )
+          python -m py_compile "${files[@]}"
+          ruff check --select S112 "${files[@]}"
+          bandit -q -t B112 "${files[@]}"
+          git diff 382b1e3d6e275a1baf1c83f464fd7da0083de817...HEAD --check
+      - name: Run focused regressions
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_browser_handoff_runtime.py \
+            tests/test_retire_legacy_android_celery.py \
+            tests/test_application_entry_multitab_correlation.py \
+            tests/test_employer_application_entry_semantics.py \
+            tests/test_greenhouse_phone_widget.py \
+            tests/test_greenhouse_synthetic_certification.py
