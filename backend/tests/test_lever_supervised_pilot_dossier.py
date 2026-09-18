@@ -97,13 +97,13 @@ def _readiness():
                 "qualifying_dry_run_count": 30,
                 "distinct_site_count": 30,
                 "regions_covered": ["eu", "global"],
-                "supervised_confirmed_count": 4,
+                "supervised_confirmed_count": 2,
                 "gates": {
                     "thirty_qualifying_dry_runs": True,
                     "thirty_distinct_lever_sites": True,
                     "global_and_eu_hosts_covered": True,
                     "all_phase_a_records_have_successful_matching_inspection": True,
-                    "ten_supervised_confirmed_submissions": False,
+                    "three_supervised_confirmed_submissions": False,
                     "zero_false_submitted_records": True,
                     "zero_duplicate_submissions": True,
                     "all_uncertain_outcomes_remain_uncertain": True,
@@ -166,7 +166,7 @@ def test_lever_dossier_is_read_only_exact_target_and_sanitized(
     assert dossier["pilot_progress"]["phase_a_distinct_sites"] == 30
     assert dossier["pilot_progress"]["phase_a_regions_covered"] == ["eu", "global"]
     assert dossier["pilot_progress"]["phase_a_complete"] is True
-    assert dossier["pilot_progress"]["phase_b_remaining"] == 6
+    assert dossier["pilot_progress"]["phase_b_remaining"] == 1
     assert dossier["pilot_progress"]["phase_b_complete"] is False
     assert dossier["download_filename"].startswith("lever-phase-b-dossier-")
     assert len(dossier["dossier_sha256"]) == 64
