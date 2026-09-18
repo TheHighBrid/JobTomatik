@@ -21,10 +21,9 @@ def test_android_release_config_contains_no_committed_signing_secret_and_fails_c
     build_gradle = (REPO_ROOT / "frontend" / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
     assert "versionCode 210" in build_gradle
     assert 'versionName "2.1.0"' in build_gradle
-    assert "JOBTOMATIK_KEYSTORE_PATH" in build_gradle
-    assert "JOBTOMATIK_KEYSTORE_PASSWORD" in build_gradle
-    assert "JOBTOMATIK_KEY_ALIAS" in build_gradle
-    assert "JOBTOMATIK_KEY_PASSWORD" in build_gradle
+    assert "JOBTOMATIK_SIGNING_DIR" in build_gradle
+    assert "JOBTOMATIK_KEYSTORE_PASSWORD" not in build_gradle
+    assert "JOBTOMATIK_KEY_PASSWORD" not in build_gradle
     assert "Persistent JobTomatik release signing is required" in build_gradle
     assert "distributionReleaseTaskRequested" in build_gradle
     assert "assemble|bundle|package|publish" in build_gradle
@@ -155,7 +154,12 @@ def test_android_signing_material_action_writes_only_ephemeral_mode_0600_files()
     assert "spawnSync" in script
     assert "keytool" in script
     assert "assembleRelease" in script
-    assert "JOBTOMATIK_KEYSTORE_PASSWORD" in script
+    assert "JOBTOMATIK_KEYSTORE_PASSWORD" not in script
+    assert "JOBTOMATIK_KEY_PASSWORD" not in script
+    assert "JOBTOMATIK_SIGNING_DIR" in script
+    assert "material-1" in script
+    assert "material-2" in script
+    assert "material-3" in script
     assert "fs.rmSync" in script
 
 
