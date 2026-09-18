@@ -31,7 +31,7 @@ from app.services.day41_previous_release_compatibility import (
 SENTINEL = {
     "id": 987654321,
     "email": "day41-v1-compatibility@example.invalid",
-    "hashed_password": "synthetic-day41-compatibility-hash",
+    "hashed_password": "synthetic-day41-compatibility-hash",  # nosec B105
     "full_name": "Day41 Compatibility Sentinel",
     "is_active": 1,
 }
