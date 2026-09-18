@@ -55,4 +55,4 @@ async def login(
             detail="Incorrect email or password",
         )
     token = create_access_token({"sub": str(user.id)})
-    return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))
+    return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))  # nosec B106
