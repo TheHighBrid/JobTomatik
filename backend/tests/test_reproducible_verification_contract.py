@@ -137,21 +137,24 @@ def test_clean_install_and_selected_python_are_used_consistently() -> None:
     assert "dependency_check" in full_case
 
 
-def test_npm_audit_validator_accepts_only_the_reviewed_transitive_advisory(
-    tmp_path: Path,
-) -> None:
+def test_npm_audit_validator_accepts_a_clean_production_audit(tmp_path: Path) -> None:
+    result = _run_npm_audit_validator(tmp_path, {"vulnerabilities": {}})
+
+    assert result.returncode == 0, result.stderr
+    assert "no vulnerabilities" in result.stdout
+
+
+def test_npm_audit_validator_rejects_any_production_vulnerability(tmp_path: Path) -> None:
     result = _run_npm_audit_validator(
         tmp_path,
         {
             "vulnerabilities": {
-                "react-router": {"via": [{"url": REVIEWED_ADVISORY}]},
-                "react-router-dom": {"via": ["react-router"]},
             }
         },
     )
 
-    assert result.returncode == 0, result.stderr
-    assert REVIEWED_ADVISORY in result.stdout
+    assert result.returncode == 1
+    assert "react-router" in result.stderr
 
 
 def test_npm_audit_validator_rejects_empty_or_missing_provenance(tmp_path: Path) -> None:
