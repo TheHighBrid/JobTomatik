@@ -16,12 +16,11 @@ JOBTOMATIK_KEYSTORE_BASE64
 JOBTOMATIK_KEYSTORE_PASSWORD
 JOBTOMATIK_KEY_ALIAS
 JOBTOMATIK_KEY_PASSWORD
-JOBTOMATIK_RELEASE_CERT_SHA256
 ```
 
-`JOBTOMATIK_RELEASE_CERT_SHA256` is the SHA-256 fingerprint of the persistent release certificate normalized to 64 hexadecimal characters.
+Configure the public certificate fingerprint separately as the protected environment/repository **variable** `JOBTOMATIK_RELEASE_CERT_SHA256`. A certificate fingerprint is public verification material, not a private signing secret.
 
-The workflow never writes keystore passwords or the key password to `GITHUB_ENV`. The base64 keystore exists only long enough to decode an ephemeral runner file. Passwords and aliases are scoped directly to the signing step, and certificate verification receives only the expected public fingerprint.
+The workflow never maps private signing values into workflow step `env` or `GITHUB_ENV`. A local Node action receives the protected secrets as action inputs, writes mode-0600 files under `RUNNER_TEMP`, and the Gradle step reads them only for the lifetime of that single signing process. The files are removed with an `always()` cleanup step.
 
 ## Production build contract
 
