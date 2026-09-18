@@ -60,6 +60,18 @@ def _browser_env(*, runtime_dir: Path, profile: Path, port: int) -> dict[str, st
     return env
 
 
+def _spawn_term_ignoring_supervisor() -> subprocess.Popen:
+    return subprocess.Popen(
+        [
+            "bash",
+            "-c",
+            "trap '' TERM INT HUP; while :; do sleep 1; done",
+            str(BROWSER),
+            "supervise",
+        ]
+    )
+
+
 def test_android_wrapper_proves_real_playwright_before_proot_stack_start():
     source = WRAPPER.read_text(encoding="utf-8")
     activate = _function_body(source, "activate_stack")
@@ -130,6 +142,7 @@ def test_native_browser_recovery_waits_only_on_verified_supervisor_identity():
     assert "! is_healthy" in shutdown
     assert 'wait_for_shutdown "$supervisor_pid"' in stop_case
     assert "ANDROID_BROWSER_CDP_STOP_ESCALATING signal=KILL" in stop_case
+    assert 'signal_supervisor_if_managed KILL "$supervisor_pid"' in stop_case
     assert "ANDROID_BROWSER_CDP_STOP_TIMEOUT" in stop_case
     assert '"$SCRIPT_PATH" stop' in recovery_case
     assert 'exec "$SCRIPT_PATH" start "$START_URL"' in recovery_case
@@ -157,6 +170,42 @@ def test_supervisor_records_exact_browser_pid_and_waits_for_that_process():
     assert 'echo "$browser_pid" > "$BROWSER_PID_FILE"' in supervise_case
     assert 'wait "$browser_pid"' in supervise_case
     assert 'rm -f "$BROWSER_PID_FILE"' in supervise_case
+
+
+def test_stop_kill_escalation_actually_kills_term_ignoring_supervisor(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    profile = tmp_path / "profile"
+    runtime_dir.mkdir()
+    profile.mkdir()
+    port = 59320
+    supervisor = _spawn_term_ignoring_supervisor()
+    try:
+        time.sleep(0.1)
+        assert _alive(supervisor)
+        (runtime_dir / "chromium-supervisor.pid").write_text(
+            str(supervisor.pid),
+            encoding="utf-8",
+        )
+        environment = _browser_env(
+            runtime_dir=runtime_dir,
+            profile=profile,
+            port=port,
+        )
+        environment["JOBTOMATIK_ANDROID_SHUTDOWN_WAIT_ATTEMPTS"] = "2"
+        completed = subprocess.run(
+            ["bash", str(BROWSER), "stop"],
+            check=True,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert "ANDROID_BROWSER_CDP_STOP_ESCALATING signal=KILL" in completed.stderr
+        assert "ANDROID_BROWSER_CDP_STOPPED" in completed.stdout
+        supervisor.wait(timeout=3)
+        assert not _alive(supervisor)
+    finally:
+        _terminate(supervisor)
 
 
 def test_stop_terminates_owned_browser_even_when_executable_name_is_not_chromium_browser(
