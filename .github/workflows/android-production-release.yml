@@ -105,10 +105,7 @@ jobs:
       - name: Materialize ephemeral release signing files
         uses: ./.github/actions/android-signing-material
         with:
-          keystore_base64: ${{ secrets.JOBTOMATIK_KEYSTORE_BASE64 }}
-          keystore_password: ${{ secrets.JOBTOMATIK_KEYSTORE_PASSWORD }}
-          key_alias: ${{ secrets.JOBTOMATIK_KEY_ALIAS }}
-          key_password: ${{ secrets.JOBTOMATIK_KEY_PASSWORD }}
+          signing_bundle_base64: ${{ secrets.JOBTOMATIK_ANDROID_SIGNING_BUNDLE_BASE64 }}
 
       - name: Validate signing identity and assemble production APK
         shell: bash
