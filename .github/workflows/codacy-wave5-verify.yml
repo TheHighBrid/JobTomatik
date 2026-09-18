@@ -1,0 +1,43 @@
+name: Codacy Wave 5 Bandit literal verification
+
+on:
+  push:
+    branches:
+      - codex/codacy-wave5-bandit-literals
+    paths:
+      - .github/workflows/codacy-wave5-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-slim
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/codacy-wave5-bandit-literals
+      - name: Install Bandit
+        run: python -m pip install -q bandit
+      - name: Compile and scan exact Wave 5 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            backend/scripts/run_day41_previous_release_compatibility.py
+            backend/scripts/lever_supervised_pilot_runtime.py
+            backend/app/services/submission_evidence_review.py
+            backend/app/services/recovery_drill.py
+            backend/app/services/smartrecruiters_certification.py
+            backend/app/services/dead_letter_drill.py
+            backend/scripts/repair_android_runtime_secret.py
+            backend/app/services/operational_safety.py
+            backend/app/services/autonomy_release_contract.py
+            backend/app/services/day33_recovery_chaos.py
+            backend/app/services/supervised_submission.py
+            backend/app/services/supervised_runtime_mode.py
+            backend/app/api/auth.py
+          )
+          python -m py_compile "${files[@]}"
+          bandit -q -t B105,B106 "${files[@]}"
