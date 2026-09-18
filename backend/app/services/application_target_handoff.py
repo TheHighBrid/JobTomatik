@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Dict, cast
+from typing import Any, Dict
 
 from app.models.application import Application
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
@@ -204,12 +204,9 @@ async def _observed_target_evidence(
     except Exception:
         pass
 
-    resolver = cast(
-        Callable[[Any, str, list[Dict[str, Any]]], Awaitable[Dict[str, Any]]] | None,
-        _target_evidence_from_browser,
-    )
-    if resolver is not None:
-        return await resolver(page, source_url, log)
+    resolver = _target_evidence_from_browser
+    if callable(resolver):
+        return await resolver(page, source_url, log)  # pylint: disable=not-callable
     return await _fallback_target_evidence(page, source_url, log)
 
 
