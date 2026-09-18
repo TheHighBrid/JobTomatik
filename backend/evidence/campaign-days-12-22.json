@@ -85,10 +85,32 @@
     },
     {
       "blockers": [
-        "obtain exact user approvals and independently verify 2 more distinct submissions",
+        "obtain exact user approvals and independently verify 1 more distinct submission",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 16,
+      "facts": {
+        "phase_a_complete": true,
+        "phase_b_safety_gates": {
+          "all_evidence_hashes_match_consumed_approvals": true,
+          "all_success_evidence_independently_reviewed": false,
+          "all_uncertain_outcomes_remain_uncertain": true,
+          "zero_duplicate_submissions": true,
+          "zero_false_submitted_records": true
+        },
+        "safe_confirmed_submissions": 0,
+        "target": 1
+      },
+      "passed": false,
+      "status": "blocked_by_evidence_or_user_gate",
+      "title": "Lever supervised submissions through 1"
+    },
+    {
+      "blockers": [
+        "obtain exact user approvals and independently verify 2 more distinct submissions",
+        "all_success_evidence_independently_reviewed"
+      ],
+      "day": 17,
       "facts": {
         "phase_a_complete": true,
         "phase_b_safety_gates": {
@@ -107,29 +129,7 @@
     },
     {
       "blockers": [
-        "obtain exact user approvals and independently verify 4 more distinct submissions",
-        "all_success_evidence_independently_reviewed"
-      ],
-      "day": 17,
-      "facts": {
-        "phase_a_complete": true,
-        "phase_b_safety_gates": {
-          "all_evidence_hashes_match_consumed_approvals": true,
-          "all_success_evidence_independently_reviewed": false,
-          "all_uncertain_outcomes_remain_uncertain": true,
-          "zero_duplicate_submissions": true,
-          "zero_false_submitted_records": true
-        },
-        "safe_confirmed_submissions": 0,
-        "target": 4
-      },
-      "passed": false,
-      "status": "blocked_by_evidence_or_user_gate",
-      "title": "Lever supervised submissions through 4"
-    },
-    {
-      "blockers": [
-        "obtain exact user approvals and independently verify 6 more distinct submissions",
+        "obtain exact user approvals and independently verify 3 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 18,
@@ -143,15 +143,15 @@
           "zero_false_submitted_records": true
         },
         "safe_confirmed_submissions": 0,
-        "target": 6
+        "target": 3
       },
       "passed": false,
       "status": "blocked_by_evidence_or_user_gate",
-      "title": "Lever supervised submissions through 6"
+      "title": "Lever supervised submissions through 3"
     },
     {
       "blockers": [
-        "obtain exact user approvals and independently verify 8 more distinct submissions",
+        "obtain exact user approvals and independently verify 3 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 19,
@@ -165,15 +165,15 @@
           "zero_false_submitted_records": true
         },
         "safe_confirmed_submissions": 0,
-        "target": 8
+        "target": 3
       },
       "passed": false,
       "status": "blocked_by_evidence_or_user_gate",
-      "title": "Lever supervised submissions through 8"
+      "title": "Lever supervised submissions through 3"
     },
     {
       "blockers": [
-        "obtain exact user approvals and independently verify 10 more distinct submissions",
+        "obtain exact user approvals and independently verify 3 more distinct submissions",
         "all_success_evidence_independently_reviewed"
       ],
       "day": 20,
@@ -187,11 +187,11 @@
           "zero_false_submitted_records": true
         },
         "safe_confirmed_submissions": 0,
-        "target": 10
+        "target": 3
       },
       "passed": false,
       "status": "blocked_by_evidence_or_user_gate",
-      "title": "Lever supervised submissions through 10"
+      "title": "Lever supervised submissions through 3"
     },
     {
       "blockers": [
@@ -279,6 +279,6 @@
       14,
       15
     ],
-    "next_action": "obtain exact user approvals and independently verify 2 more distinct submissions"
+    "next_action": "obtain exact user approvals and independently verify 1 more distinct submission"
   }
 }
