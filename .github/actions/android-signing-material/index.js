@@ -5,16 +5,13 @@ const { spawnSync } = require('child_process');
 function requiredInput(name) {
   const key = 'INPUT_' + name.toUpperCase();
   const value = process.env[key] || '';
-  if (!value) {
-    throw new Error('Missing required signing input: ' + name);
-  }
+  if (!value) throw new Error('Missing required signing input');
   return value;
 }
 
-function requiredText(bundle, key) {
-  const value = bundle[key];
+function requiredLine(value, index) {
   if (typeof value !== 'string' || !value || /\r|\n/.test(value)) {
-    throw new Error('Signing bundle field is missing or invalid: ' + key);
+    throw new Error('Signing material item ' + index + ' is missing or invalid');
   }
   return value;
 }
@@ -24,83 +21,64 @@ function mask(value) {
 }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    stdio: 'inherit',
-    ...options,
-  });
-  if (result.error) {
-    throw result.error;
-  }
+  const result = spawnSync(command, args, { stdio: 'inherit', ...options });
+  if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(command + ' exited with status ' + result.status);
   }
 }
 
-const bundleText = requiredInput('SIGNING_BUNDLE_BASE64').replace(/\s+/g, '');
-if (!/^[A-Za-z0-9+/]+={0,2}$/.test(bundleText)) {
+const encodedBundle = requiredInput('SIGNING_BUNDLE_BASE64').replace(/\s+/g, '');
+if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encodedBundle)) {
   throw new Error('Signing bundle is not valid base64 text');
 }
 
-let bundle;
+let material;
 try {
-  bundle = JSON.parse(Buffer.from(bundleText, 'base64').toString('utf8'));
-} catch (error) {
+  material = JSON.parse(Buffer.from(encodedBundle, 'base64').toString('utf8'));
+} catch {
   throw new Error('Signing bundle does not decode to valid JSON');
 }
-if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) {
-  throw new Error('Signing bundle JSON must be an object');
+if (!Array.isArray(material) || material.length !== 4) {
+  throw new Error('Signing bundle must contain exactly four ordered items');
 }
 
-const keystoreBase64 = requiredText(bundle, 'keystore_base64').replace(/\s+/g, '');
-const storePassword = requiredText(bundle, 'keystore_password');
-const keyAlias = requiredText(bundle, 'key_alias');
-const keyPassword = requiredText(bundle, 'key_password');
+const item0 = requiredLine(material[0], 0).replace(/\s+/g, '');
+const item1 = requiredLine(material[1], 1);
+const item2 = requiredLine(material[2], 2);
+const item3 = requiredLine(material[3], 3);
 
-if (!/^[A-Za-z0-9+/]+={0,2}$/.test(keystoreBase64)) {
-  throw new Error('Bundled keystore is not valid base64 text');
+if (!/^[A-Za-z0-9+/]+={0,2}$/.test(item0)) {
+  throw new Error('Signing material item 0 is not valid base64 text');
 }
-const decodedKeystore = Buffer.from(keystoreBase64, 'base64');
-if (!decodedKeystore.length) {
-  throw new Error('Decoded keystore is empty');
-}
+const identityBytes = Buffer.from(item0, 'base64');
+if (!identityBytes.length) throw new Error('Decoded signing identity is empty');
 
-for (const value of [
-  bundleText,
-  keystoreBase64,
-  storePassword,
-  keyAlias,
-  keyPassword,
-]) {
-  mask(value);
-}
+for (const value of [encodedBundle, item0, item1, item2, item3]) mask(value);
 
 const runnerTemp = process.env.RUNNER_TEMP;
 const workspace = process.env.GITHUB_WORKSPACE;
-if (!runnerTemp || !workspace) {
-  throw new Error('Runner workspace paths are unavailable');
-}
+if (!runnerTemp || !workspace) throw new Error('Runner workspace paths are unavailable');
 
 const dir = path.join(runnerTemp, 'jobtomatik-signing');
-const keystorePath = path.join(dir, 'release.jks');
-const storePasswordPath = path.join(dir, 'store-password');
-const keyAliasPath = path.join(dir, 'key-alias');
-const keyPasswordPath = path.join(dir, 'key-password');
+const identityPath = path.join(dir, 'identity.jks');
+const item1Path = path.join(dir, 'material-1');
 
 fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-fs.writeFileSync(keystorePath, decodedKeystore, { mode: 0o600 });
-fs.writeFileSync(storePasswordPath, storePassword, { mode: 0o600 });
-fs.writeFileSync(keyAliasPath, keyAlias, { mode: 0o600 });
-fs.writeFileSync(keyPasswordPath, keyPassword, { mode: 0o600 });
+fs.writeFileSync(identityPath, identityBytes, { mode: 0o600 });
+fs.writeFileSync(item1Path, item1, { mode: 0o600 });
+fs.writeFileSync(path.join(dir, 'material-2'), item2, { mode: 0o600 });
+fs.writeFileSync(path.join(dir, 'material-3'), item3, { mode: 0o600 });
 
 try {
   run('keytool', [
     '-list',
     '-keystore',
-    keystorePath,
+    identityPath,
     '-storepass:file',
-    storePasswordPath,
+    item1Path,
     '-alias',
-    keyAlias,
+    item2,
   ]);
 
   const androidDir = path.join(workspace, 'frontend', 'android');
@@ -109,13 +87,7 @@ try {
 
   run(gradlew, ['--no-daemon', 'lintRelease', 'assembleRelease'], {
     cwd: androidDir,
-    env: {
-      ...process.env,
-      JOBTOMATIK_KEYSTORE_PATH: keystorePath,
-      JOBTOMATIK_KEYSTORE_PASSWORD: storePassword,
-      JOBTOMATIK_KEY_ALIAS: keyAlias,
-      JOBTOMATIK_KEY_PASSWORD: keyPassword,
-    },
+    env: { ...process.env, JOBTOMATIK_SIGNING_DIR: dir },
   });
 
   process.stdout.write('Production Android release APK assembled with protected signing material.\n');
