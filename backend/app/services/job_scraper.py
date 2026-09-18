@@ -71,10 +71,7 @@ def _headers() -> Dict[str, str]:
 
 def _uid(source: str, company: str, title: str, url: str = "") -> str:
     raw = f"{source}-{company}-{title}-{url or datetime.utcnow().date()}"
-    # Legacy external_id compatibility only. This digest is not an auth, integrity,
-    # password, signature, or secret-protection primitive.
-    # codeql[py/weak-sensitive-data-hashing]
-    return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:16]  # nosemgrep
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def _mock_salary(salary_min: Optional[int], salary_max: Optional[int]):
