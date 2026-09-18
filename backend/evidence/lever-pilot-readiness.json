@@ -3,7 +3,7 @@
   "baseline_sha256": "8e60646542ed2f43471f84a1178597747ef182f0be575e5a2f5a9751ab5c41c8",
   "ledger_record_count": 31,
   "ledger_sha256": "200588153d6058cd540eae99e90002f92dacd823297b86c0f3c99eaac00ab4e7",
-  "readiness_hardening_version": "1.3",
+  "readiness_hardening_version": "1.4",
   "runtime_ledger_sha256": null,
   "runtime_record_count": 0,
   "summary": {
@@ -20,11 +20,11 @@
       "all_uncertain_outcomes_remain_uncertain": true,
       "explicit_separate_promotion_approval": false,
       "global_and_eu_hosts_covered": true,
-      "ten_supervised_confirmed_submissions": false,
       "thirty_distinct_lever_sites": true,
       "thirty_qualifying_dry_runs": true,
       "zero_duplicate_submissions": true,
-      "zero_false_submitted_records": true
+      "zero_false_submitted_records": true,
+      "three_supervised_confirmed_submissions": false
     },
     "manual_challenge_boundary_count": 1,
     "manual_challenge_encounter_count": 1,
