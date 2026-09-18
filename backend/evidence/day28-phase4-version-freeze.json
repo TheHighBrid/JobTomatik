@@ -54,7 +54,7 @@
         "adapter_source_sha256": "c6355f06e9b00e5911d7f34d8eca84aeb2e50bc7a869fc430931e0e1b6651e9d",
         "fixture_regression_sha256": "379715a244a651ca3a60330bfc18aff50d4a0897f1d2af41c19f99c02adef1ae",
         "legacy_day28_fixture_regression_sha256": "0fb5113489771b59d5b31cf60c694bd2a8d95fd7e5b42a53a34e6136093d8678",
-        "retained_evidence_sha256": "336ea9520344fe43b1070f609911a5fba27051176b40ced1bd91cb9b3fad2f65",
+        "retained_evidence_sha256": "8733329ee1a28c81b831a46a688dee9bf931ef8a49ae7d7e68abbf9e727a9fbe",
         "manifest_live_evidence_sha256": "e4e5ba427d4477621fa976c3b65b8d0c33c90f0d52bf6a04100dd7548e43ba31"
       }
     },
@@ -178,6 +178,6 @@
       "smartrecruiters": "06b2ffe9b463464ffa5c6994d8d76a40bbb994da35a79e56b04452dcf76c253c",
       "workday": "da61359f3b54cfcc58bef3903247221251e9632eeef776b18dac2e5e566667eb"
     },
-    "current_lever_retained_evidence_sha256": "336ea9520344fe43b1070f609911a5fba27051176b40ced1bd91cb9b3fad2f65"
+    "current_lever_retained_evidence_sha256": "8733329ee1a28c81b831a46a688dee9bf931ef8a49ae7d7e68abbf9e727a9fbe"
   }
 }
