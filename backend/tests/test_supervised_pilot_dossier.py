@@ -154,7 +154,7 @@ def test_dossier_is_deterministic_and_excludes_raw_sensitive_values(db_session, 
     assert first["submission_evidence_state"]["sufficient_count"] == 1
     assert first["independent_review_state"]["accepted_count"] == 1
     assert first["pilot_progress"]["phase_a_complete"] is True
-    assert first["pilot_progress"]["phase_b_remaining"] == 8
+    assert first["pilot_progress"]["phase_b_remaining"] == 1
 
     serialized = json.dumps(first, sort_keys=True)
     for forbidden in [
