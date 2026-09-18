@@ -472,7 +472,7 @@ def build_supervised_preflight(
         "checked": False,
         "verified": None,
         "status_code": None,
-        "board_token": None,
+        "board_token": None,  # nosec B105
         "job_id": None,
         "schema_hash": None,
         "fingerprint_version": FORM_SCHEMA_FINGERPRINT_VERSION,
