@@ -16,10 +16,6 @@ function requiredLine(value, index) {
   return value;
 }
 
-function mask(value) {
-  process.stdout.write('::add-mask::' + value + '\n');
-}
-
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: 'inherit', ...options });
   if (result.error) throw result.error;
@@ -54,8 +50,6 @@ if (!/^[A-Za-z0-9+/]+={0,2}$/.test(item0)) {
 const identityBytes = Buffer.from(item0, 'base64');
 if (!identityBytes.length) throw new Error('Decoded signing identity is empty');
 
-for (const value of [encodedBundle, item0, item1, item2, item3]) mask(value);
-
 const runnerTemp = process.env.RUNNER_TEMP;
 const workspace = process.env.GITHUB_WORKSPACE;
 if (!runnerTemp || !workspace) throw new Error('Runner workspace paths are unavailable');
@@ -85,9 +79,14 @@ try {
   const gradlew = path.join(androidDir, 'gradlew');
   fs.chmodSync(gradlew, 0o755);
 
+  const gradleEnv = { ...process.env, JOBTOMATIK_SIGNING_DIR: dir };
+  // GitHub JavaScript actions expose inputs as INPUT_* environment variables.
+  // Do not propagate the opaque signing bundle into Gradle or its descendants.
+  delete gradleEnv.INPUT_SIGNING_BUNDLE_BASE64;
+
   run(gradlew, ['--no-daemon', 'lintRelease', 'assembleRelease'], {
     cwd: androidDir,
-    env: { ...process.env, JOBTOMATIK_SIGNING_DIR: dir },
+    env: gradleEnv,
   });
 
   process.stdout.write('Production Android release APK assembled with protected signing material.\n');
