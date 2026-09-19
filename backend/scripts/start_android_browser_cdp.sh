@@ -279,6 +279,57 @@ managed_browser_pids() {
   done < <(pgrep -f "remote-debugging-port=${CDP_PORT}" 2>/dev/null || true)
 }
 
+process_has_exact_token() {
+  local pid="$1"
+  local expected="$2"
+  local token
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  while IFS= read -r token; do
+    if [[ "$token" == "$expected" ]]; then
+      return 0
+    fi
+  done < <(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null)
+  return 1
+}
+
+browser_graphics_contract_matches() {
+  local pid="$1"
+  browser_identity_matches "$pid" || return 1
+
+  case "$GRAPHICS_MODE" in
+    verification)
+      # Verification mode intentionally keeps normal GPU/WebGL capability.
+      ! process_has_exact_token "$pid" "--disable-gpu"
+      ;;
+    safe)
+      process_has_exact_token "$pid" "--disable-gpu"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+managed_browser_graphics_contract_ready() {
+  # Return 0 when every positively identified managed browser matches, 1 on a
+  # managed mismatch, and 2 when the healthy CDP endpoint is not owned by this
+  # launcher. The last case is preserved rather than signalled.
+  local pid
+  local found=false
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    found=true
+    if ! browser_graphics_contract_matches "$pid"; then
+      return 1
+    fi
+  done < <(managed_browser_pids)
+
+  if [[ "$found" != true ]]; then
+    return 2
+  fi
+  return 0
+}
+
 signal_browser_if_managed() {
   local signal_name="$1"
   local pid="$2"
@@ -426,8 +477,27 @@ case "$ACTION" in
 
   start)
     if is_healthy; then
-      echo "ANDROID_BROWSER_CDP_CONNECTED"
-      exit 0
+      contract_status=0
+      managed_browser_graphics_contract_ready || contract_status=$?
+      case "$contract_status" in
+        0)
+          echo "ANDROID_BROWSER_CDP_CONNECTED"
+          exit 0
+          ;;
+        2)
+          # Never signal a healthy Chromium process that is not positively bound
+          # to this JobTomatik profile/port identity.
+          echo "ANDROID_BROWSER_CDP_CONNECTED_UNMANAGED_PRESERVED"
+          exit 0
+          ;;
+        *)
+          echo "ANDROID_BROWSER_LAUNCH_CONTRACT_CHANGED action=recycle mode=$GRAPHICS_MODE"
+          # This is a bounded self-restart. The stop path signals only processes
+          # that match the exact managed profile and CDP port identity.
+          "$SCRIPT_PATH" stop
+          rm -f "$STOP_FILE"
+          ;;
+      esac
     fi
 
     if command -v termux-wake-lock >/dev/null 2>&1; then
