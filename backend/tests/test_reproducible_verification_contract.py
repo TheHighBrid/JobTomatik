@@ -14,7 +14,6 @@ NPM_AUDIT_VALIDATOR = ROOT / "scripts" / "validate_npm_audit.py"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "reproducible-verification.yml"
 ANDROID_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "android-apk.yml"
 README_PATH = ROOT / "README.md"
-REVIEWED_ADVISORY = "https://github.com/advisories/GHSA-qwww-vcr4-c8h2"
 
 
 def _toolchain() -> dict[str, str]:
