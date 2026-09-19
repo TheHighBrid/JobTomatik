@@ -102,6 +102,21 @@ def test_android_browser_supervisor_requires_identity_before_signal():
     assert "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED" in browser
 
 
+def test_android_browser_defaults_to_verification_compatible_graphics():
+    browser = (BACKEND_ROOT / "scripts/start_android_browser_cdp.sh").read_text(
+        encoding="utf-8"
+    )
+    command = browser.split("browser_command() {", 1)[1].split("\n}\n", 1)[0]
+
+    assert 'GRAPHICS_MODE="${JOBTOMATIK_ANDROID_BROWSER_GRAPHICS_MODE:-verification}"' in browser
+    assert 'local -a graphics_args=(--disable-features=Vulkan,WebGPU)' in command
+    assert 'graphics_args=(--disable-gpu --disable-features=Vulkan,WebGPU)' in command
+    assert 'verification)' in command
+    assert 'safe)' in command
+    assert '"${graphics_args[@]}"' in command
+    assert "ANDROID_BROWSER_INVALID_GRAPHICS_MODE" in command
+
+
 def test_android_worker_is_revisioned_and_consumes_all_runtime_queues():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
