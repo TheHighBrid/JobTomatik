@@ -2,10 +2,12 @@
 
 The Maple physical pilot exposed two production-only hazards:
 
-1. Lever can load passive hCaptcha infrastructure without presenting a visible
-   challenge or a completed response token. A CDP-driven final click is then rejected
-   by Lever's verification layer. In that state JobTomatik must fail closed before any
-   employer-side click and require the owner to finish in a normal browser.
+1. Lever can load passive hCaptcha infrastructure on the retained page. Physical
+   Android reproduction showed the same Lever verification rejection across distinct
+   employers even after the challenge produced a client-side response token. A token
+   field proves only that the widget populated the page; it does not prove that Lever
+   will accept a CDP-driven final click. Any loaded hCaptcha therefore remains a human
+   final-action boundary and JobTomatik must fail closed before the employer-side click.
 2. Compatibility wrappers around retained-browser confirmation can be installed in
    different orders. A recursive wrapper chain must fail closed instead of exhausting
    the Python stack after a consequential click.
@@ -129,17 +131,19 @@ async def passive_verification_state(page: Any) -> Dict[str, Any]:
         "hcaptcha_loaded": hcaptcha_loaded,
         "grecaptcha_loaded": grecaptcha_loaded,
         "turnstile_loaded": turnstile_loaded,
-        "manual_browser_required": bool(hcaptcha_loaded and not completed),
+        "manual_browser_required": bool(hcaptcha_loaded),
     }
 
 
 def passive_verification_requires_manual_browser(state: Dict[str, Any]) -> bool:
-    """Return whether passive hCaptcha requires normal-browser completion."""
+    """Keep every loaded hCaptcha at the human final-action boundary.
 
-    return bool(
-        state.get("hcaptcha_loaded")
-        and not state.get("has_completed_response")
-    )
+    The response textarea is browser-side state, not proof that the provider or
+    Lever accepted the verification. JobTomatik therefore never turns a populated
+    hCaptcha token into permission for a CDP-driven employer Submit click.
+    """
+
+    return bool(state.get("hcaptcha_loaded"))
 
 
 def _reentrant_verification_result(browser_handoff, session):

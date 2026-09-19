@@ -321,9 +321,9 @@ def install_operator_assisted_handoff_integration() -> None:
             if passive_verification_requires_manual_browser(verification_state):
                 raise browser_handoff.BrowserHandoffError(
                     "Lever loaded passive hCaptcha verification without a completed "
-                    "response. JobTomatik will not click Submit in the retained CDP "
-                    "browser. Finish the exact prepared application in a normal user "
-                    "browser and capture employer confirmation evidence."
+                    "response. JobTomatik will not click Submit after hCaptcha. Use "
+                    "the already-retained visible browser yourself for the final "
+                    "human action, then capture employer confirmation evidence."
                 )
 
             before = await browser_handoff._verify_session_target(page, session)
@@ -443,9 +443,9 @@ def install_operator_assisted_handoff_integration() -> None:
             if passive_verification_requires_manual_browser(final_verification_state):
                 raise browser_handoff.BrowserHandoffError(
                     "Lever passive hCaptcha verification is incomplete at the final "
-                    "action boundary. JobTomatik will not click Submit in the retained "
-                    "CDP browser. Finish the exact prepared application in a normal "
-                    "user browser and capture employer confirmation evidence."
+                    "action boundary. JobTomatik will not click Submit after hCaptcha. "
+                    "Use the already-retained visible browser yourself for the final "
+                    "human action, then capture employer confirmation evidence."
                 )
 
             await submit_control.click()
