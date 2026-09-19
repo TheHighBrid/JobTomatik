@@ -19,6 +19,7 @@ SCRIPT_DIR="$(dirname -- "$SCRIPT_PATH")"
 PROCESS_IDENTITY_HELPER="${JOBTOMATIK_PROCESS_IDENTITY_HELPER:-$SCRIPT_DIR/jobtomatik_process_identity.sh}"
 MAX_LOG_BYTES="${JOBTOMATIK_ANDROID_MAX_LOG_BYTES:-5242880}"
 SHUTDOWN_WAIT_ATTEMPTS="${JOBTOMATIK_ANDROID_SHUTDOWN_WAIT_ATTEMPTS:-40}"
+GRAPHICS_MODE="${JOBTOMATIK_ANDROID_BROWSER_GRAPHICS_MODE:-verification}"
 
 if [[ ! -r "$PROCESS_IDENTITY_HELPER" ]]; then
   echo "JobTomatik Android process-identity helper is missing: $PROCESS_IDENTITY_HELPER" >&2
@@ -197,11 +198,32 @@ rotate_log() {
 
 browser_command() {
   ensure_display
+
+  # CAPTCHA and other browser-verification providers depend on ordinary browser
+  # graphics/WebGL capability. Disabling Chromium's entire GPU stack made the
+  # managed Termux/X11 browser materially different from a normal interactive
+  # browser and can leave a visually completed verification token unusable.
+  #
+  # Keep Vulkan/WebGPU disabled for the Android/X11 stability contract, but leave
+  # GPU/WebGL available by default. The old conservative mode remains an explicit
+  # troubleshooting fallback and must never be selected silently.
+  local -a graphics_args=(--disable-features=Vulkan,WebGPU)
+  case "$GRAPHICS_MODE" in
+    verification)
+      ;;
+    safe)
+      graphics_args=(--disable-gpu --disable-features=Vulkan,WebGPU)
+      ;;
+    *)
+      echo "ANDROID_BROWSER_INVALID_GRAPHICS_MODE mode=$GRAPHICS_MODE expected=verification|safe" >&2
+      exit 2
+      ;;
+  esac
+
   exec "$BROWSER_BIN" \
     --no-sandbox \
     --disable-dev-shm-usage \
-    --disable-gpu \
-    --disable-features=Vulkan,WebGPU \
+    "${graphics_args[@]}" \
     --ozone-platform=x11 \
     --no-first-run \
     --no-default-browser-check \
