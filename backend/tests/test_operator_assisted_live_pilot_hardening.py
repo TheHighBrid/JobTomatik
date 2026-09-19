@@ -65,13 +65,13 @@ async def test_passive_hcaptcha_without_response_requires_manual_browser():
 
 
 @pytest.mark.asyncio
-async def test_completed_hcaptcha_response_does_not_force_manual_browser():
+async def test_completed_hcaptcha_response_still_requires_human_final_action():
     state = await passive_verification_state(_PassivePage(completed=True))
 
     assert state["hcaptcha_loaded"] is True
     assert state["has_completed_response"] is True
-    assert state["manual_browser_required"] is False
-    assert passive_verification_requires_manual_browser(state) is False
+    assert state["manual_browser_required"] is True
+    assert passive_verification_requires_manual_browser(state) is True
 
 
 @pytest.mark.asyncio
