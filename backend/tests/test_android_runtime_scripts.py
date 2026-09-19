@@ -117,6 +117,22 @@ def test_android_browser_defaults_to_verification_compatible_graphics():
     assert "ANDROID_BROWSER_INVALID_GRAPHICS_MODE" in command
 
 
+def test_android_browser_recycles_only_managed_graphics_contract_drift():
+    browser = (BACKEND_ROOT / "scripts/start_android_browser_cdp.sh").read_text(
+        encoding="utf-8"
+    )
+    start_case = browser.split("  start)\n", 1)[1].split("    ;;", 1)[0]
+
+    assert "process_has_exact_token" in browser
+    assert "browser_graphics_contract_matches" in browser
+    assert "managed_browser_graphics_contract_ready" in browser
+    assert 'process_has_exact_token "$pid" "--disable-gpu"' in browser
+    assert "ANDROID_BROWSER_LAUNCH_CONTRACT_CHANGED" in start_case
+    assert 'contract_status=0' in start_case
+    assert '"$SCRIPT_PATH" stop' in start_case
+    assert "ANDROID_BROWSER_CDP_CONNECTED_UNMANAGED_PRESERVED" in start_case
+
+
 def test_android_worker_is_revisioned_and_consumes_all_runtime_queues():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
