@@ -138,39 +138,34 @@ def test_android_production_release_workflow_is_fail_closed_and_deterministic():
 
 
 
-def test_android_signing_material_action_writes_only_ephemeral_mode_0600_files():
-    action = (REPO_ROOT / ".github" / "actions" / "android-signing-material" / "action.yml").read_text(encoding="utf-8")
-    script = (REPO_ROOT / ".github" / "actions" / "android-signing-material" / "index.js").read_text(encoding="utf-8")
-    assert "using: node20" in action
+def test_android_signing_material_action_is_ephemeral_and_has_no_custom_exec_helper():
+    action_path = REPO_ROOT / ".github" / "actions" / "android-signing-material" / "action.yml"
+    script_path = REPO_ROOT / ".github" / "actions" / "android-signing-material" / "index.js"
+    action = action_path.read_text(encoding="utf-8")
+    assert "using: composite" in action
     assert "signing_bundle_base64:" in action
+    assert "SIGNING_BUNDLE_BASE64: ${{ inputs.signing_bundle_base64 }}" in action
+    assert "unset SIGNING_BUNDLE_BASE64" in action
+    assert "umask 077" in action
+    assert "RUNNER_TEMP" in action
+    assert "jobtomatik-signing.XXXXXX" in action
+    assert "mktemp -d" in action
+    assert "chmod 600" in action
+    assert "trap cleanup EXIT" in action
+    assert "base64 --decode" in action
+    assert "jq -e" in action
+    assert "jq -jr" in action
+    assert "keytool -list" in action
+    assert "JOBTOMATIK_SIGNING_DIR" in action
+    assert "assembleRelease" in action
+    assert "rm -rf --" in action
+    assert "GITHUB_ENV" not in action
+    assert "::add-mask::" not in action
     assert "keystore_password:" not in action
     assert "key_password:" not in action
-    assert "RUNNER_TEMP" in script
-    assert "jobtomatik-signing" in script
-    assert "mode: 0o600" in script
-    assert "::add-mask::" not in script
-    assert "GITHUB_ENV" not in script
-    assert "GITHUB_OUTPUT" not in script
-    assert "spawnSync" in script
-    assert "keytool" in script
-    assert "assembleRelease" in script
-    assert "JOBTOMATIK_KEYSTORE_PASSWORD" not in script
-    assert "JOBTOMATIK_KEY_PASSWORD" not in script
-    assert "JOBTOMATIK_SIGNING_DIR" in script
-    assert "delete process.env.INPUT_SIGNING_BUNDLE_BASE64" in script
-    assert "const childEnv = {}" in script
-    assert "'PATH'," in script
-    assert "'JAVA_HOME'," in script
-    assert "'ANDROID_HOME'," in script
-    assert "ACTIONS_RUNTIME_TOKEN" not in script
-    assert "ACTIONS_ID_TOKEN_REQUEST_TOKEN" not in script
-    assert "env: childEnv" in script
-    assert "env: gradleEnv" in script
-    assert "env: { ...process.env" not in script
-    assert "material-1" in script
-    assert "material-2" in script
-    assert "material-3" in script
-    assert "fs.rmSync" in script
+    assert "spawnSync" not in action
+    assert "child_process" not in action
+    assert not script_path.exists()
 
 
 def test_exact_artifact_v21_publisher_is_owner_scoped_and_does_not_rebuild():
