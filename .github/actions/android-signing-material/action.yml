@@ -1,0 +1,9 @@
+name: Materialize Android signing material
+description: Write protected Android signing material from one opaque bundle to ephemeral runner files.
+inputs:
+  signing_bundle_base64:
+    description: Base64-encoded JSON bundle containing the persistent Android signing material
+    required: true
+runs:
+  using: node20
+  main: index.js

@@ -1,24 +1,42 @@
 apply plugin: 'com.android.application'
 
-// Release signing is optional and must be provided outside source control.
-// Supported environment variables:
-//   JOBTOMATIK_KEYSTORE_PATH
-//   JOBTOMATIK_KEYSTORE_PASSWORD
-//   JOBTOMATIK_KEY_ALIAS
-//   JOBTOMATIK_KEY_PASSWORD
-// Equivalent Gradle properties may be supplied as jobtomatikKeystorePath,
-// jobtomatikKeystorePassword, jobtomatikKeyAlias, and jobtomatikKeyPassword.
-def releaseKeystorePath = System.getenv('JOBTOMATIK_KEYSTORE_PATH') ?: project.findProperty('jobtomatikKeystorePath')
-def releaseKeystorePassword = System.getenv('JOBTOMATIK_KEYSTORE_PASSWORD') ?: project.findProperty('jobtomatikKeystorePassword')
-def releaseKeyAlias = System.getenv('JOBTOMATIK_KEY_ALIAS') ?: project.findProperty('jobtomatikKeyAlias')
-def releaseKeyPassword = System.getenv('JOBTOMATIK_KEY_PASSWORD') ?: project.findProperty('jobtomatikKeyPassword')
+// Persistent release signing must be provided outside source control.
+// One external directory is accepted through JOBTOMATIK_SIGNING_DIR or
+// the jobtomatikSigningDir Gradle property. Its contents are ephemeral:
+//   identity.jks  - persistent release keystore
+//   material-1    - keystore unlock material
+//   material-2    - key alias
+//   material-3    - key unlock material
+def signingDirPath = System.getenv('JOBTOMATIK_SIGNING_DIR') ?: project.findProperty('jobtomatikSigningDir')
+def signingDir = signingDirPath ? file(signingDirPath) : null
+def signingFile = { String name ->
+    signingDir ? new File(signingDir, name) : null
+}
+def signingText = { String name ->
+    def source = signingFile(name)
+    source != null && source.isFile() ? source.getText('UTF-8').trim() : null
+}
+def releaseKeystoreFile = signingFile('identity.jks')
+def releaseMaterialOne = signingText('material-1')
+def releaseMaterialTwo = signingText('material-2')
+def releaseMaterialThree = signingText('material-3')
 def releaseSigningConfigured = [
-        releaseKeystorePath,
-        releaseKeystorePassword,
-        releaseKeyAlias,
-        releaseKeyPassword,
+        releaseKeystoreFile != null && releaseKeystoreFile.isFile(),
+        releaseMaterialOne,
+        releaseMaterialTwo,
+        releaseMaterialThree,
 ].every { value -> value != null && value.toString().trim() }
 
+def distributionReleaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
+    def leafTaskName = taskName.tokenize(':').last().toLowerCase()
+    leafTaskName ==~ /^(assemble|bundle|package|publish).*release.*$/
+}
+if (distributionReleaseTaskRequested && !releaseSigningConfigured) {
+    throw new GradleException(
+            "Persistent JobTomatik release signing is required for release artifact tasks. " +
+            "Provide JOBTOMATIK_SIGNING_DIR outside source control."
+    )
+}
 android {
     namespace "ca.jobtomatik.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -37,12 +55,12 @@ android {
     }
 
     signingConfigs {
-        if (releaseSigningConfigured) {
-            release {
-                storeFile file(releaseKeystorePath)
-                storePassword releaseKeystorePassword
-                keyAlias releaseKeyAlias
-                keyPassword releaseKeyPassword
+        release {
+            if (releaseSigningConfigured) {
+                storeFile releaseKeystoreFile
+                storePassword releaseMaterialOne
+                keyAlias releaseMaterialTwo
+                keyPassword releaseMaterialThree
             }
         }
     }
@@ -52,9 +70,7 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (releaseSigningConfigured) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingConfigs.release
         }
     }
 }

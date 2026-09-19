@@ -1,0 +1,162 @@
+name: Build JobTomatik Android production-signed release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobtomatik-android-production-release
+  cancel-in-progress: false
+
+jobs:
+  build-production-release:
+    if: github.actor == 'TheHighBrid'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    environment: android-production-release
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Derive and verify immutable build identity
+        id: identity
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags --force
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          test "$SOURCE_COMMIT" = "$(git rev-parse origin/main)"
+
+          VERSION_CODE="$(grep -E '^[[:space:]]*versionCode[[:space:]]+[0-9]+[[:space:]]*$' frontend/android/app/build.gradle | grep -oE '[0-9]+$' | head -n1)"
+          VERSION_NAME="$(grep -E '^[[:space:]]*versionName[[:space:]]+"[0-9]+\.[0-9]+\.[0-9]+"[[:space:]]*$' frontend/android/app/build.gradle | sed -E 's/.*versionName[[:space:]]+"([^"]+)".*/\1/' | head -n1)"
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]
+          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$VERSION_CODE" -gt 210
+
+          MAX_PREVIOUS_VERSION_CODE=0
+          while IFS= read -r tag; do
+            test -n "$tag" || continue
+            previous_gradle="$(git show "$tag:frontend/android/app/build.gradle" 2>/dev/null || true)"
+            test -n "$previous_gradle" || continue
+            previous_code="$(printf '%s\n' "$previous_gradle" | grep -E '^[[:space:]]*versionCode[[:space:]]+[0-9]+[[:space:]]*$' | grep -oE '[0-9]+$' | head -n1 || true)"
+            if [[ "$previous_code" =~ ^[0-9]+$ ]] && (( previous_code > MAX_PREVIOUS_VERSION_CODE )); then
+              MAX_PREVIOUS_VERSION_CODE="$previous_code"
+            fi
+          done < <(git tag --list 'v*')
+
+          test "$VERSION_CODE" -gt "$MAX_PREVIOUS_VERSION_CODE"
+          RELEASE_TAG="v$VERSION_NAME"
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            echo "Release tag $RELEASE_TAG already exists; refusing to rebuild a released version." >&2
+            exit 1
+          fi
+
+          echo "source_commit=$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "previous_max_version_code=$MAX_PREVIOUS_VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Build frontend and synchronize Capacitor
+        run: npm run android:prepare
+
+      - name: Assemble production APK with protected signing material
+        uses: ./.github/actions/android-signing-material
+        with:
+          signing_bundle_base64: ${{ secrets.JOBTOMATIK_ANDROID_SIGNING_BUNDLE_BASE64 }}
+
+
+      - name: Verify production APK identity and persistent certificate
+        shell: bash
+        env:
+          EXPECTED_CERT_SHA256: ${{ vars.JOBTOMATIK_RELEASE_CERT_SHA256 }}
+          VERSION_CODE: ${{ steps.identity.outputs.version_code }}
+          VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+          SOURCE_COMMIT: ${{ steps.identity.outputs.source_commit }}
+          RELEASE_TAG: ${{ steps.identity.outputs.release_tag }}
+          PREVIOUS_MAX_VERSION_CODE: ${{ steps.identity.outputs.previous_max_version_code }}
+        run: |
+          set -euo pipefail
+          EXPECTED_CERT_SHA256="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
+          [[ "$EXPECTED_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          mkdir -p production-release
+          cp "$APK" "production-release/JobTomatik-$VERSION_NAME.apk"
+
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging             "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-BADGING.txt
+          grep -q "package: name='ca.jobtomatik.app'" production-release/APK-BADGING.txt
+          grep -q "versionCode='$VERSION_CODE'" production-release/APK-BADGING.txt
+          grep -q "versionName='$VERSION_NAME'" production-release/APK-BADGING.txt
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs             "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-SIGNING.txt
+          SIGNING_CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' production-release/APK-SIGNING.txt | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          [[ "$SIGNING_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test "$SIGNING_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+
+          sha256sum "production-release/JobTomatik-$VERSION_NAME.apk" >             "production-release/JobTomatik-$VERSION_NAME.sha256"
+          printf '%s\n' "$SOURCE_COMMIT" > production-release/SOURCE-COMMIT.txt
+          cat > production-release/BUILD-INFO.txt <<EOF
+          JobTomatik Android production-signed build
+          Version name: $VERSION_NAME
+          Android version code: $VERSION_CODE
+          Previous maximum tagged version code: $PREVIOUS_MAX_VERSION_CODE
+          Application ID: ca.jobtomatik.app
+          Signing mode: persistent_release_signed
+          Signing certificate SHA-256: $SIGNING_CERT_SHA256
+          Source commit: $SOURCE_COMMIT
+          Intended release tag: $RELEASE_TAG
+          Built by: GitHub Actions
+          Publication: not performed by this workflow
+          EOF
+
+      - name: Upload production-signed release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JobTomatik-${{ steps.identity.outputs.version_name }}-production-signed-${{ steps.identity.outputs.source_commit }}
+          path: frontend/production-release/*
+          if-no-files-found: error
+          retention-days: 90
