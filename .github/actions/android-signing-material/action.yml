@@ -1,9 +1,72 @@
 name: Materialize Android signing material
-description: Write protected Android signing material from one opaque bundle to ephemeral runner files.
+description: Materialize protected Android signing material in an ephemeral runner directory and assemble the signed APK.
 inputs:
   signing_bundle_base64:
     description: Base64-encoded JSON bundle containing the persistent Android signing material
     required: true
 runs:
-  using: node20
-  main: index.js
+  using: composite
+  steps:
+    - name: Materialize, validate, build, and clean signing material
+      shell: bash
+      env:
+        SIGNING_BUNDLE_BASE64: ${{ inputs.signing_bundle_base64 }}
+      run: |
+        set -euo pipefail
+        umask 077
+
+        bundle="${SIGNING_BUNDLE_BASE64:-}"
+        unset SIGNING_BUNDLE_BASE64
+        test -n "$bundle"
+        [[ "$bundle" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]
+
+        : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
+        : "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
+        [[ "$RUNNER_TEMP" = /* ]]
+        [[ "$GITHUB_WORKSPACE" = /* ]]
+
+        command -v jq >/dev/null
+        command -v base64 >/dev/null
+        command -v keytool >/dev/null
+
+        signing_dir="$(mktemp -d "${RUNNER_TEMP%/}/jobtomatik-signing.XXXXXX")"
+        cleanup() {
+          if [[ -n "${signing_dir:-}" && "$signing_dir" == "${RUNNER_TEMP%/}"/jobtomatik-signing.* ]]; then
+            rm -rf -- "$signing_dir"
+          fi
+        }
+        trap cleanup EXIT
+
+        bundle_path="$signing_dir/bundle.json"
+        printf '%s' "$bundle" | base64 --decode > "$bundle_path"
+        unset bundle
+
+        jq -e '
+          type == "array"
+          and length == 4
+          and all(.[]; type == "string" and length > 0 and (contains("\n") | not) and (contains("\r") | not))
+        ' "$bundle_path" >/dev/null
+
+        jq -er '.[0] | select(test("^[A-Za-z0-9+/]+={0,2}$"))' "$bundle_path" |
+          base64 --decode > "$signing_dir/identity.jks"
+        jq -jr '.[1]' "$bundle_path" > "$signing_dir/material-1"
+        jq -jr '.[2]' "$bundle_path" > "$signing_dir/material-2"
+        jq -jr '.[3]' "$bundle_path" > "$signing_dir/material-3"
+        rm -f -- "$bundle_path"
+
+        chmod 600 "$signing_dir/identity.jks" "$signing_dir/material-1" "$signing_dir/material-2" "$signing_dir/material-3"
+        test -s "$signing_dir/identity.jks"
+        test -s "$signing_dir/material-1"
+        test -s "$signing_dir/material-2"
+        test -s "$signing_dir/material-3"
+
+        key_alias="$(<"$signing_dir/material-2")"
+        [[ "$key_alias" =~ ^[A-Za-z0-9._-]{1,128}$ ]]
+
+        keytool -list           -keystore "$signing_dir/identity.jks"           -storepass:file "$signing_dir/material-1"           -alias "$key_alias" >/dev/null
+
+        cd "$GITHUB_WORKSPACE/frontend/android"
+        chmod u+x ./gradlew
+        JOBTOMATIK_SIGNING_DIR="$signing_dir" ./gradlew --no-daemon lintRelease assembleRelease
+
+        printf '%s\n' 'Production Android release APK assembled with protected signing material.'
