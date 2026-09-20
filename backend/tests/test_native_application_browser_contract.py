@@ -71,6 +71,28 @@ def test_native_identity_rejects_wrong_package_or_socket(payload):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://example.com:9223",
+        "https://localhost:9223",
+        "http://user:pass@localhost:9223",
+        "http://localhost:9223/other",
+    ],
+)
+async def test_native_identity_reader_rejects_non_loopback_or_ambiguous_endpoint_before_http(
+    monkeypatch,
+    endpoint,
+):
+    def forbidden_client(**_kwargs):
+        raise AssertionError("HTTP client must not be constructed for an invalid native endpoint")
+
+    monkeypatch.setattr(contract_module.httpx, "AsyncClient", forbidden_client)
+    with pytest.raises(BrowserContractError, match="ENDPOINT_INVALID"):
+        await contract_module.read_native_identity(endpoint)
+
+
+@pytest.mark.asyncio
 async def test_unavailable_native_identity_has_no_browser_fallback(monkeypatch):
     async def unavailable(request):
         raise httpx.ConnectError("offline", request=request)

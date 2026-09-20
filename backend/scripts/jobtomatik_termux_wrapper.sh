@@ -115,6 +115,10 @@ ensure_application_browser_endpoint() {
     echo "ANDROID_APPLICATION_BROWSER_MODE_CONFLICT: managed applications require native Chrome" >&2
     return 1
   fi
+  if [[ "${JOBTOMATIK_REQUIRE_ISOLATED_BROWSER_PROFILE:-0}" == "1" ]]; then
+    echo "ANDROID_NATIVE_CHROME_PROFILE_ISOLATION_UNSUPPORTED: this lane requires a separate browser profile; native Android Chrome cannot satisfy that contract" >&2
+    return 1
+  fi
   if native_android_chrome_cdp_ready; then
     return 0
   fi
@@ -308,6 +312,11 @@ activate_stack() {
 }
 
 case "$ACTION" in
+  browser-preflight)
+    verify_backend_environment
+    ensure_application_browser_endpoint
+    ensure_browser_playwright_ready preserve
+    ;;
   start)
     verify_backend_environment
     # `jobtomatik start` is idempotent. Never recycle the external authenticated
@@ -372,7 +381,7 @@ case "$ACTION" in
     exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart
     ;;
   *)
-    echo "Usage: jobtomatik [start|restart|status|acceptance|qualify|stop|update]" >&2
+    echo "Usage: jobtomatik [browser-preflight|start|restart|status|acceptance|qualify|stop|update]" >&2
     exit 2
     ;;
 esac

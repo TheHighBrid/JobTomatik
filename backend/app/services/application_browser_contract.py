@@ -29,6 +29,31 @@ class ApplicationBrowserContract:
         return self.provider == "native_chrome"
 
 
+def _validated_native_port(endpoint: str) -> int:
+    """Return the port only for an explicit loopback HTTP CDP endpoint."""
+
+    candidate = str(endpoint or "").strip().rstrip("/")
+    parsed = urlparse(candidate)
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise BrowserContractError("ANDROID_NATIVE_CHROME_ENDPOINT_INVALID") from exc
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in {"127.0.0.1", "localhost"}
+        or port is None
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path
+    ):
+        raise BrowserContractError(
+            "ANDROID_NATIVE_CHROME_ENDPOINT_INVALID: use an explicit localhost ADB-forwarded port"
+        )
+    return port
+
+
 def application_browser_contract(settings: Any = None) -> ApplicationBrowserContract:
     settings = settings if settings is not None else get_settings()
     endpoint = str(getattr(settings, "application_browser_cdp_endpoint", "") or "").strip().rstrip("/")
@@ -53,10 +78,8 @@ def application_browser_contract(settings: Any = None) -> ApplicationBrowserCont
             port = parsed.port
         except ValueError as exc:
             raise BrowserContractError("APPLICATION_BROWSER_ENDPOINT_INVALID") from exc
-        if provider == "native_chrome" and (
-            parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"} or port is None
-        ):
-            raise BrowserContractError("ANDROID_NATIVE_CHROME_ENDPOINT_INVALID: use an explicit localhost ADB-forwarded port")
+        if provider == "native_chrome":
+            _validated_native_port(endpoint)
     return ApplicationBrowserContract(provider=provider, endpoint=endpoint)
 
 
@@ -65,16 +88,19 @@ def validate_native_identity(payload: Any, endpoint: str) -> dict[str, str]:
         raise BrowserContractError("ANDROID_NATIVE_CHROME_IDENTITY_MISMATCH: expected com.android.chrome; application paused")
     if not all(isinstance(payload.get(key), str) and payload[key] for key in ("Browser", "User-Agent", "webSocketDebuggerUrl")):
         raise BrowserContractError("ANDROID_NATIVE_CHROME_IDENTITY_INCOMPLETE")
-    parsed = urlparse(endpoint)
+    native_port = _validated_native_port(endpoint)
     websocket = urlparse(payload["webSocketDebuggerUrl"])
     try:
         valid_socket = (
             websocket.scheme == "ws"
             and websocket.hostname in {"127.0.0.1", "localhost"}
-            and websocket.port == parsed.port
+            and websocket.port == native_port
             and not websocket.username and not websocket.password
             and not websocket.query and not websocket.fragment
-            and websocket.path.startswith("/devtools/browser")
+            and (
+                websocket.path == "/devtools/browser"
+                or websocket.path.startswith("/devtools/browser/")
+            )
         )
     except ValueError:
         valid_socket = False
@@ -84,14 +110,20 @@ def validate_native_identity(payload: Any, endpoint: str) -> dict[str, str]:
 
 
 async def read_native_identity(endpoint: str) -> dict[str, str]:
+    native_port = _validated_native_port(endpoint)
+    # Build the request target from a fixed loopback host plus the validated integer
+    # port. Direct callers therefore cannot turn identity discovery into an SSRF path.
+    identity_endpoint = f"http://127.0.0.1:{native_port}"
     try:
         async with httpx.AsyncClient(timeout=3.0, trust_env=False, follow_redirects=False) as client:
-            response = await client.get(f"{endpoint}/json/version")
+            response = await client.get(f"{identity_endpoint}/json/version")
             response.raise_for_status()
             payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
-        raise BrowserContractError("ANDROID_NATIVE_CHROME_UNAVAILABLE: preserve the application and reconnect the selected Chrome transport") from exc
-    return validate_native_identity(payload, endpoint)
+        raise BrowserContractError(
+            "ANDROID_NATIVE_CHROME_UNAVAILABLE: preserve the application and reconnect the selected Chrome transport"
+        ) from exc
+    return validate_native_identity(payload, identity_endpoint)
 
 
 async def connect_native_browser(playwright: Any, contract: ApplicationBrowserContract, connect: Any) -> Any:

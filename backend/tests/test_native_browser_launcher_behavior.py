@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 import pytest
 
@@ -18,7 +19,26 @@ def run(code):
     env = os.environ.copy()
     env.pop("ANDROID_SERIAL", None)
     env.pop("JOBTOMATIK_ANDROID_APPLICATION_BROWSER_MODE", None)
-    return subprocess.run(["bash", "-c", "set -euo pipefail\n" + code], env=env, text=True, capture_output=True, timeout=10)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".sh",
+        delete=False,
+    ) as handle:
+        handle.write("set -euo pipefail\n")
+        handle.write(code)
+        script_path = Path(handle.name)
+    try:
+        return subprocess.run(
+            ["bash", str(script_path)],
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    finally:
+        script_path.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize("mode", ["preserve", "recover_once"])
@@ -93,6 +113,21 @@ ensure_application_browser_endpoint
     assert result.returncode != 0
     assert "-s selected forward --no-rebind tcp:9333 localabstract:chrome_devtools_remote" in result.stdout
     assert "FORWARD_FAILED" in result.stderr
+
+
+
+
+def test_isolated_browser_profile_requirement_fails_before_identity_or_forward():
+    result = run(function("ensure_application_browser_endpoint") + """
+JOBTOMATIK_REQUIRE_ISOLATED_BROWSER_PROFILE=1
+run_application_browser_contract() { printf 'native_chrome\nhttp://127.0.0.1:9223\n9223\n'; }
+native_android_chrome_cdp_ready() { echo FORBIDDEN_IDENTITY_PROBE; return 0; }
+adb() { echo FORBIDDEN_ADB; }
+ensure_application_browser_endpoint
+""")
+    assert result.returncode != 0
+    assert "PROFILE_ISOLATION_UNSUPPORTED" in result.stderr
+    assert "FORBIDDEN" not in result.stdout
 
 
 def test_native_stop_preserves_browser_even_when_disconnected():
