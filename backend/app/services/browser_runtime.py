@@ -114,6 +114,16 @@ async def connect_retained_application_browser(playwright: Any, endpoint: str) -
     return await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
 
 
+def application_browser_identity(runtime: Any) -> Dict[str, Any]:
+    """Return retained-browser identity metadata without dereferencing a missing browser."""
+
+    browser = getattr(runtime, "browser", None)
+    if browser is None:
+        return {}
+    identity = getattr(browser, "_jobtomatik_application_browser_identity", None)
+    return dict(identity) if isinstance(identity, dict) else {}
+
+
 def require_retained_application_browser_identity(
     expected_identity: Any,
     browser: Any,
@@ -151,6 +161,18 @@ def require_retained_application_browser_identity(
             "and require controlled recovery. changed="
             + ",".join(changed)
         )
+
+
+async def connect_verified_retained_application_browser(
+    playwright: Any,
+    endpoint: str,
+    expected_identity: Any,
+) -> Any:
+    """Reconnect a retained browser and enforce its recorded native-Chrome lease."""
+
+    browser = await connect_retained_application_browser(playwright, endpoint)
+    require_retained_application_browser_identity(expected_identity, browser)
+    return browser
 
 
 def external_browser_inventory(browser: Any) -> Dict[str, Any]:
