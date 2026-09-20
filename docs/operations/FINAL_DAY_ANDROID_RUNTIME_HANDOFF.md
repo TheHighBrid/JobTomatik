@@ -72,6 +72,26 @@ jobtomatik status
 
 `browser-preflight` is non-mutating with respect to the managed stack. It proves the configured native Chrome identity and Playwright attachment before startup. If more than one authorized ADB device is visible, set `ANDROID_SERIAL` to the intended device before the preflight. Do not bypass this with a Termux Chromium launcher.
 
+### Direct managed-stack maintenance path
+
+The native wrapper is the preferred production entrypoint. If the direct managed-stack script must be used for launcher maintenance or diagnosis, first complete the same native Chrome `jobtomatik browser-preflight` above, then return to the Ubuntu/proot checkout and sanitize persisted process identities **before** starting the stack directly:
+
+```bash
+cd ~/JobTomatik/backend
+
+JOBTOMATIK_RUNTIME_REVISION="$CANDIDATE_SHA" \
+JOBTOMATIK_EXPECTED_REVISION="$CANDIDATE_SHA" \
+  bash scripts/sanitize_android_runtime_pid_files.sh
+
+JOBTOMATIK_EXPECTED_REVISION="$CANDIDATE_SHA" \
+  bash scripts/manage_android_stack.sh start
+
+JOBTOMATIK_EXPECTED_REVISION="$CANDIDATE_SHA" \
+  bash scripts/manage_android_stack.sh status
+```
+
+The PID sanitizer is mandatory before any direct `manage_android_stack.sh start`. Android/Linux can recycle numeric PIDs after an earlier JobTomatik process exits. The sanitizer validates each live persisted PID against the expected JobTomatik process identity and removes a stale PID file without signalling the unrelated live process. Do not bypass this step when using the direct stack command. This maintenance path does not replace the native Chrome browser preflight and does not authorize a fallback browser provider.
+
 The frontend installer must print `ANDROID_STATIC_FRONTEND_ARTIFACT_READY` with the exact candidate SHA. If the exact artifact has not yet been published, wait for the matching artifact workflow rather than substituting a locally built or stale frontend.
 
 The status command must report all of the following before the final acceptance command:
