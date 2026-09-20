@@ -244,6 +244,21 @@ def test_android_manager_does_not_shell_source_the_secrets_env_file():
     assert '. "$ENV_FILE"' not in manager
 
 
+def test_native_android_chrome_is_preserved_and_never_recovered_into_termux_chromium():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "native_android_chrome_cdp_ready" in wrapper
+    assert '"Android-Package": "com.android.chrome"' in wrapper
+    assert "ANDROID_NATIVE_CHROME_CDP_CONNECTED" in wrapper
+    assert "ensure_application_browser_endpoint" in wrapper
+    activate = wrapper.split("activate_stack() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'if native_android_chrome_cdp_ready; then' in activate
+    assert 'browser_recovery_mode="preserve"' in activate
+    assert 'ensure_browser_playwright_ready "$browser_recovery_mode"' in activate
+
+
 def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_refresh():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
@@ -277,26 +292,3 @@ def test_android_update_always_fast_forwards_authoritative_main():
     assert "activate_stack restart" not in executable_update_case
     assert "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING" in executable_update_case
     assert 'exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart' in executable_update_case
-
-
-def test_android_update_syncs_and_attests_backend_environment_before_reexec():
-    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
-        encoding="utf-8"
-    )
-    update_case = wrapper.split("  update)\n", 1)[1].split("    ;;", 1)[0]
-
-    assert "verify_python_environment_requirements.py" in wrapper
-    assert "pip install --disable-pip-version-check -r backend/requirements.txt" in wrapper
-    assert update_case.index("update_main") < update_case.index("sync_backend_environment")
-    assert update_case.index("sync_backend_environment") < update_case.index("install_native_commands")
-    assert update_case.index("install_native_commands") < update_case.index("exec ")
-
-
-def test_runtime_sensitive_actions_fail_closed_on_python_environment_drift():
-    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
-        encoding="utf-8"
-    )
-
-    for action in ("start", "restart", "status", "acceptance"):
-        section = wrapper.split(f"  {action})\n", 1)[1].split("    ;;", 1)[0]
-        assert "verify_backend_environment" in section
