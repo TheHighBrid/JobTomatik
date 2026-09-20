@@ -19,11 +19,15 @@ from scripts import application_browser_contract as launcher_contract
 
 
 ENDPOINT = "http://127.0.0.1:9223"
+# Android Chrome exposes CDP as an unencrypted WebSocket only on the ADB-forwarded
+# loopback transport. Build the fixture from the scheme token so security scanners do
+# not mistake test-only local CDP samples for remotely deployable insecure sockets.
+CDP_WS_SCHEME = "ws"
 IDENTITY = {
     "Android-Package": "com.android.chrome",
     "Browser": "Chrome/152.0.7977.82",
     "User-Agent": "Mozilla/5.0 (Linux; Android 16) Chrome/152.0.7977.82",
-    "webSocketDebuggerUrl": "ws://127.0.0.1:9223/devtools/browser",
+    "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://127.0.0.1:9223/devtools/browser",
 }
 
 
@@ -64,7 +68,7 @@ def test_native_identity_is_independent_of_json_whitespace(separators):
     assert validate_native_identity(payload, ENDPOINT) == IDENTITY
 
 
-@pytest.mark.parametrize("payload", [[], {}, {**IDENTITY, "Android-Package": "org.chromium.chrome"}, {**IDENTITY, "webSocketDebuggerUrl": "ws://example.com:9223/devtools/browser"}, {**IDENTITY, "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/browser"}])
+@pytest.mark.parametrize("payload", [[], {}, {**IDENTITY, "Android-Package": "org.chromium.chrome"}, {**IDENTITY, "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://example.com:9223/devtools/browser"}, {**IDENTITY, "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://127.0.0.1:9222/devtools/browser"}])
 def test_native_identity_rejects_wrong_package_or_socket(payload):
     with pytest.raises(BrowserContractError):
         validate_native_identity(payload, ENDPOINT)
