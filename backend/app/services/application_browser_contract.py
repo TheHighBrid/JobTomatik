@@ -75,7 +75,7 @@ def application_browser_contract(settings: Any = None) -> ApplicationBrowserCont
         if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path:
             raise BrowserContractError("APPLICATION_BROWSER_ENDPOINT_INVALID")
         try:
-            port = parsed.port
+            parsed.port
         except ValueError as exc:
             raise BrowserContractError("APPLICATION_BROWSER_ENDPOINT_INVALID") from exc
         if provider == "native_chrome":
