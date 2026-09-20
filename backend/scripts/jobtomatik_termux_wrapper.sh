@@ -192,7 +192,8 @@ ensure_application_browser_endpoint() {
 }
 
 ensure_browser_playwright_ready() {
-  local recovery_mode="${1:-preserve}"
+  # Historical callers may still pass a recovery-mode argument. It is intentionally
+  # ignored: managed Android browser recovery never authorizes provider substitution.
   local initial_probe
   if initial_probe="$(run_browser_playwright_probe 2>&1)"; then
     [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe"
