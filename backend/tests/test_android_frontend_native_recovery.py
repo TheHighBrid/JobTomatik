@@ -505,7 +505,7 @@ def test_android_launcher_quarantines_native_repair_from_canonical_runtime():
 
     activate = wrapper.split("activate_stack() {", 1)[1].split("\n}", 1)[0]
     artifact_index = activate.index("ensure_static_frontend_artifact")
-    browser_index = activate.index('"$BROWSER_COMMAND" start')
+    browser_index = activate.index("ensure_application_browser_endpoint")
     stack_index = activate.index('start_stack_detached "$action"')
     acceptance_index = activate.index("run_runtime_acceptance")
     assert artifact_index < browser_index < stack_index < acceptance_index
