@@ -14,8 +14,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.config import Settings  # noqa: E402
-from app.services.application_browser_contract import (  # noqa: E402
+from app.config import Settings
+from app.services.application_browser_contract import (
     application_browser_contract,
     read_native_identity,
 )
