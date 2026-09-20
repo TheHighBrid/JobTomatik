@@ -121,7 +121,7 @@ def test_android_browser_recycles_only_managed_graphics_contract_drift():
     browser = (BACKEND_ROOT / "scripts/start_android_browser_cdp.sh").read_text(
         encoding="utf-8"
     )
-    start_case = browser.split("  start)\n", 1)[1].split("    ;;", 1)[0]
+    start_case = browser.split("  start)\n", 1)[1].rsplit("\nesac", 1)[0]
 
     assert "process_has_exact_token" in browser
     assert "browser_graphics_contract_matches" in browser
