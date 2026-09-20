@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 PROCESS_IDENTITY_HELPER="${JOBTOMATIK_PROCESS_IDENTITY_HELPER:-$SCRIPT_DIR/jobtomatik_process_identity.sh}"
 DEPLOYMENT_RESTART_MARKER="${JOBTOMATIK_DEPLOYMENT_RESTART_MARKER:-$SCRIPT_DIR/.jobtomatik-deployment-restart.pending}"
 FRONTEND_RUNTIME_MODE="static_artifact"
+APPLICATION_BROWSER_MODE="${JOBTOMATIK_ANDROID_APPLICATION_BROWSER_MODE:-native_chrome}"
 
 if [[ ! -r "$PROCESS_IDENTITY_HELPER" ]]; then
   echo "JobTomatik Android process-identity helper is missing: $PROCESS_IDENTITY_HELPER" >&2
@@ -95,11 +96,36 @@ native_android_chrome_cdp_ready() {
 }
 
 ensure_application_browser_endpoint() {
-  if native_android_chrome_cdp_ready; then
-    echo "ANDROID_NATIVE_CHROME_CDP_CONNECTED"
-    return 0
-  fi
-  "$BROWSER_COMMAND" start
+  case "$APPLICATION_BROWSER_MODE" in
+    native_chrome)
+      if native_android_chrome_cdp_ready; then
+        echo "ANDROID_NATIVE_CHROME_CDP_CONNECTED"
+        return 0
+      fi
+      if command -v adb >/dev/null 2>&1 \
+        && adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { found=1 } END { exit(found ? 0 : 1) }'; then
+        adb forward tcp:9222 localabstract:chrome_devtools_remote >/dev/null 2>&1 || true
+        for _ in {1..20}; do
+          if native_android_chrome_cdp_ready; then
+            echo "ANDROID_NATIVE_CHROME_CDP_CONNECTED source=adb_forward"
+            return 0
+          fi
+          sleep 0.25
+        done
+      fi
+      echo "ANDROID_NATIVE_CHROME_CDP_REQUIRED" >&2
+      echo "Native Android Chrome is the required production application browser. No Termux Chromium fallback will be started." >&2
+      echo "Reconnect Wireless ADB, open Android Chrome, then forward tcp:9222 to localabstract:chrome_devtools_remote." >&2
+      return 1
+      ;;
+    termux_chromium)
+      "$BROWSER_COMMAND" start
+      ;;
+    *)
+      echo "ANDROID_APPLICATION_BROWSER_MODE_INVALID mode=$APPLICATION_BROWSER_MODE expected=native_chrome|termux_chromium" >&2
+      return 2
+      ;;
+  esac
 }
 
 ensure_browser_playwright_ready() {
@@ -333,7 +359,11 @@ case "$ACTION" in
   stop)
     stop_pilot_controller
     stop_stack_supervisor
-    "$BROWSER_COMMAND" stop
+    if [[ "$APPLICATION_BROWSER_MODE" == "native_chrome" ]] && native_android_chrome_cdp_ready; then
+      echo "ANDROID_NATIVE_CHROME_PRESERVED_ON_STOP"
+    else
+      "$BROWSER_COMMAND" stop
+    fi
     ;;
   update)
     update_main
