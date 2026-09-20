@@ -133,9 +133,16 @@ async def _connect_local_cdp(session: ManualHandoffSession):
     manager = async_playwright()
     playwright = await manager.start()
     try:
-        from app.services.browser_runtime import connect_retained_application_browser
+        from app.services.browser_runtime import (
+            connect_retained_application_browser,
+            require_retained_application_browser_identity,
+        )
 
         browser = await connect_retained_application_browser(playwright, endpoint)
+        require_retained_application_browser_identity(
+            metadata.get("application_browser_identity"),
+            browser,
+        )
     except Exception as exc:
         await playwright.stop()
         raise BrowserHandoffUnavailable("The retained application browser is unavailable or its identity changed; preserve the application.") from exc

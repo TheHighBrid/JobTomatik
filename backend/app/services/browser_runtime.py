@@ -114,6 +114,45 @@ async def connect_retained_application_browser(playwright: Any, endpoint: str) -
     return await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
 
 
+def require_retained_application_browser_identity(
+    expected_identity: Any,
+    browser: Any,
+) -> None:
+    """Reject a retained native handoff if its browser lease changed."""
+
+    if not isinstance(expected_identity, dict) or not expected_identity:
+        # Historical handoffs predate browser-lease metadata. They retain the
+        # existing target/url safety checks instead of being made unreadable.
+        return
+    if expected_identity.get("provider") != "native_chrome":
+        return
+
+    observed = dict(
+        getattr(browser, "_jobtomatik_application_browser_identity", {}) or {}
+    )
+    required_fields = (
+        "provider",
+        "android_package",
+        "transport",
+        "cdp_endpoint",
+        "browser_instance_id",
+        "runtime_revision",
+    )
+    changed = [
+        field
+        for field in required_fields
+        if expected_identity.get(field)
+        and str(observed.get(field) or "") != str(expected_identity.get(field))
+    ]
+    if changed:
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_LEASE_CHANGED: retained application browser "
+            "identity no longer matches the handoff lease; preserve the application "
+            "and require controlled recovery. changed="
+            + ",".join(changed)
+        )
+
+
 def external_browser_inventory(browser: Any) -> Dict[str, Any]:
     """Describe connected browser state without selecting an application tab."""
 

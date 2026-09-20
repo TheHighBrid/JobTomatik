@@ -373,9 +373,16 @@ def install_application_target_handoff_support() -> None:
         manager = async_playwright()
         playwright = await manager.start()
         try:
-            from app.services.browser_runtime import connect_retained_application_browser
+            from app.services.browser_runtime import (
+                connect_retained_application_browser,
+                require_retained_application_browser_identity,
+            )
 
             browser = await connect_retained_application_browser(playwright, endpoint)
+            require_retained_application_browser_identity(
+                metadata.get("application_browser_identity"),
+                browser,
+            )
         except Exception as exc:
             await playwright.stop()
             raise browser_handoff.BrowserHandoffUnavailable(

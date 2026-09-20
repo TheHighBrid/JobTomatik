@@ -141,10 +141,16 @@ async def connect_native_browser(playwright: Any, contract: ApplicationBrowserCo
         raise BrowserContractError("ANDROID_NATIVE_CHROME_CHANGED_DURING_ATTACH: application paused")
     if len(browser.contexts) != 1:
         raise BrowserContractError("ANDROID_NATIVE_CHROME_CONTEXT_AMBIGUOUS")
+    browser_instance_id = urlparse(before["webSocketDebuggerUrl"]).path.rsplit("/", 1)[-1]
     browser._jobtomatik_application_browser_identity = {
         "provider": "native_chrome",
+        "transport": "adb_forwarded_cdp",
         "android_package": before["Android-Package"],
         "browser": before["Browser"],
+        "user_agent": before["User-Agent"],
+        "cdp_endpoint": contract.endpoint,
+        "browser_instance_id": browser_instance_id,
+        "runtime_revision": os.environ.get("JOBTOMATIK_RUNTIME_REVISION", ""),
         "connection_identity_verified": True,
     }
     return browser

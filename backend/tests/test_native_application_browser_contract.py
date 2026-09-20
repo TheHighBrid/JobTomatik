@@ -118,7 +118,12 @@ async def test_attachment_pins_websocket_and_verifies_actual_connection(monkeypa
     connect.assert_awaited_once_with(None, IDENTITY["webSocketDebuggerUrl"])
     session.send.assert_awaited_once_with("Browser.getVersion")
     session.detach.assert_awaited_once()
-    assert result._jobtomatik_application_browser_identity["connection_identity_verified"] is True
+    identity = result._jobtomatik_application_browser_identity
+    assert identity["connection_identity_verified"] is True
+    assert identity["provider"] == "native_chrome"
+    assert identity["transport"] == "adb_forwarded_cdp"
+    assert identity["cdp_endpoint"] == ENDPOINT
+    assert identity["browser_instance_id"]
 
 
 @pytest.mark.asyncio
@@ -161,6 +166,33 @@ async def test_worker_wrong_browser_rejects_before_tab_or_local_launch(monkeypat
     with pytest.raises(browser_runtime.BrowserRuntimeError, match="IDENTITY_MISMATCH"):
         await browser_runtime.launch_application_browser(None)
     connect.assert_not_awaited()
+
+
+def test_retained_native_browser_lease_rejects_browser_restart_or_runtime_drift():
+    expected = {
+        "provider": "native_chrome",
+        "transport": "adb_forwarded_cdp",
+        "android_package": "com.android.chrome",
+        "cdp_endpoint": ENDPOINT,
+        "browser_instance_id": "instance-before",
+        "runtime_revision": "abc1234",
+    }
+    observed = {
+        **expected,
+        "browser_instance_id": "instance-after",
+        "runtime_revision": "def5678",
+    }
+    browser = SimpleNamespace(_jobtomatik_application_browser_identity=observed)
+
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="LEASE_CHANGED"):
+        browser_runtime.require_retained_application_browser_identity(expected, browser)
+
+
+def test_legacy_handoff_without_browser_lease_remains_readable():
+    browser_runtime.require_retained_application_browser_identity(
+        {},
+        SimpleNamespace(),
+    )
 
 
 @pytest.mark.asyncio
