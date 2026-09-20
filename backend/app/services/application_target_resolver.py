@@ -213,6 +213,7 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                         "adapter": "listing_resolver",
                         "adapter_version": "2.3.0",
                         "reason_code": reason_code,
+                        "application_browser_identity": dict(getattr(getattr(runtime, "browser", None), "_jobtomatik_application_browser_identity", {}) or {}),
                     }
                     if controlled_target_id:
                         snapshot_metadata["controlled_page_target_id"] = controlled_target_id

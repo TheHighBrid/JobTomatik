@@ -133,10 +133,12 @@ async def _connect_local_cdp(session: ManualHandoffSession):
     manager = async_playwright()
     playwright = await manager.start()
     try:
-        browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
-    except Exception:
+        from app.services.browser_runtime import connect_retained_application_browser
+
+        browser = await connect_retained_application_browser(playwright, endpoint)
+    except Exception as exc:
         await playwright.stop()
-        raise BrowserHandoffUnavailable("The retained browser process is no longer reachable.")
+        raise BrowserHandoffUnavailable("The retained application browser is unavailable or its identity changed; preserve the application.") from exc
 
     contexts = list(browser.contexts)
     if not contexts:
@@ -145,7 +147,11 @@ async def _connect_local_cdp(session: ManualHandoffSession):
     context = contexts[0]
     pages = list(context.pages)
     expected_url = str(session.current_url or binding.get("expected_url") or "")
-    page = _select_retained_page(pages, expected_url)
+    try:
+        page = _select_retained_page(pages, expected_url)
+    except BrowserHandoffUnavailable:
+        await playwright.stop()
+        raise
     if binding:
         try:
             require_bound_handoff_url(session, page.url)

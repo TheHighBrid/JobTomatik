@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     # the Ubuntu PRoot worker attach over Chrome DevTools Protocol. When set,
     # JobTomatik never launches or terminates the external browser process.
     application_browser_cdp_endpoint: str = ""
+    # auto preserves desktop behavior; Android-managed execution requires native
+    # Chrome. A missing/unavailable endpoint must never launch a different browser.
+    application_browser_provider: Literal["auto", "native_chrome", "external_cdp", "local"] = "auto"
     # Keep target resolution nonblocking for headless and solo-worker deployments.
     # A positive value is an explicit opt-in that occupies the current worker task.
     application_target_human_wait_seconds: int = Field(default=0, ge=0, le=3600)

@@ -69,23 +69,80 @@ run_runtime_acceptance() {
 
 run_browser_playwright_probe() {
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO/backend'; export JOBTOMATIK_RUNTIME_MODE=android_managed; .venv/bin/python - <<'PY'
+    "set -e; cd '$PROOT_REPO/backend'; unset APPLICATION_BROWSER_CDP_ENDPOINT APPLICATION_BROWSER_PROVIDER; export JOBTOMATIK_RUNTIME_MODE=android_managed; .venv/bin/python - <<'PY'
 import asyncio
 
 from app.services.browser_runtime import probe_external_playwright_cdp
+from app.config import get_settings
 
 
 async def main() -> None:
-    proof = await probe_external_playwright_cdp('http://127.0.0.1:9222')
+    proof = await probe_external_playwright_cdp(get_settings().application_browser_cdp_endpoint)
     if proof.get('playwright_attach_ready') is not True:
         raise SystemExit(1)
     if proof.get('browser_owned_by_jobtomatik') is not False:
         raise SystemExit(1)
+    if proof.get('connection_identity_verified') is not True:
+        raise SystemExit('ANDROID_NATIVE_CHROME_CONNECTION_UNVERIFIED')
     print('ANDROID_BROWSER_PLAYWRIGHT_CDP_READY')
 
 
 asyncio.run(main())
 PY"
+}
+
+run_application_browser_contract() {
+  local action="$1"
+  proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
+    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/application_browser_contract.py '$action'"
+}
+
+native_android_chrome_cdp_ready() {
+  run_application_browser_contract identity
+}
+
+ensure_application_browser_endpoint() {
+  local fields
+  fields="$(run_application_browser_contract config)" || return 1
+  local -a contract
+  mapfile -t contract <<< "$fields"
+  if [[ "${contract[0]:-}" != native_chrome || ! "${contract[2]:-}" =~ ^[0-9]+$ ]]; then
+    echo "ANDROID_APPLICATION_BROWSER_CONFIG_INVALID" >&2
+    return 1
+  fi
+  # This retired shell-only selection must not contradict the worker contract.
+  if [[ "${JOBTOMATIK_ANDROID_APPLICATION_BROWSER_MODE:-native_chrome}" != native_chrome ]]; then
+    echo "ANDROID_APPLICATION_BROWSER_MODE_CONFLICT: managed applications require native Chrome" >&2
+    return 1
+  fi
+  if native_android_chrome_cdp_ready; then
+    return 0
+  fi
+  if ! command -v adb >/dev/null 2>&1; then
+    echo "ANDROID_NATIVE_CHROME_ADB_UNAVAILABLE" >&2
+    return 1
+  fi
+  local devices
+  devices="$(adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }')"
+  local -a connected=()
+  if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
+  local serial="${ANDROID_SERIAL:-}"
+  if [[ -z "$serial" && "${#connected[@]}" -eq 1 ]]; then serial="${connected[0]}"; fi
+  if [[ -z "$serial" ]]; then
+    echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: select one connected authorized ADB device" >&2
+    return 1
+  fi
+  # Do not replace an existing forward or take over another browser's listener.
+  if ! adb -s "$serial" forward --no-rebind "tcp:${contract[2]}" localabstract:chrome_devtools_remote; then
+    echo "ANDROID_NATIVE_CHROME_FORWARD_FAILED: preserve retained applications; inspect the selected device and port" >&2
+    return 1
+  fi
+  for _ in {1..4}; do
+    if native_android_chrome_cdp_ready; then return 0; fi
+    sleep 0.25
+  done
+  echo "ANDROID_NATIVE_CHROME_CDP_REQUIRED: application browser paused; no Chromium fallback" >&2
+  return 1
 }
 
 ensure_browser_playwright_ready() {
@@ -96,24 +153,11 @@ ensure_browser_playwright_ready() {
     return 0
   fi
 
-  if [[ "$recovery_mode" != "recover_once" ]]; then
-    echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=preserve_browser_fail" >&2
-    [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe" >&2
-    return 1
-  fi
-
-  echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=recover_once"
-  "$BROWSER_COMMAND" recover
-
-  local recovery_probe
-  if recovery_probe="$(run_browser_playwright_probe 2>&1)"; then
-    [[ -n "$recovery_probe" ]] && printf '%s\n' "$recovery_probe"
-    echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_RECOVERED"
-    return 0
-  fi
-
-  echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_RECOVERY_FAILED" >&2
-  [[ -n "$recovery_probe" ]] && printf '%s\n' "$recovery_probe" >&2
+  # Deployment markers never grant authority to substitute browser providers.
+  # Preserve native Chrome even if it disconnects between the identity and attach
+  # checks. The worker independently enforces the same identity before every job.
+  echo "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=preserve_browser_fail" >&2
+  [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe" >&2
   return 1
 }
 
@@ -248,13 +292,15 @@ activate_stack() {
   local browser_recovery_mode="${2:-preserve}"
   sanitize_runtime_pid_files
   ensure_static_frontend_artifact
-  "$BROWSER_COMMAND" start
-  # HTTP CDP alone is insufficient. Prove the exact Playwright attach path used by
-  # the managed worker. Ordinary starts/restarts preserve the authenticated browser
-  # and fail closed; only a freshly installed deployment token can allow one recycle.
+  ensure_application_browser_endpoint
+  # Persist exactly the configuration the launcher just validated, before probing
+  # through the same settings loader used by the sanitized worker.
+  run_stack_foreground configure-browser
+  # HTTP CDP alone is insufficient. Prove the worker's actual connection identity.
+  # Every start/restart preserves Chrome and fails closed on a disconnect.
   ensure_browser_playwright_ready "$browser_recovery_mode"
   # The PRoot manager owns API, worker, Beat and the attested static frontend. Native
-  # Chromium remains outside PRoot and is crossed only through the localhost CDP
+  # Chrome remains outside PRoot and is crossed only through the localhost CDP
   # protocol boundary.
   start_stack_detached "$action"
   run_runtime_acceptance
@@ -268,6 +314,8 @@ case "$ACTION" in
     # Chromium while the managed stack is already live and healthy because that could
     # interrupt an in-flight application session.
     if supervisor_alive && run_stack_foreground status && run_frontend_guard status; then
+      ensure_application_browser_endpoint
+      ensure_browser_playwright_ready preserve
       echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
       run_runtime_acceptance
       ensure_pilot_controller
@@ -279,22 +327,20 @@ case "$ACTION" in
   restart)
     verify_backend_environment
     stop_stack_supervisor
-    # Preserve the authenticated native browser on every ordinary restart. A marker
-    # written by the freshly installed launcher is the only authority for one bounded
-    # stale-CDP recovery during the deployment transition.
+    # Deployment markers are consumed for compatibility, never to replace Chrome.
     browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"
     activate_stack restart "$browser_recovery_mode"
     ;;
   status)
     verify_backend_environment
-    "$BROWSER_COMMAND" status || true
+    native_android_chrome_cdp_ready
     run_stack_foreground status
     run_frontend_guard status
     pilot_controller_status || true
     ;;
   acceptance)
     verify_backend_environment
-    "$BROWSER_COMMAND" status
+    native_android_chrome_cdp_ready
     run_stack_foreground status
     run_frontend_guard status
     run_runtime_acceptance
@@ -311,7 +357,7 @@ case "$ACTION" in
   stop)
     stop_pilot_controller
     stop_stack_supervisor
-    "$BROWSER_COMMAND" stop
+    echo "ANDROID_NATIVE_CHROME_PRESERVED_ON_STOP"
     ;;
   update)
     update_main
@@ -321,8 +367,7 @@ case "$ACTION" in
     # launcher before the git pull, so its functions can belong to the previous
     # revision even though install_native_commands has already replaced the file on
     # disk. Re-exec the freshly installed launcher so restart uses the pulled code.
-    # The installer also arms a one-use deployment marker so only this transition may
-    # recycle an HTTP-alive but Playwright-dead native Chromium session.
+    # The old deployment marker is consumed by restart without browser recycling.
     echo "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING"
     exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart
     ;;

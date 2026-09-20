@@ -20,6 +20,11 @@ from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from app.config import get_settings
+from app.services.application_browser_contract import (
+    BrowserContractError,
+    application_browser_contract,
+    connect_native_browser,
+)
 from app.services import browser_runtime_base as _base
 from app.services.browser_runtime_base import (
     BrowserRuntimeError,
@@ -86,9 +91,27 @@ async def connect_external_playwright_browser(
     """
 
     endpoint = _normalize_external_cdp_endpoint(cdp_endpoint)
+    contract = application_browser_contract(get_settings())
+    if contract.native:
+        if endpoint != contract.endpoint:
+            raise BrowserRuntimeError("ANDROID_NATIVE_CHROME_ENDPOINT_MISMATCH: retained or requested endpoint differs from managed configuration")
+        try:
+            browser = await connect_native_browser(playwright, contract, _connect_external_playwright_over_cdp)
+        except BrowserContractError as exc:
+            raise BrowserRuntimeError(str(exc)) from exc
+        return endpoint, browser
     await _wait_for_external_cdp_endpoint(endpoint)
     browser = await _connect_external_playwright_over_cdp(playwright, endpoint)
     return endpoint, browser
+
+
+async def connect_retained_application_browser(playwright: Any, endpoint: str) -> Any:
+    """Recheck native identity at handoff reconnect; retain legacy desktop support."""
+    contract = application_browser_contract(get_settings())
+    if contract.native:
+        _, browser = await connect_external_playwright_browser(playwright, cdp_endpoint=endpoint)
+        return browser
+    return await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
 
 
 def external_browser_inventory(browser: Any) -> Dict[str, Any]:
@@ -255,6 +278,7 @@ async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:
             "cdp_endpoint": normalized_endpoint,
             **inventory,
             "browser_owned_by_jobtomatik": False,
+            **getattr(browser, "_jobtomatik_application_browser_identity", {}),
         }
 
 
@@ -271,6 +295,7 @@ async def launch_application_browser(
     """
 
     settings = get_settings()
+    application_browser_contract(settings)
     cdp_endpoint = (settings.application_browser_cdp_endpoint or "").strip()
     if cdp_endpoint:
         return await attach_retainable_browser(

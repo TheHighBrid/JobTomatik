@@ -121,7 +121,7 @@ def test_android_browser_recycles_only_managed_graphics_contract_drift():
     browser = (BACKEND_ROOT / "scripts/start_android_browser_cdp.sh").read_text(
         encoding="utf-8"
     )
-    start_case = browser.split("  start)\n", 1)[1].split("    ;;", 1)[0]
+    start_case = browser.split("  start)\n", 1)[1].rsplit("\nesac", 1)[0]
 
     assert "process_has_exact_token" in browser
     assert "browser_graphics_contract_matches" in browser
@@ -232,7 +232,8 @@ def test_android_runtime_forces_nonblocking_automatic_application_entry():
     )
 
     assert "set_env_value APPLICATION_TARGET_HUMAN_WAIT_SECONDS '0'" in manager
-    assert "set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'" in manager
+    assert 'set_env_value APPLICATION_BROWSER_CDP_ENDPOINT "${contract[1]}"' in manager
+    assert 'set_env_value APPLICATION_BROWSER_PROVIDER "${contract[0]}"' in manager
 
 
 def test_android_manager_does_not_shell_source_the_secrets_env_file():
@@ -253,7 +254,8 @@ def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_re
     )
 
     assert 'activate_stack()' in wrapper
-    assert '"$BROWSER_COMMAND" start' in wrapper
+    assert 'ensure_application_browser_endpoint' in wrapper
+    assert '"$BROWSER_COMMAND" start' not in wrapper
     assert '"$BROWSER_COMMAND" restart' not in wrapper
     assert "refresh_frontend_tabs" not in wrapper
     assert "refresh_frontend_runtime" in manager

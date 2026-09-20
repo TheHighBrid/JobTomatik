@@ -77,7 +77,7 @@ def test_android_wrapper_proves_real_playwright_before_proot_stack_start():
     activate = _function_body(source, "activate_stack")
 
     artifact_index = activate.index("ensure_static_frontend_artifact")
-    browser_index = activate.index('"$BROWSER_COMMAND" start')
+    browser_index = activate.index('ensure_application_browser_endpoint')
     playwright_index = activate.index("ensure_browser_playwright_ready")
     stack_index = activate.index("start_stack_detached")
     acceptance_index = activate.index("run_runtime_acceptance")
@@ -89,7 +89,8 @@ def test_android_browser_probe_uses_same_real_playwright_cdp_path_as_worker():
     probe = _function_body(source, "run_browser_playwright_probe")
 
     assert "probe_external_playwright_cdp" in probe
-    assert "http://127.0.0.1:9222" in probe
+    assert "get_settings().application_browser_cdp_endpoint" in probe
+    assert "connection_identity_verified" in probe
     assert "playwright_attach_ready" in probe
     assert "browser_owned_by_jobtomatik" in probe
 
@@ -102,9 +103,8 @@ def test_ordinary_restart_preserves_browser_and_fails_closed_when_playwright_is_
     assert '"$BROWSER_COMMAND" restart' not in source
     assert '"$BROWSER_COMMAND" recover' not in restart_case
     assert 'local recovery_mode="${1:-preserve}"' in recovery
-    assert 'if [[ "$recovery_mode" != "recover_once" ]]; then' in recovery
     assert "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=preserve_browser_fail" in recovery
-    assert recovery.count('"$BROWSER_COMMAND" recover') == 1
+    assert '"$BROWSER_COMMAND" recover' not in source
 
 
 def test_launcher_installation_arms_one_use_deployment_recovery_marker():
