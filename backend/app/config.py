@@ -80,9 +80,9 @@ class Settings(BaseSettings):
     application_browser_profile_dir: str = "browser_profiles/jobtomatik-operator"
     application_browser_headless: bool = True
     application_browser_executable: str = ""
-    # Android-only installs may keep Chromium running natively in Termux and let
-    # the Ubuntu PRoot worker attach over Chrome DevTools Protocol. When set,
-    # JobTomatik never launches or terminates the external browser process.
+    # External CDP is supported for explicit desktop/local modes. The managed
+    # Android application route requires native Android Chrome over a loopback
+    # ADB-forwarded CDP endpoint and never substitutes Termux Chromium.
     application_browser_cdp_endpoint: str = ""
     # auto preserves desktop behavior; Android-managed execution requires native
     # Chrome. A missing/unavailable endpoint must never launch a different browser.
