@@ -209,6 +209,19 @@ ensure_browser_playwright_ready() { echo "PROBE"; }
     assert output.index("ENDPOINT") < output.index("STACK:configure-browser") < output.index("PROBE")
 
 
+def test_absent_deployment_restart_marker_is_successful_noop(tmp_path):
+    marker = tmp_path / "missing-restart-marker"
+    result = run(
+        function("consume_deployment_restart_marker")
+        + f"""
+DEPLOYMENT_RESTART_MARKER="{marker}"
+consume_deployment_restart_marker
+"""
+    )
+    assert result.returncode == 0
+    assert not marker.exists()
+
+
 def test_native_stop_preserves_browser_even_when_disconnected():
     source = WRAPPER.read_text()
     stop = source.split('\ncase "$ACTION" in\n', 1)[1].split("  stop)\n", 1)[1].split("    ;;", 1)[0]
