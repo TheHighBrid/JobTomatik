@@ -119,9 +119,6 @@ ensure_application_browser_endpoint() {
     echo "ANDROID_NATIVE_CHROME_PROFILE_ISOLATION_UNSUPPORTED: this lane requires a separate browser profile; native Android Chrome cannot satisfy that contract" >&2
     return 1
   fi
-  if native_android_chrome_cdp_ready; then
-    return 0
-  fi
   if ! command -v adb >/dev/null 2>&1; then
     echo "ANDROID_NATIVE_CHROME_ADB_UNAVAILABLE" >&2
     return 1
@@ -136,10 +133,55 @@ ensure_application_browser_endpoint() {
     echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: select one connected authorized ADB device" >&2
     return 1
   fi
-  # Do not replace an existing forward or take over another browser's listener.
-  if ! adb -s "$serial" forward --no-rebind "tcp:${contract[2]}" localabstract:chrome_devtools_remote; then
-    echo "ANDROID_NATIVE_CHROME_FORWARD_FAILED: preserve retained applications; inspect the selected device and port" >&2
+  local serial_connected=0
+  local connected_serial
+  for connected_serial in "${connected[@]}"; do
+    if [[ "$connected_serial" == "$serial" ]]; then
+      serial_connected=1
+      break
+    fi
+  done
+  if [[ "$serial_connected" -ne 1 ]]; then
+    echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: selected ANDROID_SERIAL is not an authorized connected device" >&2
     return 1
+  fi
+
+  # A ready HTTP endpoint is not enough. Bind the host port to the exact selected
+  # ADB transport so a stale forward cannot silently control another device's
+  # authenticated Chrome profile.
+  local forward_list
+  forward_list="$(adb forward --list 2>/dev/null || true)"
+  local -a port_bindings=()
+  if [[ -n "$forward_list" ]]; then
+    mapfile -t port_bindings < <(
+      awk -v local_port="tcp:${contract[2]}" '$2 == local_port { print $1 "|" $2 "|" $3 }' <<< "$forward_list"
+    )
+  fi
+  if [[ "${#port_bindings[@]}" -gt 1 ]]; then
+    echo "ANDROID_NATIVE_CHROME_FORWARD_AMBIGUOUS: multiple ADB forwards claim tcp:${contract[2]}" >&2
+    return 1
+  fi
+
+  if [[ "${#port_bindings[@]}" -eq 1 ]]; then
+    local owner local_socket remote_socket
+    IFS='|' read -r owner local_socket remote_socket <<< "${port_bindings[0]}"
+    if [[ "$owner" != "$serial" || "$remote_socket" != "localabstract:chrome_devtools_remote" ]]; then
+      echo "ANDROID_NATIVE_CHROME_FORWARD_DEVICE_MISMATCH: tcp:${contract[2]} is not bound to the selected device Chrome socket" >&2
+      return 1
+    fi
+    if native_android_chrome_cdp_ready; then
+      return 0
+    fi
+  else
+    if native_android_chrome_cdp_ready; then
+      echo "ANDROID_NATIVE_CHROME_FORWARD_UNVERIFIED: ready CDP endpoint has no matching ADB forward for the selected device" >&2
+      return 1
+    fi
+    # Do not replace an existing listener or take over another browser's port.
+    if ! adb -s "$serial" forward --no-rebind "tcp:${contract[2]}" localabstract:chrome_devtools_remote; then
+      echo "ANDROID_NATIVE_CHROME_FORWARD_FAILED: preserve retained applications; inspect the selected device and port" >&2
+      return 1
+    fi
   fi
   for _ in {1..4}; do
     if native_android_chrome_cdp_ready; then return 0; fi
@@ -315,6 +357,9 @@ case "$ACTION" in
   browser-preflight)
     verify_backend_environment
     ensure_application_browser_endpoint
+    # Persist the validated default/explicit endpoint before the probe reloads
+    # backend settings inside PRoot.
+    run_stack_foreground configure-browser
     ensure_browser_playwright_ready preserve
     ;;
   start)
@@ -324,6 +369,7 @@ case "$ACTION" in
     # interrupt an in-flight application session.
     if supervisor_alive && run_stack_foreground status && run_frontend_guard status; then
       ensure_application_browser_endpoint
+      run_stack_foreground configure-browser
       ensure_browser_playwright_ready preserve
       echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
       run_runtime_acceptance
