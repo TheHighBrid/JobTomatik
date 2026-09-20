@@ -14,7 +14,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.config import get_settings  # noqa: E402
-from app.services.application_browser_contract import (  # noqa: E402
+from app.services.application_browser_contract import (
     application_browser_contract,
     validate_native_identity,
 )
