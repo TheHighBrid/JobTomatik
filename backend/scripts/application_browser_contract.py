@@ -16,7 +16,6 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.config import Settings  # noqa: E402
 from app.services.application_browser_contract import (  # noqa: E402
-    BrowserContractError,
     application_browser_contract,
     read_native_identity,
 )
@@ -63,7 +62,7 @@ def main() -> int:
                 raise RuntimeError("ANDROID_NATIVE_CHROME_CONNECTION_UNVERIFIED")
             print(json.dumps(proof))
         return 0
-    except (BrowserContractError, RuntimeError, ValueError, OSError) as exc:
+    except (RuntimeError, ValueError, OSError) as exc:
         print(f"APPLICATION_BROWSER_CONTRACT_FAILED: {exc}", file=sys.stderr)
         return 1
 
