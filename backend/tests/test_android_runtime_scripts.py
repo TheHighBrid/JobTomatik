@@ -249,10 +249,15 @@ def test_native_android_chrome_is_preserved_and_never_recovered_into_termux_chro
         encoding="utf-8"
     )
 
+    assert 'APPLICATION_BROWSER_MODE="${JOBTOMATIK_ANDROID_APPLICATION_BROWSER_MODE:-native_chrome}"' in wrapper
     assert "native_android_chrome_cdp_ready" in wrapper
     assert '"Android-Package": "com.android.chrome"' in wrapper
     assert "ANDROID_NATIVE_CHROME_CDP_CONNECTED" in wrapper
     assert "ensure_application_browser_endpoint" in wrapper
+    assert "ANDROID_NATIVE_CHROME_CDP_REQUIRED" in wrapper
+    assert "No Termux Chromium fallback will be started." in wrapper
+    assert 'termux_chromium)' in wrapper
+    assert "ANDROID_NATIVE_CHROME_PRESERVED_ON_STOP" in wrapper
     activate = wrapper.split("activate_stack() {", 1)[1].split("\n}\n", 1)[0]
     assert 'if native_android_chrome_cdp_ready; then' in activate
     assert 'browser_recovery_mode="preserve"' in activate
