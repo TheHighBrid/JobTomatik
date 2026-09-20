@@ -27,13 +27,14 @@ The normal default remains `false`. Setting the canonical switch to `true` is th
 
 ## Managed Android processes
 
-The one-command Android runtime supervises four application processes plus the native browser:
+The one-command Android runtime supervises four application processes and attaches to
+one externally owned native browser:
 
 1. FastAPI, role `api`
 2. Celery worker, role `worker`
 3. Celery Beat, role `beat`
-4. Vite frontend
-5. Termux-native Chromium over local CDP
+4. static frontend
+5. native Android Chrome over a verified loopback ADB-forwarded CDP endpoint
 
 API, worker, and Beat are bound to the exact checked-out Git revision and the same expected deployment revision. Runtime identity is evidence only and never grants submission or outreach authority.
 
