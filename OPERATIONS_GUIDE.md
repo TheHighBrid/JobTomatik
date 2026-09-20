@@ -212,19 +212,27 @@ Keep `DEV_MOCK_JOBS=false` for real job-search operation.
 |---|---|---|
 | `APPLICATION_BROWSER_PROFILE_DIR` | `browser_profiles/jobtomatik-operator` | Persistent Chromium profile |
 | `APPLICATION_BROWSER_HEADLESS` | `false` in `.env.example` | Shows or hides the browser UI |
-| `APPLICATION_BROWSER_EXECUTABLE` | empty | Optional explicit Chromium/Chrome path |
-| `APPLICATION_BROWSER_CDP_ENDPOINT` | empty | Attach to an already-running Chromium through Chrome DevTools Protocol |
+| `APPLICATION_BROWSER_EXECUTABLE` | empty | Optional explicit Chromium/Chrome path for desktop/local mode |
+| `APPLICATION_BROWSER_PROVIDER` | `auto` | Browser provider contract. Managed Android requires `native_chrome` |
+| `APPLICATION_BROWSER_CDP_ENDPOINT` | empty | Attach to the selected external browser through Chrome DevTools Protocol |
 | `APPLICATION_TARGET_HUMAN_WAIT_SECONDS` | `0` | Optional worker-side wait before returning a human handoff |
 
 ### Android browser model
 
-On Android, the preferred pattern is:
+The managed Android application path uses native Android Chrome. The native Termux
+`jobtomatik` wrapper selects exactly one authorized ADB device, creates a loopback CDP
+forward, verifies `Android-Package: com.android.chrome`, and then lets the Ubuntu PRoot
+worker attach to that exact browser. New installs default to:
 
 ```env
-APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9222
+APPLICATION_BROWSER_PROVIDER=native_chrome
+APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9223
 ```
 
-Chromium runs natively in Termux. The Ubuntu PRoot backend attaches to it over CDP. When CDP is configured, JobTomatik does not own the external Chromium process and should not terminate it.
+Existing explicit localhost ports are preserved. The worker verifies the Chrome package
+and actual CDP connection before application work. Missing or wrong native Chrome pauses
+application execution. Managed Android never falls back to Termux Chromium or a local
+Playwright launch.
 
 ## 7. Autopilot controls
 
