@@ -170,7 +170,9 @@ def run_acceptance() -> dict[str, Any]:
         raise RuntimeError("API runtime identity attestation failed")
 
     browser_contract = application_browser_contract(settings)
-    endpoint = browser_contract.endpoint or "http://127.0.0.1:9222"
+    endpoint = browser_contract.endpoint
+    if not endpoint:
+        raise RuntimeError("Configured Android application browser endpoint is missing")
     cdp = _http_json(f"{endpoint}/json/version")
     if browser_contract.native:
         validate_native_identity(cdp, endpoint)
