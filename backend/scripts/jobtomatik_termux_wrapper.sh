@@ -163,8 +163,8 @@ ensure_application_browser_endpoint() {
   fi
 
   if [[ "${#port_bindings[@]}" -eq 1 ]]; then
-    local owner local_socket remote_socket
-    IFS='|' read -r owner local_socket remote_socket <<< "${port_bindings[0]}"
+    local owner remote_socket
+    IFS='|' read -r owner _ remote_socket <<< "${port_bindings[0]}"
     if [[ "$owner" != "$serial" || "$remote_socket" != "localabstract:chrome_devtools_remote" ]]; then
       echo "ANDROID_NATIVE_CHROME_FORWARD_DEVICE_MISMATCH: tcp:${contract[2]} is not bound to the selected device Chrome socket" >&2
       return 1
@@ -192,8 +192,6 @@ ensure_application_browser_endpoint() {
 }
 
 ensure_browser_playwright_ready() {
-  # Historical callers may still pass a recovery-mode argument. It is intentionally
-  # ignored: managed Android browser recovery never authorizes provider substitution.
   local initial_probe
   if initial_probe="$(run_browser_playwright_probe 2>&1)"; then
     [[ -n "$initial_probe" ]] && printf '%s\n' "$initial_probe"
@@ -208,13 +206,10 @@ ensure_browser_playwright_ready() {
   return 1
 }
 
-consume_deployment_browser_recovery_mode() {
-  if [[ -f "$DEPLOYMENT_RESTART_MARKER" ]]; then
-    rm -f "$DEPLOYMENT_RESTART_MARKER"
-    printf '%s\n' "recover_once"
-    return 0
-  fi
-  printf '%s\n' "preserve"
+consume_deployment_restart_marker() {
+  # The marker is compatibility state only. It never authorizes browser recovery or
+  # provider substitution.
+  [[ -f "$DEPLOYMENT_RESTART_MARKER" ]] && rm -f "$DEPLOYMENT_RESTART_MARKER"
 }
 
 supervisor_identity_matches() {
@@ -336,7 +331,6 @@ update_main() {
 
 activate_stack() {
   local action="$1"
-  local browser_recovery_mode="${2:-preserve}"
   sanitize_runtime_pid_files
   ensure_static_frontend_artifact
   ensure_application_browser_endpoint
@@ -345,7 +339,7 @@ activate_stack() {
   run_stack_foreground configure-browser
   # HTTP CDP alone is insufficient. Prove the worker's actual connection identity.
   # Every start/restart preserves Chrome and fails closed on a disconnect.
-  ensure_browser_playwright_ready "$browser_recovery_mode"
+  ensure_browser_playwright_ready
   # The PRoot manager owns API, worker, Beat and the attested static frontend. Native
   # Chrome remains outside PRoot and is crossed only through the localhost CDP
   # protocol boundary.
@@ -361,7 +355,7 @@ case "$ACTION" in
     # Persist the validated default/explicit endpoint before the probe reloads
     # backend settings inside PRoot.
     run_stack_foreground configure-browser
-    ensure_browser_playwright_ready preserve
+    ensure_browser_playwright_ready
     ;;
   start)
     verify_backend_environment
@@ -371,21 +365,21 @@ case "$ACTION" in
     if supervisor_alive && run_stack_foreground status && run_frontend_guard status; then
       ensure_application_browser_endpoint
       run_stack_foreground configure-browser
-      ensure_browser_playwright_ready preserve
+      ensure_browser_playwright_ready
       echo "JOBTOMATIK_PROOT_SUPERVISOR_ALREADY_READY"
       run_runtime_acceptance
       ensure_pilot_controller
     else
-      browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"
-      activate_stack start "$browser_recovery_mode"
+      consume_deployment_restart_marker
+      activate_stack start
     fi
     ;;
   restart)
     verify_backend_environment
     stop_stack_supervisor
     # Deployment markers are consumed for compatibility, never to replace Chrome.
-    browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"
-    activate_stack restart "$browser_recovery_mode"
+    consume_deployment_restart_marker
+    activate_stack restart
     ;;
   status)
     verify_backend_environment
