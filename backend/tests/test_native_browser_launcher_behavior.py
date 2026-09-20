@@ -41,13 +41,12 @@ def run(code):
         script_path.unlink(missing_ok=True)
 
 
-@pytest.mark.parametrize("mode", ["preserve", "recover_once"])
-def test_failed_attach_never_calls_browser_recovery(mode):
-    result = run(function("ensure_browser_playwright_ready") + f"""
+def test_failed_attach_never_calls_browser_recovery():
+    result = run(function("ensure_browser_playwright_ready") + """
 BROWSER_COMMAND=browser_stub
-browser_stub() {{ echo FORBIDDEN_BROWSER_ACTION; }}
-run_browser_playwright_probe() {{ return 1; }}
-ensure_browser_playwright_ready {mode}
+browser_stub() { echo FORBIDDEN_BROWSER_ACTION; }
+run_browser_playwright_probe() { return 1; }
+ensure_browser_playwright_ready
 """)
     assert result.returncode != 0
     assert "preserve_browser_fail" in result.stderr
@@ -66,7 +65,7 @@ browser_stub() { echo FORBIDDEN_BROWSER_ACTION; }
 start_stack_detached() { echo FORBIDDEN_STACK_START; }
 run_runtime_acceptance() { :; }
 ensure_pilot_controller() { :; }
-activate_stack restart recover_once
+activate_stack restart
 """)
     assert result.returncode != 0
     assert "INITIAL_NATIVE_CHECK_PASSED" in result.stdout
@@ -203,11 +202,11 @@ def test_browser_preflight_persists_contract_before_playwright_probe():
 verify_backend_environment() { echo VERIFY; }
 ensure_application_browser_endpoint() { echo ENDPOINT; }
 run_stack_foreground() { echo "STACK:$1"; }
-ensure_browser_playwright_ready() { echo "PROBE:$1"; }
+ensure_browser_playwright_ready() { echo "PROBE"; }
 """ + preflight)
     assert result.returncode == 0
     output = result.stdout
-    assert output.index("ENDPOINT") < output.index("STACK:configure-browser") < output.index("PROBE:preserve")
+    assert output.index("ENDPOINT") < output.index("STACK:configure-browser") < output.index("PROBE")
 
 
 def test_native_stop_preserves_browser_even_when_disconnected():
