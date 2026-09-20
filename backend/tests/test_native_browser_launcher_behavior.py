@@ -130,6 +130,86 @@ ensure_application_browser_endpoint
     assert "FORBIDDEN" not in result.stdout
 
 
+def test_ready_endpoint_requires_exact_selected_adb_forward_binding():
+    result = run(function("ensure_application_browser_endpoint") + """
+run_application_browser_contract() { printf 'native_chrome\\nhttp://127.0.0.1:9223\\n9223\\n'; }
+native_android_chrome_cdp_ready() { echo IDENTITY_READY; return 0; }
+adb() {
+  if [[ "$1" == devices ]]; then
+    printf 'List of devices attached\\nselected\\tdevice\\n'
+  elif [[ "$1" == forward && "$2" == --list ]]; then
+    printf 'selected tcp:9223 localabstract:chrome_devtools_remote\\n'
+  else
+    echo FORBIDDEN_FORWARD
+    return 1
+  fi
+}
+ensure_application_browser_endpoint
+""")
+    assert result.returncode == 0
+    assert "IDENTITY_READY" in result.stdout
+    assert "FORBIDDEN_FORWARD" not in result.stdout
+
+
+def test_ready_endpoint_rejects_forward_owned_by_another_device():
+    result = run(function("ensure_application_browser_endpoint") + """
+ANDROID_SERIAL=selected
+run_application_browser_contract() { printf 'native_chrome\\nhttp://127.0.0.1:9223\\n9223\\n'; }
+native_android_chrome_cdp_ready() { echo FORBIDDEN_IDENTITY_ACCEPT; return 0; }
+adb() {
+  if [[ "$1" == devices ]]; then
+    printf 'List of devices attached\\nselected\\tdevice\\nother\\tdevice\\n'
+  elif [[ "$1" == forward && "$2" == --list ]]; then
+    printf 'other tcp:9223 localabstract:chrome_devtools_remote\\n'
+  else
+    echo FORBIDDEN_FORWARD
+    return 1
+  fi
+}
+ensure_application_browser_endpoint
+""")
+    assert result.returncode != 0
+    assert "FORWARD_DEVICE_MISMATCH" in result.stderr
+    assert "FORBIDDEN_IDENTITY_ACCEPT" not in result.stdout
+    assert "FORBIDDEN_FORWARD" not in result.stdout
+
+
+def test_ready_endpoint_without_matching_adb_forward_fails_closed():
+    result = run(function("ensure_application_browser_endpoint") + """
+run_application_browser_contract() { printf 'native_chrome\\nhttp://127.0.0.1:9223\\n9223\\n'; }
+native_android_chrome_cdp_ready() { echo IDENTITY_READY; return 0; }
+adb() {
+  if [[ "$1" == devices ]]; then
+    printf 'List of devices attached\\nselected\\tdevice\\n'
+  elif [[ "$1" == forward && "$2" == --list ]]; then
+    return 0
+  else
+    echo FORBIDDEN_FORWARD
+    return 1
+  fi
+}
+ensure_application_browser_endpoint
+""")
+    assert result.returncode != 0
+    assert "FORWARD_UNVERIFIED" in result.stderr
+    assert "IDENTITY_READY" in result.stdout
+    assert "FORBIDDEN_FORWARD" not in result.stdout
+
+
+def test_browser_preflight_persists_contract_before_playwright_probe():
+    source = WRAPPER.read_text()
+    preflight = source.split('\ncase "$ACTION" in\n', 1)[1].split("  browser-preflight)\n", 1)[1].split("    ;;", 1)[0]
+    result = run("""
+verify_backend_environment() { echo VERIFY; }
+ensure_application_browser_endpoint() { echo ENDPOINT; }
+run_stack_foreground() { echo "STACK:$1"; }
+ensure_browser_playwright_ready() { echo "PROBE:$1"; }
+""" + preflight)
+    assert result.returncode == 0
+    output = result.stdout
+    assert output.index("ENDPOINT") < output.index("STACK:configure-browser") < output.index("PROBE:preserve")
+
+
 def test_native_stop_preserves_browser_even_when_disconnected():
     source = WRAPPER.read_text()
     stop = source.split('\ncase "$ACTION" in\n', 1)[1].split("  stop)\n", 1)[1].split("    ;;", 1)[0]
