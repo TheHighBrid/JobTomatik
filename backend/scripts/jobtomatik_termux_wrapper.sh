@@ -88,6 +88,20 @@ asyncio.run(main())
 PY"
 }
 
+native_android_chrome_cdp_ready() {
+  local version_payload
+  version_payload="$(curl -fsS --max-time 2 http://127.0.0.1:9222/json/version 2>/dev/null || true)"
+  [[ "$version_payload" == *'"Android-Package": "com.android.chrome"'* ]]
+}
+
+ensure_application_browser_endpoint() {
+  if native_android_chrome_cdp_ready; then
+    echo "ANDROID_NATIVE_CHROME_CDP_CONNECTED"
+    return 0
+  fi
+  "$BROWSER_COMMAND" start
+}
+
 ensure_browser_playwright_ready() {
   local recovery_mode="${1:-preserve}"
   local initial_probe
@@ -248,10 +262,18 @@ activate_stack() {
   local browser_recovery_mode="${2:-preserve}"
   sanitize_runtime_pid_files
   ensure_static_frontend_artifact
-  "$BROWSER_COMMAND" start
+  ensure_application_browser_endpoint
+  # A healthy native Android Chrome endpoint is authoritative for this start. Never
+  # replace it with managed Termux Chromium merely because a deployment recovery
+  # marker exists. If Playwright cannot attach, fail closed and preserve Chrome so
+  # the runtime defect is visible instead of silently changing browser environments.
+  if native_android_chrome_cdp_ready; then
+    browser_recovery_mode="preserve"
+  fi
   # HTTP CDP alone is insufficient. Prove the exact Playwright attach path used by
   # the managed worker. Ordinary starts/restarts preserve the authenticated browser
-  # and fail closed; only a freshly installed deployment token can allow one recycle.
+  # and fail closed; only a freshly installed deployment token may recycle the
+  # JobTomatik-managed Termux Chromium fallback.
   ensure_browser_playwright_ready "$browser_recovery_mode"
   # The PRoot manager owns API, worker, Beat and the attested static frontend. Native
   # Chromium remains outside PRoot and is crossed only through the localhost CDP
