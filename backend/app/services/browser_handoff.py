@@ -134,14 +134,13 @@ async def _connect_local_cdp(session: ManualHandoffSession):
     playwright = await manager.start()
     try:
         from app.services.browser_runtime import (
-            connect_retained_application_browser,
-            require_retained_application_browser_identity,
+            connect_verified_retained_application_browser,
         )
 
-        browser = await connect_retained_application_browser(playwright, endpoint)
-        require_retained_application_browser_identity(
+        browser = await connect_verified_retained_application_browser(
+            playwright,
+            endpoint,
             metadata.get("application_browser_identity"),
-            browser,
         )
     except Exception as exc:
         await playwright.stop()
