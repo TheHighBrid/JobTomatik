@@ -208,8 +208,9 @@ ensure_browser_playwright_ready() {
 
 consume_deployment_restart_marker() {
   # The marker is compatibility state only. It never authorizes browser recovery or
-  # provider substitution.
-  [[ -f "$DEPLOYMENT_RESTART_MARKER" ]] && rm -f "$DEPLOYMENT_RESTART_MARKER"
+  # provider substitution. rm -f is deliberately unconditional so an absent marker
+  # remains a successful no-op under set -e.
+  rm -f "$DEPLOYMENT_RESTART_MARKER"
 }
 
 supervisor_identity_matches() {
