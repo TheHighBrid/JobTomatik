@@ -172,6 +172,49 @@ async def test_worker_wrong_browser_rejects_before_tab_or_local_launch(monkeypat
     connect.assert_not_awaited()
 
 
+def test_application_browser_identity_is_safe_when_runtime_or_browser_is_missing():
+    assert browser_runtime.application_browser_identity(None) == {}
+    assert browser_runtime.application_browser_identity(SimpleNamespace(browser=None)) == {}
+
+
+def test_application_browser_identity_copies_verified_metadata():
+    identity = {"provider": "native_chrome", "browser_instance_id": "browser-1"}
+    runtime = SimpleNamespace(
+        browser=SimpleNamespace(_jobtomatik_application_browser_identity=identity)
+    )
+    observed = browser_runtime.application_browser_identity(runtime)
+    assert observed == identity
+    assert observed is not identity
+
+
+@pytest.mark.asyncio
+async def test_verified_retained_connector_enforces_recorded_lease(monkeypatch):
+    expected = {
+        "provider": "native_chrome",
+        "browser_instance_id": "browser-before",
+    }
+    browser = SimpleNamespace(
+        _jobtomatik_application_browser_identity={
+            "provider": "native_chrome",
+            "browser_instance_id": "browser-after",
+        }
+    )
+    connect = AsyncMock(return_value=browser)
+    monkeypatch.setattr(
+        browser_runtime,
+        "connect_retained_application_browser",
+        connect,
+    )
+
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="LEASE_CHANGED"):
+        await browser_runtime.connect_verified_retained_application_browser(
+            None,
+            ENDPOINT,
+            expected,
+        )
+    connect.assert_awaited_once_with(None, ENDPOINT)
+
+
 def test_retained_native_browser_lease_rejects_browser_restart_or_runtime_drift():
     expected = {
         "provider": "native_chrome",
