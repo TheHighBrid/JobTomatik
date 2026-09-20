@@ -2,7 +2,10 @@
 
 JobTomatik runs fully on one Android device without launching the Playwright Chromium binary inside Ubuntu PRoot.
 
-Chromium runs natively in Termux/X11. FastAPI and the authoritative Celery worker run in Ubuntu PRoot and attach to that browser over Chrome DevTools Protocol (CDP) through `127.0.0.1:9222`.
+The managed application route uses native Android Chrome. FastAPI and the authoritative
+Celery worker run in Ubuntu PRoot and attach to Chrome through an ADB-forwarded,
+loopback-only Chrome DevTools Protocol endpoint. New installs default to
+`127.0.0.1:9223`. An existing explicit localhost port may be preserved.
 
 ## Runtime contract
 
@@ -10,7 +13,7 @@ The managed Android runtime has one authoritative execution path:
 
 - API: `http://127.0.0.1:8010`
 - frontend: `http://127.0.0.1:3000`
-- native Chromium CDP: `http://127.0.0.1:9222`
+- native Android Chrome CDP: `http://127.0.0.1:9223` by default for new installs
 - managed Redis/Celery database: `redis://localhost:6379/1`
 - managed Celery hostname: `jobtomatik-android-<revision-prefix>@%h`
 - managed queues: `applications,celery,followup,scraping`
@@ -46,8 +49,9 @@ A visible `Apply` button on a LinkedIn job-detail page is not a human boundary. 
 
 ## Components
 
-- `backend/scripts/start_android_browser_cdp.sh` runs in native Termux. It keeps the authenticated Chromium profile alive, holds a Termux wake lock when available, rotates noisy browser logs, and automatically restarts Chromium if the browser process exits.
-- `backend/scripts/install_android_native_browser_launcher.sh` installs the native `jobtomatik` and `jobtomatik-browser` commands from inside Ubuntu PRoot without assuming where PRoot-Distro stores its root filesystem.
+- `backend/scripts/jobtomatik_termux_wrapper.sh` owns the managed Android bridge. It verifies native Chrome, selects an authorized ADB device, establishes the localhost forward without rebinding another listener, and refuses browser substitution.
+- `backend/scripts/start_android_browser_cdp.sh` remains a compatibility/diagnostic Termux Chromium launcher. The managed production application route does not invoke it for startup, recovery, or disconnect handling.
+- `backend/scripts/install_android_native_browser_launcher.sh` installs the native `jobtomatik` command and compatibility helper commands from inside Ubuntu PRoot without assuming where PRoot-Distro stores its root filesystem.
 - `backend/scripts/repair_android_database_url.py` replaces an unreachable localhost PostgreSQL URL with the Android SQLite database after backing up `backend/.env`. Remote PostgreSQL URLs and reachable local servers remain unchanged.
 - `backend/scripts/prepare_android_runtime.py` backs up an existing SQLite database when schema repair is needed, creates missing runtime tables, verifies critical discovery tables, and reports browser reachability.
 - `backend/scripts/manage_android_stack.sh` establishes the authoritative Android settings, repairs configuration and schema, binds exact runtime identity, starts Redis when necessary, and supervises FastAPI, Celery, and Vite through PID files and logs.
@@ -71,12 +75,9 @@ jobtomatik start
 
 Do not construct a path through `installed-rootfs` or `containers` manually. The installer executes inside the selected PRoot container and writes the native commands directly into the Termux executable prefix.
 
-This installs two native Termux commands:
-
-```text
-jobtomatik
-jobtomatik-browser
-```
+This installs the native `jobtomatik` stack command plus compatibility helper commands.
+For managed application execution, use `jobtomatik`. The `jobtomatik-browser`
+Termux Chromium helper is not a production application-browser fallback.
 
 ## Daily operation from native Termux
 
@@ -121,11 +122,9 @@ ANDROID_RUNTIME_ATTESTATION: READY
 
 `jobtomatik status` fails closed when the API is reachable but its live Phase 12 identity is stale, unattested, has the wrong process role, or does not match the current checkout. The worker is considered ready only after a real producer → `applications` queue → worker → Redis DB1 result round trip also proves the worker role and exact deployment attestation.
 
-The persistent authenticated browser profile remains at:
-
-```text
-$HOME/.jobtomatik-chromium
-```
+The authenticated native Chrome profile is owned by Android Chrome, not by JobTomatik.
+Do not copy a Termux Chromium profile into native Chrome and do not treat a browser
+profile directory as a recoverable handoff receipt.
 
 ## Ubuntu PRoot configuration
 
@@ -133,7 +132,8 @@ The Android stack manager enforces these runtime values on startup:
 
 ```env
 REDIS_URL=redis://localhost:6379/1
-APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9222
+APPLICATION_BROWSER_PROVIDER=native_chrome
+APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9223
 APPLICATION_BROWSER_HEADLESS=false
 APPLICATION_TARGET_HUMAN_WAIT_SECONDS=0
 JOBTOMATIK_RUNTIME_REVISION=<checked-out-commit>
@@ -151,13 +151,16 @@ For the database:
 - a reachable local PostgreSQL server is preserved
 - a remote PostgreSQL URL is preserved without a reachability probe
 
-When `APPLICATION_BROWSER_CDP_ENDPOINT` is set, JobTomatik:
+In the managed Android route, JobTomatik:
 
-- attaches to the already-running native browser
-- reuses its logged-in profile and open tabs
-- does not spawn the PRoot Playwright browser
-- does not terminate the native browser after an application task
-- preserves CDP-backed handoffs only when a genuine resumable boundary exists
+- requires `APPLICATION_BROWSER_PROVIDER=native_chrome`
+- verifies the endpoint belongs to `com.android.chrome` before application work
+- attaches to the already-running authenticated Chrome context
+- creates a fresh controlled application tab instead of commandeering an existing user tab
+- does not spawn the PRoot Playwright browser or Termux Chromium as a fallback
+- does not terminate native Chrome after an application task
+- binds retained handoffs to the browser instance, runtime revision, endpoint, and exact target when those lease fields are available
+- pauses rather than silently resuming if that native Chrome lease changes
 
 ## Full-stack shadow certification
 
@@ -175,13 +178,15 @@ A green Android runtime status does **not** create 4h, 8h, or 24h certification 
 
 ## Component-level commands
 
-Native browser only:
+Compatibility Termux Chromium diagnostics only, not the managed production application route:
 
 ```bash
 jobtomatik-browser status
-jobtomatik-browser restart
-jobtomatik-browser stop
 ```
+
+Do not use `jobtomatik-browser restart` or `jobtomatik-browser stop` as recovery for a
+managed application. A native Chrome disconnect is fail-closed and must reconnect to the
+same provider without substitution.
 
 PRoot managed application stack only:
 
@@ -214,17 +219,19 @@ $HOME/.jobtomatik-runtime/
 - A stale or unattested managed API is restarted rather than silently adopted.
 - A worker that cannot prove exact Phase 12 attestation through the real applications queue is not declared ready.
 - A caller-supplied expected revision that differs from the checked-out runtime revision stops the manager before API/worker startup.
-- The browser supervisor restarts native Chromium after an unexpected exit. JobTomatik waits briefly for the CDP endpoint to return.
+- Loss of native Chrome or its ADB transport pauses application browser work. The managed route never starts or recovers into Termux Chromium.
 - SQLite is backed up before missing critical tables are created by the Android runtime preflight. Only the newest three automatic schema backups are retained.
 - Browser logs rotate at a bounded size to avoid consuming the device's limited storage.
 - The native launcher never depends on a hard-coded PRoot-Distro storage layout.
 
 ## Safety
 
-The native Chromium process belongs to the operator, not JobTomatik. JobTomatik only disconnects its Playwright controller when a task finishes.
+Native Android Chrome belongs to the device user, not JobTomatik. JobTomatik only
+disconnects its controller or closes a JobTomatik-owned controlled tab when appropriate.
 
 The runtime manager never uses broad process matching to terminate arbitrary terminal sessions. Historical manual processes may remain visible, but the managed broker and API routing prevent them from participating in new application tasks.
 
 Runtime attestation proves exact code identity only. It cannot turn on real application submission, recruiter outreach, adapter maturity, supervised approval, or release authorization.
 
-Do not expose port `9222` to the public network. The remote-debugging address remains bound to `127.0.0.1`.
+Do not expose the configured CDP port to the LAN or public network. The managed native
+Chrome endpoint must remain loopback-only. New installs use port `9223` by default.
