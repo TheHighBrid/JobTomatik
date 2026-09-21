@@ -16,7 +16,10 @@ if str(BACKEND_ROOT) not in sys.path:
 from app import models as _models  # noqa: E402,F401
 from app.config import get_settings  # noqa: E402
 from app.database import Base, engine  # noqa: E402
-from app.services.application_recovery import recover_interrupted_application_attempts  # noqa: E402
+from app.services.application_recovery import (  # noqa: E402
+    recover_interrupted_application_attempts,
+    recover_orphaned_operator_final_submit_reviews,
+)
 from scripts.repair_android_runtime_secret import repair_android_runtime_secret  # noqa: E402
 
 CRITICAL_TABLES = {
@@ -86,19 +89,25 @@ def _browser_status() -> tuple[bool, str]:
 
 
 def _recover_abandoned_application_attempts() -> dict:
-    """Recover every attempt whose owning Android worker was replaced.
+    """Recover Android-owned dry-run work after the prior worker is gone.
 
-    The manager stops/retires old workers before this preflight runs. Any row still in
-    ``applying`` therefore has no worker that can legitimately finish it, regardless
-    of age. Dry runs remain fail-closed in review; live/unknown attempts remain
-    submission-uncertain.
+    The manager stops/retires old workers before this preflight runs. Known dry-run
+    ``applying`` checkpoints may therefore return to ``ready_to_apply``; live or
+    unknown attempts remain fail-closed. A final-submit review created by a dry run
+    but missing any active retained handoff is also safe to return to preparation,
+    provided no owner final-click checkpoint was ever consumed.
     """
     session_factory = sessionmaker(bind=engine)
     db = session_factory()
     try:
-        result = recover_interrupted_application_attempts(db)
+        interrupted = recover_interrupted_application_attempts(db)
+        orphaned = recover_orphaned_operator_final_submit_reviews(db)
         db.commit()
-        return result
+        return {
+            **interrupted,
+            "orphaned_final_handoffs_recovered": int(orphaned.get("recovered") or 0),
+            "orphaned_final_handoffs": orphaned,
+        }
     except Exception:
         db.rollback()
         raise
@@ -141,6 +150,10 @@ def main() -> int:
     else:
         print("Schema changes: none")
     print(f"ANDROID_INTERRUPTED_APPLICATIONS_RECOVERED={int(recovery.get('recovered') or 0)}")
+    print(
+        "ANDROID_ORPHANED_FINAL_HANDOFFS_RECOVERED="
+        f"{int(recovery.get('orphaned_final_handoffs_recovered') or 0)}"
+    )
 
     browser_ready, browser_detail = _browser_status()
     if browser_ready:
