@@ -18,6 +18,9 @@ from app.services.application_browser_contract import (
 from app.services.browser_runtime import probe_external_playwright_cdp
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_NATIVE_ENDPOINT = "http://127.0.0.1:9223"
+LEGACY_MANAGED_NATIVE_ENDPOINT = "http://127.0.0.1:9222"
+DEPLOYMENT_MIGRATION_ENV = "JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT"
 
 
 class ManagedBrowserSettings(Settings):
@@ -38,11 +41,16 @@ class ManagedBrowserSettings(Settings):
 
 def managed_browser_contract():
     settings = ManagedBrowserSettings(_env_file=BACKEND_ROOT / ".env")
-    # Only the launcher may initialize a missing endpoint. The worker fails closed
-    # if its endpoint is missing. Existing explicit endpoints are never migrated.
-    if not settings.application_browser_cdp_endpoint.strip():
+    endpoint = settings.application_browser_cdp_endpoint.strip()
+    migrate_legacy = os.environ.get(DEPLOYMENT_MIGRATION_ENV, "0") == "1"
+    # Only the launcher may initialize a missing endpoint. During the one bounded
+    # deployment restart, the previously managed 9222 default is also migrated to
+    # the native-Chrome 9223 transport. Other explicit endpoints remain untouched.
+    if not endpoint or (
+        migrate_legacy and endpoint == LEGACY_MANAGED_NATIVE_ENDPOINT
+    ):
         settings = settings.model_copy(
-            update={"application_browser_cdp_endpoint": "http://127.0.0.1:9223"}
+            update={"application_browser_cdp_endpoint": DEFAULT_NATIVE_ENDPOINT}
         )
     os.environ["JOBTOMATIK_RUNTIME_MODE"] = "android_managed"
     return application_browser_contract(settings)
