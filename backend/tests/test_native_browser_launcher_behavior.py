@@ -266,7 +266,7 @@ ensure_application_browser_endpoint
     assert result.returncode == 0
     assert "ANDROID_NATIVE_CHROME_LAUNCH_REQUESTED" in result.stdout
     assert "ANDROID_NATIVE_CHROME_CDP_READY" in result.stdout
-    assert "CHROME_LAUNCH" not in result.stdout
+    assert "CHROME_LAUNCH" not in result.stdout.splitlines()
 
 
 def test_new_forward_bootstraps_native_chrome_without_browser_substitution():
