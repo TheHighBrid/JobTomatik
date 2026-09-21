@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -72,6 +73,27 @@ def test_launcher_migrates_only_the_legacy_managed_endpoint_during_deployment(
 
     assert observed.provider == "native_chrome"
     assert observed.endpoint == expected_endpoint
+
+
+def test_launcher_does_not_leak_managed_runtime_mode(monkeypatch, tmp_path):
+    monkeypatch.setattr(launcher_contract, "BACKEND_ROOT", tmp_path)
+    monkeypatch.delenv("JOBTOMATIK_RUNTIME_MODE", raising=False)
+
+    observed = launcher_contract.managed_browser_contract()
+
+    assert observed.provider == "native_chrome"
+    assert observed.endpoint == ENDPOINT
+    assert "JOBTOMATIK_RUNTIME_MODE" not in os.environ
+
+
+def test_launcher_restores_preexisting_runtime_mode(monkeypatch, tmp_path):
+    monkeypatch.setattr(launcher_contract, "BACKEND_ROOT", tmp_path)
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "desktop_test")
+
+    observed = launcher_contract.managed_browser_contract()
+
+    assert observed.provider == "native_chrome"
+    assert os.environ["JOBTOMATIK_RUNTIME_MODE"] == "desktop_test"
 
 
 @pytest.mark.parametrize("provider", ["auto", "native_chrome"])
