@@ -19,6 +19,8 @@ from app.models.application import (
     ApplicationEvent,
     ApplicationStatus,
     ManualReviewReason,
+    ManualReviewStatus,
+    ManualReviewTask,
 )
 from app.models.notification import Notification, NotificationType
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
@@ -371,6 +373,129 @@ def recover_stale_application_attempt(
     }
 
 
+def recover_orphaned_operator_final_submit_reviews(
+    db,
+    *,
+    now: datetime | None = None,
+) -> Dict[str, Any]:
+    """Return safe orphaned final-submit dry runs to ``ready_to_apply``.
+
+    This recovery is deliberately narrow. It applies only when the application is
+    in ``needs_review`` with exactly one open operator-final-submit review, the
+    originating attempt is proven to be a dry run, no consumed operator final-click
+    checkpoint exists, and no active retained final-submit handoff remains.
+    """
+
+    from app.models.handoff import (
+        ACTIVE_HANDOFF_STATUSES,
+        HandoffChallengeType,
+        ManualHandoffSession,
+    )
+
+    normalized_now = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
+    applications = (
+        db.query(Application)
+        .filter(
+            Application.automation_state == ApplicationAutomationState.needs_review.value
+        )
+        .with_for_update()
+        .all()
+    )
+    results: list[Dict[str, Any]] = []
+
+    for application in applications:
+        reviews = (
+            db.query(ManualReviewTask)
+            .filter(
+                ManualReviewTask.application_id == application.id,
+                ManualReviewTask.status.in_([
+                    ManualReviewStatus.open.value,
+                    ManualReviewStatus.in_progress.value,
+                ]),
+            )
+            .order_by(ManualReviewTask.created_at.desc(), ManualReviewTask.id.desc())
+            .all()
+        )
+        if len(reviews) != 1:
+            continue
+        review = reviews[0]
+        if review.reason_code != ManualReviewReason.operator_final_submit_required.value:
+            continue
+        if _attempt_dry_run(db, application) is not True:
+            continue
+        if _operator_final_submit_checkpoint(db, application, now=normalized_now) is not None:
+            continue
+
+        active_handoff = (
+            db.query(ManualHandoffSession.id)
+            .filter(
+                ManualHandoffSession.application_id == application.id,
+                ManualHandoffSession.manual_review_id == review.id,
+                ManualHandoffSession.challenge_type == HandoffChallengeType.final_submit.value,
+                ManualHandoffSession.status.in_(ACTIVE_HANDOFF_STATUSES),
+            )
+            .first()
+        )
+        if active_handoff is not None:
+            continue
+
+        approvals = (
+            db.query(SubmissionApproval)
+            .filter(
+                SubmissionApproval.application_id == application.id,
+                SubmissionApproval.user_id == application.user_id,
+                SubmissionApproval.status == SubmissionApprovalStatus.active.value,
+            )
+            .all()
+        )
+        for approval in approvals:
+            metadata = dict(approval.approval_metadata or {})
+            if (
+                metadata.get("approval_source") == OPERATOR_ASSISTED_APPROVAL_SOURCE
+                and metadata.get("operator_final_click_required") is True
+            ):
+                approval.status = SubmissionApprovalStatus.revoked.value
+                approval.revoked_at = normalized_now
+                approval.approval_metadata = {
+                    **metadata,
+                    "revocation_reason": "orphaned_final_submit_handoff_recovered",
+                }
+
+        previous_state = normalize_state(application.automation_state)
+        review.status = ManualReviewStatus.resolved.value
+        review.resolved_at = normalized_now
+        review.resolution_notes = (
+            "Recovered automatically because the dry-run final-submit review had no "
+            "active retained handoff and no consumed final-click checkpoint."
+        )
+        transition_application_state(
+            db,
+            application,
+            ApplicationAutomationState.ready_to_apply,
+            "orphaned_operator_final_submit_review_recovered",
+            {
+                "review_id": review.id,
+                "dry_run": True,
+                "automatic_retry_allowed": True,
+                "reason": "retained_handoff_missing",
+            },
+        )
+        application.status = ApplicationStatus.pending
+        results.append({
+            "application_id": application.id,
+            "review_id": review.id,
+            "from_state": previous_state,
+            "target_state": ApplicationAutomationState.ready_to_apply.value,
+            "recovered": True,
+        })
+
+    return {
+        "checked": len(applications),
+        "recovered": len(results),
+        "applications": results,
+    }
+
+
 def recover_stale_application_attempts(
     db,
     *,
@@ -460,6 +585,7 @@ __all__ = [
     "RECOVERY_KIND",
     "RUNTIME_INTERRUPTION_KIND",
     "recover_interrupted_application_attempts",
+    "recover_orphaned_operator_final_submit_reviews",
     "recover_stale_application_attempt",
     "recover_stale_application_attempts",
 ]
