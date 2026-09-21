@@ -154,8 +154,14 @@ def recover_stale_application_attempt(
     now: datetime | None = None,
     timeout_minutes: int | None = None,
     force_interrupted: bool = False,
+    recover_dry_run_to_ready: bool = False,
 ) -> Dict[str, Any]:
-    """Recover one stale or explicitly interrupted attempt fail-closed."""
+    """Recover one stale or explicitly interrupted attempt fail-closed.
+
+    recover_dry_run_to_ready is a narrow liveness permission for callers that
+    have independently proved the owning worker is gone. It has no effect on live,
+    unknown, or operator-final-submit checkpoints.
+    """
 
     normalized_now = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
     timeout = max(
@@ -235,12 +241,22 @@ def recover_stale_application_attempt(
         "operator_final_submit_checkpoint": operator_checkpoint,
         "automatic_retry_allowed": (
             True
-            if force_interrupted and dry_run is True and operator_checkpoint is None
+            if (
+                force_interrupted
+                and recover_dry_run_to_ready
+                and dry_run is True
+                and operator_checkpoint is None
+            )
             else (False if operator_checkpoint else None)
         ),
     }
 
-    if force_interrupted and dry_run is True and operator_checkpoint is None:
+    if (
+        force_interrupted
+        and recover_dry_run_to_ready
+        and dry_run is True
+        and operator_checkpoint is None
+    ):
         transition_application_state(
             db,
             application,
@@ -422,6 +438,7 @@ def recover_interrupted_application_attempts(
             application,
             now=normalized_now,
             force_interrupted=True,
+            recover_dry_run_to_ready=True,
         )
         for application in applications
     ]

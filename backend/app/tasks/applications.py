@@ -652,6 +652,7 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
                     db,
                     interrupted,
                     force_interrupted=True,
+                    recover_dry_run_to_ready=True,
                 )
                 db.commit()
         except Exception:
