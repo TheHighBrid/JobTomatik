@@ -175,12 +175,12 @@ def connected_browser():
 
 
 @pytest.mark.asyncio
-async def test_attachment_pins_websocket_and_verifies_actual_connection(monkeypatch):
+async def test_attachment_uses_verified_http_endpoint_and_verifies_actual_connection(monkeypatch):
     monkeypatch.setattr(contract_module, "read_native_identity", AsyncMock(side_effect=[IDENTITY, IDENTITY]))
     browser, session = connected_browser()
     connect = AsyncMock(return_value=browser)
     result = await connect_native_browser(None, application_browser_contract(settings()), connect)
-    connect.assert_awaited_once_with(None, IDENTITY["webSocketDebuggerUrl"])
+    connect.assert_awaited_once_with(None, ENDPOINT)
     session.send.assert_awaited_once_with("Browser.getVersion")
     session.detach.assert_awaited_once()
     identity = result._jobtomatik_application_browser_identity
@@ -189,6 +189,29 @@ async def test_attachment_pins_websocket_and_verifies_actual_connection(monkeypa
     assert identity["transport"] == "adb_forwarded_cdp"
     assert identity["cdp_endpoint"] == ENDPOINT
     assert identity["browser_instance_id"] == BROWSER_INSTANCE_ID
+
+
+@pytest.mark.asyncio
+async def test_native_attachment_never_uses_discovered_browser_websocket(monkeypatch):
+    monkeypatch.setattr(
+        contract_module,
+        "read_native_identity",
+        AsyncMock(side_effect=[IDENTITY, IDENTITY]),
+    )
+    browser, _ = connected_browser()
+
+    async def http_only_connect(_playwright, endpoint):
+        assert endpoint == ENDPOINT
+        assert not endpoint.startswith(f"{CDP_WS_SCHEME}://")
+        return browser
+
+    result = await connect_native_browser(
+        None,
+        application_browser_contract(settings()),
+        http_only_connect,
+    )
+
+    assert result is browser
 
 
 @pytest.mark.asyncio
