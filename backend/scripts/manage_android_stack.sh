@@ -703,7 +703,7 @@ status_stack() {
     failed=1
   fi
 
-  if "$VENV/bin/python" "$BACKEND_ROOT/scripts/application_browser_contract.py" identity; then
+  if (cd "$BACKEND_ROOT" && "$VENV/bin/python" -m scripts.application_browser_contract identity); then
     echo "ANDROID_BROWSER_CDP: READY"
   else
     echo "ANDROID_BROWSER_CDP: DOWN"
@@ -738,7 +738,7 @@ status_stack() {
 
 configure_application_browser() {
   local fields
-  fields="$("$VENV/bin/python" "$BACKEND_ROOT/scripts/application_browser_contract.py" config)" || return 1
+  fields="$(cd "$BACKEND_ROOT" && "$VENV/bin/python" -m scripts.application_browser_contract config)" || return 1
   local -a contract
   mapfile -t contract <<< "$fields"
   [[ "${contract[0]:-}" == native_chrome && -n "${contract[1]:-}" ]] || return 1

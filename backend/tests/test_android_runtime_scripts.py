@@ -324,6 +324,22 @@ def test_standalone_acceptance_revalidates_selected_adb_device_binding():
     )
 
 
+def test_android_manager_invokes_browser_contract_as_backend_module():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        '"$VENV/bin/python" -m scripts.application_browser_contract identity'
+        in manager
+    )
+    assert (
+        '"$VENV/bin/python" -m scripts.application_browser_contract config'
+        in manager
+    )
+    assert "$BACKEND_ROOT/scripts/application_browser_contract.py" not in manager
+
+
 def test_runtime_sensitive_actions_fail_closed_on_python_environment_drift():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
