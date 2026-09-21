@@ -209,6 +209,33 @@ def test_fresh_attempt_is_not_recovered_by_periodic_stale_sweep(db_session):
     ).count() == 0
 
 
+def test_generic_forced_interruption_keeps_dry_run_fail_closed(db_session):
+    now = datetime.utcnow().replace(microsecond=0)
+    application = _make_application(
+        db_session,
+        suffix="generic-forced-dry",
+        now=now,
+        age_minutes=0,
+        dry_run=True,
+    )
+
+    result = recover_stale_application_attempt(
+        db_session,
+        application,
+        now=now,
+        force_interrupted=True,
+    )
+    db_session.commit()
+    db_session.refresh(application)
+
+    assert result["recovered"] is True
+    assert result["automatic_retry_allowed"] is None
+    assert application.automation_state == ApplicationAutomationState.needs_review.value
+    assert db_session.query(ManualReviewTask).filter(
+        ManualReviewTask.application_id == application.id,
+    ).count() == 1
+
+
 def test_managed_runtime_restart_recovers_fresh_dry_run_immediately(db_session):
     now = datetime.utcnow().replace(microsecond=0)
     application = _make_application(
@@ -227,13 +254,44 @@ def test_managed_runtime_restart_recovers_fresh_dry_run_immediately(db_session):
     assert result["recovered"] == 1
     assert result["dry_run_recovered"] == 1
     assert application.status == ApplicationStatus.pending
-    assert application.automation_state == ApplicationAutomationState.needs_review.value
-
-    review = db_session.query(ManualReviewTask).filter(
+    assert application.automation_state == ApplicationAutomationState.ready_to_apply.value
+    assert db_session.query(ManualReviewTask).filter(
         ManualReviewTask.application_id == application.id,
+    ).count() == 0
+
+    recovery = result["applications"][0]
+    assert recovery["runtime_interrupted"] is True
+    assert recovery["automatic_retry_allowed"] is True
+    assert recovery["target_state"] == ApplicationAutomationState.ready_to_apply.value
+
+    event = db_session.query(ApplicationEvent).filter(
+        ApplicationEvent.application_id == application.id,
+        ApplicationEvent.event_type == "runtime_interrupted_application_attempt_recovered",
     ).one()
-    assert (review.details or {})["kind"] == RUNTIME_INTERRUPTION_KIND
-    assert (review.details or {})["runtime_interrupted"] is True
+    assert event.from_state == ApplicationAutomationState.applying.value
+    assert event.to_state == ApplicationAutomationState.ready_to_apply.value
+    assert (event.payload or {})["kind"] == RUNTIME_INTERRUPTION_KIND
+    assert (event.payload or {})["automatic_retry_allowed"] is True
+
+
+def test_application_task_recovers_committed_checkpoint_before_retry():
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1] / "app" / "tasks" / "applications.py"
+    ).read_text(encoding="utf-8")
+    failure = source.split(
+        'logger.exception("submit_application_task failed")',
+        1,
+    )[1].split("finally:", 1)[0]
+
+    assert "recover_stale_application_attempt(" in failure
+    assert "force_interrupted=True" in failure
+    assert "recover_dry_run_to_ready=True" in failure
+    assert 'recovery.get("automatic_retry_allowed") is True' in failure
+    assert failure.index("recover_stale_application_attempt(") < failure.index(
+        "raise self.retry"
+    )
 
 
 def test_managed_runtime_restart_keeps_live_attempt_fail_closed(db_session):
