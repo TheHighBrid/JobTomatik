@@ -12,13 +12,12 @@ from app.services.browser_navigation import (
     now_iso,
 )
 from app.services.browser_runtime import (
-    retainable_application_browser_identity,
     launch_application_browser,
     release_application_browser,
+    retainable_application_browser_identity,
 )
 from app.services.employer_application_entry import continue_from_employer_landing
 from app.services.listing_availability import detect_closed_listing
-
 
 _RESUMABLE_TARGET_REASONS = {
     "captcha_detected",
@@ -199,6 +198,9 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                 challenge = await detect_blocking_challenge(page)
                 reason_code = str((challenge or {}).get("reason_code") or "")
                 if challenge and reason_code in _RESUMABLE_TARGET_REASONS:
+                    # Preserve the human boundary even if lease validation or
+                    # snapshot storage refuses to create a resumable handoff.
+                    retained = True
                     result.update({
                         "application_target_status": "requires_human",
                         "requires_manual_review": True,
@@ -220,7 +222,6 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                         snapshot_metadata["controlled_page_target_id"] = controlled_target_id
                     snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
                     result["handoff_snapshot"] = snapshot
-                    retained = True
                     log.append({
                         "action": "application_target_security_handoff_retained",
                         "reason_code": reason_code,
