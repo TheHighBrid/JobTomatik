@@ -12,13 +12,13 @@ from app.services.browser_navigation import (
     now_iso,
 )
 from app.services.browser_runtime import (
-    retainable_application_browser_identity,
     launch_application_browser,
+    preserve_external_application_page,
     release_application_browser,
+    retainable_application_browser_identity,
 )
 from app.services.employer_application_entry import continue_from_employer_landing
 from app.services.listing_availability import detect_closed_listing
-
 
 _RESUMABLE_TARGET_REASONS = {
     "captcha_detected",
@@ -209,7 +209,7 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                     # Preserve the exact security-boundary tab even if durable handoff
                     # metadata cannot be persisted. Never turn a recoverable human
                     # boundary into a destroyed browser page during cleanup.
-                    retained = True
+                    retained = preserve_external_application_page(runtime, log)
                     controlled_target_id = await _controlled_page_target_id(page)
                     snapshot_metadata = {
                         "dry_run": True,
@@ -227,6 +227,7 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                         snapshot_metadata["controlled_page_target_id"] = controlled_target_id
                     snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
                     result["handoff_snapshot"] = snapshot
+                    retained = True
                     log.append({
                         "action": "application_target_security_handoff_retained",
                         "reason_code": reason_code,

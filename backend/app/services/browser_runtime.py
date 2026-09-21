@@ -20,16 +20,13 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import async_playwright
-
 from app.config import get_settings
+from app.services import browser_runtime_base as _base
 from app.services.application_browser_contract import (
     BrowserContractError,
     application_browser_contract,
     connect_native_browser,
 )
-from app.services import browser_runtime_base as _base
 from app.services.browser_runtime_base import (
     BrowserRuntimeError,
     ExternalBrowserProcess,
@@ -40,6 +37,8 @@ from app.services.browser_runtime_base import (
     current_browser_node_id,
     handoff_storage_root,
 )
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import async_playwright
 
 for _name in dir(_base):
     if _name.startswith("__") or _name in globals():
@@ -166,19 +165,8 @@ def retainable_application_browser_identity(
     )
 
 
-def require_retained_application_browser_identity(
-    expected_identity: Any,
-    browser: Any,
-) -> None:
-    """Reject a retained native handoff if its browser lease changed."""
-
-    if not isinstance(expected_identity, dict) or not expected_identity:
-        # Historical handoffs predate browser-lease metadata. They retain the
-        # existing target/url safety checks instead of being made unreadable.
-        return
-    if expected_identity.get("provider") != "native_chrome":
-        return
-
+def _native_continuity_mode(expected_identity: dict[str, Any]) -> str:
+    """Require the identifier corresponding to the recorded continuity mode."""
     continuity_mode = str(expected_identity.get("continuity_mode") or "").strip()
     browser_instance_id = str(expected_identity.get("browser_instance_id") or "").strip()
     controlled_target_id = str(
@@ -196,11 +184,29 @@ def require_retained_application_browser_identity(
             "recovery is fail-closed."
         )
 
-    if continuity_mode not in {"browser_instance_id", "controlled_page_target_id"}:
+    identifiers = {
+        "browser_instance_id": browser_instance_id,
+        "controlled_page_target_id": controlled_target_id,
+    }
+    if not identifiers.get(continuity_mode):
         raise BrowserRuntimeError(
             "ANDROID_NATIVE_CHROME_LEASE_INCOMPLETE: retained native-Chrome handoff "
-            "has an unsupported continuity mode; recovery is fail-closed."
+            "has an unsupported or incomplete continuity mode; recovery is fail-closed."
         )
+    return continuity_mode
+
+
+def require_retained_application_browser_identity(
+    expected_identity: Any,
+    browser: Any,
+) -> None:
+    """Reject a retained native handoff if its browser lease changed."""
+
+    if not isinstance(expected_identity, dict) or not expected_identity:
+        return
+    if expected_identity.get("provider") != "native_chrome":
+        return
+    continuity_mode = _native_continuity_mode(expected_identity)
 
     observed = dict(
         getattr(browser, "_jobtomatik_application_browser_identity", {}) or {}
@@ -358,6 +364,17 @@ async def attach_retainable_browser(
     )
     setattr(runtime, _CONTROLLED_PAGE_OWNERSHIP_ATTR, bool(create_controlled_page))
     return runtime
+
+
+def preserve_external_application_page(runtime: Any, log: list) -> bool:
+    """Record external native page preservation before fallible snapshot work."""
+    preserve = (
+        getattr(runtime, "owns_process", None) is False
+        and application_browser_identity(runtime).get("provider") == "native_chrome"
+    )
+    if preserve:
+        log.append({"action": "controlled_application_page_preserved"})
+    return preserve
 
 
 async def controlled_page_target_id(page: Any) -> str:

@@ -16,10 +16,11 @@ from app.services.browser_navigation import (
     now_iso,
 )
 from app.services.browser_runtime import (
-    retainable_application_browser_identity,
     controlled_page_target_id,
     launch_application_browser,
+    preserve_external_application_page,
     release_application_browser,
+    retainable_application_browser_identity,
 )
 from app.services.control_engine import CONTROL_ENGINE_VERSION
 from app.services.employer_application_entry import continue_from_employer_landing
@@ -264,7 +265,7 @@ async def fill_and_submit_application_with_handoff(
                     # Once the exact filled page reaches a human boundary, cleanup must
                     # never destroy it merely because durable handoff metadata fails.
                     # Retain the controlled tab first, then attempt to persist the lease.
-                    retained = True
+                    retained = preserve_external_application_page(runtime, log)
                     controlled_target_id = await controlled_page_target_id(runtime.page)
                     snapshot_metadata = {
                         "dry_run": dry_run,
@@ -283,6 +284,7 @@ async def fill_and_submit_application_with_handoff(
                         snapshot_metadata["controlled_page_target_id"] = controlled_target_id
                     snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
                     result["handoff_snapshot"] = snapshot
+                    retained = True
                     log.append({
                         "action": "browser_handoff_retained",
                         "provider": snapshot["browser_provider"],

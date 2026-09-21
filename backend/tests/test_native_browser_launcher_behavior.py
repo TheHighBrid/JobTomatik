@@ -1,11 +1,10 @@
 """Execute real shell functions with all device/process effects stubbed."""
 import os
-from pathlib import Path
 import subprocess
 import tempfile
+from pathlib import Path
 
 import pytest
-
 
 WRAPPER = Path(__file__).resolve().parents[1] / "scripts/jobtomatik_termux_wrapper.sh"
 
@@ -266,7 +265,7 @@ ensure_application_browser_endpoint
     assert result.returncode == 0
     assert "ANDROID_NATIVE_CHROME_LAUNCH_REQUESTED" in result.stdout
     assert "ANDROID_NATIVE_CHROME_CDP_READY" in result.stdout
-    assert "CHROME_LAUNCH" not in result.stdout
+    assert "CHROME_LAUNCH" not in result.stdout.splitlines()
 
 
 def test_new_forward_bootstraps_native_chrome_without_browser_substitution():
@@ -331,7 +330,6 @@ ensure_application_browser_endpoint
 
 
 def test_native_chrome_bootstrap_never_force_stops_user_browser():
-    source = WRAPPER.read_text()
     helper = function("request_native_android_chrome_foreground")
     assert "shell am force-stop" not in helper
     assert "shell pm clear" not in helper

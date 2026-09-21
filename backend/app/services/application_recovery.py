@@ -373,127 +373,155 @@ def recover_stale_application_attempt(
     }
 
 
-def recover_orphaned_operator_final_submit_reviews(
-    db,
-    *,
-    now: datetime | None = None,
-) -> Dict[str, Any]:
-    """Return safe orphaned final-submit dry runs to ``ready_to_apply``.
+def _single_final_submit_review(db, application):
+    reviews = (
+        db.query(ManualReviewTask)
+        .filter(
+            ManualReviewTask.application_id == application.id,
+            ManualReviewTask.status.in_([
+                ManualReviewStatus.open.value, ManualReviewStatus.in_progress.value,
+            ]),
+        )
+        .all()
+    )
+    if len(reviews) == 1:
+        review = reviews[0]
+        if review.reason_code == ManualReviewReason.operator_final_submit_required.value:
+            return review
+    return None
 
-    This recovery is deliberately narrow. It applies only when the application is
-    in ``needs_review`` with exactly one open operator-final-submit review, the
-    originating attempt is proven to be a dry run, no consumed operator final-click
-    checkpoint exists, and no active retained final-submit handoff remains.
-    """
 
+def _legacy_closed_native_page(application) -> bool:
+    """Only the old identity exception without preservation evidence is retryable."""
+    entries = application.automation_log or []
+    if not isinstance(entries, list):
+        return False
+    entries = [entry for entry in entries if isinstance(entry, dict)]
+    preserved_actions = {
+        "controlled_application_page_preserved", "browser_handoff_retained",
+        "application_target_security_handoff_retained",
+    }
+    if any(entry.get("action") in preserved_actions for entry in entries):
+        return False
+    return any(
+        entry.get("action") == "error"
+        and "ANDROID_NATIVE_CHROME_RETAIN_IDENTITY_UNAVAILABLE" in str(entry.get("detail") or "")
+        for entry in entries
+    )
+
+
+def _final_submit_handoff_state(db, application, now: datetime) -> str:
     from app.models.handoff import (
         ACTIVE_HANDOFF_STATUSES,
         HandoffChallengeType,
         ManualHandoffSession,
     )
+    from app.services.handoff_session import _expire_if_needed
 
-    normalized_now = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
-    applications = (
-        db.query(Application)
+    sessions = (
+        db.query(ManualHandoffSession)
         .filter(
-            Application.automation_state == ApplicationAutomationState.needs_review.value
+            ManualHandoffSession.application_id == application.id,
+            ManualHandoffSession.challenge_type == HandoffChallengeType.final_submit.value,
         )
         .with_for_update()
         .all()
     )
-    results: list[Dict[str, Any]] = []
+    active = False
+    for session in sessions:
+        _expire_if_needed(db, session, now)
+        active = active or session.status in ACTIVE_HANDOFF_STATUSES
+    if active:
+        return "active"
+    return "terminal" if sessions else "missing"
 
+
+def _revoke_orphan_operator_approvals(db, application, now: datetime) -> None:
+    approvals = (
+        db.query(SubmissionApproval)
+        .filter(
+            SubmissionApproval.application_id == application.id,
+            SubmissionApproval.user_id == application.user_id,
+            SubmissionApproval.status == SubmissionApprovalStatus.active.value,
+        )
+        .all()
+    )
+    for approval in approvals:
+        metadata = dict(approval.approval_metadata or {})
+        if (
+            metadata.get("approval_source") == OPERATOR_ASSISTED_APPROVAL_SOURCE
+            and metadata.get("operator_final_click_required") is True
+        ):
+            approval.status = SubmissionApprovalStatus.revoked.value
+            approval.revoked_at = now
+            approval.approval_metadata = {
+                **metadata, "revocation_reason": "orphaned_final_submit_handoff_recovered",
+            }
+
+
+def _reconcile_terminal_final_submit(db, application, review, now: datetime) -> None:
+    review.status = ManualReviewStatus.resolved.value
+    review.resolved_at = now
+    review.resolution_notes = "Replaced unusable final-submit handoff with confirmation reconciliation."
+    create_manual_review_task(
+        db, application, ManualReviewReason.submission_confirmation_uncertain,
+        "The final-submit handoff ended. Verify submission evidence before preparing another application.",
+        details={"automatic_retry_allowed": False, "previous_review_id": review.id},
+        blocking_url=review.blocking_url,
+        target_state=ApplicationAutomationState.submission_uncertain,
+    )
+
+
+def recover_orphaned_operator_final_submit_reviews(
+    db,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Recover proven legacy closed tabs; reconcile terminal human-submit sessions."""
+    normalized_now = _naive_utc(now) or datetime.now(timezone.utc).replace(tzinfo=None)
+    applications = (
+        db.query(Application)
+        .filter(Application.automation_state == ApplicationAutomationState.needs_review.value)
+        .with_for_update()
+        .all()
+    )
+    results: list[dict[str, Any]] = []
     for application in applications:
-        reviews = (
-            db.query(ManualReviewTask)
-            .filter(
-                ManualReviewTask.application_id == application.id,
-                ManualReviewTask.status.in_([
-                    ManualReviewStatus.open.value,
-                    ManualReviewStatus.in_progress.value,
-                ]),
-            )
-            .order_by(ManualReviewTask.created_at.desc(), ManualReviewTask.id.desc())
-            .all()
-        )
-        if len(reviews) != 1:
+        review = _single_final_submit_review(db, application)
+        if review is None:
             continue
-        review = reviews[0]
-        if review.reason_code != ManualReviewReason.operator_final_submit_required.value:
+        handoff_state = _final_submit_handoff_state(db, application, normalized_now)
+        if handoff_state == "active":
             continue
-        if _attempt_dry_run(db, application) is not True:
+        checkpoint = _operator_final_submit_checkpoint(db, application, now=normalized_now)
+        if handoff_state == "terminal" or checkpoint is not None:
+            _revoke_orphan_operator_approvals(db, application, normalized_now)
+            _reconcile_terminal_final_submit(db, application, review, normalized_now)
             continue
-        if _operator_final_submit_checkpoint(db, application, now=normalized_now) is not None:
+        if _attempt_dry_run(db, application) is not True or not _legacy_closed_native_page(application):
             continue
-
-        active_handoff = (
-            db.query(ManualHandoffSession.id)
-            .filter(
-                ManualHandoffSession.application_id == application.id,
-                ManualHandoffSession.manual_review_id == review.id,
-                ManualHandoffSession.challenge_type == HandoffChallengeType.final_submit.value,
-                ManualHandoffSession.status.in_(ACTIVE_HANDOFF_STATUSES),
-            )
-            .first()
-        )
-        if active_handoff is not None:
-            continue
-
-        approvals = (
-            db.query(SubmissionApproval)
-            .filter(
-                SubmissionApproval.application_id == application.id,
-                SubmissionApproval.user_id == application.user_id,
-                SubmissionApproval.status == SubmissionApprovalStatus.active.value,
-            )
-            .all()
-        )
-        for approval in approvals:
-            metadata = dict(approval.approval_metadata or {})
-            if (
-                metadata.get("approval_source") == OPERATOR_ASSISTED_APPROVAL_SOURCE
-                and metadata.get("operator_final_click_required") is True
-            ):
-                approval.status = SubmissionApprovalStatus.revoked.value
-                approval.revoked_at = normalized_now
-                approval.approval_metadata = {
-                    **metadata,
-                    "revocation_reason": "orphaned_final_submit_handoff_recovered",
-                }
-
+        _revoke_orphan_operator_approvals(db, application, normalized_now)
         previous_state = normalize_state(application.automation_state)
         review.status = ManualReviewStatus.resolved.value
         review.resolved_at = normalized_now
-        review.resolution_notes = (
-            "Recovered automatically because the dry-run final-submit review had no "
-            "active retained handoff and no consumed final-click checkpoint."
-        )
+        review.resolution_notes = "Recovered the legacy native identity failure that closed the filled tab."
         transition_application_state(
-            db,
-            application,
-            ApplicationAutomationState.ready_to_apply,
+            db, application, ApplicationAutomationState.ready_to_apply,
             "orphaned_operator_final_submit_review_recovered",
-            {
-                "review_id": review.id,
-                "dry_run": True,
-                "automatic_retry_allowed": True,
-                "reason": "retained_handoff_missing",
-            },
+            {"review_id": review.id, "dry_run": True, "automatic_retry_allowed": True,
+             "reason": "legacy_native_identity_failure_closed_page"},
         )
         application.status = ApplicationStatus.pending
         results.append({
-            "application_id": application.id,
-            "review_id": review.id,
+            "application_id": application.id, "review_id": review.id,
             "from_state": previous_state,
             "target_state": ApplicationAutomationState.ready_to_apply.value,
             "recovered": True,
         })
-
-    return {
-        "checked": len(applications),
-        "recovered": len(results),
-        "applications": results,
-    }
+    # The configured session disables autoflush. Subsequent preflight queries must
+    # see resolved reviews and expired sessions in this same transaction.
+    db.flush()
+    return {"checked": len(applications), "recovered": len(results), "applications": results}
 
 
 def recover_stale_application_attempts(

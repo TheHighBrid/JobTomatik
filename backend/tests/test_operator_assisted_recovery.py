@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
+import pytest
 from app.models.application import (
     Application,
     ApplicationAutomationState,
@@ -9,7 +10,11 @@ from app.models.application import (
     ManualReviewStatus,
     ManualReviewTask,
 )
-from app.models.handoff import HandoffChallengeType, HandoffSessionStatus, ManualHandoffSession
+from app.models.handoff import (
+    HandoffChallengeType,
+    HandoffSessionStatus,
+    ManualHandoffSession,
+)
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.models.user import User
@@ -17,7 +22,6 @@ from app.services.application_recovery import (
     recover_orphaned_operator_final_submit_reviews,
     recover_stale_application_attempt,
 )
-
 
 OPERATOR_SOURCE = "authenticated_user_operator_assisted"
 
@@ -127,7 +131,7 @@ def _make_operator_final_submit_window(db_session, *, now: datetime):
 
 
 def test_periodic_stale_recovery_does_not_steal_active_operator_final_submit_window(db_session):
-    now = datetime.utcnow().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(tzinfo=None).replace(microsecond=0)
     application, handoff, approval = _make_operator_final_submit_window(db_session, now=now)
 
     result = recover_stale_application_attempt(
@@ -152,7 +156,7 @@ def test_periodic_stale_recovery_does_not_steal_active_operator_final_submit_win
 
 
 def test_expired_by_time_operator_handoff_recovers_to_submission_uncertain(db_session):
-    now = datetime.utcnow().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(tzinfo=None).replace(microsecond=0)
     application, handoff, approval = _make_operator_final_submit_window(db_session, now=now)
     handoff.expires_at = now - timedelta(minutes=1)
     db_session.commit()
@@ -184,7 +188,7 @@ def test_expired_by_time_operator_handoff_recovers_to_submission_uncertain(db_se
 
 
 def test_runtime_interruption_quarantines_operator_window_even_with_historical_dry_run(db_session):
-    now = datetime.utcnow().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(tzinfo=None).replace(microsecond=0)
     application, handoff, approval = _make_operator_final_submit_window(db_session, now=now)
 
     result = recover_stale_application_attempt(
@@ -238,6 +242,7 @@ def _make_orphaned_final_submit_review(db_session, *, now: datetime, with_handof
         submission_idempotency_key=f"operator-orphan:{suffix}",
         created_at=now,
     )
+    application.automation_log = [{"action": "error", "detail": "ANDROID_NATIVE_CHROME_RETAIN_IDENTITY_UNAVAILABLE"}]
     db_session.add(application)
     db_session.flush()
     db_session.add(ApplicationEvent(
@@ -287,7 +292,7 @@ def _make_orphaned_final_submit_review(db_session, *, now: datetime, with_handof
 
 
 def test_orphaned_operator_final_submit_dry_run_returns_to_ready_to_apply(db_session):
-    now = datetime.utcnow().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(tzinfo=None).replace(microsecond=0)
     application, review, _ = _make_orphaned_final_submit_review(
         db_session, now=now, with_handoff=False
     )
@@ -311,7 +316,7 @@ def test_orphaned_operator_final_submit_dry_run_returns_to_ready_to_apply(db_ses
 
 
 def test_orphan_recovery_does_not_touch_active_retained_final_submit_handoff(db_session):
-    now = datetime.utcnow().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(tzinfo=None).replace(microsecond=0)
     application, review, handoff = _make_orphaned_final_submit_review(
         db_session, now=now, with_handoff=True
     )
@@ -326,3 +331,62 @@ def test_orphan_recovery_does_not_touch_active_retained_final_submit_handoff(db_
     assert application.automation_state == ApplicationAutomationState.needs_review.value
     assert review.status == ManualReviewStatus.open.value
 
+
+
+@pytest.mark.parametrize("status", ["awaiting_user", "claimed", "expired", "completed", "cancelled", "failed"])
+def test_terminal_final_submit_handoff_requires_reconciliation(db_session, status):
+    now = datetime.now(timezone.utc).replace(tzinfo=None).replace(microsecond=0)
+    application, review, handoff = _make_orphaned_final_submit_review(db_session, now=now, with_handoff=True)
+    handoff.status = status
+    handoff.expires_at = now - timedelta(seconds=1)
+    db_session.commit()
+
+    result = recover_orphaned_operator_final_submit_reviews(db_session, now=now)
+
+    assert result["recovered"] == 0
+    assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
+    assert review.status == ManualReviewStatus.resolved.value
+    if status in ("awaiting_user", "claimed"):
+        assert handoff.status == HandoffSessionStatus.expired.value
+    uncertainty = db_session.query(ManualReviewTask).filter(
+        ManualReviewTask.application_id == application.id,
+        ManualReviewTask.reason_code == ManualReviewReason.submission_confirmation_uncertain.value,
+        ManualReviewTask.status == ManualReviewStatus.open.value,
+    ).one()
+    assert uncertainty.details["automatic_retry_allowed"] is False
+    assert recover_orphaned_operator_final_submit_reviews(db_session, now=now)["checked"] == 0
+
+
+@pytest.mark.parametrize("evidence", ["preserved", "snapshot", "unknown", "historical", "live", "extra_review"])
+def test_orphan_recovery_cannot_requeue_preserved_or_unproven_application(db_session, evidence):
+    now = datetime.now(timezone.utc).replace(tzinfo=None).replace(microsecond=0)
+    application, review, _ = _make_orphaned_final_submit_review(db_session, now=now)
+    if evidence in ("preserved", "snapshot"):
+        action = "controlled_application_page_preserved" if evidence == "preserved" else "browser_handoff_retained"
+        application.automation_log = [*application.automation_log, {"action": action}]
+    elif evidence == "unknown":
+        application.automation_log = []
+    elif evidence == "historical":
+        application.submission_attempt_count = 2
+    elif evidence == "live":
+        event = db_session.query(ApplicationEvent).filter(ApplicationEvent.application_id == application.id).one()
+        event.payload = {"attempt": 1, "dry_run": False}
+    else:
+        db_session.add(ManualReviewTask(application_id=application.id, reason_code="automation_error", summary="Other blocker"))
+    db_session.commit()
+
+    assert recover_orphaned_operator_final_submit_reviews(db_session, now=now)["recovered"] == 0
+    assert application.automation_state == ApplicationAutomationState.needs_review.value
+    assert review.status == ManualReviewStatus.open.value
+
+
+def test_orphan_recovery_flushes_resolved_reviews_and_is_idempotent(db_session):
+    now = datetime.now(timezone.utc).replace(tzinfo=None).replace(microsecond=0)
+    application, _, _ = _make_orphaned_final_submit_review(db_session, now=now)
+    db_session.autoflush = False
+    assert recover_orphaned_operator_final_submit_reviews(db_session, now=now)["recovered"] == 1
+    assert db_session.query(ManualReviewTask).filter(
+        ManualReviewTask.application_id == application.id,
+        ManualReviewTask.status == ManualReviewStatus.open.value,
+    ).count() == 0
+    assert recover_orphaned_operator_final_submit_reviews(db_session, now=now)["recovered"] == 0

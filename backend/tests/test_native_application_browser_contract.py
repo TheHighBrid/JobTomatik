@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-
 from app.services import application_browser_contract as contract_module
 from app.services import browser_runtime
 from app.services.application_browser_contract import (
@@ -16,8 +15,8 @@ from app.services.application_browser_contract import (
     connect_native_browser,
     validate_native_identity,
 )
-from scripts import application_browser_contract as launcher_contract
 
+from scripts import application_browser_contract as launcher_contract
 
 ENDPOINT = "http://127.0.0.1:9223"
 # Android Chrome exposes CDP as an unencrypted WebSocket only on the ADB-forwarded
@@ -448,3 +447,15 @@ def test_launcher_initializes_new_endpoint_without_changing_config(monkeypatch, 
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     assert launcher_contract.managed_browser_contract().endpoint == ENDPOINT
     assert not (tmp_path / ".env").exists()
+
+
+@pytest.mark.parametrize("lease", [
+    {"continuity_mode": "controlled_page_target_id", "browser_instance_id": "uuid"},
+    {"continuity_mode": "browser_instance_id", "controlled_page_target_id": "target"},
+    {"continuity_mode": "unknown", "controlled_page_target_id": "target"},
+])
+def test_retained_native_lease_requires_the_selected_identifier(lease):
+    expected = {"provider": "native_chrome", **lease}
+    browser = SimpleNamespace(_jobtomatik_application_browser_identity=expected)
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="LEASE_INCOMPLETE"):
+        browser_runtime.require_retained_application_browser_identity(expected, browser)
