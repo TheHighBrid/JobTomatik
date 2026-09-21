@@ -2,8 +2,10 @@
 
 A worker can disappear after the lifecycle is moved to ``applying``. Leaving the
 row there forever blocks every future attempt. Recovery never assumes that a
-live submission did or did not complete. Dry-run interruptions route to manual
-review; live or unknown interruptions route to ``submission_uncertain``.
+live submission did or did not complete. Periodic stale dry runs still route to
+manual review. A managed-runtime interruption may reset a known dry run directly to
+``ready_to_apply`` because that path never had final-submit authority; live or
+unknown interruptions remain ``submission_uncertain``.
 """
 
 from __future__ import annotations
@@ -20,7 +22,11 @@ from app.models.application import (
 )
 from app.models.notification import Notification, NotificationType
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
-from app.services.application_state import create_manual_review_task, normalize_state
+from app.services.application_state import (
+    create_manual_review_task,
+    normalize_state,
+    transition_application_state,
+)
 from app.services.operations_settings import get_operations_settings
 
 
@@ -213,6 +219,64 @@ def recover_stale_application_attempt(
     blocking_url = getattr(job, "url", None)
     job_title = getattr(job, "title", None) or f"Application {application.id}"
 
+    recovery_kind = RUNTIME_INTERRUPTION_KIND if force_interrupted else RECOVERY_KIND
+    details = {
+        "kind": recovery_kind,
+        "dry_run": dry_run,
+        "attempt_age_seconds": age_seconds,
+        "timeout_minutes": timeout,
+        "runtime_interrupted": bool(force_interrupted),
+        "submission_attempt_count": int(application.submission_attempt_count or 0),
+        "idempotency_key": application.submission_idempotency_key,
+        "recovered_at": normalized_now.replace(microsecond=0).isoformat() + "Z",
+        "operator_final_submit_checkpoint": operator_checkpoint,
+        "automatic_retry_allowed": (
+            True
+            if force_interrupted and dry_run is True and operator_checkpoint is None
+            else (False if operator_checkpoint else None)
+        ),
+    }
+
+    if force_interrupted and dry_run is True and operator_checkpoint is None:
+        transition_application_state(
+            db,
+            application,
+            ApplicationAutomationState.ready_to_apply,
+            "runtime_interrupted_application_attempt_recovered",
+            details,
+        )
+        application.status = ApplicationStatus.pending
+        db.add(Notification(
+            user_id=application.user_id,
+            type=NotificationType.system,
+            title=f"Dry-run application attempt recovered: {job_title}",
+            message=(
+                "The managed worker stopped during a dry-run application attempt. "
+                "No final-submit authority was active, so the application was safely "
+                "returned to ready-to-apply."
+            ),
+            data={
+                "kind": recovery_kind,
+                "application_id": application.id,
+                "job_id": application.job_id,
+                "dry_run": True,
+                "automatic_retry_allowed": True,
+            },
+        ))
+        return {
+            "application_id": application.id,
+            "recovered": True,
+            "dry_run": True,
+            "reason_code": None,
+            "target_state": ApplicationAutomationState.ready_to_apply.value,
+            "review_id": None,
+            "age_seconds": age_seconds,
+            "timeout_minutes": timeout,
+            "runtime_interrupted": True,
+            "operator_final_submit_checkpoint": None,
+            "automatic_retry_allowed": True,
+        }
+
     if dry_run is True:
         target_state = ApplicationAutomationState.needs_review
         reason_code = ManualReviewReason.automation_error
@@ -228,19 +292,6 @@ def recover_stale_application_attempt(
             "attempt. Verify the employer portal before any retry."
         )
 
-    recovery_kind = RUNTIME_INTERRUPTION_KIND if force_interrupted else RECOVERY_KIND
-    details = {
-        "kind": recovery_kind,
-        "dry_run": dry_run,
-        "attempt_age_seconds": age_seconds,
-        "timeout_minutes": timeout,
-        "runtime_interrupted": bool(force_interrupted),
-        "submission_attempt_count": int(application.submission_attempt_count or 0),
-        "idempotency_key": application.submission_idempotency_key,
-        "recovered_at": normalized_now.replace(microsecond=0).isoformat() + "Z",
-        "operator_final_submit_checkpoint": operator_checkpoint,
-        "automatic_retry_allowed": False if operator_checkpoint else None,
-    }
     review = create_manual_review_task(
         db,
         application,
@@ -351,8 +402,9 @@ def recover_interrupted_application_attempts(
 
     This is intentionally stronger than the periodic stale-attempt sweep. The Android
     runtime manager calls it only after retiring/stopping the workers that could own
-    those attempts, so no age grace period is appropriate. Live or unknown attempts
-    remain fail-closed as submission-uncertain rather than being made retryable.
+    those attempts, so no age grace period is appropriate. Known dry runs can safely
+    return to ready-to-apply because final submission was never authorized. Live or
+    unknown attempts remain fail-closed as submission-uncertain.
     """
     normalized_now = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
     applications = (
