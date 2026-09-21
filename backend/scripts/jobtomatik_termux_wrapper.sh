@@ -51,6 +51,33 @@ run_frontend_guard() {
     "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/android_frontend_guard.sh '$action'"
 }
 
+run_frontend_tab_refresh() {
+  run_stack_foreground refresh-frontend
+}
+
+recover_native_browser_after_stack_start() {
+  # Starting API/worker/frontend can take long enough for Android Chrome's DevTools
+  # socket to disappear after the preflight proof. Revalidate from the outer Termux
+  # layer, which is the only layer allowed to inspect ADB ownership and wake the
+  # existing user-owned Chrome profile.
+  ensure_application_browser_endpoint
+  run_stack_foreground configure-browser
+  ensure_browser_playwright_ready
+
+  if ! run_frontend_tab_refresh; then
+    echo "ANDROID_FRONTEND_TAB_REFRESH_RETRY_AFTER_NATIVE_CHROME_RECOVERY" >&2
+    ensure_application_browser_endpoint
+    run_stack_foreground configure-browser
+    ensure_browser_playwright_ready
+    run_frontend_tab_refresh
+  fi
+
+  # The refresh helper opens and closes its own CDP controller. Prove the transport
+  # is still healthy before acceptance so a transient detach cannot poison startup.
+  ensure_application_browser_endpoint
+  ensure_browser_playwright_ready
+}
+
 sanitize_runtime_pid_files() {
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
     "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/sanitize_android_runtime_pid_files.sh"
@@ -383,6 +410,7 @@ activate_stack() {
   # Chrome remains outside PRoot and is crossed only through the localhost CDP
   # protocol boundary.
   start_stack_detached "$action"
+  recover_native_browser_after_stack_start
   run_runtime_acceptance
   ensure_pilot_controller
 }
