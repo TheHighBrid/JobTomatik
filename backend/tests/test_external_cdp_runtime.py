@@ -27,9 +27,16 @@ class FakePage:
         self.url = url
         self.viewport = None
         self.closed = False
+        self.brought_to_front = 0
+        self.bring_to_front_error = None
 
     async def set_viewport_size(self, viewport):
         self.viewport = viewport
+
+    async def bring_to_front(self):
+        self.brought_to_front += 1
+        if self.bring_to_front_error is not None:
+            raise self.bring_to_front_error
 
     def is_closed(self):
         return self.closed
@@ -188,9 +195,45 @@ async def test_application_attachment_creates_new_controlled_page_when_browser_h
     assert runtime.page is context.created_pages[0]
     assert runtime.page.url == "about:blank"
     assert runtime.page.viewport == {"width": 900, "height": 700}
+    assert runtime.page.brought_to_front == 1
     assert first.url == "https://www.linkedin.com/feed/"
     assert second.url == "http://localhost:3000/applications/220"
     assert len(context.pages) == 3
+
+
+@pytest.mark.asyncio
+async def test_application_attachment_fails_closed_when_controlled_page_cannot_be_activated(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("HANDOFF_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", _noop_wait)
+    context = FakeContext([FakePage("https://www.linkedin.com/feed/")])
+    browser = FakeBrowser([context])
+    playwright = FakePlaywright(browser)
+
+    original_new_page = context.new_page
+
+    async def new_page_with_activation_failure():
+        page = await original_new_page()
+        page.bring_to_front_error = RuntimeError("target activation failed")
+        return page
+
+    context.new_page = new_page_with_activation_failure
+
+    with pytest.raises(
+        BrowserRuntimeError,
+        match="APPLICATION_BROWSER_CONTROLLED_PAGE_NOT_VISIBLE",
+    ):
+        await browser_runtime.attach_retainable_browser(
+            playwright,
+            cdp_endpoint="http://127.0.0.1:9222",
+            create_controlled_page=True,
+        )
+
+    assert len(context.created_pages) == 1
+    assert context.created_pages[0].brought_to_front == 1
+    assert context.created_pages[0].closed is True
 
 
 @pytest.mark.asyncio
