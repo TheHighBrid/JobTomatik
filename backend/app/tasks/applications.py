@@ -508,8 +508,11 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
         app.status = ApplicationStatus.applying
         app.submission_attempt_count = (app.submission_attempt_count or 0) + 1
         app.last_submission_attempt_at = datetime.utcnow()
-        attempt_number = app.submission_attempt_count
         db.commit()
+        # This worker owns an attempt only after its checkpoint is durable. If the
+        # commit fails and rolls back, the counter value may later be reused by
+        # another worker and must not be treated as this invocation's checkpoint.
+        attempt_number = app.submission_attempt_count
 
         raw = _ensure_application_method(job)
         method = raw.get("application_method", "manual")
@@ -654,6 +657,11 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
                     force_interrupted=True,
                     recover_dry_run_to_ready=True,
                 )
+                db.commit()
+            elif attempt_number is not None:
+                # claim_application_attempt_result records why this stale worker
+                # was rejected. Persist that audit event before retry closes the
+                # session, otherwise the evidence would be rolled back.
                 db.commit()
         except Exception:
             logger.exception(
