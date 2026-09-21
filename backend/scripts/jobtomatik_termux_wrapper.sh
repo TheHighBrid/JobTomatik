@@ -112,6 +112,18 @@ native_android_chrome_cdp_ready() {
   run_application_browser_contract identity
 }
 
+request_native_android_chrome_foreground() {
+  local serial="$1"
+  # Native Chrome is user-owned. Never force-stop it, clear data, or substitute
+  # another browser. A launcher intent is enough to start/foreground the existing
+  # authenticated profile so Android creates chrome_devtools_remote.
+  if ! adb -s "$serial" shell monkey     -p com.android.chrome     -c android.intent.category.LAUNCHER     1 >/dev/null 2>&1; then
+    echo "ANDROID_NATIVE_CHROME_LAUNCH_FAILED: could not start the existing com.android.chrome profile" >&2
+    return 1
+  fi
+  echo "ANDROID_NATIVE_CHROME_LAUNCH_REQUESTED"
+}
+
 ensure_application_browser_endpoint() {
   local fields
   fields="$(run_application_browser_contract config)" || return 1
@@ -194,8 +206,19 @@ ensure_application_browser_endpoint() {
       return 1
     fi
   fi
-  for _ in {1..4}; do
-    if native_android_chrome_cdp_ready; then return 0; fi
+  # The ADB bridge may be valid while Chrome itself is not currently running.
+  # Wake/foreground the existing Android Chrome profile, then wait for its DevTools
+  # socket to appear. This is a launch request only: no force-stop, data mutation,
+  # profile replacement, or Chromium fallback is permitted.
+  if ! request_native_android_chrome_foreground "$serial"; then
+    return 1
+  fi
+
+  for _ in {1..20}; do
+    if native_android_chrome_cdp_ready; then
+      echo "ANDROID_NATIVE_CHROME_CDP_READY"
+      return 0
+    fi
     sleep 0.25
   done
   echo "ANDROID_NATIVE_CHROME_CDP_REQUIRED: application browser paused; no Chromium fallback" >&2

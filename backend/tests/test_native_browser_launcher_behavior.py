@@ -234,3 +234,106 @@ browser_stub() { echo FORBIDDEN_BROWSER_STOP; }
     assert result.returncode == 0
     assert "PRESERVED_ON_STOP" in result.stdout
     assert "FORBIDDEN_BROWSER_STOP" not in result.stdout
+
+
+def test_missing_native_chrome_is_started_then_verified():
+    result = run(
+        function("request_native_android_chrome_foreground")
+        + function("ensure_application_browser_endpoint")
+        + """
+probe_count=0
+run_application_browser_contract() { printf 'native_chrome\\nhttp://127.0.0.1:9223\\n9223\\n'; }
+native_android_chrome_cdp_ready() {
+  probe_count=$((probe_count + 1))
+  [[ "$probe_count" -ge 3 ]]
+}
+sleep() { :; }
+adb() {
+  if [[ "$1" == devices ]]; then
+    printf 'List of devices attached\\nselected\\tdevice\\n'
+  elif [[ "$1" == forward && "$2" == --list ]]; then
+    printf 'selected tcp:9223 localabstract:chrome_devtools_remote\\n'
+  elif [[ "$1" == -s && "$2" == selected && "$3" == shell && "$4" == monkey ]]; then
+    printf 'CHROME_LAUNCH\\n'
+  else
+    echo "UNEXPECTED_ADB:$*" >&2
+    return 1
+  fi
+}
+ensure_application_browser_endpoint
+"""
+    )
+    assert result.returncode == 0
+    assert "ANDROID_NATIVE_CHROME_LAUNCH_REQUESTED" in result.stdout
+    assert "ANDROID_NATIVE_CHROME_CDP_READY" in result.stdout
+    assert "CHROME_LAUNCH" not in result.stdout
+
+
+def test_new_forward_bootstraps_native_chrome_without_browser_substitution():
+    result = run(
+        function("request_native_android_chrome_foreground")
+        + function("ensure_application_browser_endpoint")
+        + """
+probe_count=0
+run_application_browser_contract() { printf 'native_chrome\\nhttp://127.0.0.1:9223\\n9223\\n'; }
+native_android_chrome_cdp_ready() {
+  probe_count=$((probe_count + 1))
+  [[ "$probe_count" -ge 3 ]]
+}
+sleep() { :; }
+adb() {
+  if [[ "$1" == devices ]]; then
+    printf 'List of devices attached\\nselected\\tdevice\\n'
+  elif [[ "$1" == forward && "$2" == --list ]]; then
+    return 0
+  elif [[ "$1" == -s && "$2" == selected && "$3" == forward ]]; then
+    return 0
+  elif [[ "$1" == -s && "$2" == selected && "$3" == shell && "$4" == monkey ]]; then
+    return 0
+  else
+    echo "UNEXPECTED_ADB:$*" >&2
+    return 1
+  fi
+}
+ensure_application_browser_endpoint
+"""
+    )
+    assert result.returncode == 0
+    assert "ANDROID_NATIVE_CHROME_LAUNCH_REQUESTED" in result.stdout
+    assert "ANDROID_NATIVE_CHROME_CDP_READY" in result.stdout
+
+
+def test_native_chrome_launch_failure_stays_fail_closed():
+    result = run(
+        function("request_native_android_chrome_foreground")
+        + function("ensure_application_browser_endpoint")
+        + """
+run_application_browser_contract() { printf 'native_chrome\\nhttp://127.0.0.1:9223\\n9223\\n'; }
+native_android_chrome_cdp_ready() { return 1; }
+adb() {
+  if [[ "$1" == devices ]]; then
+    printf 'List of devices attached\\nselected\\tdevice\\n'
+  elif [[ "$1" == forward && "$2" == --list ]]; then
+    printf 'selected tcp:9223 localabstract:chrome_devtools_remote\\n'
+  elif [[ "$1" == -s && "$2" == selected && "$3" == shell && "$4" == monkey ]]; then
+    return 1
+  else
+    echo "UNEXPECTED_ADB:$*" >&2
+    return 1
+  fi
+}
+ensure_application_browser_endpoint
+"""
+    )
+    assert result.returncode != 0
+    assert "ANDROID_NATIVE_CHROME_LAUNCH_FAILED" in result.stderr
+    assert "Chromium" not in result.stdout
+
+
+def test_native_chrome_bootstrap_never_force_stops_user_browser():
+    source = WRAPPER.read_text()
+    helper = function("request_native_android_chrome_foreground")
+    assert "shell am force-stop" not in helper
+    assert "shell pm clear" not in helper
+    assert "com.android.chrome" in helper
+    assert "android.intent.category.LAUNCHER" in helper
