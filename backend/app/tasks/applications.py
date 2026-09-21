@@ -20,6 +20,7 @@ from app.models.job import Job
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.answer_policy import load_runtime_policies
+from app.services.application_recovery import recover_stale_application_attempt
 from app.services.application_state import (
     create_manual_review_task,
     has_sufficient_submission_evidence,
@@ -627,6 +628,45 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
     except Exception as exc:
         logger.exception("submit_application_task failed")
         db.rollback()
+
+        recovery = None
+        try:
+            interrupted = (
+                db.query(Application)
+                .filter(Application.id == application_id)
+                .with_for_update()
+                .first()
+            )
+            if interrupted is not None:
+                recovery = recover_stale_application_attempt(
+                    db,
+                    interrupted,
+                    force_interrupted=True,
+                )
+                db.commit()
+        except Exception:
+            logger.exception(
+                "submit_application_task failed while recovering its interrupted checkpoint"
+            )
+            db.rollback()
+            raise self.retry(exc=exc, countdown=60, max_retries=2)
+
+        if isinstance(recovery, dict) and recovery.get("automatic_retry_allowed") is True:
+            raise self.retry(exc=exc, countdown=5, max_retries=2)
+
+        if isinstance(recovery, dict) and recovery.get("recovered") is True:
+            return {
+                "success": False,
+                "dry_run": dry_run,
+                "application_id": application_id,
+                "error": (
+                    "Application task was interrupted and recovered fail-closed. "
+                    "A live or unknown attempt requires review before any retry."
+                ),
+                "requires_manual_review": bool(recovery.get("review_id")),
+                "recovery": recovery,
+            }
+
         raise self.retry(exc=exc, countdown=60, max_retries=2)
     finally:
         db.close()
