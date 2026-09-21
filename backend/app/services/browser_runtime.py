@@ -128,20 +128,42 @@ def application_browser_identity(runtime: Any) -> Dict[str, Any]:
     return dict(identity) if isinstance(identity, dict) else {}
 
 
-def retainable_application_browser_identity(runtime: Any) -> Dict[str, Any]:
-    """Return identity metadata only when a native handoff can detect Chrome restarts."""
+def retainable_application_browser_identity(
+    runtime: Any,
+    *,
+    controlled_page_target_id: str = "",
+) -> Dict[str, Any]:
+    """Return identity metadata with a restart-sensitive native continuity lease.
+
+    Desktop Chrome commonly exposes /devtools/browser/<uuid>. Some Android Chrome
+    builds expose only /devtools/browser. In that case the exact controlled top-level
+    target id is the continuity lease: it survives a CDP reconnect to the same live
+    browser target and changes or disappears across a browser restart.
+    """
 
     identity = application_browser_identity(runtime)
-    if (
-        identity.get("provider") == "native_chrome"
-        and not str(identity.get("browser_instance_id") or "")
-    ):
-        raise BrowserRuntimeError(
-            "ANDROID_NATIVE_CHROME_RETAIN_IDENTITY_UNAVAILABLE: native Chrome did not "
-            "expose a restart-sensitive /devtools/browser/<uuid> identifier; preserve "
-            "the application without creating a retained handoff."
-        )
-    return identity
+    if identity.get("provider") != "native_chrome":
+        return identity
+
+    if str(identity.get("browser_instance_id") or ""):
+        return {
+            **identity,
+            "continuity_mode": "browser_instance_id",
+        }
+
+    target_id = str(controlled_page_target_id or "").strip()
+    if target_id:
+        return {
+            **identity,
+            "continuity_mode": "controlled_page_target_id",
+            "controlled_page_target_id": target_id,
+        }
+
+    raise BrowserRuntimeError(
+        "ANDROID_NATIVE_CHROME_RETAIN_IDENTITY_UNAVAILABLE: native Chrome exposed "
+        "neither a restart-sensitive browser UUID nor a controlled page target id; "
+        "preserve the filled application page without creating a retained handoff."
+    )
 
 
 def require_retained_application_browser_identity(
@@ -156,23 +178,42 @@ def require_retained_application_browser_identity(
         return
     if expected_identity.get("provider") != "native_chrome":
         return
-    if not str(expected_identity.get("browser_instance_id") or ""):
+
+    continuity_mode = str(expected_identity.get("continuity_mode") or "").strip()
+    browser_instance_id = str(expected_identity.get("browser_instance_id") or "").strip()
+    controlled_target_id = str(
+        expected_identity.get("controlled_page_target_id") or ""
+    ).strip()
+
+    if browser_instance_id:
+        continuity_mode = continuity_mode or "browser_instance_id"
+    elif controlled_target_id:
+        continuity_mode = continuity_mode or "controlled_page_target_id"
+    else:
         raise BrowserRuntimeError(
             "ANDROID_NATIVE_CHROME_LEASE_INCOMPLETE: retained native-Chrome handoff "
-            "has no restart-sensitive browser instance id; recovery is fail-closed."
+            "has neither a browser instance id nor a controlled page target id; "
+            "recovery is fail-closed."
+        )
+
+    if continuity_mode not in {"browser_instance_id", "controlled_page_target_id"}:
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_LEASE_INCOMPLETE: retained native-Chrome handoff "
+            "has an unsupported continuity mode; recovery is fail-closed."
         )
 
     observed = dict(
         getattr(browser, "_jobtomatik_application_browser_identity", {}) or {}
     )
-    required_fields = (
+    required_fields = [
         "provider",
         "android_package",
         "transport",
         "cdp_endpoint",
-        "browser_instance_id",
         "runtime_revision",
-    )
+    ]
+    if continuity_mode == "browser_instance_id":
+        required_fields.append("browser_instance_id")
     changed = [
         field
         for field in required_fields
