@@ -52,8 +52,18 @@ def managed_browser_contract():
         settings = settings.model_copy(
             update={"application_browser_cdp_endpoint": DEFAULT_NATIVE_ENDPOINT}
         )
+    previous_runtime_mode = os.environ.get("JOBTOMATIK_RUNTIME_MODE")
     os.environ["JOBTOMATIK_RUNTIME_MODE"] = "android_managed"
-    return application_browser_contract(settings)
+    try:
+        return application_browser_contract(settings)
+    finally:
+        # The launcher needs managed semantics only while deriving this contract.
+        # Leaving the process environment mutated contaminates callers that import
+        # this helper, including the full pytest process and any future library use.
+        if previous_runtime_mode is None:
+            os.environ.pop("JOBTOMATIK_RUNTIME_MODE", None)
+        else:
+            os.environ["JOBTOMATIK_RUNTIME_MODE"] = previous_runtime_mode
 
 
 def main() -> int:

@@ -22,6 +22,7 @@ from app.models.user import User
 from app.services.answer_policy import load_runtime_policies
 from app.services.application_recovery import recover_stale_application_attempt
 from app.services.application_state import (
+    claim_application_attempt_result,
     create_manual_review_task,
     has_sufficient_submission_evidence,
     normalize_state,
@@ -106,7 +107,14 @@ def _manual_result(job: Job, dry_run: bool, reason: str, action: str = "manual_r
 
 def _sendgrid_email(to_email: str, subject: str, body: str, resume_path: str = "") -> Dict[str, Any]:
     from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Attachment, Disposition, FileContent, FileName, FileType, Mail
+    from sendgrid.helpers.mail import (
+        Attachment,
+        Disposition,
+        FileContent,
+        FileName,
+        FileType,
+        Mail,
+    )
 
     message = Mail(
         from_email=settings.from_email,
@@ -407,6 +415,7 @@ def generate_cover_letter_task(self, application_id: int):
 @celery_app.task(bind=True, name="app.tasks.applications.submit_application_task", queue="applications")
 def submit_application_task(self, application_id: int, dry_run: bool = True):
     db = SessionLocal()
+    attempt_number = None
     try:
         app = (
             db.query(Application)
@@ -489,17 +498,21 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
             db.commit()
             return result
 
+        checkpoint_attempt = (app.submission_attempt_count or 0) + 1
         transition_application_state(
             db,
             app,
             ApplicationAutomationState.applying,
             "application_attempt_started",
-            {"dry_run": dry_run, "attempt": app.submission_attempt_count + 1},
+            {"dry_run": dry_run, "attempt": checkpoint_attempt},
         )
         app.status = ApplicationStatus.applying
-        app.submission_attempt_count = (app.submission_attempt_count or 0) + 1
+        app.submission_attempt_count = checkpoint_attempt
         app.last_submission_attempt_at = datetime.utcnow()
         db.commit()
+        # This worker owns an attempt only after its checkpoint is durable. Keep
+        # the pre-commit value rather than re-reading an expired ORM attribute.
+        attempt_number = checkpoint_attempt
 
         raw = _ensure_application_method(job)
         method = raw.get("application_method", "manual")
@@ -631,11 +644,11 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
 
         recovery = None
         try:
+            # Only this invocation's checkpoint may be recovered. An early database
+            # failure or a late response must not reset another worker's attempt.
             interrupted = (
-                db.query(Application)
-                .filter(Application.id == application_id)
-                .with_for_update()
-                .first()
+                claim_application_attempt_result(db, application_id, attempt_number)
+                if attempt_number is not None else None
             )
             if interrupted is not None:
                 recovery = recover_stale_application_attempt(
@@ -644,6 +657,11 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
                     force_interrupted=True,
                     recover_dry_run_to_ready=True,
                 )
+                db.commit()
+            elif attempt_number is not None:
+                # claim_application_attempt_result records why this stale worker
+                # was rejected. Persist that audit event before retry closes the
+                # session, otherwise the evidence would be rolled back.
                 db.commit()
         except Exception:
             logger.exception(

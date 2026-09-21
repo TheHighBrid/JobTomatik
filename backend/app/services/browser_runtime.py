@@ -280,6 +280,18 @@ async def attach_retainable_browser(
         page = await context.new_page()
         if viewport:
             await page.set_viewport_size(viewport)
+        try:
+            # Application execution must control the visible Chrome tab. Creating a
+            # CDP target alone does not guarantee that the authenticated browser is
+            # showing that target to the operator.
+            await page.bring_to_front()
+        except Exception as exc:
+            with suppress(Exception):
+                await page.close(run_before_unload=False)
+            raise BrowserRuntimeError(
+                "APPLICATION_BROWSER_CONTROLLED_PAGE_NOT_VISIBLE: "
+                "could not activate the newly created application tab"
+            ) from exc
     else:
         context, page = await _select_context_page(
             browser,
