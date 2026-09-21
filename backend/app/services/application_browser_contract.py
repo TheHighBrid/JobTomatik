@@ -9,6 +9,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
+from uuid import UUID
 
 import httpx
 
@@ -126,6 +127,22 @@ async def read_native_identity(endpoint: str) -> dict[str, str]:
     return validate_native_identity(payload, identity_endpoint)
 
 
+def _native_browser_instance_id(websocket_url: str) -> str:
+    """Return Chrome's restart-sensitive browser UUID when discovery exposes one."""
+
+    path = urlparse(str(websocket_url or "")).path
+    prefix = "/devtools/browser/"
+    if not path.startswith(prefix):
+        return ""
+    candidate = path[len(prefix) :]
+    if not candidate or "/" in candidate:
+        return ""
+    try:
+        return str(UUID(candidate))
+    except (ValueError, AttributeError):
+        return ""
+
+
 async def connect_native_browser(playwright: Any, contract: ApplicationBrowserContract, connect: Any) -> Any:
     before = await read_native_identity(contract.endpoint)
     # Pin discovery to its returned websocket instead of asking Playwright to
@@ -141,7 +158,7 @@ async def connect_native_browser(playwright: Any, contract: ApplicationBrowserCo
         raise BrowserContractError("ANDROID_NATIVE_CHROME_CHANGED_DURING_ATTACH: application paused")
     if len(browser.contexts) != 1:
         raise BrowserContractError("ANDROID_NATIVE_CHROME_CONTEXT_AMBIGUOUS")
-    browser_instance_id = urlparse(before["webSocketDebuggerUrl"]).path.rsplit("/", 1)[-1]
+    browser_instance_id = _native_browser_instance_id(before["webSocketDebuggerUrl"])
     browser._jobtomatik_application_browser_identity = {
         "provider": "native_chrome",
         "transport": "adb_forwarded_cdp",

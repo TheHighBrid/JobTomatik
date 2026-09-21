@@ -124,6 +124,22 @@ def application_browser_identity(runtime: Any) -> Dict[str, Any]:
     return dict(identity) if isinstance(identity, dict) else {}
 
 
+def retainable_application_browser_identity(runtime: Any) -> Dict[str, Any]:
+    """Return identity metadata only when a native handoff can detect Chrome restarts."""
+
+    identity = application_browser_identity(runtime)
+    if (
+        identity.get("provider") == "native_chrome"
+        and not str(identity.get("browser_instance_id") or "")
+    ):
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_RETAIN_IDENTITY_UNAVAILABLE: native Chrome did not "
+            "expose a restart-sensitive /devtools/browser/<uuid> identifier; preserve "
+            "the application without creating a retained handoff."
+        )
+    return identity
+
+
 def require_retained_application_browser_identity(
     expected_identity: Any,
     browser: Any,
@@ -136,6 +152,11 @@ def require_retained_application_browser_identity(
         return
     if expected_identity.get("provider") != "native_chrome":
         return
+    if not str(expected_identity.get("browser_instance_id") or ""):
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_LEASE_INCOMPLETE: retained native-Chrome handoff "
+            "has no restart-sensitive browser instance id; recovery is fail-closed."
+        )
 
     observed = dict(
         getattr(browser, "_jobtomatik_application_browser_identity", {}) or {}
@@ -173,6 +194,34 @@ async def connect_verified_retained_application_browser(
     browser = await connect_retained_application_browser(playwright, endpoint)
     require_retained_application_browser_identity(expected_identity, browser)
     return browser
+
+
+async def open_verified_retained_application_context(
+    endpoint: str,
+    expected_identity: Any,
+) -> tuple[Any, Any, Any]:
+    """Open one verified retained browser context and own Playwright cleanup on failure."""
+
+    from playwright.async_api import async_playwright
+
+    manager = async_playwright()
+    playwright = await manager.start()
+    try:
+        browser = await connect_verified_retained_application_browser(
+            playwright,
+            endpoint,
+            expected_identity,
+        )
+        contexts = list(browser.contexts)
+        if not contexts:
+            raise BrowserRuntimeError("The retained browser has no active context.")
+        return playwright, browser, contexts[0]
+    except Exception:
+        try:
+            await playwright.stop()
+        except Exception:
+            pass
+        raise
 
 
 def external_browser_inventory(browser: Any) -> Dict[str, Any]:

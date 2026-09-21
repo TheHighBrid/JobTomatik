@@ -23,11 +23,12 @@ ENDPOINT = "http://127.0.0.1:9223"
 # loopback transport. Build the fixture from the scheme token so security scanners do
 # not mistake test-only local CDP samples for remotely deployable insecure sockets.
 CDP_WS_SCHEME = "ws"
+BROWSER_INSTANCE_ID = "4e7db6bc-2b5b-48d8-9acd-4a78d857cd1f"
 IDENTITY = {
     "Android-Package": "com.android.chrome",
     "Browser": "Chrome/152.0.7977.82",
     "User-Agent": "Mozilla/5.0 (Linux; Android 16) Chrome/152.0.7977.82",
-    "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://127.0.0.1:9223/devtools/browser",
+    "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://127.0.0.1:9223/devtools/browser/{BROWSER_INSTANCE_ID}",
 }
 
 
@@ -127,7 +128,7 @@ async def test_attachment_pins_websocket_and_verifies_actual_connection(monkeypa
     assert identity["provider"] == "native_chrome"
     assert identity["transport"] == "adb_forwarded_cdp"
     assert identity["cdp_endpoint"] == ENDPOINT
-    assert identity["browser_instance_id"]
+    assert identity["browser_instance_id"] == BROWSER_INSTANCE_ID
 
 
 @pytest.mark.asyncio
@@ -177,6 +178,29 @@ def test_application_browser_identity_is_safe_when_runtime_or_browser_is_missing
     assert browser_runtime.application_browser_identity(SimpleNamespace(browser=None)) == {}
 
 
+@pytest.mark.asyncio
+async def test_native_connection_without_browser_uuid_cannot_create_retainable_lease(monkeypatch):
+    identity_without_instance = {
+        **IDENTITY,
+        "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://127.0.0.1:9223/devtools/browser",
+    }
+    monkeypatch.setattr(
+        contract_module,
+        "read_native_identity",
+        AsyncMock(side_effect=[identity_without_instance, identity_without_instance]),
+    )
+    browser, _ = connected_browser()
+    connected = await connect_native_browser(
+        None,
+        application_browser_contract(settings()),
+        AsyncMock(return_value=browser),
+    )
+    runtime = SimpleNamespace(browser=connected)
+
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="RETAIN_IDENTITY_UNAVAILABLE"):
+        browser_runtime.retainable_application_browser_identity(runtime)
+
+
 def test_application_browser_identity_copies_verified_metadata():
     identity = {"provider": "native_chrome", "browser_instance_id": "browser-1"}
     runtime = SimpleNamespace(
@@ -213,6 +237,25 @@ async def test_verified_retained_connector_enforces_recorded_lease(monkeypatch):
             expected,
         )
     connect.assert_awaited_once_with(None, ENDPOINT)
+
+
+def test_retained_native_browser_lease_requires_restart_sensitive_instance_id():
+    expected = {
+        "provider": "native_chrome",
+        "transport": "adb_forwarded_cdp",
+        "android_package": "com.android.chrome",
+        "cdp_endpoint": ENDPOINT,
+        "runtime_revision": "abc1234",
+    }
+    browser = SimpleNamespace(
+        _jobtomatik_application_browser_identity={
+            **expected,
+            "browser_instance_id": BROWSER_INSTANCE_ID,
+        }
+    )
+
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="LEASE_INCOMPLETE"):
+        browser_runtime.require_retained_application_browser_identity(expected, browser)
 
 
 def test_retained_native_browser_lease_rejects_browser_restart_or_runtime_drift():

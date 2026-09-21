@@ -128,29 +128,19 @@ async def _connect_local_cdp(session: ManualHandoffSession):
     if not endpoint:
         raise BrowserHandoffUnavailable("The encrypted browser endpoint is missing or unreadable.")
 
-    from playwright.async_api import async_playwright
-
-    manager = async_playwright()
-    playwright = await manager.start()
     try:
         from app.services.browser_runtime import (
-            connect_verified_retained_application_browser,
+            open_verified_retained_application_context,
         )
 
-        browser = await connect_verified_retained_application_browser(
-            playwright,
+        playwright, browser, context = await open_verified_retained_application_context(
             endpoint,
             metadata.get("application_browser_identity"),
         )
     except Exception as exc:
-        await playwright.stop()
-        raise BrowserHandoffUnavailable("The retained application browser is unavailable or its identity changed; preserve the application.") from exc
-
-    contexts = list(browser.contexts)
-    if not contexts:
-        await playwright.stop()
-        raise BrowserHandoffUnavailable("The retained browser has no active context.")
-    context = contexts[0]
+        raise BrowserHandoffUnavailable(
+            "The retained application browser is unavailable or its identity changed; preserve the application."
+        ) from exc
     pages = list(context.pages)
     expected_url = str(session.current_url or binding.get("expected_url") or "")
     try:

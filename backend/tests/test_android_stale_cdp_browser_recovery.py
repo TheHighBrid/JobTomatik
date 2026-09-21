@@ -102,7 +102,7 @@ def test_ordinary_restart_preserves_browser_and_fails_closed_when_playwright_is_
 
     assert '"$BROWSER_COMMAND" restart' not in source
     assert '"$BROWSER_COMMAND" recover' not in restart_case
-    assert 'local recovery_mode="${1:-preserve}"' in recovery
+    assert "recovery_mode" not in recovery
     assert "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=preserve_browser_fail" in recovery
     assert '"$BROWSER_COMMAND" recover' not in source
 
@@ -117,17 +117,20 @@ def test_launcher_installation_arms_one_use_deployment_recovery_marker():
     )
 
 
-def test_restart_consumes_deployment_marker_before_allowing_single_recovery():
+def test_restart_consumes_deployment_marker_without_browser_recovery_authority():
     source = WRAPPER.read_text(encoding="utf-8")
-    consume = _function_body(source, "consume_deployment_browser_recovery_mode")
+    consume = _function_body(source, "consume_deployment_restart_marker")
     restart_case = source.split("  restart)\n", 1)[1].split("    ;;", 1)[0]
 
-    assert '[[ -f "$DEPLOYMENT_RESTART_MARKER" ]]' in consume
     assert 'rm -f "$DEPLOYMENT_RESTART_MARKER"' in consume
-    assert 'printf \'%s\\n\' "recover_once"' in consume
-    assert 'printf \'%s\\n\' "preserve"' in consume
-    assert 'browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"' in restart_case
-    assert 'activate_stack restart "$browser_recovery_mode"' in restart_case
+    assert "recover_once" not in consume
+    assert "preserve" not in consume
+    assert "consume_deployment_restart_marker" in restart_case
+    assert restart_case.index("consume_deployment_restart_marker") < restart_case.index(
+        "activate_stack restart"
+    )
+    assert "browser_recovery_mode" not in restart_case
+    assert '"$BROWSER_COMMAND" recover' not in restart_case
 
 
 def test_native_browser_recovery_waits_only_on_verified_supervisor_identity():
@@ -295,5 +298,5 @@ def test_already_running_start_never_enters_browser_recovery_path():
     assert "run_frontend_guard status" in start_case
     assert "run_runtime_acceptance" in start_case
     live_branch = start_case.split("else", 1)[0]
-    assert "consume_deployment_browser_recovery_mode" not in live_branch
+    assert "consume_deployment_restart_marker" not in live_branch
     assert '"$BROWSER_COMMAND" recover' not in live_branch
