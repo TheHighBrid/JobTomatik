@@ -202,10 +202,12 @@ async def open_verified_retained_application_context(
 ) -> tuple[Any, Any, Any]:
     """Open one verified retained browser context and own Playwright cleanup on failure."""
 
+    from playwright.async_api import Error as PlaywrightError
     from playwright.async_api import async_playwright
 
     manager = async_playwright()
     playwright = await manager.start()
+    connected = False
     try:
         browser = await connect_verified_retained_application_browser(
             playwright,
@@ -215,13 +217,14 @@ async def open_verified_retained_application_context(
         contexts = list(browser.contexts)
         if not contexts:
             raise BrowserRuntimeError("The retained browser has no active context.")
+        connected = True
         return playwright, browser, contexts[0]
-    except Exception:
-        try:
-            await playwright.stop()
-        except Exception:
-            pass
-        raise
+    finally:
+        if not connected:
+            try:
+                await playwright.stop()
+            except PlaywrightError:
+                pass
 
 
 def external_browser_inventory(browser: Any) -> Dict[str, Any]:

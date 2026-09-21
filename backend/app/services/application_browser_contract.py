@@ -139,7 +139,7 @@ def _native_browser_instance_id(websocket_url: str) -> str:
         return ""
     try:
         return str(UUID(candidate))
-    except (ValueError, AttributeError):
+    except ValueError:
         return ""
 
 

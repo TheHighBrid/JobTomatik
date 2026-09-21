@@ -7,19 +7,16 @@ import asyncio
 import json
 import os
 import sys
-from importlib import import_module
 from pathlib import Path
 from urllib.parse import urlparse
 
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
-if str(BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(BACKEND_ROOT))
+from app.config import Settings
+from app.services.application_browser_contract import (
+    application_browser_contract,
+    read_native_identity,
+)
 
-_config_module = import_module("app.config")
-_contract_module = import_module("app.services.application_browser_contract")
-Settings = _config_module.Settings
-application_browser_contract = _contract_module.application_browser_contract
-read_native_identity = _contract_module.read_native_identity
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 class ManagedBrowserSettings(Settings):

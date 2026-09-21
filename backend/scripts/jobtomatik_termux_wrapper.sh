@@ -94,7 +94,7 @@ PY"
 run_application_browser_contract() {
   local action="$1"
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python scripts/application_browser_contract.py '$action'"
+    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python -m scripts.application_browser_contract '$action'"
 }
 
 native_android_chrome_cdp_ready() {
