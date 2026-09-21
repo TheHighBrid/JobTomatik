@@ -394,3 +394,23 @@ def test_launcher_initializes_new_endpoint_without_changing_config(monkeypatch, 
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     assert launcher_contract.managed_browser_contract().endpoint == ENDPOINT
     assert not (tmp_path / ".env").exists()
+
+
+def test_handoff_preserves_controlled_page_before_native_retain_identity_validation():
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "services"
+        / "form_filler_handoff.py"
+    ).read_text(encoding="utf-8")
+    boundary = source.split("if _resumable_boundary(result):", 1)[1].split(
+        "finally:",
+        1,
+    )[0]
+
+    assert boundary.index("retained = True") < boundary.index(
+        "retainable_application_browser_identity(runtime)"
+    )
+    assert "retain_controlled_page=retained" in source
