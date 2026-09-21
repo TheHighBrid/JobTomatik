@@ -60,7 +60,11 @@ def _attempt_dry_run(db, application: Application) -> bool | None:
         return None
     payload = event.payload or {}
     attempt = payload.get("attempt")
-    if type(attempt) is not int or attempt != int(application.submission_attempt_count or 0):
+    if (
+        not isinstance(attempt, int)
+        or isinstance(attempt, bool)
+        or attempt != int(application.submission_attempt_count or 0)
+    ):
         return None
     value = payload.get("dry_run")
     return value if isinstance(value, bool) else None
