@@ -121,6 +121,7 @@ def test_android_wrapper_propagates_managed_runtime_and_static_frontend_modes_to
 
     assert "JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT='$migration_flag'" in foreground
 
+
 def test_android_manager_worker_readiness_does_not_depend_on_remote_inspect_or_live_status_dispatch():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
