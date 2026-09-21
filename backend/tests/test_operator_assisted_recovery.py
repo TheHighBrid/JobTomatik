@@ -13,7 +13,10 @@ from app.models.handoff import HandoffChallengeType, HandoffSessionStatus, Manua
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
 from app.models.user import User
-from app.services.application_recovery import recover_stale_application_attempt
+from app.services.application_recovery import (
+    recover_orphaned_operator_final_submit_reviews,
+    recover_stale_application_attempt,
+)
 
 
 OPERATOR_SOURCE = "authenticated_user_operator_assisted"
@@ -207,3 +210,119 @@ def test_runtime_interruption_quarantines_operator_window_even_with_historical_d
     ).one()
     assert (uncertain_review.details or {})["dry_run"] is None
     assert (uncertain_review.details or {})["automatic_retry_allowed"] is False
+
+
+def _make_orphaned_final_submit_review(db_session, *, now: datetime, with_handoff: bool = False):
+    suffix = "active" if with_handoff else "orphan"
+    user = User(
+        email=f"operator-orphan-{suffix}@example.test",
+        hashed_password="test-hash",
+        full_name="Operator Orphan Recovery",
+    )
+    job = Job(
+        external_id=f"operator-orphan-job-{suffix}",
+        title="Fraud Analyst",
+        company="Recovery Lever",
+        url=f"https://jobs.lever.co/recovery/orphan-{suffix}/apply",
+    )
+    db_session.add_all([user, job])
+    db_session.flush()
+
+    application = Application(
+        user_id=user.id,
+        job_id=job.id,
+        status=ApplicationStatus.pending,
+        automation_state=ApplicationAutomationState.needs_review.value,
+        submission_attempt_count=1,
+        last_submission_attempt_at=now,
+        submission_idempotency_key=f"operator-orphan:{suffix}",
+        created_at=now,
+    )
+    db_session.add(application)
+    db_session.flush()
+    db_session.add(ApplicationEvent(
+        application_id=application.id,
+        event_type="application_attempt_started",
+        from_state=ApplicationAutomationState.ready_to_apply.value,
+        to_state=ApplicationAutomationState.applying.value,
+        payload={"dry_run": True, "attempt": 1},
+        created_at=now,
+    ))
+    review = ManualReviewTask(
+        application_id=application.id,
+        reason_code=ManualReviewReason.operator_final_submit_required.value,
+        status=ManualReviewStatus.open.value,
+        summary="Owner final action required.",
+        blocking_url=job.url,
+    )
+    db_session.add(review)
+    db_session.flush()
+
+    handoff = None
+    if with_handoff:
+        handoff = ManualHandoffSession(
+            application_id=application.id,
+            manual_review_id=review.id,
+            user_id=user.id,
+            challenge_type=HandoffChallengeType.final_submit.value,
+            status=HandoffSessionStatus.awaiting_user.value,
+            idempotency_key=f"handoff:{application.id}:orphan-test",
+            resume_token_hash="hash",
+            encrypted_resume_token="encrypted",
+            resume_token_prefix="prefix",
+            browser_provider="local_cdp",
+            current_url=job.url,
+            current_fingerprint="fingerprint",
+            expires_at=now + timedelta(minutes=20),
+            handoff_metadata={"adapter": "lever"},
+        )
+        db_session.add(handoff)
+
+    db_session.commit()
+    db_session.refresh(application)
+    db_session.refresh(review)
+    if handoff is not None:
+        db_session.refresh(handoff)
+    return application, review, handoff
+
+
+def test_orphaned_operator_final_submit_dry_run_returns_to_ready_to_apply(db_session):
+    now = datetime.utcnow().replace(microsecond=0)
+    application, review, _ = _make_orphaned_final_submit_review(
+        db_session, now=now, with_handoff=False
+    )
+
+    result = recover_orphaned_operator_final_submit_reviews(db_session, now=now)
+    db_session.commit()
+    db_session.refresh(application)
+    db_session.refresh(review)
+
+    assert result["recovered"] == 1
+    assert application.automation_state == ApplicationAutomationState.ready_to_apply.value
+    assert application.status == ApplicationStatus.pending
+    assert review.status == ManualReviewStatus.resolved.value
+    event = db_session.query(ApplicationEvent).filter(
+        ApplicationEvent.application_id == application.id,
+        ApplicationEvent.event_type == "orphaned_operator_final_submit_review_recovered",
+    ).one()
+    assert event.from_state == ApplicationAutomationState.needs_review.value
+    assert event.to_state == ApplicationAutomationState.ready_to_apply.value
+    assert (event.payload or {})["automatic_retry_allowed"] is True
+
+
+def test_orphan_recovery_does_not_touch_active_retained_final_submit_handoff(db_session):
+    now = datetime.utcnow().replace(microsecond=0)
+    application, review, handoff = _make_orphaned_final_submit_review(
+        db_session, now=now, with_handoff=True
+    )
+
+    result = recover_orphaned_operator_final_submit_reviews(db_session, now=now)
+    db_session.commit()
+    db_session.refresh(application)
+    db_session.refresh(review)
+
+    assert handoff is not None
+    assert result["recovered"] == 0
+    assert application.automation_state == ApplicationAutomationState.needs_review.value
+    assert review.status == ManualReviewStatus.open.value
+
