@@ -209,6 +209,33 @@ def test_fresh_attempt_is_not_recovered_by_periodic_stale_sweep(db_session):
     ).count() == 0
 
 
+def test_generic_forced_interruption_keeps_dry_run_fail_closed(db_session):
+    now = datetime.utcnow().replace(microsecond=0)
+    application = _make_application(
+        db_session,
+        suffix="generic-forced-dry",
+        now=now,
+        age_minutes=0,
+        dry_run=True,
+    )
+
+    result = recover_stale_application_attempt(
+        db_session,
+        application,
+        now=now,
+        force_interrupted=True,
+    )
+    db_session.commit()
+    db_session.refresh(application)
+
+    assert result["recovered"] is True
+    assert result["automatic_retry_allowed"] is None
+    assert application.automation_state == ApplicationAutomationState.needs_review.value
+    assert db_session.query(ManualReviewTask).filter(
+        ManualReviewTask.application_id == application.id,
+    ).count() == 1
+
+
 def test_managed_runtime_restart_recovers_fresh_dry_run_immediately(db_session):
     now = datetime.utcnow().replace(microsecond=0)
     application = _make_application(
@@ -260,6 +287,7 @@ def test_application_task_recovers_committed_checkpoint_before_retry():
 
     assert "recover_stale_application_attempt(" in failure
     assert "force_interrupted=True" in failure
+    assert "recover_dry_run_to_ready=True" in failure
     assert 'recovery.get("automatic_retry_allowed") is True' in failure
     assert failure.index("recover_stale_application_attempt(") < failure.index(
         "raise self.retry"
