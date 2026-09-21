@@ -15,14 +15,24 @@ from app.services.application_browser_contract import (
     application_browser_contract,
     read_native_identity,
 )
+from app.services.browser_runtime import probe_external_playwright_cdp
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 class ManagedBrowserSettings(Settings):
     @classmethod
-    def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings):
-        # Match the env-sanitized API/worker, not unrelated caller shell exports.
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        # Pydantic requires the full override signature even though this launcher
+        # intentionally ignores caller-shell environment settings.
+        del settings_cls, env_settings
         return init_settings, dotenv_settings, file_secret_settings
 
 
@@ -31,7 +41,9 @@ def managed_browser_contract():
     # Only the launcher may initialize a missing endpoint. The worker fails closed
     # if its endpoint is missing. Existing explicit endpoints are never migrated.
     if not settings.application_browser_cdp_endpoint.strip():
-        settings = settings.model_copy(update={"application_browser_cdp_endpoint": "http://127.0.0.1:9223"})
+        settings = settings.model_copy(
+            update={"application_browser_cdp_endpoint": "http://127.0.0.1:9223"}
+        )
     os.environ["JOBTOMATIK_RUNTIME_MODE"] = "android_managed"
     return application_browser_contract(settings)
 
@@ -49,10 +61,16 @@ def main() -> int:
             print(urlparse(contract.endpoint).port)
         elif args.action == "identity":
             identity = asyncio.run(read_native_identity(contract.endpoint))
-            print(json.dumps({"provider": contract.provider, "endpoint": contract.endpoint, "android_package": identity["Android-Package"]}))
+            print(
+                json.dumps(
+                    {
+                        "provider": contract.provider,
+                        "endpoint": contract.endpoint,
+                        "android_package": identity["Android-Package"],
+                    }
+                )
+            )
         else:
-            from app.services.browser_runtime import probe_external_playwright_cdp
-
             # Probe uses the worker's settings and rejects a missing persisted
             # endpoint; prepare_stack persists defaults before actual worker start.
             proof = asyncio.run(probe_external_playwright_cdp(contract.endpoint))

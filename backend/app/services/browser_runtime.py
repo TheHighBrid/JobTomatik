@@ -15,9 +15,13 @@ This facade changes only the external Android CDP attachment contract:
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
+
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import async_playwright
 
 from app.config import get_settings
 from app.services.application_browser_contract import (
@@ -202,9 +206,6 @@ async def open_verified_retained_application_context(
 ) -> tuple[Any, Any, Any]:
     """Open one verified retained browser context and own Playwright cleanup on failure."""
 
-    from playwright.async_api import Error as PlaywrightError
-    from playwright.async_api import async_playwright
-
     manager = async_playwright()
     playwright = await manager.start()
     connected = False
@@ -221,10 +222,8 @@ async def open_verified_retained_application_context(
         return playwright, browser, contexts[0]
     finally:
         if not connected:
-            try:
+            with suppress(PlaywrightError):
                 await playwright.stop()
-            except PlaywrightError:
-                pass
 
 
 def external_browser_inventory(browser: Any) -> Dict[str, Any]:
@@ -377,8 +376,6 @@ async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:
     about choosing an application tab. Multiple retained pages are therefore
     reported as inventory rather than rejected as ambiguous.
     """
-
-    from playwright.async_api import async_playwright
 
     async with async_playwright() as playwright:
         normalized_endpoint, browser = await connect_external_playwright_browser(
