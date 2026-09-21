@@ -498,21 +498,21 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
             db.commit()
             return result
 
+        checkpoint_attempt = (app.submission_attempt_count or 0) + 1
         transition_application_state(
             db,
             app,
             ApplicationAutomationState.applying,
             "application_attempt_started",
-            {"dry_run": dry_run, "attempt": app.submission_attempt_count + 1},
+            {"dry_run": dry_run, "attempt": checkpoint_attempt},
         )
         app.status = ApplicationStatus.applying
-        app.submission_attempt_count = (app.submission_attempt_count or 0) + 1
+        app.submission_attempt_count = checkpoint_attempt
         app.last_submission_attempt_at = datetime.utcnow()
         db.commit()
-        # This worker owns an attempt only after its checkpoint is durable. If the
-        # commit fails and rolls back, the counter value may later be reused by
-        # another worker and must not be treated as this invocation's checkpoint.
-        attempt_number = app.submission_attempt_count
+        # This worker owns an attempt only after its checkpoint is durable. Keep
+        # the pre-commit value rather than re-reading an expired ORM attribute.
+        attempt_number = checkpoint_attempt
 
         raw = _ensure_application_method(job)
         method = raw.get("application_method", "manual")
