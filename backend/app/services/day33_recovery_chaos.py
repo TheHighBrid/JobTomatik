@@ -14,10 +14,6 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 from app.database import Base
 from app.models.application import (
     Application,
@@ -35,13 +31,15 @@ from app.services.dead_letter import (
     DEAD_LETTER_KEY,
     DeadLetterError,
     checkpoint_hash,
-    requeue_dead_letter,
     reopen_dead_letter_after_dispatch_failure,
+    requeue_dead_letter,
     route_task_to_dead_letter,
 )
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-
-DAY33_RECOVERY_POLICY_VERSION = "crash-recovery-chaos-v1"
+DAY33_RECOVERY_POLICY_VERSION = "crash-recovery-chaos-v2"
 FAILURE_MODES = (
     "process_crash",
     "worker_restart",
@@ -192,7 +190,8 @@ def _exercise_application_interruption(
         "idempotency_key_preserved": application.submission_idempotency_key == before_key,
         "submission_attempt_count_preserved": int(application.submission_attempt_count or 0) == before_attempts,
         "no_submission_event_created": terminal_submission_events == 0,
-        "one_manual_review_created": review_count == 1,
+        "expected_review_count": review_count == (0 if dry_run is True else 1),
+        "retry_policy_matches_mode": (result.get("automatic_retry_allowed") is True) == (dry_run is True),
         "repeat_recovery_is_noop": repeated.get("recovered") is False and repeated.get("reason") == "not_applying",
         "not_marked_submitted": recovered_state not in {
             ApplicationAutomationState.submitted.value,
@@ -210,7 +209,7 @@ def _exercise_application_interruption(
         "submission_attempt_count": int(application.submission_attempt_count or 0),
         "recovery_reason_code": result.get("reason_code"),
         "review_id": result.get("review_id"),
-        "automatic_retry_allowed": False,
+        "automatic_retry_allowed": result.get("automatic_retry_allowed") is True,
         "resume_performed": False,
         "checks": checks,
         "passed": all(checks.values()),
@@ -433,7 +432,7 @@ def run_day33_recovery_chaos_matrix() -> dict[str, Any]:
                 job=job,
                 mode="process_crash",
                 dry_run=True,
-                expected_state=ApplicationAutomationState.needs_review.value,
+                expected_state=ApplicationAutomationState.ready_to_apply.value,
                 now=now,
             ),
             _exercise_application_interruption(
@@ -462,7 +461,7 @@ def run_day33_recovery_chaos_matrix() -> dict[str, Any]:
                 job=job,
                 mode="device_reboot",
                 dry_run=True,
-                expected_state=ApplicationAutomationState.needs_review.value,
+                expected_state=ApplicationAutomationState.ready_to_apply.value,
                 now=now + timedelta(minutes=6),
             ),
         ]
@@ -487,13 +486,13 @@ def run_day33_recovery_chaos_matrix() -> dict[str, Any]:
             "no_status_corruption": all(
                 str(application.automation_state or "")
                 in {
-                    ApplicationAutomationState.needs_review.value,
+                    ApplicationAutomationState.ready_to_apply.value,
                     ApplicationAutomationState.submission_uncertain.value,
                 }
                 for application in all_applications
             ),
             "application_interruptions_fail_closed": all(
-                case.get("automatic_retry_allowed") is False
+                case.get("automatic_retry_allowed") is (case.get("dry_run") is True)
                 and case.get("resume_performed") is False
                 for case in application_cases
             ),

@@ -22,6 +22,7 @@ from app.models.user import User
 from app.services.answer_policy import load_runtime_policies
 from app.services.application_recovery import recover_stale_application_attempt
 from app.services.application_state import (
+    claim_application_attempt_result,
     create_manual_review_task,
     has_sufficient_submission_evidence,
     normalize_state,
@@ -106,7 +107,14 @@ def _manual_result(job: Job, dry_run: bool, reason: str, action: str = "manual_r
 
 def _sendgrid_email(to_email: str, subject: str, body: str, resume_path: str = "") -> Dict[str, Any]:
     from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Attachment, Disposition, FileContent, FileName, FileType, Mail
+    from sendgrid.helpers.mail import (
+        Attachment,
+        Disposition,
+        FileContent,
+        FileName,
+        FileType,
+        Mail,
+    )
 
     message = Mail(
         from_email=settings.from_email,
@@ -407,6 +415,7 @@ def generate_cover_letter_task(self, application_id: int):
 @celery_app.task(bind=True, name="app.tasks.applications.submit_application_task", queue="applications")
 def submit_application_task(self, application_id: int, dry_run: bool = True):
     db = SessionLocal()
+    attempt_number = None
     try:
         app = (
             db.query(Application)
@@ -499,6 +508,7 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
         app.status = ApplicationStatus.applying
         app.submission_attempt_count = (app.submission_attempt_count or 0) + 1
         app.last_submission_attempt_at = datetime.utcnow()
+        attempt_number = app.submission_attempt_count
         db.commit()
 
         raw = _ensure_application_method(job)
@@ -631,11 +641,11 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
 
         recovery = None
         try:
+            # Only this invocation's checkpoint may be recovered. An early database
+            # failure or a late response must not reset another worker's attempt.
             interrupted = (
-                db.query(Application)
-                .filter(Application.id == application_id)
-                .with_for_update()
-                .first()
+                claim_application_attempt_result(db, application_id, attempt_number)
+                if attempt_number is not None else None
             )
             if interrupted is not None:
                 recovery = recover_stale_application_attempt(

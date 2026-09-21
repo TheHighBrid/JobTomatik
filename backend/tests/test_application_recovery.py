@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.celery_app import celery_app
 from app.models.application import (
@@ -247,23 +247,21 @@ def test_managed_runtime_restart_recovers_fresh_dry_run_immediately(db_session):
     assert (event.payload or {})["automatic_retry_allowed"] is True
 
 
-def test_application_task_recovers_committed_checkpoint_before_retry():
-    from pathlib import Path
-
-    source = (
-        Path(__file__).resolve().parents[1] / "app" / "tasks" / "applications.py"
-    ).read_text(encoding="utf-8")
-    failure = source.split(
-        'logger.exception("submit_application_task failed")',
-        1,
-    )[1].split("finally:", 1)[0]
-
-    assert "recover_stale_application_attempt(" in failure
-    assert "force_interrupted=True" in failure
-    assert 'recovery.get("automatic_retry_allowed") is True' in failure
-    assert failure.index("recover_stale_application_attempt(") < failure.index(
-        "raise self.retry"
+def test_old_dry_run_event_cannot_authorize_current_unknown_attempt(db_session):
+    now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+    application = _make_application(
+        db_session, suffix="old-event", now=now, age_minutes=0, dry_run=True,
     )
+    application.submission_attempt_count = 2
+    db_session.commit()
+
+    result = recover_interrupted_application_attempts(db_session, now=now)
+    db_session.commit()
+    db_session.refresh(application)
+
+    assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
+    assert result["applications"][0]["automatic_retry_allowed"] is not True
+    assert result["applications"][0]["dry_run"] is None
 
 
 def test_managed_runtime_restart_keeps_live_attempt_fail_closed(db_session):

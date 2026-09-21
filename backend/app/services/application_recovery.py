@@ -29,7 +29,6 @@ from app.services.application_state import (
 )
 from app.services.operations_settings import get_operations_settings
 
-
 RECOVERY_KIND = "stale_application_attempt"
 RUNTIME_INTERRUPTION_KIND = "runtime_interrupted_application_attempt"
 OPERATOR_ASSISTED_APPROVAL_SOURCE = "authenticated_user_operator_assisted"
@@ -59,7 +58,11 @@ def _attempt_dry_run(db, application: Application) -> bool | None:
     event = _latest_attempt_event(db, application.id)
     if not event:
         return None
-    value = (event.payload or {}).get("dry_run")
+    payload = event.payload or {}
+    attempt = payload.get("attempt")
+    if type(attempt) is not int or attempt != int(application.submission_attempt_count or 0):
+        return None
+    value = payload.get("dry_run")
     return value if isinstance(value, bool) else None
 
 

@@ -22,21 +22,23 @@ def test_day33_chaos_matrix_exercises_all_required_failure_modes():
     assert len(report["report_sha256"]) == 64
 
 
-def test_application_interruptions_never_claim_submission_success_or_retry():
+def test_application_interruptions_only_allow_known_dry_run_retries():
     report = run_day33_recovery_chaos_matrix()
 
     expected = {
-        "process_crash": ApplicationAutomationState.needs_review.value,
+        "process_crash": ApplicationAutomationState.ready_to_apply.value,
         "worker_restart": ApplicationAutomationState.submission_uncertain.value,
         "browser_death": ApplicationAutomationState.submission_uncertain.value,
-        "device_reboot": ApplicationAutomationState.needs_review.value,
+        "device_reboot": ApplicationAutomationState.ready_to_apply.value,
     }
     for mode, expected_state in expected.items():
         case = _case(report, mode)
         assert case["domain"] == "application"
         assert case["actual_state"] == expected_state
         assert case["submission_attempt_count"] == 1
-        assert case["automatic_retry_allowed"] is False
+        assert case["automatic_retry_allowed"] is (mode in {"process_crash", "device_reboot"})
+        assert case["checks"]["expected_review_count"] is True
+        assert case["checks"]["retry_policy_matches_mode"] is True
         assert case["resume_performed"] is False
         assert case["checks"]["idempotency_key_preserved"] is True
         assert case["checks"]["submission_attempt_count_preserved"] is True
