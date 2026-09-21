@@ -261,6 +261,10 @@ async def fill_and_submit_application_with_handoff(
                         result["submitted_at"] = now_iso()
 
                 if _resumable_boundary(result):
+                    # Once the exact filled page reaches a human boundary, cleanup must
+                    # never destroy it merely because durable handoff metadata fails.
+                    # Retain the controlled tab first, then attempt to persist the lease.
+                    retained = True
                     controlled_target_id = await controlled_page_target_id(runtime.page)
                     snapshot_metadata = {
                         "dry_run": dry_run,
@@ -270,13 +274,15 @@ async def fill_and_submit_application_with_handoff(
                         "steps_completed": int(result.get("steps_completed") or 0),
                         "handoff_stage": "post_fill_security_boundary",
                         "supervised_target": dict(supervised_target or {}),
-                        "application_browser_identity": retainable_application_browser_identity(runtime),
+                        "application_browser_identity": retainable_application_browser_identity(
+                            runtime,
+                            controlled_page_target_id=controlled_target_id,
+                        ),
                     }
                     if controlled_target_id:
                         snapshot_metadata["controlled_page_target_id"] = controlled_target_id
                     snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
                     result["handoff_snapshot"] = snapshot
-                    retained = True
                     log.append({
                         "action": "browser_handoff_retained",
                         "provider": snapshot["browser_provider"],
