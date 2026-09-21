@@ -31,6 +31,36 @@ class BrowserHandoffUnavailable(BrowserHandoffError):
     pass
 
 
+async def _select_retained_page_with_target(
+    pages: list[Any],
+    *,
+    expected_url: str = "",
+    expected_target_id: str = "",
+) -> Any:
+    """Prefer the exact Chromium target lease before any URL-based fallback."""
+
+    target_id = str(expected_target_id or "").strip()
+    if target_id:
+        from app.services.browser_runtime import controlled_page_target_id
+
+        matches = []
+        for candidate in pages:
+            if await controlled_page_target_id(candidate) == target_id:
+                matches.append(candidate)
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise BrowserHandoffUnavailable(
+                "The retained browser exposed duplicate controlled target ids; "
+                "recovery is ambiguous."
+            )
+        raise BrowserHandoffUnavailable(
+            "The retained controlled Chrome target no longer exists; the browser "
+            "may have restarted and recovery is fail-closed."
+        )
+
+    return _select_retained_page(pages, expected_url)
+
 def _select_retained_page(pages: list[Any], expected_url: str = "") -> Any:
     """Select only an unambiguous retained page; never guess by tab order."""
     if not pages:
@@ -143,8 +173,17 @@ async def _connect_local_cdp(session: ManualHandoffSession):
         ) from exc
     pages = list(context.pages)
     expected_url = str(session.current_url or binding.get("expected_url") or "")
+    expected_target_id = str(
+        metadata.get("controlled_page_target_id")
+        or (metadata.get("application_browser_identity") or {}).get("controlled_page_target_id")
+        or ""
+    )
     try:
-        page = _select_retained_page(pages, expected_url)
+        page = await _select_retained_page_with_target(
+            pages,
+            expected_url=expected_url,
+            expected_target_id=expected_target_id,
+        )
     except BrowserHandoffUnavailable:
         await playwright.stop()
         raise

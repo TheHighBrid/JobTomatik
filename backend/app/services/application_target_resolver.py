@@ -206,6 +206,10 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                         "review_items": [challenge],
                         "retryable": False,
                     })
+                    # Preserve the exact security-boundary tab even if durable handoff
+                    # metadata cannot be persisted. Never turn a recoverable human
+                    # boundary into a destroyed browser page during cleanup.
+                    retained = True
                     controlled_target_id = await _controlled_page_target_id(page)
                     snapshot_metadata = {
                         "dry_run": True,
@@ -214,13 +218,15 @@ async def resolve_application_target_with_browser(source_url: str) -> Dict[str, 
                         "adapter": "listing_resolver",
                         "adapter_version": "2.3.0",
                         "reason_code": reason_code,
-                        "application_browser_identity": retainable_application_browser_identity(runtime),
+                        "application_browser_identity": retainable_application_browser_identity(
+                            runtime,
+                            controlled_page_target_id=controlled_target_id,
+                        ),
                     }
                     if controlled_target_id:
                         snapshot_metadata["controlled_page_target_id"] = controlled_target_id
                     snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
                     result["handoff_snapshot"] = snapshot
-                    retained = True
                     log.append({
                         "action": "application_target_security_handoff_retained",
                         "reason_code": reason_code,
