@@ -234,6 +234,58 @@ async def test_attachment_changes_reject_before_creating_application_page(monkey
 
 
 @pytest.mark.asyncio
+async def test_native_runtime_retries_transient_unavailable_discovery(monkeypatch):
+    monkeypatch.setattr(browser_runtime, "get_settings", settings)
+    browser, _ = connected_browser()
+    connect_native = AsyncMock(
+        side_effect=[
+            BrowserContractError(
+                "ANDROID_NATIVE_CHROME_UNAVAILABLE: preserve the application and reconnect the selected Chrome transport"
+            ),
+            BrowserContractError(
+                "ANDROID_NATIVE_CHROME_UNAVAILABLE: preserve the application and reconnect the selected Chrome transport"
+            ),
+            browser,
+        ]
+    )
+    sleep = AsyncMock()
+    monkeypatch.setattr(browser_runtime, "connect_native_browser", connect_native)
+    monkeypatch.setattr(browser_runtime.asyncio, "sleep", sleep)
+
+    endpoint, connected = await browser_runtime.connect_external_playwright_browser(
+        None,
+        cdp_endpoint=ENDPOINT,
+    )
+
+    assert endpoint == ENDPOINT
+    assert connected is browser
+    assert connect_native.await_count == 3
+    assert sleep.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_native_runtime_does_not_retry_identity_mismatch(monkeypatch):
+    monkeypatch.setattr(browser_runtime, "get_settings", settings)
+    connect_native = AsyncMock(
+        side_effect=BrowserContractError(
+            "ANDROID_NATIVE_CHROME_IDENTITY_MISMATCH: expected com.android.chrome; application paused"
+        )
+    )
+    sleep = AsyncMock()
+    monkeypatch.setattr(browser_runtime, "connect_native_browser", connect_native)
+    monkeypatch.setattr(browser_runtime.asyncio, "sleep", sleep)
+
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="IDENTITY_MISMATCH"):
+        await browser_runtime.connect_external_playwright_browser(
+            None,
+            cdp_endpoint=ENDPOINT,
+        )
+
+    connect_native.assert_awaited_once()
+    sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_worker_never_locally_launches_when_native_endpoint_is_missing(monkeypatch):
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
     monkeypatch.setattr(browser_runtime, "get_settings", lambda: settings("", "auto"))
