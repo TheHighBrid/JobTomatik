@@ -32,7 +32,6 @@ class BrowserHandoffUnavailable(BrowserHandoffError):
 
 
 async def _select_retained_page_with_target(
-    context: Any,
     pages: list[Any],
     *,
     expected_url: str = "",
@@ -181,7 +180,6 @@ async def _connect_local_cdp(session: ManualHandoffSession):
     )
     try:
         page = await _select_retained_page_with_target(
-            context,
             pages,
             expected_url=expected_url,
             expected_target_id=expected_target_id,
