@@ -41,4 +41,5 @@ def test_runtime_preflight_creates_critical_tables_and_recovers_interrupted_atte
     output = capsys.readouterr().out
     assert "JOBTOMATIK_RUNTIME_SCHEMA_READY" in output
     assert "ANDROID_INTERRUPTED_APPLICATIONS_RECOVERED=0" in output
+    assert "ANDROID_ORPHANED_FINAL_HANDOFFS_RECOVERED=0" in output
     assert "ANDROID_BROWSER_CDP_CONNECTED" in output
