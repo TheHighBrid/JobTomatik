@@ -261,6 +261,12 @@ async def fill_and_submit_application_with_handoff(
                         result["submitted_at"] = now_iso()
 
                 if _resumable_boundary(result):
+                    # Crossing a human-review boundary means the exact filled page is
+                    # itself valuable operator state. Preserve the controlled tab
+                    # before building durable handoff metadata so a native-Chrome
+                    # identity limitation cannot destroy the page the owner must
+                    # review. Durable handoff creation may still fail closed below.
+                    retained = True
                     controlled_target_id = await controlled_page_target_id(runtime.page)
                     snapshot_metadata = {
                         "dry_run": dry_run,
