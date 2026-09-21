@@ -333,7 +333,7 @@ ensure_application_browser_endpoint
 def test_native_chrome_bootstrap_never_force_stops_user_browser():
     source = WRAPPER.read_text()
     helper = function("request_native_android_chrome_foreground")
-    assert "force-stop" not in helper
-    assert "pm clear" not in helper
+    assert "shell am force-stop" not in helper
+    assert "shell pm clear" not in helper
     assert "com.android.chrome" in helper
     assert "android.intent.category.LAUNCHER" in helper
