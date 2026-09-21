@@ -180,6 +180,72 @@ def test_exception_before_checkpoint_cannot_reset_another_worker(
     assert retry.call_args.kwargs["countdown"] == 60
 
 
+def test_failed_checkpoint_commit_does_not_claim_reused_attempt(
+    task_case, db_session, monkeypatch
+):
+    application, retry = task_case
+    task_db = TestingSessionLocal()
+    real_commit = task_db.commit
+    real_rollback = task_db.rollback
+    other_worker_started = False
+
+    def fail_attempt_checkpoint_commit():
+        current = task_db.get(Application, application.id)
+        if (
+            not other_worker_started
+            and current is not None
+            and current.automation_state == "applying"
+            and current.submission_attempt_count == 1
+        ):
+            raise RuntimeError("checkpoint commit failed")
+        real_commit()
+
+    def rollback_then_start_other_worker():
+        nonlocal other_worker_started
+        real_rollback()
+        if other_worker_started:
+            return
+        other_worker_started = True
+        with TestingSessionLocal() as other_db:
+            current = other_db.get(Application, application.id)
+            current.automation_state = "applying"
+            current.status = ApplicationStatus.applying
+            current.submission_attempt_count = 1
+            other_db.add(
+                ApplicationEvent(
+                    application_id=current.id,
+                    event_type="application_attempt_started",
+                    from_state="ready_to_apply",
+                    to_state="applying",
+                    payload={"dry_run": True, "attempt": 1},
+                )
+            )
+            other_db.commit()
+
+    monkeypatch.setattr(task_db, "commit", fail_attempt_checkpoint_commit)
+    monkeypatch.setattr(task_db, "rollback", rollback_then_start_other_worker)
+    monkeypatch.setattr(applications, "SessionLocal", lambda: task_db)
+    fill = Mock(side_effect=AssertionError("failed checkpoint must not open a page"))
+    monkeypatch.setattr(applications, "fill_and_submit_application", fill)
+
+    with pytest.raises(Retry):
+        application_target_task_integration._ORIGINAL_RUN(application.id, dry_run=True)
+
+    db_session.expire_all()
+    current = db_session.get(Application, application.id)
+    assert current.automation_state == "applying"
+    assert current.status == ApplicationStatus.applying
+    assert current.submission_attempt_count == 1
+    assert (
+        db_session.query(ApplicationEvent)
+        .filter_by(event_type="runtime_interrupted_application_attempt_recovered")
+        .count()
+        == 0
+    )
+    assert retry.call_args.kwargs["countdown"] == 60
+    fill.assert_not_called()
+
+
 def test_late_exception_cannot_reset_newer_attempt(task_case, db_session, monkeypatch):
     application, _ = task_case
 
