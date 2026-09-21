@@ -111,22 +111,15 @@ def test_android_wrapper_propagates_managed_runtime_and_static_frontend_modes_to
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
+    foreground = wrapper.split("run_stack_foreground() {", 1)[1].split("\n}\n", 1)[0]
+    detached = wrapper.split("start_stack_detached() {", 1)[1].split("\n}\n", 1)[0]
 
-    foreground = (
-        "export JOBTOMATIK_RUNTIME_MODE=android_managed "
-        "JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && "
-        "bash backend/scripts/manage_android_stack.sh '$action'"
-    )
-    detached = (
-        "export JOBTOMATIK_RUNTIME_MODE=android_managed "
-        "JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && "
-        r"exec bash -c 'source \"\$0\" \"\$1\" && exec sleep infinity' "
-        "backend/scripts/manage_android_stack.sh '$action'"
-    )
+    for section in (foreground, detached):
+        assert "JOBTOMATIK_RUNTIME_MODE=android_managed" in section
+        assert "JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'" in section
+        assert "backend/scripts/manage_android_stack.sh" in section
 
-    assert foreground in wrapper
-    assert detached in wrapper
-
+    assert "JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT='$migration_flag'" in foreground
 
 def test_android_manager_worker_readiness_does_not_depend_on_remote_inspect_or_live_status_dispatch():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
