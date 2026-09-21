@@ -245,7 +245,7 @@ def test_android_manager_does_not_shell_source_the_secrets_env_file():
     assert '. "$ENV_FILE"' not in manager
 
 
-def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_refresh():
+def test_restart_preserves_browser_and_refreshes_frontend_only_after_post_stack_recovery():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
@@ -254,12 +254,38 @@ def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_re
     )
 
     assert 'activate_stack()' in wrapper
-    assert 'ensure_application_browser_endpoint' in wrapper
+    assert 'recover_native_browser_after_stack_start' in wrapper
+    assert 'run_frontend_tab_refresh' in wrapper
     assert '"$BROWSER_COMMAND" start' not in wrapper
     assert '"$BROWSER_COMMAND" restart' not in wrapper
-    assert "refresh_frontend_tabs" not in wrapper
     assert "refresh_frontend_runtime" in manager
     assert "refresh_android_jobtomatik_tabs.py" in manager
+
+    manager_start = manager.split("start_stack() {", 1)[1].split("\n}\n", 1)[0]
+    assert "refresh_frontend_runtime" not in manager_start
+    assert "refresh-frontend)" in manager
+
+    activate = wrapper.split("activate_stack() {", 1)[1].split("\n}\n", 1)[0]
+    assert activate.index('start_stack_detached "$action"') < activate.index(
+        "recover_native_browser_after_stack_start"
+    )
+    assert activate.index("recover_native_browser_after_stack_start") < activate.index(
+        "run_runtime_acceptance"
+    )
+
+    recovery = wrapper.split(
+        "recover_native_browser_after_stack_start() {", 1
+    )[1].split("\n}\n", 1)[0]
+    assert recovery.index("ensure_application_browser_endpoint") < recovery.index(
+        "ensure_browser_playwright_ready"
+    )
+    assert recovery.index("ensure_browser_playwright_ready") < recovery.index(
+        "run_frontend_tab_refresh"
+    )
+    assert recovery.rindex("ensure_browser_playwright_ready") > recovery.index(
+        "run_frontend_tab_refresh"
+    )
+
     restart_case = wrapper.split("restart)", 1)[1].split(";;", 1)[0]
     assert "activate_stack restart" in restart_case
 

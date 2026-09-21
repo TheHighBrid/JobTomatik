@@ -99,11 +99,28 @@ async def connect_external_playwright_browser(
     if contract.native:
         if endpoint != contract.endpoint:
             raise BrowserRuntimeError("ANDROID_NATIVE_CHROME_ENDPOINT_MISMATCH: retained or requested endpoint differs from managed configuration")
-        try:
-            browser = await connect_native_browser(playwright, contract, _connect_external_playwright_over_cdp)
-        except BrowserContractError as exc:
-            raise BrowserRuntimeError(str(exc)) from exc
-        return endpoint, browser
+
+        # Android Chrome can briefly drop /json/version while the app transitions
+        # between foreground/background or after a previous CDP controller detaches.
+        # Retry only the explicit UNAVAILABLE discovery state. Identity mismatch,
+        # browser drift, context ambiguity, and every other contract failure remain
+        # immediately fail-closed.
+        last_contract_error: BrowserContractError | None = None
+        for attempt in range(1, 5):
+            try:
+                browser = await connect_native_browser(
+                    playwright,
+                    contract,
+                    _connect_external_playwright_over_cdp,
+                )
+                return endpoint, browser
+            except BrowserContractError as exc:
+                last_contract_error = exc
+                if "ANDROID_NATIVE_CHROME_UNAVAILABLE" not in str(exc) or attempt >= 4:
+                    raise BrowserRuntimeError(str(exc)) from exc
+                await asyncio.sleep(0.5)
+
+        raise BrowserRuntimeError(str(last_contract_error or "ANDROID_NATIVE_CHROME_UNAVAILABLE"))
     await _wait_for_external_cdp_endpoint(endpoint)
     browser = await _connect_external_playwright_over_cdp(playwright, endpoint)
     return endpoint, browser
