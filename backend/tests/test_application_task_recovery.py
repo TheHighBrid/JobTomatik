@@ -213,6 +213,13 @@ def test_late_exception_cannot_reset_newer_attempt(task_case, db_session, monkey
         .count()
         == 0
     )
+    discarded = (
+        db_session.query(ApplicationEvent)
+        .filter_by(event_type="stale_application_worker_result_discarded")
+        .one()
+    )
+    assert discarded.payload["worker_attempt"] == 1
+    assert discarded.payload["active_attempt"] == 2
 
 
 def test_operator_prepare_retry_preserves_fill_only_scope(
