@@ -286,10 +286,8 @@ async def attach_retainable_browser(
             # showing that target to the operator.
             await page.bring_to_front()
         except Exception as exc:
-            try:
+            with suppress(Exception):
                 await page.close(run_before_unload=False)
-            except Exception:
-                pass
             raise BrowserRuntimeError(
                 "APPLICATION_BROWSER_CONTROLLED_PAGE_NOT_VISIBLE: "
                 "could not activate the newly created application tab"
