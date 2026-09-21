@@ -37,8 +37,12 @@ stop_pilot_controller() {
 
 run_stack_foreground() {
   local action="$1"
+  local migration_flag=0
+  if [[ "${JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT:-0}" == "1" ]]; then
+    migration_flag=1
+  fi
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' && bash backend/scripts/manage_android_stack.sh '$action'"
+    "cd '$PROOT_REPO' && export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE' JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT='$migration_flag' && bash backend/scripts/manage_android_stack.sh '$action'"
 }
 
 run_frontend_guard() {
@@ -93,8 +97,12 @@ PY"
 
 run_application_browser_contract() {
   local action="$1"
+  local migration_flag=0
+  if [[ "${JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT:-0}" == "1" ]]; then
+    migration_flag=1
+  fi
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO/backend'; .venv/bin/python -m scripts.application_browser_contract '$action'"
+    "set -e; cd '$PROOT_REPO/backend'; export JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT='$migration_flag'; .venv/bin/python -m scripts.application_browser_contract '$action'"
 }
 
 native_android_chrome_cdp_ready() {
@@ -207,9 +215,13 @@ ensure_browser_playwright_ready() {
 }
 
 consume_deployment_restart_marker() {
-  # The marker is compatibility state only. It never authorizes browser recovery or
-  # provider substitution. rm -f is deliberately unconditional so an absent marker
-  # remains a successful no-op under set -e.
+  # A completed native-launcher install authorizes one narrow configuration migration:
+  # the old managed 9222 default may move to 9223 before native Chrome is validated.
+  # This never authorizes provider substitution, browser recycling, or migration of
+  # any other explicit endpoint.
+  if [[ -f "$DEPLOYMENT_RESTART_MARKER" ]]; then
+    export JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT=1
+  fi
   rm -f "$DEPLOYMENT_RESTART_MARKER"
 }
 
@@ -391,7 +403,9 @@ case "$ACTION" in
     ;;
   acceptance)
     verify_backend_environment
-    native_android_chrome_cdp_ready
+    # Acceptance evidence is device-bound, not merely browser-package-bound. Recheck
+    # the exact selected ADB serial and forward before a PASS receipt can be written.
+    ensure_application_browser_endpoint
     run_stack_foreground status
     run_frontend_guard status
     run_runtime_acceptance
