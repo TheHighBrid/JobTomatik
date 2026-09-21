@@ -151,6 +151,7 @@ promotion_stack() {
   JOBTOMATIK_PROOT_REPO="$PROMOTION_REPO" \
   JOBTOMATIK_ANDROID_RUNTIME_DIR="$PROMOTION_RUNTIME_DIR" \
   JOBTOMATIK_ANDROID_BROWSER_PROFILE="$PROMOTION_BROWSER_PROFILE" \
+  JOBTOMATIK_REQUIRE_ISOLATED_BROWSER_PROFILE=1 \
   JOBTOMATIK_DEPLOYMENT_RESTART_MARKER="$PROMOTION_DEPLOYMENT_MARKER" \
   JOBTOMATIK_ANDROID_REDIS_URL="$PROMOTION_REDIS_URL" \
   JOBTOMATIK_BROWSER_COMMAND="$BROWSER_COMMAND" \
@@ -414,6 +415,10 @@ start_lane() {
   verify_installed_native_contracts
   prepare_lane
   verify_frozen_return_artifact
+  if ! promotion_stack browser-preflight; then
+    echo "Promotion browser isolation preflight failed; frozen lane remains untouched." >&2
+    exit 1
+  fi
   if ! promotion_stack stop; then
     echo "Unable to prove the prior promotion stack is stopped; leaving frozen lane untouched." >&2
     exit 1

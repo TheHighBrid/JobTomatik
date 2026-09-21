@@ -121,7 +121,7 @@ def test_android_browser_recycles_only_managed_graphics_contract_drift():
     browser = (BACKEND_ROOT / "scripts/start_android_browser_cdp.sh").read_text(
         encoding="utf-8"
     )
-    start_case = browser.split("  start)\n", 1)[1].split("    ;;", 1)[0]
+    start_case = browser.split("  start)\n", 1)[1].rsplit("\nesac", 1)[0]
 
     assert "process_has_exact_token" in browser
     assert "browser_graphics_contract_matches" in browser
@@ -232,7 +232,8 @@ def test_android_runtime_forces_nonblocking_automatic_application_entry():
     )
 
     assert "set_env_value APPLICATION_TARGET_HUMAN_WAIT_SECONDS '0'" in manager
-    assert "set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'" in manager
+    assert 'set_env_value APPLICATION_BROWSER_CDP_ENDPOINT "${contract[1]}"' in manager
+    assert 'set_env_value APPLICATION_BROWSER_PROVIDER "${contract[0]}"' in manager
 
 
 def test_android_manager_does_not_shell_source_the_secrets_env_file():
@@ -253,7 +254,8 @@ def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_re
     )
 
     assert 'activate_stack()' in wrapper
-    assert '"$BROWSER_COMMAND" start' in wrapper
+    assert 'ensure_application_browser_endpoint' in wrapper
+    assert '"$BROWSER_COMMAND" start' not in wrapper
     assert '"$BROWSER_COMMAND" restart' not in wrapper
     assert "refresh_frontend_tabs" not in wrapper
     assert "refresh_frontend_runtime" in manager
@@ -290,6 +292,52 @@ def test_android_update_syncs_and_attests_backend_environment_before_reexec():
     assert update_case.index("update_main") < update_case.index("sync_backend_environment")
     assert update_case.index("sync_backend_environment") < update_case.index("install_native_commands")
     assert update_case.index("install_native_commands") < update_case.index("exec ")
+
+
+def test_deployment_restart_propagates_one_bounded_legacy_endpoint_migration():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    installer = (
+        BACKEND_ROOT / "scripts/install_android_native_browser_launcher.sh"
+    ).read_text(encoding="utf-8")
+    consume = wrapper.split("consume_deployment_restart_marker() {", 1)[1].split(
+        "\n}\n", 1
+    )[0]
+
+    assert 'touch "$DEPLOYMENT_RESTART_MARKER"' in installer
+    assert '[[ -f "$DEPLOYMENT_RESTART_MARKER" ]]' in consume
+    assert "export JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT=1" in consume
+    assert "JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT='$migration_flag'" in wrapper
+    assert 'rm -f "$DEPLOYMENT_RESTART_MARKER"' in consume
+
+
+def test_standalone_acceptance_revalidates_selected_adb_device_binding():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    acceptance_case = wrapper.split("  acceptance)\n", 1)[1].split("    ;;", 1)[0]
+
+    assert "ensure_application_browser_endpoint" in acceptance_case
+    assert acceptance_case.index("ensure_application_browser_endpoint") < (
+        acceptance_case.index("run_runtime_acceptance")
+    )
+
+
+def test_android_manager_invokes_browser_contract_as_backend_module():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        '"$VENV/bin/python" -m scripts.application_browser_contract identity'
+        in manager
+    )
+    assert (
+        '"$VENV/bin/python" -m scripts.application_browser_contract config'
+        in manager
+    )
+    assert "$BACKEND_ROOT/scripts/application_browser_contract.py" not in manager
 
 
 def test_runtime_sensitive_actions_fail_closed_on_python_environment_drift():

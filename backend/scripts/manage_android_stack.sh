@@ -703,7 +703,7 @@ status_stack() {
     failed=1
   fi
 
-  if curl -fsS --max-time 2 'http://127.0.0.1:9222/json/version' 2>/dev/null | grep -q webSocketDebuggerUrl; then
+  if (cd "$BACKEND_ROOT" && "$VENV/bin/python" -m scripts.application_browser_contract identity); then
     echo "ANDROID_BROWSER_CDP: READY"
   else
     echo "ANDROID_BROWSER_CDP: DOWN"
@@ -736,6 +736,18 @@ status_stack() {
   return "$failed"
 }
 
+configure_application_browser() {
+  local fields
+  fields="$(cd "$BACKEND_ROOT" && "$VENV/bin/python" -m scripts.application_browser_contract config)" || return 1
+  local -a contract
+  mapfile -t contract <<< "$fields"
+  [[ "${contract[0]:-}" == native_chrome && -n "${contract[1]:-}" ]] || return 1
+  set_env_value APPLICATION_BROWSER_PROVIDER "${contract[0]}"
+  set_env_value APPLICATION_BROWSER_CDP_ENDPOINT "${contract[1]}"
+  export APPLICATION_BROWSER_PROVIDER="${contract[0]}"
+  export APPLICATION_BROWSER_CDP_ENDPOINT="${contract[1]}"
+}
+
 prepare_stack() {
   cd "$BACKEND_ROOT"
 
@@ -745,13 +757,12 @@ prepare_stack() {
   fi
 
   set_env_value REDIS_URL "$ANDROID_REDIS_URL"
-  set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
+  configure_application_browser
   set_env_value APPLICATION_BROWSER_HEADLESS 'false'
   set_env_value APPLICATION_TARGET_HUMAN_WAIT_SECONDS '0'
   repair_database_configuration
 
   export REDIS_URL="$ANDROID_REDIS_URL"
-  export APPLICATION_BROWSER_CDP_ENDPOINT='http://127.0.0.1:9222'
   export APPLICATION_BROWSER_HEADLESS='false'
   export APPLICATION_TARGET_HUMAN_WAIT_SECONDS='0'
   export JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION"
@@ -806,6 +817,9 @@ restart_stack() {
 }
 
 case "$ACTION" in
+  configure-browser)
+    configure_application_browser
+    ;;
   start)
     start_stack
     ;;
@@ -819,7 +833,7 @@ case "$ACTION" in
     status_stack
     ;;
   *)
-    echo "Usage: $0 [start|restart|stop|status]" >&2
+    echo "Usage: $0 [start|restart|stop|status|configure-browser]" >&2
     exit 2
     ;;
 esac

@@ -99,6 +99,7 @@ def test_promotion_lane_isolates_runtime_browser_broker_and_transient_control_st
     _require_contains(source, "FLUSHDB")
     _require_contains(source, "promotion-redis.rdb")
     _require_contains(source, "JOBTOMATIK_ANDROID_BROWSER_PROFILE=\"$PROMOTION_BROWSER_PROFILE\"")
+    _require_contains(source, "JOBTOMATIK_REQUIRE_ISOLATED_BROWSER_PROFILE=1")
     _require_contains(source, "JOBTOMATIK_ANDROID_RUNTIME_DIR=\"$PROMOTION_RUNTIME_DIR\"")
     _require_contains(source, "archive_shared_control_dir")
     _require_contains(source, "pilot-control-archives")
@@ -118,7 +119,9 @@ def test_start_proves_frozen_rollback_before_stopping_frozen_lane_and_requires_a
     start = _function(source, "start_lane", "stop_lane")
 
     _require_before(start, "verify_installed_native_contracts", "prepare_lane")
-    _require_before(start, "verify_frozen_return_artifact", "frozen_stack stop")
+    _require_before(start, "verify_frozen_return_artifact", "promotion_stack browser-preflight")
+    _require_before(start, "promotion_stack browser-preflight", "frozen_stack stop")
+    _require_contains(start, "frozen lane remains untouched")
     _require_before(start, "frozen_stack stop", "start_promotion_redis")
     _require_before(start, "start_promotion_redis", "promotion_stack start")
     _require_contains(start, "promotion_stack acceptance")

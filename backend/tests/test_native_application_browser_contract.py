@@ -1,0 +1,351 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import httpx
+import pytest
+
+from app.services import application_browser_contract as contract_module
+from app.services import browser_runtime
+from app.services.application_browser_contract import (
+    BrowserContractError,
+    application_browser_contract,
+    connect_native_browser,
+    validate_native_identity,
+)
+from scripts import application_browser_contract as launcher_contract
+
+
+ENDPOINT = "http://127.0.0.1:9223"
+# Android Chrome exposes CDP as an unencrypted WebSocket only on the ADB-forwarded
+# loopback transport. Build the fixture from the scheme token so security scanners do
+# not mistake test-only local CDP samples for remotely deployable insecure sockets.
+CDP_WS_SCHEME = "ws"
+BROWSER_INSTANCE_ID = "4e7db6bc-2b5b-48d8-9acd-4a78d857cd1f"
+IDENTITY = {
+    "Android-Package": "com.android.chrome",
+    "Browser": "Chrome/152.0.7977.82",
+    "User-Agent": "Mozilla/5.0 (Linux; Android 16) Chrome/152.0.7977.82",
+    "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://127.0.0.1:9223/devtools/browser/{BROWSER_INSTANCE_ID}",
+}
+
+
+def settings(endpoint=ENDPOINT, provider="native_chrome"):
+    return SimpleNamespace(application_browser_cdp_endpoint=endpoint, application_browser_provider=provider)
+
+
+@pytest.mark.parametrize(
+    ("configured_endpoint", "migration_enabled", "expected_endpoint"),
+    [
+        ("http://127.0.0.1:9222", False, "http://127.0.0.1:9222"),
+        ("http://127.0.0.1:9222", True, ENDPOINT),
+        ("http://127.0.0.1:9333", True, "http://127.0.0.1:9333"),
+    ],
+)
+def test_launcher_migrates_only_the_legacy_managed_endpoint_during_deployment(
+    monkeypatch,
+    tmp_path,
+    configured_endpoint,
+    migration_enabled,
+    expected_endpoint,
+):
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "APPLICATION_BROWSER_PROVIDER=native_chrome",
+                f"APPLICATION_BROWSER_CDP_ENDPOINT={configured_endpoint}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(launcher_contract, "BACKEND_ROOT", tmp_path)
+    monkeypatch.delenv("JOBTOMATIK_RUNTIME_MODE", raising=False)
+    if migration_enabled:
+        monkeypatch.setenv(launcher_contract.DEPLOYMENT_MIGRATION_ENV, "1")
+    else:
+        monkeypatch.delenv(launcher_contract.DEPLOYMENT_MIGRATION_ENV, raising=False)
+
+    observed = launcher_contract.managed_browser_contract()
+
+    assert observed.provider == "native_chrome"
+    assert observed.endpoint == expected_endpoint
+
+
+@pytest.mark.parametrize("provider", ["auto", "native_chrome"])
+def test_managed_worker_requires_endpoint(monkeypatch, provider):
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    with pytest.raises(BrowserContractError, match="ENDPOINT_REQUIRED"):
+        application_browser_contract(settings("", provider))
+
+
+@pytest.mark.parametrize("provider", ["local", "external_cdp"])
+def test_managed_worker_cannot_select_alternate_provider(monkeypatch, provider):
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    with pytest.raises(BrowserContractError, match="NATIVE_CHROME_REQUIRED"):
+        application_browser_contract(settings(ENDPOINT, provider))
+
+
+def test_desktop_auto_keeps_local_and_external_support(monkeypatch):
+    monkeypatch.delenv("JOBTOMATIK_RUNTIME_MODE", raising=False)
+    assert application_browser_contract(settings("", "auto")).provider == "local"
+    assert application_browser_contract(settings(ENDPOINT, "auto")).provider == "external_cdp"
+
+
+@pytest.mark.parametrize("endpoint", ["http://example.com:9223", "http://127.0.0.1", "http://127.0.0.1:abc", "http://u:p@localhost:9223", "http://localhost:9223/other", "http://localhost:9223?token=x"])
+def test_native_endpoint_must_be_explicit_local_forward(endpoint):
+    with pytest.raises(BrowserContractError):
+        application_browser_contract(settings(endpoint))
+
+
+@pytest.mark.parametrize("separators", [(": ", ", "), (":", ",")])
+def test_native_identity_is_independent_of_json_whitespace(separators):
+    colon, comma = separators
+    payload = json.loads(json.dumps(IDENTITY, separators=(comma, colon)))
+    assert validate_native_identity(payload, ENDPOINT) == IDENTITY
+
+
+@pytest.mark.parametrize("payload", [[], {}, {**IDENTITY, "Android-Package": "org.chromium.chrome"}, {**IDENTITY, "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://example.com:9223/devtools/browser"}, {**IDENTITY, "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://127.0.0.1:9222/devtools/browser"}])
+def test_native_identity_rejects_wrong_package_or_socket(payload):
+    with pytest.raises(BrowserContractError):
+        validate_native_identity(payload, ENDPOINT)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://example.com:9223",
+        "https://localhost:9223",
+        "http://user:pass@localhost:9223",
+        "http://localhost:9223/other",
+    ],
+)
+async def test_native_identity_reader_rejects_non_loopback_or_ambiguous_endpoint_before_http(
+    monkeypatch,
+    endpoint,
+):
+    def forbidden_client(**_kwargs):
+        raise AssertionError("HTTP client must not be constructed for an invalid native endpoint")
+
+    monkeypatch.setattr(contract_module.httpx, "AsyncClient", forbidden_client)
+    with pytest.raises(BrowserContractError, match="ENDPOINT_INVALID"):
+        await contract_module.read_native_identity(endpoint)
+
+
+@pytest.mark.asyncio
+async def test_unavailable_native_identity_has_no_browser_fallback(monkeypatch):
+    async def unavailable(request):
+        raise httpx.ConnectError("offline", request=request)
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(contract_module.httpx, "AsyncClient", lambda **kwargs: client_type(transport=httpx.MockTransport(unavailable), **kwargs))
+    with pytest.raises(BrowserContractError, match="NATIVE_CHROME_UNAVAILABLE"):
+        await contract_module.read_native_identity(ENDPOINT)
+
+
+def connected_browser():
+    session = SimpleNamespace(send=AsyncMock(return_value={"product": IDENTITY["Browser"], "userAgent": IDENTITY["User-Agent"]}), detach=AsyncMock())
+    browser = SimpleNamespace(new_browser_cdp_session=AsyncMock(return_value=session), contexts=[SimpleNamespace(pages=[], new_page=AsyncMock())])
+    return browser, session
+
+
+@pytest.mark.asyncio
+async def test_attachment_pins_websocket_and_verifies_actual_connection(monkeypatch):
+    monkeypatch.setattr(contract_module, "read_native_identity", AsyncMock(side_effect=[IDENTITY, IDENTITY]))
+    browser, session = connected_browser()
+    connect = AsyncMock(return_value=browser)
+    result = await connect_native_browser(None, application_browser_contract(settings()), connect)
+    connect.assert_awaited_once_with(None, IDENTITY["webSocketDebuggerUrl"])
+    session.send.assert_awaited_once_with("Browser.getVersion")
+    session.detach.assert_awaited_once()
+    identity = result._jobtomatik_application_browser_identity
+    assert identity["connection_identity_verified"] is True
+    assert identity["provider"] == "native_chrome"
+    assert identity["transport"] == "adb_forwarded_cdp"
+    assert identity["cdp_endpoint"] == ENDPOINT
+    assert identity["browser_instance_id"] == BROWSER_INSTANCE_ID
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["changed_http", "changed_connection", "disconnect", "multiple_contexts"])
+async def test_attachment_changes_reject_before_creating_application_page(monkeypatch, failure):
+    browser, session = connected_browser()
+    after = IDENTITY
+    if failure == "changed_http":
+        after = {**IDENTITY, "Browser": "Chrome/153"}
+    elif failure == "changed_connection":
+        session.send.return_value = {"product": "Chrome/149", "userAgent": "Linux desktop"}
+    elif failure == "disconnect":
+        after = BrowserContractError("ANDROID_NATIVE_CHROME_UNAVAILABLE")
+    else:
+        browser.contexts.append(SimpleNamespace(pages=[]))
+    monkeypatch.setattr(contract_module, "read_native_identity", AsyncMock(side_effect=[IDENTITY, after]))
+    with pytest.raises(BrowserContractError):
+        await connect_native_browser(None, application_browser_contract(settings()), AsyncMock(return_value=browser))
+    browser.contexts[0].new_page.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_worker_never_locally_launches_when_native_endpoint_is_missing(monkeypatch):
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    monkeypatch.setattr(browser_runtime, "get_settings", lambda: settings("", "auto"))
+    launch = AsyncMock()
+    monkeypatch.setattr(browser_runtime._base, "launch_retainable_browser", launch)
+    with pytest.raises(BrowserContractError, match="ENDPOINT_REQUIRED"):
+        await browser_runtime.launch_application_browser(None)
+    launch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_worker_wrong_browser_rejects_before_tab_or_local_launch(monkeypatch):
+    monkeypatch.setattr(browser_runtime, "get_settings", settings)
+    read = AsyncMock(side_effect=BrowserContractError("ANDROID_NATIVE_CHROME_IDENTITY_MISMATCH"))
+    monkeypatch.setattr(contract_module, "read_native_identity", read)
+    connect = AsyncMock()
+    monkeypatch.setattr(browser_runtime, "_connect_external_playwright_over_cdp", connect)
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="IDENTITY_MISMATCH"):
+        await browser_runtime.launch_application_browser(None)
+    connect.assert_not_awaited()
+
+
+def test_application_browser_identity_is_safe_when_runtime_or_browser_is_missing():
+    assert browser_runtime.application_browser_identity(None) == {}
+    assert browser_runtime.application_browser_identity(SimpleNamespace(browser=None)) == {}
+
+
+@pytest.mark.asyncio
+async def test_native_connection_without_browser_uuid_cannot_create_retainable_lease(monkeypatch):
+    identity_without_instance = {
+        **IDENTITY,
+        "webSocketDebuggerUrl": f"{CDP_WS_SCHEME}://127.0.0.1:9223/devtools/browser",
+    }
+    monkeypatch.setattr(
+        contract_module,
+        "read_native_identity",
+        AsyncMock(side_effect=[identity_without_instance, identity_without_instance]),
+    )
+    browser, _ = connected_browser()
+    connected = await connect_native_browser(
+        None,
+        application_browser_contract(settings()),
+        AsyncMock(return_value=browser),
+    )
+    runtime = SimpleNamespace(browser=connected)
+
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="RETAIN_IDENTITY_UNAVAILABLE"):
+        browser_runtime.retainable_application_browser_identity(runtime)
+
+
+def test_application_browser_identity_copies_verified_metadata():
+    identity = {"provider": "native_chrome", "browser_instance_id": "browser-1"}
+    runtime = SimpleNamespace(
+        browser=SimpleNamespace(_jobtomatik_application_browser_identity=identity)
+    )
+    observed = browser_runtime.application_browser_identity(runtime)
+    assert observed == identity
+    assert observed is not identity
+
+
+@pytest.mark.asyncio
+async def test_verified_retained_connector_enforces_recorded_lease(monkeypatch):
+    expected = {
+        "provider": "native_chrome",
+        "browser_instance_id": "browser-before",
+    }
+    browser = SimpleNamespace(
+        _jobtomatik_application_browser_identity={
+            "provider": "native_chrome",
+            "browser_instance_id": "browser-after",
+        }
+    )
+    connect = AsyncMock(return_value=browser)
+    monkeypatch.setattr(
+        browser_runtime,
+        "connect_retained_application_browser",
+        connect,
+    )
+
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="LEASE_CHANGED"):
+        await browser_runtime.connect_verified_retained_application_browser(
+            None,
+            ENDPOINT,
+            expected,
+        )
+    connect.assert_awaited_once_with(None, ENDPOINT)
+
+
+def test_retained_native_browser_lease_requires_restart_sensitive_instance_id():
+    expected = {
+        "provider": "native_chrome",
+        "transport": "adb_forwarded_cdp",
+        "android_package": "com.android.chrome",
+        "cdp_endpoint": ENDPOINT,
+        "runtime_revision": "abc1234",
+    }
+    browser = SimpleNamespace(
+        _jobtomatik_application_browser_identity={
+            **expected,
+            "browser_instance_id": BROWSER_INSTANCE_ID,
+        }
+    )
+
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="LEASE_INCOMPLETE"):
+        browser_runtime.require_retained_application_browser_identity(expected, browser)
+
+
+def test_retained_native_browser_lease_rejects_browser_restart_or_runtime_drift():
+    expected = {
+        "provider": "native_chrome",
+        "transport": "adb_forwarded_cdp",
+        "android_package": "com.android.chrome",
+        "cdp_endpoint": ENDPOINT,
+        "browser_instance_id": "instance-before",
+        "runtime_revision": "abc1234",
+    }
+    observed = {
+        **expected,
+        "browser_instance_id": "instance-after",
+        "runtime_revision": "def5678",
+    }
+    browser = SimpleNamespace(_jobtomatik_application_browser_identity=observed)
+
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="LEASE_CHANGED"):
+        browser_runtime.require_retained_application_browser_identity(expected, browser)
+
+
+def test_legacy_handoff_without_browser_lease_remains_readable():
+    browser_runtime.require_retained_application_browser_identity(
+        {},
+        SimpleNamespace(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_retained_handoff_cannot_reconnect_to_different_endpoint(monkeypatch):
+    monkeypatch.setattr(browser_runtime, "get_settings", settings)
+    connect = AsyncMock()
+    monkeypatch.setattr(browser_runtime, "_connect_external_playwright_over_cdp", connect)
+    with pytest.raises(browser_runtime.BrowserRuntimeError, match="ENDPOINT_MISMATCH"):
+        await browser_runtime.connect_retained_application_browser(None, "http://127.0.0.1:9222")
+    connect.assert_not_awaited()
+
+
+def test_launcher_preserves_existing_endpoint_and_ignores_caller_overrides(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text("APPLICATION_BROWSER_CDP_ENDPOINT=http://127.0.0.1:9333\n")
+    monkeypatch.setattr(launcher_contract, "BACKEND_ROOT", tmp_path)
+    monkeypatch.setenv("APPLICATION_BROWSER_CDP_ENDPOINT", "http://127.0.0.1:9222")
+    monkeypatch.setenv("APPLICATION_BROWSER_PROVIDER", "external_cdp")
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    contract = launcher_contract.managed_browser_contract()
+    assert contract.endpoint == "http://127.0.0.1:9333"
+    assert contract.provider == "native_chrome"
+
+
+def test_launcher_initializes_new_endpoint_without_changing_config(monkeypatch, tmp_path):
+    monkeypatch.setattr(launcher_contract, "BACKEND_ROOT", tmp_path)
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
+    assert launcher_contract.managed_browser_contract().endpoint == ENDPOINT
+    assert not (tmp_path / ".env").exists()

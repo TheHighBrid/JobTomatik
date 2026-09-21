@@ -15,11 +15,20 @@ This facade changes only the external Android CDP attachment contract:
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import async_playwright
+
 from app.config import get_settings
+from app.services.application_browser_contract import (
+    BrowserContractError,
+    application_browser_contract,
+    connect_native_browser,
+)
 from app.services import browser_runtime_base as _base
 from app.services.browser_runtime_base import (
     BrowserRuntimeError,
@@ -86,9 +95,135 @@ async def connect_external_playwright_browser(
     """
 
     endpoint = _normalize_external_cdp_endpoint(cdp_endpoint)
+    contract = application_browser_contract(get_settings())
+    if contract.native:
+        if endpoint != contract.endpoint:
+            raise BrowserRuntimeError("ANDROID_NATIVE_CHROME_ENDPOINT_MISMATCH: retained or requested endpoint differs from managed configuration")
+        try:
+            browser = await connect_native_browser(playwright, contract, _connect_external_playwright_over_cdp)
+        except BrowserContractError as exc:
+            raise BrowserRuntimeError(str(exc)) from exc
+        return endpoint, browser
     await _wait_for_external_cdp_endpoint(endpoint)
     browser = await _connect_external_playwright_over_cdp(playwright, endpoint)
     return endpoint, browser
+
+
+async def connect_retained_application_browser(playwright: Any, endpoint: str) -> Any:
+    """Recheck native identity at handoff reconnect; retain legacy desktop support."""
+    contract = application_browser_contract(get_settings())
+    if contract.native:
+        _, browser = await connect_external_playwright_browser(playwright, cdp_endpoint=endpoint)
+        return browser
+    return await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
+
+
+def application_browser_identity(runtime: Any) -> Dict[str, Any]:
+    """Return retained-browser identity metadata without dereferencing a missing browser."""
+
+    browser = getattr(runtime, "browser", None)
+    if browser is None:
+        return {}
+    identity = getattr(browser, "_jobtomatik_application_browser_identity", None)
+    return dict(identity) if isinstance(identity, dict) else {}
+
+
+def retainable_application_browser_identity(runtime: Any) -> Dict[str, Any]:
+    """Return identity metadata only when a native handoff can detect Chrome restarts."""
+
+    identity = application_browser_identity(runtime)
+    if (
+        identity.get("provider") == "native_chrome"
+        and not str(identity.get("browser_instance_id") or "")
+    ):
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_RETAIN_IDENTITY_UNAVAILABLE: native Chrome did not "
+            "expose a restart-sensitive /devtools/browser/<uuid> identifier; preserve "
+            "the application without creating a retained handoff."
+        )
+    return identity
+
+
+def require_retained_application_browser_identity(
+    expected_identity: Any,
+    browser: Any,
+) -> None:
+    """Reject a retained native handoff if its browser lease changed."""
+
+    if not isinstance(expected_identity, dict) or not expected_identity:
+        # Historical handoffs predate browser-lease metadata. They retain the
+        # existing target/url safety checks instead of being made unreadable.
+        return
+    if expected_identity.get("provider") != "native_chrome":
+        return
+    if not str(expected_identity.get("browser_instance_id") or ""):
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_LEASE_INCOMPLETE: retained native-Chrome handoff "
+            "has no restart-sensitive browser instance id; recovery is fail-closed."
+        )
+
+    observed = dict(
+        getattr(browser, "_jobtomatik_application_browser_identity", {}) or {}
+    )
+    required_fields = (
+        "provider",
+        "android_package",
+        "transport",
+        "cdp_endpoint",
+        "browser_instance_id",
+        "runtime_revision",
+    )
+    changed = [
+        field
+        for field in required_fields
+        if expected_identity.get(field)
+        and str(observed.get(field) or "") != str(expected_identity.get(field))
+    ]
+    if changed:
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_LEASE_CHANGED: retained application browser "
+            "identity no longer matches the handoff lease; preserve the application "
+            "and require controlled recovery. changed="
+            + ",".join(changed)
+        )
+
+
+async def connect_verified_retained_application_browser(
+    playwright: Any,
+    endpoint: str,
+    expected_identity: Any,
+) -> Any:
+    """Reconnect a retained browser and enforce its recorded native-Chrome lease."""
+
+    browser = await connect_retained_application_browser(playwright, endpoint)
+    require_retained_application_browser_identity(expected_identity, browser)
+    return browser
+
+
+async def open_verified_retained_application_context(
+    endpoint: str,
+    expected_identity: Any,
+) -> tuple[Any, Any, Any]:
+    """Open one verified retained browser context and own Playwright cleanup on failure."""
+
+    manager = async_playwright()
+    playwright = await manager.start()
+    connected = False
+    try:
+        browser = await connect_verified_retained_application_browser(
+            playwright,
+            endpoint,
+            expected_identity,
+        )
+        contexts = list(browser.contexts)
+        if not contexts:
+            raise BrowserRuntimeError("The retained browser has no active context.")
+        connected = True
+        return playwright, browser, contexts[0]
+    finally:
+        if not connected:
+            with suppress(PlaywrightError):
+                await playwright.stop()
 
 
 def external_browser_inventory(browser: Any) -> Dict[str, Any]:
@@ -242,8 +377,6 @@ async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:
     reported as inventory rather than rejected as ambiguous.
     """
 
-    from playwright.async_api import async_playwright
-
     async with async_playwright() as playwright:
         normalized_endpoint, browser = await connect_external_playwright_browser(
             playwright,
@@ -255,6 +388,7 @@ async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:
             "cdp_endpoint": normalized_endpoint,
             **inventory,
             "browser_owned_by_jobtomatik": False,
+            **getattr(browser, "_jobtomatik_application_browser_identity", {}),
         }
 
 
@@ -271,6 +405,7 @@ async def launch_application_browser(
     """
 
     settings = get_settings()
+    application_browser_contract(settings)
     cdp_endpoint = (settings.application_browser_cdp_endpoint or "").strip()
     if cdp_endpoint:
         return await attach_retainable_browser(

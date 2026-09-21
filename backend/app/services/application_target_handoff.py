@@ -368,25 +368,19 @@ def install_application_target_handoff_support() -> None:
                 "The encrypted browser endpoint is missing or unreadable."
             )
 
-        from playwright.async_api import async_playwright
-
-        manager = async_playwright()
-        playwright = await manager.start()
         try:
-            browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
-        except Exception:
-            await playwright.stop()
-            raise browser_handoff.BrowserHandoffUnavailable(
-                "The retained browser process is no longer reachable."
+            from app.services.browser_runtime import (
+                open_verified_retained_application_context,
             )
 
-        contexts = list(browser.contexts)
-        if not contexts:
-            await playwright.stop()
-            raise browser_handoff.BrowserHandoffUnavailable(
-                "The retained browser has no active context."
+            playwright, browser, context = await open_verified_retained_application_context(
+                endpoint,
+                metadata.get("application_browser_identity"),
             )
-        context = contexts[0]
+        except Exception as exc:
+            raise browser_handoff.BrowserHandoffUnavailable(
+                "The retained application browser is unavailable or its identity changed; preserve the application."
+            ) from exc
         pages = list(context.pages)
         if not pages:
             await playwright.stop()

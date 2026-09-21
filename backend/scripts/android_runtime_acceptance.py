@@ -143,6 +143,9 @@ def _playwright_browser_acceptance() -> dict[str, Any]:
         raise RuntimeError("Android/native Chromium did not pass Playwright CDP attachment")
     if proof.get("browser_owned_by_jobtomatik") is not False:
         raise RuntimeError("Android/native Chromium ownership contract changed unexpectedly")
+    if os.environ.get("JOBTOMATIK_RUNTIME_MODE") == "android_managed" or getattr(_backend_settings(), "application_browser_provider", "auto") == "native_chrome":
+        if proof.get("provider") != "native_chrome" or proof.get("android_package") != "com.android.chrome" or proof.get("connection_identity_verified") is not True:
+            raise RuntimeError("Android native Chrome connection identity was not verified")
     return proof
 
 

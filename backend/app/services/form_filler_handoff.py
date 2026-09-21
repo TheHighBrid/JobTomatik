@@ -16,6 +16,7 @@ from app.services.browser_navigation import (
     now_iso,
 )
 from app.services.browser_runtime import (
+    retainable_application_browser_identity,
     controlled_page_target_id,
     launch_application_browser,
     release_application_browser,
@@ -269,6 +270,7 @@ async def fill_and_submit_application_with_handoff(
                         "steps_completed": int(result.get("steps_completed") or 0),
                         "handoff_stage": "post_fill_security_boundary",
                         "supervised_target": dict(supervised_target or {}),
+                        "application_browser_identity": retainable_application_browser_identity(runtime),
                     }
                     if controlled_target_id:
                         snapshot_metadata["controlled_page_target_id"] = controlled_target_id

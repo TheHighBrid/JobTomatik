@@ -45,6 +45,19 @@ The promotion lane uses:
 Only one JobTomatik stack is active at a time. The promotion Redis process is separately
 PID-identified and never signals an unrelated Redis process.
 
+### Native Chrome transition guard
+
+The managed production application path now requires native Android Chrome. Native
+Android Chrome does not expose the separate filesystem profile contract previously
+provided by the Termux Chromium launcher. Reusing the same native Chrome session for
+promotion evidence would therefore violate this lane's isolation promise.
+
+For that reason, promotion `start` performs a browser-isolation preflight before the
+frozen stack is stopped. The current native-Chrome launcher rejects the isolated-profile
+requirement with `ANDROID_NATIVE_CHROME_PROFILE_ISOLATION_UNSUPPORTED`. Preparation
+and preserved evidence remain intact, but the promotion execution lane stays blocked
+until a genuinely separate browser transport/profile is implemented and certified.
+
 ## Queue isolation
 
 Stopping the frozen worker does not prove its Redis queues are empty, so the promotion
