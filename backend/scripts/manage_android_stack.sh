@@ -803,8 +803,10 @@ start_stack() {
   start_worker
   start_beat
   start_frontend
-  refresh_frontend_runtime
 
+  # Native Chrome is owned by the outer Termux launcher because only that layer can
+  # validate the selected ADB device, wake Chrome, and repair the exact ADB forward.
+  # Frontend tab refresh therefore runs after the outer launcher revalidates Chrome.
   cd "$BACKEND_ROOT"
   status_stack
   echo "JOBTOMATIK_ANDROID_STACK_READY"
@@ -832,8 +834,11 @@ case "$ACTION" in
   status)
     status_stack
     ;;
+  refresh-frontend)
+    refresh_frontend_runtime
+    ;;
   *)
-    echo "Usage: $0 [start|restart|stop|status|configure-browser]" >&2
+    echo "Usage: $0 [start|restart|stop|status|configure-browser|refresh-frontend]" >&2
     exit 2
     ;;
 esac
