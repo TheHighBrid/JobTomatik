@@ -371,3 +371,25 @@ def test_android_maintenance_scripts_do_not_require_single_application_tab():
     assert "launch_application_browser" not in refresh_source
     assert "probe_external_playwright_cdp" in check_source
     assert "launch_application_browser" not in check_source
+
+
+def test_human_boundary_preserves_controlled_page_before_handoff_identity_persistence():
+    form_source = (
+        BACKEND_ROOT / "app" / "services" / "form_filler_handoff.py"
+    ).read_text(encoding="utf-8")
+    form_block = form_source.split("if _resumable_boundary(result):", 1)[1].split(
+        "finally:", 1
+    )[0]
+    assert form_block.index("retained = True") < form_block.index(
+        "retainable_application_browser_identity("
+    )
+
+    resolver_source = (
+        BACKEND_ROOT / "app" / "services" / "application_target_resolver.py"
+    ).read_text(encoding="utf-8")
+    resolver_block = resolver_source.split(
+        "if challenge and reason_code in _RESUMABLE_TARGET_REASONS:", 1
+    )[1].split("return result", 1)[0]
+    assert resolver_block.index("retained = True") < resolver_block.index(
+        "retainable_application_browser_identity("
+    )
