@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 from uuid import uuid4
 
@@ -7,7 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models.application import Application
+from app.models.application import (
+    Application,
+    ApplicationAutomationState,
+    ManualReviewReason,
+    ManualReviewStatus,
+    ManualReviewTask,
+)
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval
@@ -28,6 +35,7 @@ from app.schemas.supervised_submission import (
 )
 from app.services import browser_handoff as browser_handoff_service
 from app.services.application_integrity import submission_is_closed
+from app.services.application_state import transition_application_state
 from app.services.handoff_session import verify_handoff_lease
 from app.services.operator_assisted_final_action import (
     claim_operator_final_action,
@@ -88,6 +96,66 @@ def _owned_records(
     if not user or not job:
         raise HTTPException(status_code=409, detail="Application user or job is missing")
     return application, user, job
+
+
+def _recover_orphaned_native_retain_review(
+    db: Session,
+    application: Application,
+) -> bool:
+    """Make one failed native-retain preparation safely retryable.
+
+    Android Chrome can expose /devtools/browser without a restart-sensitive UUID.
+    Older runtimes filled the form, failed while constructing the durable handoff,
+    then closed the controlled tab and left an operator-final review with no handoff.
+    That state contains no submitted action and no usable retained lease, so the
+    preparation may be retried after explicitly resolving only that orphan review.
+    """
+
+    if application.automation_state != ApplicationAutomationState.needs_review.value:
+        return False
+    if get_operator_final_submit_boundary(db, application) is not None:
+        return False
+
+    reviews = (
+        db.query(ManualReviewTask)
+        .filter(
+            ManualReviewTask.application_id == application.id,
+            ManualReviewTask.status.in_([
+                ManualReviewStatus.open.value,
+                ManualReviewStatus.in_progress.value,
+            ]),
+        )
+        .order_by(ManualReviewTask.created_at.desc(), ManualReviewTask.id.desc())
+        .all()
+    )
+    if len(reviews) != 1:
+        return False
+    review = reviews[0]
+    if review.reason_code != ManualReviewReason.operator_final_submit_required.value:
+        return False
+
+    log_text = " ".join(str(item) for item in (application.automation_log or []))
+    if "ANDROID_NATIVE_CHROME_RETAIN_IDENTITY_UNAVAILABLE" not in log_text:
+        return False
+
+    review.status = ManualReviewStatus.resolved.value
+    review.resolved_at = datetime.utcnow()
+    review.resolution_notes = (
+        "Automatically resolved orphaned native-Chrome final-submit review; "
+        "the filled tab was not retained and no final submit occurred."
+    )
+    transition_application_state(
+        db,
+        application,
+        ApplicationAutomationState.ready_to_apply,
+        "orphaned_native_retain_review_recovered",
+        {
+            "manual_review_id": review.id,
+            "final_submit_occurred": False,
+            "retained_handoff_present": False,
+        },
+    )
+    return True
 
 
 def _require_open_submission(application: Application) -> None:
@@ -196,6 +264,8 @@ async def prepare_operator_assisted_submission(
         lock=True,
     )
     _require_open_submission(application)
+
+    _recover_orphaned_native_retain_review(db, application)
 
     existing = get_operator_final_submit_boundary(db, application)
     if existing is not None:
