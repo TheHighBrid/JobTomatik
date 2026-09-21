@@ -67,8 +67,11 @@ ensure_static_frontend_artifact() {
 }
 
 run_runtime_acceptance() {
+  # Acceptance imports the same browser runtime used by API/worker. Run it from the
+  # backend root so Settings(env_file=".env") resolves the managed backend/.env
+  # written by configure_application_browser instead of looking for repo-root .env.
   proot-distro login "$PROOT_DISTRO" --shared-tmp -- bash -lc \
-    "set -e; cd '$PROOT_REPO'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; backend/.venv/bin/python backend/scripts/android_runtime_acceptance.py"
+    "set -e; cd '$PROOT_REPO/backend'; export JOBTOMATIK_RUNTIME_MODE=android_managed JOBTOMATIK_FRONTEND_RUNTIME_MODE='$FRONTEND_RUNTIME_MODE'; .venv/bin/python scripts/android_runtime_acceptance.py"
 }
 
 run_browser_playwright_probe() {

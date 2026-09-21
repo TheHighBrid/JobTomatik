@@ -324,6 +324,18 @@ def test_standalone_acceptance_revalidates_selected_adb_device_binding():
     )
 
 
+def test_runtime_acceptance_runs_from_backend_config_root():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    function = wrapper.split("run_runtime_acceptance() {", 1)[1].split("\n}\n", 1)[0]
+
+    assert "cd '$PROOT_REPO/backend'" in function
+    assert ".venv/bin/python scripts/android_runtime_acceptance.py" in function
+    assert "cd '$PROOT_REPO';" not in function
+    assert "backend/.venv/bin/python backend/scripts/android_runtime_acceptance.py" not in function
+
+
 def test_android_manager_invokes_browser_contract_as_backend_module():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
