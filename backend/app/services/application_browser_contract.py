@@ -145,9 +145,11 @@ def _native_browser_instance_id(websocket_url: str) -> str:
 
 async def connect_native_browser(playwright: Any, contract: ApplicationBrowserContract, connect: Any) -> Any:
     before = await read_native_identity(contract.endpoint)
-    # Pin discovery to its returned websocket instead of asking Playwright to
-    # rediscover whichever browser happens to occupy the HTTP port later.
-    browser = await connect(playwright, before["webSocketDebuggerUrl"])
+    # Android Chrome's browser websocket may accept the TCP/WebSocket upgrade while
+    # still stalling Playwright's CDP initialization. Use the verified HTTP discovery
+    # endpoint for Playwright attachment, then retain the same before/after discovery
+    # identity checks plus Browser.getVersion verification to fail closed on drift.
+    browser = await connect(playwright, contract.endpoint)
     session = await browser.new_browser_cdp_session()
     try:
         connected = await session.send("Browser.getVersion")
