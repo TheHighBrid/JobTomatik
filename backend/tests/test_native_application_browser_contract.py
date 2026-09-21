@@ -36,6 +36,44 @@ def settings(endpoint=ENDPOINT, provider="native_chrome"):
     return SimpleNamespace(application_browser_cdp_endpoint=endpoint, application_browser_provider=provider)
 
 
+@pytest.mark.parametrize(
+    ("configured_endpoint", "migration_enabled", "expected_endpoint"),
+    [
+        ("http://127.0.0.1:9222", False, "http://127.0.0.1:9222"),
+        ("http://127.0.0.1:9222", True, ENDPOINT),
+        ("http://127.0.0.1:9333", True, "http://127.0.0.1:9333"),
+    ],
+)
+def test_launcher_migrates_only_the_legacy_managed_endpoint_during_deployment(
+    monkeypatch,
+    tmp_path,
+    configured_endpoint,
+    migration_enabled,
+    expected_endpoint,
+):
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "APPLICATION_BROWSER_PROVIDER=native_chrome",
+                f"APPLICATION_BROWSER_CDP_ENDPOINT={configured_endpoint}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(launcher_contract, "BACKEND_ROOT", tmp_path)
+    monkeypatch.delenv("JOBTOMATIK_RUNTIME_MODE", raising=False)
+    if migration_enabled:
+        monkeypatch.setenv(launcher_contract.DEPLOYMENT_MIGRATION_ENV, "1")
+    else:
+        monkeypatch.delenv(launcher_contract.DEPLOYMENT_MIGRATION_ENV, raising=False)
+
+    observed = launcher_contract.managed_browser_contract()
+
+    assert observed.provider == "native_chrome"
+    assert observed.endpoint == expected_endpoint
+
+
 @pytest.mark.parametrize("provider", ["auto", "native_chrome"])
 def test_managed_worker_requires_endpoint(monkeypatch, provider):
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_MODE", "android_managed")
