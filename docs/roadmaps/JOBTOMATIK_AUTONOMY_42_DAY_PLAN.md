@@ -565,3 +565,57 @@ Use this at the end of every scheduled mission:
 - [ ] Evidence and readiness snapshots are regenerated from locked inputs.
 - [ ] Active issue and PR descriptions state exact progress.
 - [ ] Tomorrow’s task is unblocked or the blocker is documented with the smallest required user action.
+
+
+---
+
+# September 21, 2026 Physical Acceptance Milestone
+
+The operator-assisted Lever path has now completed one genuine physical Android submission through employer confirmation.
+
+## Proven path
+
+`resolve exact Lever target -> prepare truthful payload -> fill -> retain/review -> human final action -> Lever confirmation`
+
+Observed acceptance:
+
+- Employer: Zopa
+- Role: Zopa for Business - Risk Lead
+- Browser: native Android Chrome
+- JobTomatik filled the exact retained application
+- Final Submit remained a human/operator action
+- Lever returned a confirmation route ending in `/thanks`
+- Visible employer confirmation text: `Application submitted!`
+- Physical evidence record: `backend/evidence/lever-native-chrome-first-confirmed-submit-2026-09-21.md`
+
+Supporting implementation sequence:
+
+- PR #552: retained native-Chrome target continuity and preserved filled application tab
+- PR #553: post-stack native-Chrome recovery and revalidation
+- PR #554: physical acceptance evidence and passive retained-page confirmation reconciliation
+
+## Roadmap interpretation
+
+This milestone upgrades the evidence status of the **operator-assisted Lever path** from synthetic/supervised-preparation proof to at least one genuine physical end-to-end confirmation.
+
+It does **not**:
+
+- promote Lever to `certified_autonomous`;
+- enable unattended final submit;
+- reopen the retired Lever promotion quota;
+- prove CAPTCHA compatibility for every Lever employer;
+- relax exact-target, idempotency, duplicate-prevention, kill-switch, confirmation-evidence, or answer-policy requirements.
+
+The CAPTCHA-specific retained-browser failure remains separately tracked in issue #539 until a human-completed CAPTCHA path is physically revalidated.
+
+## Golden regression contract from this milestone
+
+Future browser/runtime work must preserve all of the following:
+
+1. Native Android Chrome remains the selected application browser when configured.
+2. JobTomatik can fill the exact approved Lever form without switching browser/profile.
+3. The exact filled page survives the review boundary.
+4. Final submit remains under the configured human authority boundary.
+5. Strong confirmation evidence such as Lever `/thanks` plus explicit success text is recognized.
+6. Confirmation reconciliation does not require a second bookkeeping action after the human click.
+7. A missing retained target, browser drift, ambiguous outcome, or insufficient confirmation remains fail-closed.
