@@ -114,3 +114,17 @@ test('final action uses a dedicated once-only API instead of generic handoff act
   assert.equal(finalPanel.includes('automatic retry is forbidden'), true)
   assert.equal(finalPanel.includes('Do not submit again; verify the employer page instead.'), true)
 })
+
+
+test('retained final-submit page passively detects employer confirmation after a human click', () => {
+  assert.equal(finalPanel.includes('passiveConfirmationCheck'), true)
+  assert.equal(finalPanel.includes('verifyRetainedConfirmation'), true)
+  assert.equal(finalPanel.includes('window.setInterval(verifyRetainedConfirmation, 4000)'), true)
+  assert.equal(finalPanel.includes('await completeHandoff(session.public_id, leaseToken)'), true)
+  assert.equal(
+    finalPanel.includes('Employer confirmation detected automatically. Application evidence is being finalized.'),
+    true,
+  )
+  assert.equal(finalPanel.includes('if ([403, 410].includes(status))'), true)
+  assert.equal(finalPanel.includes('409 means the exact retained page is still pre-submit'), true)
+})

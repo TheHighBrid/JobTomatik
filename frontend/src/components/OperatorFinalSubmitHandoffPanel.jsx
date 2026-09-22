@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
@@ -55,6 +55,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
   const [frameUrl, setFrameUrl] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [submitActionSent, setSubmitActionSent] = useState(false)
+  const passiveConfirmationCheck = useRef(false)
 
   const sessionsQuery = useQuery({
     queryKey: ['handoffs', applicationId],
@@ -232,6 +233,56 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       toast.error(message)
     },
   })
+
+  useEffect(() => {
+    if (
+      !session
+      || session.status !== 'claimed'
+      || !leaseToken
+      || !handoffUnlocked
+    ) return undefined
+
+    let cancelled = false
+
+    const verifyRetainedConfirmation = async () => {
+      if (passiveConfirmationCheck.current) return
+      passiveConfirmationCheck.current = true
+      try {
+        await completeHandoff(session.public_id, leaseToken)
+        if (cancelled) return
+
+        writeLease(session.public_id, '')
+        setLeaseToken('')
+        setSubmitActionSent(false)
+        await invalidate()
+        toast.success('Employer confirmation detected automatically. Application evidence is being finalized.')
+      } catch (error) {
+        const status = error?.response?.status
+        if ([403, 410].includes(status)) {
+          writeLease(session.public_id, '')
+          setLeaseToken('')
+          await invalidate()
+        }
+        // 409 means the exact retained page is still pre-submit or confirmation is
+        // not yet strong enough. That is the normal polling state and stays silent.
+      } finally {
+        passiveConfirmationCheck.current = false
+      }
+    }
+
+    verifyRetainedConfirmation()
+    const timer = window.setInterval(verifyRetainedConfirmation, 4000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [
+    handoffUnlocked,
+    invalidate,
+    leaseToken,
+    session?.public_id,
+    session?.status,
+  ])
 
   if (!session) return null
 
