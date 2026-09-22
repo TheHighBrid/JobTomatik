@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 from uuid import uuid4
 
@@ -7,8 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models.application import Application
-from app.models.handoff import HandoffChallengeType, ManualHandoffSession
+from app.models.application import (
+    Application,
+    ApplicationAutomationState,
+    ApplicationStatus,
+    ManualReviewTask,
+)
+from app.models.handoff import HandoffChallengeType, HandoffSessionStatus, ManualHandoffSession
 from app.models.job import Job
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_integrity import SubmissionAttempt
@@ -28,6 +34,11 @@ from app.schemas.supervised_submission import (
 )
 from app.services import browser_handoff as browser_handoff_service
 from app.services.application_integrity import submission_is_closed
+from app.services.application_state import (
+    has_sufficient_submission_evidence,
+    resolve_manual_review_task,
+    transition_application_state,
+)
 from app.services.handoff_session import verify_handoff_lease
 from app.services.operator_assisted_final_action import (
     claim_operator_final_action,
@@ -59,7 +70,7 @@ from app.services.supervised_target_identity import (
     persist_supervised_target_metadata,
     resolve_supervised_target_metadata,
 )
-from app.tasks.applications import submit_application_task
+from app.tasks.applications import _record_result_evidence, submit_application_task
 from app.tasks.operator_assisted import prepare_operator_assisted_application_task
 
 
@@ -435,6 +446,67 @@ async def submit_operator_assisted_final_action(
         approval,
         result=result,
     )
+
+    # The operator-assisted endpoint owns the final action, so it must also own
+    # reconciliation. Previously it persisted confirmation metadata but left the
+    # application/review/handoff open, which made a successfully submitted Lever
+    # application appear Pending and eligible for another final-action workflow.
+    if bool(result.get("submission_confirmed")):
+        evidence_result = {
+            **dict(result),
+            "url": str(result.get("current_url") or session.current_url or ""),
+        }
+        _record_result_evidence(db, application, evidence_result)
+        db.flush()
+        if not has_sufficient_submission_evidence(db, application.id):
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Lever confirmation was observed but sufficient submission evidence "
+                    "could not be persisted. The application was not reconciled."
+                ),
+            )
+
+        review = db.query(ManualReviewTask).filter(
+            ManualReviewTask.id == session.manual_review_id
+        ).first()
+        if review is not None:
+            resolve_manual_review_task(
+                db,
+                application,
+                review,
+                "Lever employer confirmation detected after the owner final action.",
+            )
+
+        application.status = ApplicationStatus.applied
+        application.applied_at = application.applied_at or datetime.utcnow()
+        transition_application_state(
+            db,
+            application,
+            ApplicationAutomationState.submitted,
+            "operator_assisted_submission_confirmation_detected",
+            {
+                "handoff_public_id": session.public_id,
+                "final_url": session.current_url,
+                "confirmation_detector": result.get("confirmation_detector"),
+            },
+        )
+        transition_application_state(
+            db,
+            application,
+            ApplicationAutomationState.confirmed,
+            "operator_assisted_submission_confirmed",
+            {
+                "handoff_public_id": session.public_id,
+                "evidence_count": len(result.get("confirmation_evidence") or []),
+            },
+        )
+        session.status = HandoffSessionStatus.completed.value
+        session.completed_at = session.completed_at or datetime.utcnow()
+        session.failure_reason = None
+        session.lock_version = (session.lock_version or 0) + 1
+
     db.commit()
     return {
         "application_id": application.id,
