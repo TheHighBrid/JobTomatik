@@ -93,11 +93,11 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee android-apk-badging.txt
           grep -q "package: name='ca.jobtomatik.app'" android-apk-badging.txt
-          grep -q "versionCode='210'" android-apk-badging.txt
-          grep -q "versionName='2.1.0'" android-apk-badging.txt
+          grep -q "versionCode='211'" android-apk-badging.txt
+          grep -q "versionName='2.1.1'" android-apk-badging.txt
           mkdir -p release
-          cp "$APK" release/JobTomatik-v2.1.0-debug.apk
-          sha256sum release/JobTomatik-v2.1.0-debug.apk > release/JobTomatik-v2.1.0-debug.sha256
+          cp "$APK" release/JobTomatik-v2.1.1-debug.apk
+          sha256sum release/JobTomatik-v2.1.1-debug.apk > release/JobTomatik-v2.1.1-debug.sha256
           printf '%s\n' "$GITHUB_SHA" > release/SOURCE-COMMIT.txt
           grep -Fxq "$GITHUB_SHA" release/SOURCE-COMMIT.txt
 
