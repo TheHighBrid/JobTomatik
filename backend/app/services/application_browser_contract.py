@@ -5,6 +5,7 @@ is checked on both the HTTP discovery endpoint and the actual CDP connection.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -115,16 +116,29 @@ async def read_native_identity(endpoint: str) -> dict[str, str]:
     # Build the request target from a fixed loopback host plus the validated integer
     # port. Direct callers therefore cannot turn identity discovery into an SSRF path.
     identity_endpoint = f"http://127.0.0.1:{native_port}"
-    try:
-        async with httpx.AsyncClient(timeout=3.0, trust_env=False, follow_redirects=False) as client:
-            response = await client.get(f"{identity_endpoint}/json/version")
-            response.raise_for_status()
-            payload = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise BrowserContractError(
-            "ANDROID_NATIVE_CHROME_UNAVAILABLE: preserve the application and reconnect the selected Chrome transport"
-        ) from exc
-    return validate_native_identity(payload, identity_endpoint)
+    last_error: Exception | None = None
+
+    # Android's ADB-forwarded DevTools discovery endpoint can briefly stop answering
+    # while Chrome is foregrounded or a prior CDP controller detaches. A single
+    # three-second miss previously converted a healthy native Chrome session into
+    # ANDROID_NATIVE_CHROME_UNAVAILABLE. Retry discovery without changing the browser,
+    # profile, ADB ownership, or provider. Identity validation remains fail-closed.
+    for attempt in range(3):
+        try:
+            timeout = httpx.Timeout(5.0, connect=2.0)
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False, follow_redirects=False) as client:
+                response = await client.get(f"{identity_endpoint}/json/version")
+                response.raise_for_status()
+                payload = response.json()
+            return validate_native_identity(payload, identity_endpoint)
+        except (httpx.HTTPError, ValueError) as exc:
+            last_error = exc
+            if attempt < 2:
+                await asyncio.sleep(0.35 * (attempt + 1))
+
+    raise BrowserContractError(
+        "ANDROID_NATIVE_CHROME_UNAVAILABLE: native Chrome discovery remained unavailable after transient retries; preserve the application and reconnect the selected Chrome transport"
+    ) from last_error
 
 
 def _native_browser_instance_id(websocket_url: str) -> str:
