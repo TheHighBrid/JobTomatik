@@ -19,8 +19,8 @@ def test_android_gradle_wrapper_is_portable():
 
 def test_android_release_config_contains_no_committed_signing_secret_and_fails_closed():
     build_gradle = (REPO_ROOT / "frontend" / "android" / "app" / "build.gradle").read_text(encoding="utf-8")
-    assert "versionCode 210" in build_gradle
-    assert 'versionName "2.1.0"' in build_gradle
+    assert "versionCode 211" in build_gradle
+    assert 'versionName "2.1.1"' in build_gradle
     assert "JOBTOMATIK_SIGNING_DIR" in build_gradle
     assert "JOBTOMATIK_KEYSTORE_PASSWORD" not in build_gradle
     assert "JOBTOMATIK_KEY_PASSWORD" not in build_gradle
@@ -234,9 +234,9 @@ def test_android_apk_workflow_is_build_only_and_cannot_publish():
     assert "contents: read" in workflow
     assert "contents: write" not in workflow
     assert "packages: platform-tools" in workflow
-    assert "versionCode='210'" in workflow
-    assert "versionName='2.1.0'" in workflow
-    assert "JobTomatik-v2.1.0-debug.apk" in workflow
+    assert "versionCode='211'" in workflow
+    assert "versionName='2.1.1'" in workflow
+    assert "JobTomatik-v2.1.1-debug.apk" in workflow
     assert "publish-v2-release" not in workflow
     assert "softprops/action-gh-release" not in workflow
     assert "tag_name:" not in workflow

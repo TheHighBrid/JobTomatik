@@ -373,10 +373,10 @@ Test from another terminal:
 curl http://127.0.0.1:8010/health
 ```
 
-Expected shape for the current v2.1.0 candidate:
+Expected shape for the current v2.1.1 candidate:
 
 ```json
-{"status":"ok","service":"JobTomatik API","version":"2.1.0"}
+{"status":"ok","service":"JobTomatik API","version":"2.1.1"}
 ```
 
 Keep this terminal open.
@@ -902,7 +902,7 @@ Before calling the installation ready:
 [ ] Termux repository is on current main
 [ ] Backend virtual environment activates
 [ ] redis-cli ping returns PONG
-[ ] Uvicorn health endpoint returns version 2.1.0
+[ ] Uvicorn health endpoint returns version 2.1.1
 [ ] Celery says ready and uses --pool=solo
 [ ] Frontend npm build passes
 [ ] Résumé uploads successfully
