@@ -13,7 +13,10 @@ def test_existing_native_forward_is_never_rebound_without_ownership_validation()
     # Recovery must remain constrained to the selected device and native Chrome
     # socket. A transient discovery miss may be retried in Python, but the wrapper
     # must never silently take over an arbitrary listener or substitute Chromium.
+    # The wrapper may mention Chromium only to reject it as a fallback.
     assert "ANDROID_NATIVE_CHROME_FORWARD_DEVICE_MISMATCH" in function
     assert "localabstract:chrome_devtools_remote" in function
     assert "--no-rebind" in function
-    assert "chromium" not in function.lower()
+    assert "no Chromium fallback" in function
+    assert "chromium-browser" not in function
+    assert "--remote-debugging-port" not in function
