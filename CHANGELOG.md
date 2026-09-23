@@ -4,7 +4,16 @@ All notable JobTomatik changes are recorded here.
 
 ## [Unreleased]
 
-No unreleased changes are currently separated from the `2.1.0` candidate lineage.
+No unreleased changes are currently separated from the `2.1.1` candidate lineage.
+
+## [2.1.1] - candidate
+
+### Release identity and Android
+
+- Advance the canonical JobTomatik product candidate to `2.1.1`.
+- Bump Android application identity to version name `2.1.1` and version code `211` for `ca.jobtomatik.app` ahead of the first production-signed build on the new release signing identity (#485).
+- Keep backend `APP_VERSION`, root `VERSION`, APK CI pins, and current operator health docs aligned with `2.1.1`.
+- Preserve the historical `v2.1.0` publication track, certification release option, and owner-command workflows unchanged.
 
 ## [2.1.0] - candidate
 

@@ -5,4 +5,4 @@ contract so containerized backend builds do not need files outside the backend
 build context.
 """
 
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.1.1"

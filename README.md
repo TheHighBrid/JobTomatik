@@ -1,4 +1,4 @@
-# JobTomatik v2.1.0 candidate
+# JobTomatik v2.1.1 candidate
 
 **An AI-powered job-search and application system built toward fully autonomous, evidence-backed real submission.**
 
@@ -17,7 +17,7 @@ The final product goal is a fully autonomous job-hunt agent that can:
 - verify employer confirmation before recording an application as submitted;
 - recover from failures, prevent duplicates, and continue operating within configured limits.
 
-JobTomatik v1 established the supervised foundation of that system. The current v2.1.0 candidate keeps those safety boundaries while advancing exact-head evidence, Android release identity, retained-browser reliability, and release controls. Adapter maturity still progresses through detection, dry-run, reviewed submission, and autonomous certification as implementation evidence matures.
+JobTomatik v1 established the supervised foundation of that system. The current v2.1.1 candidate keeps those safety boundaries while advancing exact-head evidence, Android release identity, retained-browser reliability, and release controls. Adapter maturity still progresses through detection, dry-run, reviewed submission, and autonomous certification as implementation evidence matures.
 
 JobTomatik does not attempt to evade CAPTCHA, MFA, identity verification, or other third-party security controls. When a site explicitly requires a human action, the system may pause, request that action, and resume afterward.
 
@@ -26,14 +26,14 @@ JobTomatik does not attempt to evade CAPTCHA, MFA, identity verification, or oth
 The Android client is published on the repository's **Releases** page:
 
 - [Download the latest published JobTomatik APK](https://github.com/TheHighBrid/JobTomatik/releases/latest)
-- Current repository candidate: `2.1.0`
-- Current Android version code: `210`
-- Current Android version name: `2.1.0`
+- Current repository candidate: `2.1.1`
+- Current Android version code: `211`
+- Current Android version name: `2.1.1`
 - Android application ID: `ca.jobtomatik.app`
 - Minimum Android SDK: 23
 - Target Android SDK: 35
 
-The root `VERSION` file and backend product metadata identify the current repository candidate as `2.1.0`. A successful CI APK build does **not** publish it. Public release publication remains a separate explicit owner-authorized action, so the Releases page may still point to an earlier immutable release until that action occurs.
+The root `VERSION` file and backend product metadata identify the current repository candidate as `2.1.1`. A successful CI APK build does **not** publish it. Public release publication remains a separate explicit owner-authorized action, so the Releases page may still point to an earlier immutable release until that action occurs.
 
 The APK is the user interface. The FastAPI backend, Redis, Celery worker, database, and Playwright browser runtime run locally or on a trusted server.
 
@@ -293,9 +293,9 @@ bash scripts/verify.sh full --install
 
 The reproducible CI gate runs the same subsystem modes independently and requires every lane to pass. The canonical contract is Python 3.11, Node.js 20, Temurin Java 21, Gradle 9.5.1, Android Gradle Plugin 8.13.2, Android API 35, and Build Tools 35.0.0.
 
-Verification keeps real submission, scheduled autopilot, and live resumable handoffs disabled. Platform pilot settings remain available to configuration regression tests, then the dedicated safety gate explicitly verifies both pilots are off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `210`, and version name `2.1.0`.
+Verification keeps real submission, scheduled autopilot, and live resumable handoffs disabled. Platform pilot settings remain available to configuration regression tests, then the dedicated safety gate explicitly verifies both pilots are off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `211`, and version name `2.1.1`.
 
-The repository root `VERSION` now identifies the current candidate as `2.1.0`. APK CI remains build-only. Existing release tags and assets are immutable, and public v2.1.0 publication requires a separate owner-issued authorization bound to the exact source used to build the release artifact.
+The repository root `VERSION` now identifies the current candidate as `2.1.1`. APK CI remains build-only. Existing release tags and assets are immutable, and public v2.1.0 publication requires a separate owner-issued authorization bound to the exact source used to build the release artifact.
 
 ## Repository guide
 

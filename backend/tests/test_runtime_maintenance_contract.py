@@ -87,10 +87,10 @@ def test_product_release_identity_and_private_package_tracks_are_consistent():
 
     assert android_name is not None
     assert android_code is not None
-    assert product_version == "2.1.0"
+    assert product_version == "2.1.1"
     assert APP_VERSION == product_version
     assert android_name.group(1) == product_version
-    assert android_code.group(1) == "210"
+    assert android_code.group(1) == "211"
 
     # The private npm package is an implementation manifest, not the shipped app version.
     assert package["private"] is True
@@ -147,12 +147,12 @@ def test_current_operator_and_certification_surfaces_use_v2_1_identity():
     assert "explicit owner command" in changelog
     assert "Preserve the historical `v2.0.0` release as immutable" in changelog
 
-    assert "Current repository candidate: `2.1.0`" in readme
-    assert "Current Android version code: `210`" in readme
-    assert "version code `210`" in readme
-    assert "version name `2.1.0`" in readme
+    assert "Current repository candidate: `2.1.1`" in readme
+    assert "Current Android version code: `211`" in readme
+    assert "version code `211`" in readme
+    assert "version name `2.1.1`" in readme
 
-    expected_health = '{"status":"ok","service":"JobTomatik API","version":"2.1.0"}'
+    expected_health = '{"status":"ok","service":"JobTomatik API","version":"2.1.1"}'
     assert expected_health in android_setup
     assert expected_health in setup_tutorial
-    assert "Uvicorn health endpoint returns version 2.1.0" in setup_tutorial
+    assert "Uvicorn health endpoint returns version 2.1.1" in setup_tutorial
