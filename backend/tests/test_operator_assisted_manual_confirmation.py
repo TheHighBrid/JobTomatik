@@ -23,7 +23,10 @@ from tests.test_operator_assisted_submission import (
 
 
 def _confirmed_verification(session, *, suffix=""):
-    final_url = LEVER_URL.replace("/apply", "/thanks")
+    # Lever can render the employer success state on the same retained posting URL.
+    # Keep this regression bound to the exact approved posting while proving that
+    # explicit confirmation evidence, rather than URL drift, closes the application.
+    final_url = LEVER_URL
     return BrowserVerification(
         challenge_cleared=True,
         provider=session.browser_provider,
@@ -31,9 +34,9 @@ def _confirmed_verification(session, *, suffix=""):
         current_fingerprint=f"lever-confirmed-fingerprint{suffix}",
         evidence={
             "submission_confirmed": True,
-            "confirmation_url_signal": True,
+            "confirmation_url_signal": False,
             "confirmation_evidence": [{
-                "evidence_type": "confirmation_page",
+                "evidence_type": "success_banner",
                 "is_sufficient": True,
                 "final_url": final_url,
                 "confirmation_text": "thank you for applying",
@@ -67,9 +70,7 @@ def _complete_confirmed_handoff(auth_client, tmp_path, monkeypatch, *, suffix=""
 
 
 def test_retained_owner_final_click_confirmation_reconciles_application(auth_client, tmp_path, monkeypatch):
-    app_id, public_id, reference, completed = _complete_confirmed_handoff(
-        auth_client, tmp_path, monkeypatch
-    )
+    app_id, public_id, reference, completed = _complete_confirmed_handoff(auth_client, tmp_path, monkeypatch)
     assert completed.json()["status"] == HandoffSessionStatus.completed.value
 
     db = TestingSessionLocal()
@@ -86,7 +87,7 @@ def test_retained_owner_final_click_confirmation_reconciles_application(auth_cli
         assert handoff.status == HandoffSessionStatus.completed.value
         assert handoff.completed_at is not None
         assert len(evidence) == 1
-        assert evidence[0].evidence_type == "confirmation_page"
+        assert evidence[0].evidence_type == "success_banner"
         assert dict(handoff.handoff_metadata or {})["operator_submit_confirmation_observed"] is True
         approval_metadata = dict(approval.approval_metadata or {})
         assert approval_metadata["operator_submit_action_result"] == "confirmed"
@@ -96,12 +97,8 @@ def test_retained_owner_final_click_confirmation_reconciles_application(auth_cli
 
 
 def test_confirmed_application_is_closed_against_repeat_submission(auth_client, tmp_path, monkeypatch):
-    app_id, _, _, _ = _complete_confirmed_handoff(
-        auth_client, tmp_path, monkeypatch, suffix="-2"
-    )
-    preflight = auth_client.get(
-        f"/api/supervised-submissions/applications/{app_id}/operator-assisted/preflight"
-    )
+    app_id, _, _, _ = _complete_confirmed_handoff(auth_client, tmp_path, monkeypatch, suffix="-2")
+    preflight = auth_client.get(f"/api/supervised-submissions/applications/{app_id}/operator-assisted/preflight")
     assert preflight.status_code == 409
     assert "already closed" in preflight.json()["detail"].lower()
 
