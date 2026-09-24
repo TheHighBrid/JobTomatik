@@ -311,6 +311,10 @@ adb() {
     printf 'List of devices attached\\nselected\\tdevice\\n'
   elif [[ "$1" == forward && "$2" == --list ]]; then
     printf 'selected tcp:9223 localabstract:chrome_devtools_remote\\n'
+  elif [[ "$1" == -s && "$2" == selected && "$3" == forward && "$4" == --remove && "$5" == tcp:9223 ]]; then
+    return 0
+  elif [[ "$1" == -s && "$2" == selected && "$3" == forward && "$4" == --no-rebind ]]; then
+    return 0
   elif [[ "$1" == -s && "$2" == selected && "$3" == shell && "$4" == monkey ]]; then
     printf 'CHROME_LAUNCH\\n'
   else
@@ -373,6 +377,10 @@ adb() {
     printf 'List of devices attached\\nselected\\tdevice\\n'
   elif [[ "$1" == forward && "$2" == --list ]]; then
     printf 'selected tcp:9223 localabstract:chrome_devtools_remote\\n'
+  elif [[ "$1" == -s && "$2" == selected && "$3" == forward && "$4" == --remove && "$5" == tcp:9223 ]]; then
+    return 0
+  elif [[ "$1" == -s && "$2" == selected && "$3" == forward && "$4" == --no-rebind ]]; then
+    return 0
   elif [[ "$1" == -s && "$2" == selected && "$3" == shell && "$4" == monkey ]]; then
     return 1
   else

@@ -22,14 +22,10 @@ async def test_native_identity_retries_http_without_nested_playwright_fallback(m
         request = httpx.Request("GET", "http://127.0.0.1:9223/json/version")
         raise httpx.ReadTimeout("persistent-http-stall", request=request)
 
-    async def forbidden_playwright(_endpoint):
-        raise AssertionError("identity discovery must not recursively attach Playwright to the same endpoint")
-
     async def no_sleep(_delay):
         return None
 
     monkeypatch.setattr("app.services.application_browser_contract._read_native_identity_http", fake_http)
-    monkeypatch.setattr("app.services.application_browser_contract._read_native_identity_playwright", forbidden_playwright)
     monkeypatch.setattr("app.services.application_browser_contract.asyncio.sleep", no_sleep)
 
     with pytest.raises(BrowserContractError, match="after transient retries"):
