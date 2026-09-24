@@ -308,10 +308,6 @@ def install_operator_assisted_handoff_integration() -> None:
 
         playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
         try:
-            # Inspect the already-selected retained page after the entry safety gates
-            # and before any employer-side action. Keeping this check inside the
-            # established final-action transaction avoids an extra outer gate pass
-            # that can distort checkpoint/final-revalidation ordering.
             from app.services.operator_assisted_live_pilot_hardening import (
                 passive_verification_requires_manual_browser,
                 passive_verification_state,
@@ -388,8 +384,6 @@ def install_operator_assisted_handoff_integration() -> None:
                     "The fresh live pre-submit page could not be durably checkpointed."
                 ) from exc
 
-            # The durable checkpoint is now authoritative. Re-read the live page and
-            # every consequential gate after that commit and immediately before click.
             latest_url = str(page.url or "")
             latest_page_fingerprint = await browser_handoff.page_fingerprint(page)
             latest_step_fingerprint = await adapter.step_fingerprint(surface)
@@ -435,10 +429,6 @@ def install_operator_assisted_handoff_integration() -> None:
                     "validation errors. Automatic retry is forbidden."
                 )
 
-            # Passive verification is mutable browser state. Re-read it only after the
-            # durable checkpoint, target/form revalidation, and final runtime blocker
-            # gate so an expired or newly loaded hCaptcha boundary can never be
-            # followed by an employer-side click.
             final_verification_state = await passive_verification_state(page)
             if passive_verification_requires_manual_browser(final_verification_state):
                 raise browser_handoff.BrowserHandoffError(
@@ -492,18 +482,31 @@ def install_operator_assisted_handoff_integration() -> None:
         metadata = dict(session.handoff_metadata or {})
         target_verification = dict(verification.evidence.get("target_verification") or {})
         target_verified = bool(target_verification.get("verified"))
-        strong_confirmation_observed = bool(
-            metadata.get("operator_submit_confirmation_observed") is True
-        )
         generic_confirmation = bool(verification.evidence.get("submission_confirmed"))
         confirmation_url_signal = bool(
             verification.evidence.get("confirmation_url_signal")
+        )
+        strong_confirmation_observed = bool(
+            metadata.get("operator_submit_confirmation_observed") is True
         )
         live_snapshot_checkpointed = bool(
             metadata.get("operator_submit_live_snapshot_checkpointed") is True
         )
         pre_submit_url = str(metadata.get("operator_submit_pre_submit_url") or "")
         current_url = str(verification.current_url or "")
+
+        # Human final-submit workflow: after hCaptcha/manual takeover, the owner clicks
+        # Submit directly in the retained native Chrome tab. There is intentionally no
+        # JobTomatik click checkpoint in that path. An explicit employer success phrase
+        # on the still target-verified Lever page is authoritative confirmation evidence.
+        retained_human_confirmation = bool(
+            target_verified
+            and generic_confirmation
+            and (
+                verification.evidence.get("confirmation_evidence")
+                or confirmation_url_signal
+            )
+        )
         provable_confirmation_transition = bool(
             live_snapshot_checkpointed
             and generic_confirmation
@@ -514,12 +517,16 @@ def install_operator_assisted_handoff_integration() -> None:
         )
         final_confirmed = bool(
             target_verified
-            and (strong_confirmation_observed or provable_confirmation_transition)
+            and (
+                strong_confirmation_observed
+                or provable_confirmation_transition
+                or retained_human_confirmation
+            )
         )
         verification.challenge_cleared = final_confirmed
         verification.evidence["submission_confirmed"] = final_confirmed
         verification.evidence["operator_submit_confirmation_observed"] = (
-            strong_confirmation_observed
+            strong_confirmation_observed or retained_human_confirmation
         )
         verification.evidence["operator_submit_live_snapshot_checkpointed"] = (
             live_snapshot_checkpointed
@@ -527,17 +534,22 @@ def install_operator_assisted_handoff_integration() -> None:
         verification.evidence["provable_confirmation_transition"] = (
             provable_confirmation_transition
         )
+        verification.evidence["retained_human_confirmation"] = (
+            retained_human_confirmation
+        )
         verification.evidence["verification_method"] = (
-            "operator_final_submit_strict_confirmation"
-            if final_confirmed
-            else "operator_final_submit_confirmation_required"
+            "operator_final_submit_retained_human_confirmation"
+            if retained_human_confirmation and not strong_confirmation_observed
+            else (
+                "operator_final_submit_strict_confirmation"
+                if final_confirmed
+                else "operator_final_submit_confirmation_required"
+            )
         )
         return verification
 
     browser_handoff.verify_browser_handoff_completion = final_submit_confirmation_required
 
-    # HTTP routers imported these function objects before this compatibility layer is
-    # installed. Replace those local references too so API calls share the same gates.
     try:
         from app.api import handoffs as handoff_api
 
@@ -545,7 +557,6 @@ def install_operator_assisted_handoff_integration() -> None:
         handoff_api.perform_handoff_action = operator_locked_action
         handoff_api.verify_browser_handoff_completion = final_submit_confirmation_required
     except Exception:
-        # Worker-only imports do not need the HTTP router patch.
         pass
 
     _INSTALLED = True
