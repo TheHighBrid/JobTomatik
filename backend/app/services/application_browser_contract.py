@@ -1,12 +1,11 @@
 """Shared browser selection and native Chrome identity checks.
 
 This module does not launch, stop, recover, or modify a browser. Native identity
-is checked on both the HTTP discovery endpoint and the actual CDP connection.
+is checked on the HTTP discovery endpoint and again on the actual CDP connection.
 """
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -34,7 +33,6 @@ class ApplicationBrowserContract:
 
 def _validated_native_port(endpoint: str) -> int:
     """Return the port only for an explicit loopback HTTP CDP endpoint."""
-
     candidate = str(endpoint or "").strip().rstrip("/")
     parsed = urlparse(candidate)
     try:
@@ -100,10 +98,7 @@ def validate_native_identity(payload: Any, endpoint: str) -> dict[str, str]:
             and websocket.port == native_port
             and not websocket.username and not websocket.password
             and not websocket.query and not websocket.fragment
-            and (
-                websocket.path == "/devtools/browser"
-                or websocket.path.startswith("/devtools/browser/")
-            )
+            and (websocket.path == "/devtools/browser" or websocket.path.startswith("/devtools/browser/"))
         )
     except ValueError:
         valid_socket = False
@@ -114,9 +109,7 @@ def validate_native_identity(payload: Any, endpoint: str) -> dict[str, str]:
 
 async def _read_native_identity_http(identity_endpoint: str) -> Any:
     """Read DevTools discovery using a fresh, non-pooled HTTP/1.1 connection."""
-
     timeout = httpx.Timeout(3.0, connect=1.5, read=3.0, write=3.0, pool=1.5)
-    headers = {"Connection": "close"}
     async with httpx.AsyncClient(
         timeout=timeout,
         trust_env=False,
@@ -124,64 +117,27 @@ async def _read_native_identity_http(identity_endpoint: str) -> Any:
         http1=True,
         http2=False,
         limits=httpx.Limits(max_connections=1, max_keepalive_connections=0),
-        headers=headers,
+        headers={"Connection": "close"},
     ) as client:
         response = await client.get(f"{identity_endpoint}/json/version")
         response.raise_for_status()
         return response.json()
 
 
-async def _read_native_identity_playwright(endpoint: str) -> Any:
-    """Fallback discovery through Playwright's CDP transport.
-
-    Android Chrome's ADB-forwarded HTTP discovery endpoint can occasionally accept a
-    connection and then stop returning response headers even though the CDP socket is
-    still healthy. Playwright already knows how to discover the browser websocket from
-    the same endpoint, so use that path only after direct HTTP discovery times out.
-    """
-
-    from playwright.async_api import async_playwright
-
-    async with async_playwright() as playwright:
-        browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
-        try:
-            session = await browser.new_browser_cdp_session()
-            try:
-                version = await session.send("Browser.getVersion")
-            finally:
-                await session.detach()
-            # Playwright has already established that this endpoint is a live CDP
-            # browser. Fetch /json/version through Chrome itself so the existing
-            # Android-Package and websocket validation remains unchanged.
-            context = browser.contexts[0]
-            page = await context.new_page()
-            try:
-                raw = await page.evaluate(
-                    """async (url) => {
-                        const response = await fetch(url, {cache: 'no-store'});
-                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                        return await response.text();
-                    }""",
-                    f"{endpoint}/json/version",
-                )
-                payload = json.loads(raw)
-            finally:
-                await page.close()
-            if payload.get("Browser") != version.get("product") or payload.get("User-Agent") != version.get("userAgent"):
-                raise BrowserContractError("ANDROID_NATIVE_CHROME_IDENTITY_MISMATCH: discovery and CDP version differ")
-            return payload
-        finally:
-            await browser.close()
-
-
 async def read_native_identity(endpoint: str) -> dict[str, str]:
+    """Read and validate Android Chrome identity without opening a second CDP client.
+
+    The previous fallback called Playwright.connect_over_cdp() when /json/version
+    stalled. Playwright performs that same HTTP discovery internally, so the fallback
+    could not recover a wedged discovery server and instead added another 5 second
+    timeout while competing with the real browser attach. Keep identity discovery
+    HTTP-only and let the outer launcher re-establish the ADB forward when discovery
+    is genuinely unavailable.
+    """
     native_port = _validated_native_port(endpoint)
     identity_endpoint = f"http://127.0.0.1:{native_port}"
     last_error: Exception | None = None
 
-    # Use short fresh connections rather than holding a single request open against
-    # Android's tiny DevTools HTTP server. This gives a temporarily wedged ADB-forward
-    # a chance to recover without replacing Chrome or the authenticated profile.
     for attempt in range(5):
         try:
             payload = await _read_native_identity_http(identity_endpoint)
@@ -193,16 +149,6 @@ async def read_native_identity(endpoint: str) -> dict[str, str]:
             if attempt < 4:
                 await asyncio.sleep(0.2 * (attempt + 1))
 
-    # The direct discovery server may be wedged while the browser CDP transport is
-    # still alive. Verify through that transport before declaring native Chrome gone.
-    try:
-        payload = await _read_native_identity_playwright(identity_endpoint)
-        return validate_native_identity(payload, identity_endpoint)
-    except BrowserContractError:
-        raise
-    except Exception as exc:
-        last_error = exc
-
     raise BrowserContractError(
         "ANDROID_NATIVE_CHROME_UNAVAILABLE: native Chrome discovery remained unavailable after transient retries; preserve the application and reconnect the selected Chrome transport"
     ) from last_error
@@ -210,7 +156,6 @@ async def read_native_identity(endpoint: str) -> dict[str, str]:
 
 def _native_browser_instance_id(websocket_url: str) -> str:
     """Return Chrome's restart-sensitive browser UUID when discovery exposes one."""
-
     path = urlparse(str(websocket_url or "")).path
     prefix = "/devtools/browser/"
     if not path.startswith(prefix):
