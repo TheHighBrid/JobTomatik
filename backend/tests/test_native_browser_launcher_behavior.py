@@ -150,6 +150,64 @@ ensure_application_browser_endpoint
     assert "FORBIDDEN_FORWARD" not in result.stdout
 
 
+def test_stale_verified_forward_is_recreated_without_stopping_chrome():
+    result = run(function("ensure_application_browser_endpoint") + """
+run_application_browser_contract() { printf 'native_chrome\\nhttp://127.0.0.1:9223\\n9223\\n'; }
+identity_calls=0
+native_android_chrome_cdp_ready() {
+  identity_calls=$((identity_calls + 1))
+  [[ "$identity_calls" -ge 2 ]]
+}
+request_native_android_chrome_foreground() { echo CHROME_FOREGROUND_ONLY; }
+adb() {
+  if [[ "$1" == devices ]]; then
+    printf 'List of devices attached\\nselected\\tdevice\\n'
+  elif [[ "$1" == forward && "$2" == --list ]]; then
+    printf 'selected tcp:9223 localabstract:chrome_devtools_remote\\n'
+  elif [[ "$1" == -s && "$2" == selected && "$3" == forward && "$4" == --remove && "$5" == tcp:9223 ]]; then
+    echo REMOVE_VERIFIED_FORWARD
+  elif [[ "$1" == -s && "$2" == selected && "$3" == forward && "$4" == --no-rebind && "$5" == tcp:9223 && "$6" == localabstract:chrome_devtools_remote ]]; then
+    echo RECREATE_VERIFIED_FORWARD
+  else
+    echo "FORBIDDEN_ADB:$*"
+    return 1
+  fi
+}
+ensure_application_browser_endpoint
+""")
+    assert result.returncode == 0
+    assert "REMOVE_VERIFIED_FORWARD" in result.stdout
+    assert "RECREATE_VERIFIED_FORWARD" in result.stdout
+    assert "CHROME_FOREGROUND_ONLY" in result.stdout
+    assert "FORWARD_STALE" in result.stderr
+    assert "FORBIDDEN_ADB" not in result.stdout
+
+
+def test_stale_verified_forward_remove_failure_fails_closed():
+    result = run(function("ensure_application_browser_endpoint") + """
+run_application_browser_contract() { printf 'native_chrome\\nhttp://127.0.0.1:9223\\n9223\\n'; }
+native_android_chrome_cdp_ready() { return 1; }
+request_native_android_chrome_foreground() { echo FORBIDDEN_CHROME_ACTION; }
+adb() {
+  if [[ "$1" == devices ]]; then
+    printf 'List of devices attached\\nselected\\tdevice\\n'
+  elif [[ "$1" == forward && "$2" == --list ]]; then
+    printf 'selected tcp:9223 localabstract:chrome_devtools_remote\\n'
+  elif [[ "$1" == -s && "$2" == selected && "$3" == forward && "$4" == --remove ]]; then
+    return 1
+  else
+    echo "FORBIDDEN_ADB:$*"
+    return 1
+  fi
+}
+ensure_application_browser_endpoint
+""")
+    assert result.returncode != 0
+    assert "FORWARD_REMOVE_FAILED" in result.stderr
+    assert "FORBIDDEN_CHROME_ACTION" not in result.stdout
+    assert "FORBIDDEN_ADB" not in result.stdout
+
+
 def test_ready_endpoint_rejects_forward_owned_by_another_device():
     result = run(function("ensure_application_browser_endpoint") + """
 ANDROID_SERIAL=selected

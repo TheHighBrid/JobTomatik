@@ -222,6 +222,22 @@ ensure_application_browser_endpoint() {
     if native_android_chrome_cdp_ready; then
       return 0
     fi
+
+    # The forward can remain listed after its underlying ADB transport has wedged.
+    # We already proved this exact local port belongs to the selected authorized
+    # device and Chrome DevTools socket, so it is safe to recycle only this mapping.
+    # Never stop Chrome: retained tabs, profile state, and pending applications stay
+    # owned by the user while the host-side tunnel is rebuilt.
+    echo "ANDROID_NATIVE_CHROME_FORWARD_STALE action=recreate_verified_mapping" >&2
+    if ! adb -s "$serial" forward --remove "tcp:${contract[2]}"; then
+      echo "ANDROID_NATIVE_CHROME_FORWARD_REMOVE_FAILED: preserve retained applications; selected Chrome was not modified" >&2
+      return 1
+    fi
+    if ! adb -s "$serial" forward --no-rebind "tcp:${contract[2]}" localabstract:chrome_devtools_remote; then
+      echo "ANDROID_NATIVE_CHROME_FORWARD_RECREATE_FAILED: preserve retained applications; selected Chrome was not modified" >&2
+      return 1
+    fi
+    echo "ANDROID_NATIVE_CHROME_FORWARD_RECREATED"
   else
     if native_android_chrome_cdp_ready; then
       echo "ANDROID_NATIVE_CHROME_FORWARD_UNVERIFIED: ready CDP endpoint has no matching ADB forward for the selected device" >&2
