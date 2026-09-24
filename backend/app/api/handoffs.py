@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models.application import Application
+from app.models.application import (
+    Application,
+    ApplicationAutomationState,
+    ApplicationStatus,
+    ManualReviewTask,
+)
 from app.models.handoff import (
     HandoffActorType,
     HandoffChallengeType,
@@ -14,6 +19,7 @@ from app.models.handoff import (
     HandoffSessionStatus,
     ManualHandoffSession,
 )
+from app.models.submission_approval import SubmissionApproval
 from app.models.user import User
 from app.schemas.handoff import (
     HandoffBrowserActionOut,
@@ -26,6 +32,11 @@ from app.schemas.handoff import (
     HandoffLeaseRequest,
     HandoffReadyRequest,
     HandoffSessionOut,
+)
+from app.services.application_state import (
+    has_sufficient_submission_evidence,
+    resolve_manual_review_task,
+    transition_application_state,
 )
 from app.services.browser_handoff import (
     BrowserHandoffError,
@@ -46,6 +57,8 @@ from app.services.handoff_session import (
     mark_handoff_ready,
     verify_handoff_lease,
 )
+from app.services.operator_assisted_final_action import finalize_operator_final_action
+from app.tasks.applications import _record_result_evidence
 from app.tasks.handoffs import resume_handoff_session_task
 
 router = APIRouter(prefix="/handoffs", tags=["handoffs"])
@@ -84,6 +97,129 @@ def _translate_error(exc: Exception) -> HTTPException:
     if isinstance(exc, BrowserHandoffError):
         return HTTPException(status_code=422, detail=str(exc))
     return HTTPException(status_code=400, detail=str(exc))
+
+
+def _reconcile_confirmed_operator_final_handoff(
+    db: Session,
+    session: ManualHandoffSession,
+    verification,
+) -> bool:
+    """Persist and reconcile a human-triggered retained Lever submission.
+
+    The retained owner can perform the final click directly in native Chrome after a
+    CAPTCHA/manual boundary. In that workflow the generic handoff completion endpoint
+    is the first JobTomatik request after the employer confirmation appears, so it must
+    own the same evidence/state reconciliation as the direct operator-submit endpoint.
+    """
+    if session.challenge_type != HandoffChallengeType.final_submit.value:
+        return False
+    if not bool(verification.evidence.get("submission_confirmed")):
+        return False
+
+    application = (
+        db.query(Application)
+        .filter(
+            Application.id == session.application_id,
+            Application.user_id == session.user_id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if application is None:
+        raise HandoffSessionConflict("Application record is missing for retained final submission")
+
+    evidence_result = {
+        "success": True,
+        "submission_confirmed": True,
+        "submitted_at": datetime.utcnow().isoformat(),
+        "url": verification.current_url,
+        "confirmation_evidence": list(
+            verification.evidence.get("confirmation_evidence") or []
+        ),
+        "target_verification": dict(
+            verification.evidence.get("target_verification") or {}
+        ),
+        "ats_adapter": str((session.handoff_metadata or {}).get("adapter") or "lever"),
+        "ats_adapter_version": str(
+            (session.handoff_metadata or {}).get("adapter_version") or "unknown"
+        ),
+        "confirmation_detector": "retained_operator_completion_verifier",
+    }
+    _record_result_evidence(db, application, evidence_result)
+    db.flush()
+    if not has_sufficient_submission_evidence(db, application.id):
+        raise HandoffSessionConflict(
+            "Employer confirmation was detected but durable submission evidence was not accepted."
+        )
+
+    review = db.query(ManualReviewTask).filter(
+        ManualReviewTask.id == session.manual_review_id
+    ).first()
+    if review is not None:
+        resolve_manual_review_task(
+            db,
+            application,
+            review,
+            "Lever employer confirmation detected after the owner completed the final submission.",
+        )
+
+    approval = (
+        db.query(SubmissionApproval)
+        .filter(
+            SubmissionApproval.application_id == application.id,
+            SubmissionApproval.user_id == session.user_id,
+        )
+        .order_by(SubmissionApproval.consumed_at.desc(), SubmissionApproval.id.desc())
+        .first()
+    )
+    if approval is not None:
+        finalize_operator_final_action(
+            db,
+            application,
+            session,
+            approval,
+            result={
+                "submission_confirmed": True,
+                "current_url": verification.current_url,
+                "current_fingerprint": verification.current_fingerprint,
+                "confirmation_detector": "retained_operator_completion_verifier",
+            },
+        )
+
+    application.status = ApplicationStatus.applied
+    application.applied_at = application.applied_at or datetime.utcnow()
+    transition_application_state(
+        db,
+        application,
+        ApplicationAutomationState.submitted,
+        "retained_operator_submission_confirmation_detected",
+        {
+            "handoff_public_id": session.public_id,
+            "final_url": verification.current_url,
+            "verification_method": verification.evidence.get("verification_method"),
+        },
+    )
+    transition_application_state(
+        db,
+        application,
+        ApplicationAutomationState.confirmed,
+        "retained_operator_submission_confirmed",
+        {
+            "handoff_public_id": session.public_id,
+            "evidence_count": len(
+                verification.evidence.get("confirmation_evidence") or []
+            ),
+        },
+    )
+    session.handoff_metadata = {
+        **dict(session.handoff_metadata or {}),
+        "operator_submit_confirmation_observed": True,
+        "operator_submit_confirmation_detector": "retained_operator_completion_verifier",
+        "operator_submit_current_url": verification.current_url,
+        "operator_submit_current_fingerprint": verification.current_fingerprint,
+        "automatic_retry_allowed": False,
+    }
+    return True
 
 
 @router.get("", response_model=List[HandoffSessionOut])
@@ -312,6 +448,11 @@ async def complete_handoff(
         session.current_url = verification.current_url
         session.current_fingerprint = verification.current_fingerprint
         session.storage_state_hash = verification.evidence.get("storage_state_hash")
+        operator_submission_reconciled = _reconcile_confirmed_operator_final_handoff(
+            db,
+            session,
+            verification,
+        )
         mark_handoff_ready(
             db,
             session,
@@ -319,9 +460,15 @@ async def complete_handoff(
             lease_token=data.lease_token,
             verification=verification.as_dict(),
         )
+        if operator_submission_reconciled:
+            session.status = HandoffSessionStatus.completed.value
+            session.completed_at = session.completed_at or datetime.utcnow()
+            session.failure_reason = None
+            session.lock_version = (session.lock_version or 0) + 1
         db.commit()
         db.refresh(session)
-        resume_handoff_session_task.delay(session.public_id)
+        if not operator_submission_reconciled:
+            resume_handoff_session_task.delay(session.public_id)
         return session
     except Exception as exc:
         db.rollback()
