@@ -16,6 +16,7 @@ def run_with_fake_adb(fake_body: str):
         env = os.environ.copy()
         env["PATH"] = f"{root}:{env['PATH']}"
         env["JOBTOMATIK_ANDROID_RUNTIME_DIR"] = str(root / "runtime")
+        env["JOBTOMATIK_FAKE_ADB_STATE"] = str(root / "connected")
         env.pop("ANDROID_SERIAL", None)
         return subprocess.run(
             ["bash", str(SCRIPT)], env=env, text=True, capture_output=True, check=False
@@ -24,7 +25,7 @@ def run_with_fake_adb(fake_body: str):
 
 def test_mdns_rotated_endpoint_reconnects_without_stack_restart():
     result = run_with_fake_adb(r'''
-state="${TMPDIR:-/tmp}/jobtomatik-fake-adb-state-$PPID"
+state="$JOBTOMATIK_FAKE_ADB_STATE"
 case "${1:-}" in
   devices)
     echo "List of devices attached"
