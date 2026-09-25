@@ -313,6 +313,80 @@ def _single_external_context(browser: Any) -> Any:
     return contexts[0]
 
 
+async def _create_controlled_external_page(context: Any) -> Any:
+    """Create a tab, recovering Android Chrome's intermittent Target.createTarget refusal.
+
+    Native Android Chrome can keep CDP healthy while rejecting the browser-level
+    Target.createTarget command used by Playwright new_page(). For that exact failure,
+    ask one existing tab to open about:blank with a CDP user gesture, then claim only
+    the newly observed page. Existing tabs are never navigated, closed, or selected.
+    """
+    try:
+        return await context.new_page()
+    except Exception as exc:
+        detail = str(exc)
+        if "Target.createTarget" not in detail or "Could not create a Tab" not in detail:
+            raise
+
+    baseline = list(context.pages)
+    baseline_ids = {id(page) for page in baseline}
+    seed = next(
+        (
+            page
+            for page in reversed(baseline)
+            if not callable(getattr(page, "is_closed", None)) or not page.is_closed()
+        ),
+        None,
+    )
+    if seed is None:
+        raise BrowserRuntimeError(
+            "APPLICATION_BROWSER_CONTROLLED_PAGE_CREATE_FAILED: native Chrome refused "
+            "Target.createTarget and exposed no live tab for safe recovery"
+        )
+
+    session = None
+    try:
+        session = await context.new_cdp_session(seed)
+        await session.send(
+            "Runtime.evaluate",
+            {
+                "expression": "window.open('about:blank', '_blank'); void 0",
+                "userGesture": True,
+                "awaitPromise": False,
+            },
+        )
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 3.0
+        while loop.time() < deadline:
+            created = [
+                page for page in list(context.pages) if id(page) not in baseline_ids
+            ]
+            if len(created) == 1:
+                return created[0]
+            if len(created) > 1:
+                raise BrowserRuntimeError(
+                    "APPLICATION_BROWSER_CONTROLLED_PAGE_CREATE_AMBIGUOUS: "
+                    "recovery opened multiple tabs"
+                )
+            await asyncio.sleep(0.05)
+    except BrowserRuntimeError:
+        raise
+    except Exception as recovery_exc:
+        raise BrowserRuntimeError(
+            "APPLICATION_BROWSER_CONTROLLED_PAGE_CREATE_FAILED: native Chrome refused "
+            "Target.createTarget and user-gesture recovery could not create a tab"
+        ) from recovery_exc
+    finally:
+        if session is not None:
+            with suppress(Exception):
+                await session.detach()
+
+    raise BrowserRuntimeError(
+        "APPLICATION_BROWSER_CONTROLLED_PAGE_CREATE_FAILED: native Chrome refused "
+        "Target.createTarget and no recovery tab appeared"
+    )
+
+
 async def attach_retainable_browser(
     playwright: Any,
     *,
@@ -335,7 +409,7 @@ async def attach_retainable_browser(
 
     if create_controlled_page:
         context = _single_external_context(browser)
-        page = await context.new_page()
+        page = await _create_controlled_external_page(context)
         if viewport:
             await page.set_viewport_size(viewport)
         try:
