@@ -334,7 +334,7 @@ async def _create_controlled_external_page(context: Any) -> Any:
         (
             page
             for page in reversed(baseline)
-            if not callable(getattr(page, "is_closed", None)) or not page.is_closed()
+            if not page.is_closed()
         ),
         None,
     )
