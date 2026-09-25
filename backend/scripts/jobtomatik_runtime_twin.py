@@ -55,7 +55,7 @@ def capture(endpoint: str) -> dict:
             "termux": bool(termux_prefix and "com.termux" in termux_prefix),
             "proot_distro_available": bool(proot),
         },
-        "repo": run(git or "git", "rev-parse", "HEAD") if git else {"ok": False},
+        "repo": run(git, "rev-parse", "HEAD") if git else {"ok": False},
         "tools": {
             "python": {"ok": True, "version": sys.version.split()[0], "executable": sys.executable},
             "adb": run(adb, "version") if adb else {"ok": False, "error": "not_found"},
