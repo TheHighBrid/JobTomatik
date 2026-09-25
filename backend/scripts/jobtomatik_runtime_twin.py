@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Capture and compare the JobTomatik physical Android runtime contract.
+"""
+Capture and compare the JobTomatik physical Android runtime contract.
 
 This is deliberately not a generic CI environment check.  It records the pieces
 that make the owner's production lane special: Android/Termux, Ubuntu PRoot,
