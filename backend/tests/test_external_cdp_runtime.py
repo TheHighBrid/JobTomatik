@@ -393,3 +393,47 @@ def test_human_boundary_preserves_controlled_page_before_handoff_identity_persis
     assert resolver_block.index("retained = True") < resolver_block.index(
         "retainable_application_browser_identity("
     )
+
+@pytest.mark.asyncio
+async def test_controlled_page_creation_recovers_android_target_create_refusal(monkeypatch):
+    seed = FakePage("https://www.linkedin.com/feed/")
+    recovered = FakePage("about:blank")
+
+    class RecoverySession:
+        detached = False
+
+        async def send(self, method, params=None):
+            assert method == "Runtime.evaluate"
+            assert params["userGesture"] is True
+            context.pages.append(recovered)
+            return {"result": {}}
+
+        async def detach(self):
+            self.detached = True
+
+    class RecoveryContext(FakeContext):
+        async def new_page(self):
+            raise RuntimeError("BrowserContext.new_page: Protocol error (Target.createTarget): Could not create a Tab")
+
+        async def new_cdp_session(self, page):
+            assert page is seed
+            self.recovery_session = RecoverySession()
+            return self.recovery_session
+
+    context = RecoveryContext([seed])
+    page = await browser_runtime._create_controlled_external_page(context)
+
+    assert page is recovered
+    assert context.pages == [seed, recovered]
+    assert context.recovery_session.detached is True
+
+
+@pytest.mark.asyncio
+async def test_controlled_page_creation_does_not_mask_unrelated_new_page_failure():
+    class BrokenContext(FakeContext):
+        async def new_page(self):
+            raise RuntimeError("permission denied")
+
+    context = BrokenContext([FakePage()])
+    with pytest.raises(RuntimeError, match="permission denied"):
+        await browser_runtime._create_controlled_external_page(context)
