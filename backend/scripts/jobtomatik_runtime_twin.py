@@ -31,6 +31,8 @@ def run(*args: str, timeout: int = 8) -> dict:
 
 def http_json(url: str, timeout: int = 3) -> dict:
     try:
+        if not url.startswith(("http://", "https://")):
+            raise ValueError(f"Prohibited URL scheme: {url}")
         with urllib.request.urlopen(url, timeout=timeout) as r:
             return {"ok": True, "status": r.status, "json": json.load(r)}
     except Exception as exc:
