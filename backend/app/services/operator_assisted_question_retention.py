@@ -1,4 +1,7 @@
-"""Question-boundary policy for operator-assisted preparation.
+"""
+Question-boundary policy for operator-assisted preparation.
+
+Unknown employer questions are durable *policy* review boundaries, not durable browser
 
 Unknown employer questions are durable *policy* review boundaries, not durable browser
 handoffs. The owner answers them in JobTomatik and the next Prepare performs a fresh,
