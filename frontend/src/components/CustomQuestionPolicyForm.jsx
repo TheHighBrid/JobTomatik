@@ -7,7 +7,7 @@ import { customQuestionPayload } from '../customQuestionPolicies'
 
 export default function CustomQuestionPolicyForm({
   onSaved, onCancel, policy, initialQuestion = '', initialCompany = '',
-  availableOptions = [], recheck = false,
+  initialApplicationUrl = '', availableOptions = [], recheck = false,
 }) {
   const id = useId()
   const initialForm = () => ({
@@ -15,8 +15,8 @@ export default function CustomQuestionPolicyForm({
     variations: (policy?.match_phrases || []).slice(1).join('\n'),
     answer_value: policy?.answer_value || policy?.answer_label || '',
     fallback_answers: (policy?.fallback_answers || []).join('\n'),
-    scope: policy?.scope || (initialCompany ? 'company' : 'global'),
-    scope_value: policy?.scope_value || initialCompany,
+    scope: policy?.scope || (initialApplicationUrl ? 'application' : (initialCompany ? 'company' : 'global')),
+    scope_value: policy?.scope_value || initialApplicationUrl || initialCompany,
     allow_autofill: false,
   })
   const [form, setForm] = useState(initialForm)
@@ -27,12 +27,22 @@ export default function CustomQuestionPolicyForm({
     setForm((current) => ({ ...current, [field]: value, allow_autofill: false }))
     setSaveError('')
   }
+  const changeScope = (scope) => {
+    const scopeValue = scope === 'application'
+      ? initialApplicationUrl
+      : scope === 'company'
+        ? initialCompany
+        : scope === 'global'
+          ? ''
+          : form.scope === scope ? form.scope_value : ''
+    setForm((current) => ({ ...current, scope, scope_value: scopeValue, allow_autofill: false }))
+    setSaveError('')
+  }
   const saveMutation = useMutation({
     mutationFn: async (payload) => {
       const response = savedPolicy
         ? await updateAnswerPolicy(savedPolicy.id, payload)
         : await createAnswerPolicy(payload)
-      // Retain the ID if rechecking fails so retry updates instead of duplicating.
       setSavedPolicy(response.data)
       return response
     },
@@ -61,6 +71,11 @@ export default function CustomQuestionPolicyForm({
       setSaveError(error.message)
     }
   }
+  const scopeLabel = form.scope === 'application'
+    ? 'Exact application URL'
+    : form.scope === 'company'
+      ? 'Company name'
+      : 'Platform domain'
   return (
     <form onSubmit={submit} aria-label={policy ? 'Edit custom question' : 'Add a custom question'} className="space-y-4 rounded-xl border border-tomato-200 bg-tomato-50/30 p-4">
       <div>
@@ -97,14 +112,22 @@ export default function CustomQuestionPolicyForm({
         <fieldset className="space-y-2">
           <legend className="label">Reuse this answer for</legend>
           <div className="flex flex-wrap gap-3 text-sm text-gray-900">
-            {[['global', 'All applications'], ['company', 'One company'], ['platform', 'One platform/domain']].map(([value, label]) => (
+            {[
+              ['application', 'This position only'],
+              ['company', 'One company'],
+              ['platform', 'One platform/domain'],
+              ['global', 'All applications'],
+            ].map(([value, label]) => (
               <label key={value} className="flex items-center gap-2">
-                <input type="radio" name={`${id}-scope`} value={value} checked={form.scope === value} onChange={() => change('scope', value)} />{label}
+                <input type="radio" name={`${id}-scope`} value={value} checked={form.scope === value} onChange={() => changeScope(value)} />{label}
               </label>
             ))}
           </div>
+          {form.scope === 'application' && (
+            <p className="text-xs text-gray-600">Safest for pay, availability, relocation, schedule, and other answers that can change by role. This answer outranks broader company, platform, and global policies only for this exact application.</p>
+          )}
           {form.scope !== 'global' && (
-            <label className="block label">{form.scope === 'company' ? 'Company name' : 'Platform domain'}
+            <label className="block label">{scopeLabel}
               <input className="input w-full mt-1" required maxLength={255} value={form.scope_value} onChange={(event) => change('scope_value', event.target.value)} />
             </label>
           )}

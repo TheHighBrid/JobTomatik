@@ -18,6 +18,7 @@ class AnswerPolicyScope(str, enum.Enum):
     global_scope = "global"
     platform = "platform"
     company = "company"
+    application = "application"
 
 
 class AnswerPolicyProvenance(str, enum.Enum):
