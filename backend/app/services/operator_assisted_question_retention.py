@@ -1,9 +1,6 @@
-"""
-Question-boundary policy for operator-assisted preparation.
+"""Question-boundary policy for operator-assisted preparation.
 
-Unknown employer questions are durable *policy* review boundaries, not durable browser
-
-Unknown employer questions are durable *policy* review boundaries, not durable browser
+Unknown employer questions are durable policy-review boundaries, not durable browser
 handoffs. The owner answers them in JobTomatik and the next Prepare performs a fresh,
 fill-only pass using the newly approved policy.
 
@@ -38,12 +35,20 @@ def is_operator_question_review_result(result: Mapping[str, Any] | None) -> bool
     """Return whether the result stopped on an unresolved employer question."""
 
     if not isinstance(result, Mapping):
-    """
-    Keep question reviews non-resumable so the controlled tab is released.
+        return False
+    return bool(
+        result.get("requires_manual_review")
+        and QUESTION_REASON in _review_reasons(result)
+    )
 
-    This function remains as an idempotent compatibility hook because the operator
-    preparation task imports and calls it. No global handoff predicate is patched.
+
+def install_operator_assisted_question_retention() -> None:
+    """Keep question reviews non-resumable so the controlled tab is released.
+
+    This remains an idempotent compatibility hook because the operator preparation
+    task imports and calls it. No global handoff predicate is patched.
     """
+
     global _INSTALLED
     _INSTALLED = True
 
