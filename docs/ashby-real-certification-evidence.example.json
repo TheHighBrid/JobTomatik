@@ -1,0 +1,13 @@
+{
+  "adapter": "ashby",
+  "application_id": 0,
+  "target_url": "https://jobs.ashbyhq.com/<board>/<posting-id>/application",
+  "runtime": "android_native_chrome_cdp",
+  "confirmation_sufficient": false,
+  "confirmation_evidence_type": null,
+  "confirmation_final_url": null,
+  "persisted_status": "pending",
+  "duplicate_submission_suppressed": false,
+  "unknown_answer_policy_respected": false,
+  "retained_tab_resume_proven": false
+}
