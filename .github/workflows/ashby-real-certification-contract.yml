@@ -1,0 +1,21 @@
+name: Ashby real certification contract
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/ats_ashby.py"
+      - "backend/tests/test_ashby_real_certification_contract.py"
+      - "docs/ASHBY_REAL_CERTIFICATION.md"
+      - ".github/workflows/ashby-real-certification-contract.yml"
+  workflow_dispatch:
+
+jobs:
+  certification-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify Ashby certification remains fail-closed until real evidence exists
+        run: python -m pytest -q backend/tests/test_ashby_real_certification_contract.py
