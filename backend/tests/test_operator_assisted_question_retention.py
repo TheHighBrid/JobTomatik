@@ -34,31 +34,29 @@ def _ambiguous_result(*, with_snapshot: bool = False):
 
 def test_ambiguous_question_is_not_globally_resumable():
     install_operator_assisted_question_retention()
-
     assert form_filler_handoff._resumable_boundary(_ambiguous_result()) is False
 
 
-def test_operator_prepare_scope_retains_ambiguous_question_page():
+def test_operator_prepare_scope_does_not_retain_ambiguous_question_page():
     install_operator_assisted_question_retention()
 
     with operator_prepare_scope({"identity_hash": "b" * 64, "verified": True}):
-        assert form_filler_handoff._resumable_boundary(_ambiguous_result()) is True
+        assert form_filler_handoff._resumable_boundary(_ambiguous_result()) is False
 
     assert form_filler_handoff._resumable_boundary(_ambiguous_result()) is False
 
 
-def test_operator_question_receipt_strips_raw_browser_snapshot_and_keeps_no_submit_flags():
+def test_operator_question_receipt_requires_fresh_reprepare_and_releases_previous_tab():
     result = summarize_operator_question_retention_result(
         _ambiguous_result(with_snapshot=True)
     )
 
     assert "handoff_snapshot" not in result
-    assert result["operator_question_review_page_retained"] is True
+    assert result["operator_question_review_page_retained"] is False
     assert result["operator_question_review_handoff_created"] is False
     assert result["requires_answer_policy_review"] is True
     assert result["requires_fresh_reprepare_after_answer_policy"] is True
-    assert result["operator_question_review_url"].startswith("https://jobs.lever.co/")
-    assert result["operator_question_review_browser_provider"] == "local_cdp"
+    assert result["operator_question_reprepare_releases_previous_tab"] is True
     assert result["automated_submission_authorized"] is False
     assert result["final_submit_clicked_by_jobtomatik"] is False
     assert "sensitive-runtime-detail" not in repr(result)
