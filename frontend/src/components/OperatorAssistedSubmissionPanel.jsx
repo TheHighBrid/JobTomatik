@@ -429,6 +429,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                                   key={`${activePolicyReview.id}:${item.descriptor}`}
                                   initialQuestion={questionFromDescriptor(item.descriptor)}
                                   initialCompany={preflight?.employer || application?.job?.company || ''}
+                                  initialApplicationUrl={preflight?.application_url || application?.job?.url || ''}
                                   availableOptions={item.available_options || []}
                                   recheck
                                   onSaved={async () => {
