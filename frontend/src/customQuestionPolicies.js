@@ -21,7 +21,10 @@ export function customQuestionPayload(form, policy) {
   const answer = form.answer_value.trim()
   if (!normalizeCustomQuestion(question)) throw new Error('Enter the application question')
   if (!answer) throw new Error('Enter your answer')
-  if (form.scope !== 'global' && !form.scope_value.trim()) throw new Error('Enter the company name or platform domain')
+  if (form.scope !== 'global' && !form.scope_value.trim()) {
+    if (form.scope === 'application') throw new Error('This application needs its exact application URL')
+    throw new Error('Enter the company name or platform domain')
+  }
   const phrases = [...new Set([question, ...lines(form.variations)])]
   const fallbacks = lines(form.fallback_answers)
   if (phrases.length > 25) throw new Error('Use up to 24 wording variations')
