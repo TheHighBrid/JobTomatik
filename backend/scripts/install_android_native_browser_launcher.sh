@@ -53,6 +53,97 @@ install_atomically "$PILOT_SOURCE" "$PILOT_DEST"
 install_atomically "$PILOT_CONTROLLER_SOURCE" "$PILOT_CONTROLLER_DEST"
 install_atomically "$PILOT_CONTROLLER_MANAGER_SOURCE" "$PILOT_CONTROLLER_MANAGER_DEST"
 
+# The update action re-execs the newly installed native wrapper. Do not depend on an
+# interactive-shell ANDROID_SERIAL surviving that deployment boundary. Resolve the
+# only authorized transport again, and verify an explicitly selected transport with
+# adb get-state before rejecting it. This keeps wrong-device protection while avoiding
+# a false negative from a transient/stale `adb devices` snapshot.
+python3 - "$STACK_DEST" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = '''  local devices
+  devices="$(adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }')"
+  local -a connected=()
+  if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
+  local serial="${ANDROID_SERIAL:-}"
+  if [[ -z "$serial" && "${#connected[@]}" -eq 1 ]]; then serial="${connected[0]}"; fi
+  if [[ -z "$serial" ]]; then
+    echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: select one connected authorized ADB device" >&2
+    return 1
+  fi
+  local serial_connected=0
+  local connected_serial
+  for connected_serial in "${connected[@]}"; do
+    if [[ "$connected_serial" == "$serial" ]]; then
+      serial_connected=1
+      break
+    fi
+  done
+  if [[ "$serial_connected" -ne 1 ]]; then
+    echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: selected ANDROID_SERIAL is not an authorized connected device" >&2
+    return 1
+  fi
+'''
+new = '''  local devices
+  devices="$(adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }')"
+  local -a connected=()
+  if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
+  local serial="${ANDROID_SERIAL:-}"
+
+  # Re-resolve a single authorized transport after `jobtomatik update` re-execs this
+  # launcher. ANDROID_SERIAL belongs to the caller's shell and is not deployment state.
+  if [[ -z "$serial" && "${#connected[@]}" -eq 1 ]]; then
+    serial="${connected[0]}"
+    export ANDROID_SERIAL="$serial"
+    echo "ANDROID_NATIVE_CHROME_DEVICE_AUTOSELECTED serial=$serial"
+  fi
+  if [[ -z "$serial" ]]; then
+    echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: select one connected authorized ADB device" >&2
+    return 1
+  fi
+
+  local serial_connected=0
+  local connected_serial
+  for connected_serial in "${connected[@]}"; do
+    if [[ "$connected_serial" == "$serial" ]]; then
+      serial_connected=1
+      break
+    fi
+  done
+
+  # ADB's list can briefly lag a live transport during wireless reconnect/re-exec.
+  # Verify the exact selected serial directly before declaring it unauthorized.
+  if [[ "$serial_connected" -ne 1 ]]; then
+    local direct_state
+    direct_state="$(adb -s "$serial" get-state 2>/dev/null || true)"
+    if [[ "$direct_state" == "device" ]]; then
+      serial_connected=1
+      export ANDROID_SERIAL="$serial"
+      echo "ANDROID_NATIVE_CHROME_DEVICE_REVALIDATED serial=$serial"
+    fi
+  fi
+  if [[ "$serial_connected" -ne 1 ]]; then
+    # If the inherited selection is stale but exactly one authorized device is now
+    # present, recover to that unambiguous transport rather than fail the deployment.
+    if [[ "${#connected[@]}" -eq 1 ]] && [[ "$(adb -s "${connected[0]}" get-state 2>/dev/null || true)" == "device" ]]; then
+      serial="${connected[0]}"
+      export ANDROID_SERIAL="$serial"
+      echo "ANDROID_NATIVE_CHROME_DEVICE_RECOVERED serial=$serial"
+    else
+      echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: selected ANDROID_SERIAL is not an authorized connected device" >&2
+      return 1
+    fi
+  fi
+'''
+if old not in text:
+    raise SystemExit("ANDROID_LAUNCHER_ADB_SELECTION_PATCH_TARGET_MISSING")
+path.write_text(text.replace(old, new, 1))
+PY
+chmod 755 "$STACK_DEST"
+
 # The current launcher may have been parsed before a git update replaced these files.
 # Mark the completed native deployment so the freshly installed wrapper can distinguish
 # its one deployment restart from ordinary user/runtime restarts. The new wrapper
