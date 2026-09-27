@@ -44,6 +44,25 @@ def test_installed_wrapper_uses_native_runtime_state_not_installer_home(tmp_path
     assert 'adb connect "$serial"' in installed
 
 
+def test_persisted_target_precedes_generic_single_device_fallback(tmp_path):
+    prefix = tmp_path / "termux-prefix"
+    (prefix / "bin").mkdir(parents=True)
+    env = os.environ.copy()
+    env["HOME"] = str(tmp_path / "proot-root")
+    env["JOBTOMATIK_TERMUX_PREFIX"] = str(prefix)
+    Path(env["HOME"]).mkdir()
+
+    result = subprocess.run(
+        ["bash", str(INSTALLER)], env=env, text=True, capture_output=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+
+    installed = (prefix / "bin" / "jobtomatik").read_text(encoding="utf-8")
+    restored = installed.index("ANDROID_NATIVE_CHROME_DEVICE_RESTORED")
+    autoselected = installed.index("ANDROID_NATIVE_CHROME_DEVICE_AUTOSELECTED")
+    assert restored < autoselected
+
+
 def test_installed_wrapper_persists_only_verified_wireless_endpoint(tmp_path):
     prefix = tmp_path / "termux-prefix"
     (prefix / "bin").mkdir(parents=True)
