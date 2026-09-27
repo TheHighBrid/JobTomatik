@@ -18,6 +18,63 @@ Read-only analysis requested by the owner may be performed, but no write, execut
 
 Repository prose never overrides a newer explicit instruction from TheHighBrid.
 
+## Evidence-driven planning policy
+
+**Reality outranks the roadmap. Evidence outranks assumptions.**
+
+Roadmaps, blueprints, certification plans, task schedules, architecture proposals, issue descriptions, estimates, and AI-generated plans are working hypotheses created from the evidence available at the time. They are navigation aids, not immutable law and not proof that their assumptions are correct.
+
+Investigate runtime evidence that contradicts a planning assumption.
+Update the plan when the evidence resolves the contradiction.
+An older prediction alone does not justify reproducing a condition.
+If evidence is incomplete or conflicting, record the uncertainty and preserve the affected safety gate.
+Escalate only the unresolved decision to TheHighBrid; continue independent work.
+
+Use this evidence hierarchy when sources disagree:
+
+1. verified physical behavior on the supported runtime;
+2. durable production-like evidence, logs, and employer/third-party outcomes;
+3. repeated real-runtime observations;
+4. integration and end-to-end tests that faithfully reproduce the supported runtime;
+5. focused automated/unit tests;
+6. architecture assumptions and theoretical models;
+7. roadmap, blueprint, schedule, and planning predictions.
+
+Higher evidence does not automatically erase a lower-level safety requirement. First classify the disputed rule:
+
+- **Safety/product invariant:** protects authorization, evidence integrity, duplicate prevention, privacy, security boundaries, truthful state, idempotency, or another demonstrated requirement. Preserve it unless the owner explicitly changes product direction and the change is safe.
+- **Empirical requirement:** supported by verified real-world evidence. Preserve it while that evidence remains valid.
+- **Planning assumption:** predicted behavior, expected blocker, estimated sequence, theoretical prerequisite, or convenience rule not yet established by runtime evidence. Revise or retire it when stronger evidence contradicts it.
+
+Keep observations separate from assumptions and synthetic test results.
+An old checklist alone does not justify searching for or inducing a blocker.
+Retain fail-safe handling for rare conditions and test it when they naturally occur.
+Faithful, non-destructive simulations may exercise the same handling; label their results as synthetic.
+If an unresolved condition blocks a release decision, record the missing evidence and escalate to TheHighBrid.
+The owner may defer that scenario or authorize a scoped validation with a recorded review date.
+Deferral does not certify the scenario or permit fabricated evidence or bypassed security controls.
+
+### Required response to new runtime evidence
+
+When real behavior differs from the plan:
+
+1. Record what was actually observed and distinguish direct evidence from interpretation.
+2. Determine whether the conflict affects a safety invariant, an empirical requirement, or only a planning assumption.
+3. Corroborate before changing an empirical gate. Follow the artifact and fallback criteria below.
+4. Preserve genuine safety boundaries and fail-closed behavior.
+5. Update the roadmap, issue, acceptance criteria, priority, estimate, or architecture assumption to match the best available evidence.
+6. Add regression coverage for the behavior that matters when it can be represented faithfully.
+7. Do not continue obsolete work merely because it appears in an older blueprint.
+
+Corroboration criteria:
+
+- Link a dated runtime artifact with the target, runtime identity, and outcome.
+- If no artifact exists, run a faithful local test only when it requires neither external actions nor owner input.
+- Label local results as synthetic; they do not certify physical behavior.
+- If neither source is available, record the evidence gap and escalate the gate decision to TheHighBrid.
+
+Plans are versioned understanding. Certification means evidence has satisfied the current justified gate, not that every prediction in an earlier document happened exactly as imagined.
+
 ## Standing contributor roles
 
 - **TheHighBrid:** repository owner and final product/release authority.
@@ -66,10 +123,16 @@ unsupported
 → certified_autonomous
 ```
 
+Use these stages to assess maturity against current evidence and safety invariants.
+For a disputed sub-gate, record its purpose, supporting evidence, and proposed change.
+TheHighBrid may approve a scoped deferral with a review date and explicit limits on certification claims.
+Until that decision is recorded, keep the disputed gate in place and continue unrelated work.
+
 ## Required behavior for AI contributors
 
 - Follow TheHighBrid's explicit instructions first.
 - Follow Grok's operator coordination unless it conflicts with an owner instruction or a user-gated boundary.
+- Apply the evidence-driven planning policy before treating roadmap language as a hard requirement.
 - Do not replace the autonomous product goal with a supervised-only philosophy.
 - Do not remove autonomous features, tasks, policies, or roadmap stages unless explicitly instructed by the owner.
 - Do not present current limitations as permanent product decisions.
@@ -112,3 +175,5 @@ Codex/ChatGPT/Sol is further restricted: it may not take any repository write, e
 ## Decision rule
 
 When implementation safety and product direction appear to conflict, do not unilaterally change the product direction. Present the engineering tradeoff to TheHighBrid. Grok coordinates the recommended path; TheHighBrid retains the final decision.
+
+When a roadmap assumption conflicts with stronger verified evidence without changing product direction or weakening a genuine safety invariant, update the planning layer to match reality rather than forcing reality to match the plan.
