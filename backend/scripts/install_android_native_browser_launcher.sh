@@ -93,15 +93,10 @@ new = '''  local devices
   local adb_serial_state="${JOBTOMATIK_ADB_SERIAL_STATE:-$RUNTIME_DIR/android-serial}"
   mkdir -p "$(dirname "$adb_serial_state")"
 
-  if [[ -z "$serial" && "${#connected[@]}" -eq 1 ]]; then
-    serial="${connected[0]}"
-    export ANDROID_SERIAL="$serial"
-    echo "ANDROID_NATIVE_CHROME_DEVICE_AUTOSELECTED serial=$serial"
-  fi
-
-  # Fresh native Termux shells do not inherit ANDROID_SERIAL. Restore only a wireless
-  # host:port that a previous native invocation verified and persisted under native
-  # RUNTIME_DIR. PRoot HOME is never resolved or embedded by the installer.
+  # Selection precedence is deliberate: an explicit operator selection wins; otherwise
+  # restore the last verified wireless endpoint before considering a generic sole device.
+  # This prevents an unrelated authorized device from stealing the authenticated Chrome
+  # lane while the saved wireless endpoint is temporarily absent from `adb devices`.
   if [[ -z "$serial" && -r "$adb_serial_state" ]]; then
     serial="$(head -n 1 "$adb_serial_state" 2>/dev/null | tr -d '\\r\\n' || true)"
     if [[ "$serial" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
@@ -110,6 +105,12 @@ new = '''  local devices
     else
       serial=""
     fi
+  fi
+
+  if [[ -z "$serial" && "${#connected[@]}" -eq 1 ]]; then
+    serial="${connected[0]}"
+    export ANDROID_SERIAL="$serial"
+    echo "ANDROID_NATIVE_CHROME_DEVICE_AUTOSELECTED serial=$serial"
   fi
 
   if [[ -z "$serial" ]]; then
