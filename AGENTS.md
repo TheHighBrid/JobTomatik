@@ -60,11 +60,18 @@ When real behavior differs from the plan:
 
 1. Record what was actually observed and distinguish direct evidence from interpretation.
 2. Determine whether the conflict affects a safety invariant, an empirical requirement, or only a planning assumption.
-3. Before changing an empirical gate, link a dated runtime artifact with its target, runtime identity, and outcome. If none exists, run a faithful local test when it needs no external action or owner input. Label that result as synthetic. If neither source is available, record the evidence gap and escalate the gate decision to TheHighBrid.
+3. Corroborate before changing an empirical gate. Follow the artifact and fallback criteria below.
 4. Preserve genuine safety boundaries and fail-closed behavior.
 5. Update the roadmap, issue, acceptance criteria, priority, estimate, or architecture assumption to match the best available evidence.
 6. Add regression coverage for the behavior that matters when it can be represented faithfully.
 7. Do not continue obsolete work merely because it appears in an older blueprint.
+
+Corroboration criteria:
+
+- Link a dated runtime artifact with the target, runtime identity, and outcome.
+- If no artifact exists, run a faithful local test only when it requires neither external actions nor owner input.
+- Label local results as synthetic; they do not certify physical behavior.
+- If neither source is available, record the evidence gap and escalate the gate decision to TheHighBrid.
 
 Plans are versioned understanding. Certification means evidence has satisfied the current justified gate, not that every prediction in an earlier document happened exactly as imagined.
 
