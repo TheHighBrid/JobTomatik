@@ -17,35 +17,14 @@ PILOT_CONTROLLER_DEST="$DEST_DIR/jobtomatik-pilot-controller"
 PILOT_CONTROLLER_MANAGER_DEST="$DEST_DIR/jobtomatik-pilot-controller-manager"
 IDENTITY_DEST="$DEST_DIR/jobtomatik_process_identity.sh"
 DEPLOYMENT_RESTART_MARKER="${JOBTOMATIK_DEPLOYMENT_RESTART_MARKER:-$DEST_DIR/.jobtomatik-deployment-restart.pending}"
+ADB_SERIAL_STATE="${JOBTOMATIK_ADB_SERIAL_STATE:-$HOME/.jobtomatik-runtime/android-serial}"
 
-for source_file in \
-  "$BROWSER_SOURCE" \
-  "$STACK_SOURCE" \
-  "$PILOT_SOURCE" \
-  "$PILOT_CONTROLLER_SOURCE" \
-  "$PILOT_CONTROLLER_MANAGER_SOURCE" \
-  "$IDENTITY_SOURCE"; do
-  if [[ ! -f "$source_file" ]]; then
-    echo "Android launcher source is missing: $source_file" >&2
-    exit 1
-  fi
+for source_file in "$BROWSER_SOURCE" "$STACK_SOURCE" "$PILOT_SOURCE" "$PILOT_CONTROLLER_SOURCE" "$PILOT_CONTROLLER_MANAGER_SOURCE" "$IDENTITY_SOURCE"; do
+  [[ -f "$source_file" ]] || { echo "Android launcher source is missing: $source_file" >&2; exit 1; }
 done
+[[ -d "$DEST_DIR" ]] || { echo "Native Termux bin directory is not visible at $DEST_DIR" >&2; exit 1; }
 
-if [[ ! -d "$DEST_DIR" ]]; then
-  echo "Native Termux bin directory is not visible at $DEST_DIR" >&2
-  echo "Run this installer through: proot-distro login ubuntu --shared-tmp" >&2
-  exit 1
-fi
-
-install_atomically() {
-  local source_file="$1"
-  local destination="$2"
-  local temporary="${destination}.tmp.$$"
-  cp "$source_file" "$temporary"
-  chmod 755 "$temporary"
-  mv -f "$temporary" "$destination"
-}
-
+install_atomically() { local t="${2}.tmp.$$"; cp "$1" "$t"; chmod 755 "$t"; mv -f "$t" "$2"; }
 install_atomically "$IDENTITY_SOURCE" "$IDENTITY_DEST"
 install_atomically "$BROWSER_SOURCE" "$BROWSER_DEST"
 install_atomically "$STACK_SOURCE" "$STACK_DEST"
@@ -53,120 +32,70 @@ install_atomically "$PILOT_SOURCE" "$PILOT_DEST"
 install_atomically "$PILOT_CONTROLLER_SOURCE" "$PILOT_CONTROLLER_DEST"
 install_atomically "$PILOT_CONTROLLER_MANAGER_SOURCE" "$PILOT_CONTROLLER_MANAGER_DEST"
 
-# The update action re-execs the newly installed native wrapper. Re-resolve and, for
-# an inherited TCP wireless-debugging serial only, reconnect that exact endpoint when
-# Android dropped the ADB transport during the update/restart boundary. Never discover
-# or connect an unknown device, and keep ambiguous/wrong-device selection fail-closed.
-python3 - "$STACK_DEST" <<'PY'
+mkdir -p "$(dirname "$ADB_SERIAL_STATE")"
+if [[ -n "${ANDROID_SERIAL:-}" && "$ANDROID_SERIAL" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
+  printf '%s\n' "$ANDROID_SERIAL" > "$ADB_SERIAL_STATE"
+  chmod 600 "$ADB_SERIAL_STATE"
+fi
+
+python3 - "$STACK_DEST" "$ADB_SERIAL_STATE" <<'PY'
 from pathlib import Path
 import sys
-
-path = Path(sys.argv[1])
-text = path.read_text()
-old = '''  local devices
-  devices="$(adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }')"
-  local -a connected=()
-  if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
-  local serial="${ANDROID_SERIAL:-}"
-  if [[ -z "$serial" && "${#connected[@]}" -eq 1 ]]; then serial="${connected[0]}"; fi
-  if [[ -z "$serial" ]]; then
-    echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: select one connected authorized ADB device" >&2
-    return 1
-  fi
-  local serial_connected=0
-  local connected_serial
-  for connected_serial in "${connected[@]}"; do
-    if [[ "$connected_serial" == "$serial" ]]; then
-      serial_connected=1
-      break
+path = Path(sys.argv[1]); state = sys.argv[2]; text = path.read_text()
+needle = '  local serial="${ANDROID_SERIAL:-}"\n'
+replacement = '''  local serial="${ANDROID_SERIAL:-}"
+  local adb_serial_state="${JOBTOMATIK_ADB_SERIAL_STATE:-''' + state + '''}"
+  if [[ -z "$serial" && -r "$adb_serial_state" ]]; then
+    serial="$(head -n 1 "$adb_serial_state" 2>/dev/null || true)"
+    if [[ "$serial" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
+      export ANDROID_SERIAL="$serial"
+      echo "ANDROID_NATIVE_CHROME_DEVICE_RESTORED serial=$serial"
+    else
+      serial=""
     fi
-  done
-  if [[ "$serial_connected" -ne 1 ]]; then
+  fi
+'''
+if needle not in text: raise SystemExit('ANDROID_LAUNCHER_SERIAL_STATE_PATCH_TARGET_MISSING')
+text = text.replace(needle, replacement, 1)
+old = '''  if [[ "$serial_connected" -ne 1 ]]; then
     echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: selected ANDROID_SERIAL is not an authorized connected device" >&2
     return 1
   fi
 '''
-new = '''  local devices
-  devices="$(adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }')"
-  local -a connected=()
-  if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
-  local serial="${ANDROID_SERIAL:-}"
-
-  if [[ -z "$serial" && "${#connected[@]}" -eq 1 ]]; then
-    serial="${connected[0]}"
-    export ANDROID_SERIAL="$serial"
-    echo "ANDROID_NATIVE_CHROME_DEVICE_AUTOSELECTED serial=$serial"
-  fi
-  if [[ -z "$serial" ]]; then
-    echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: select one connected authorized ADB device" >&2
-    return 1
-  fi
-
-  local serial_connected=0
-  local connected_serial
-  for connected_serial in "${connected[@]}"; do
-    if [[ "$connected_serial" == "$serial" ]]; then
-      serial_connected=1
-      break
-    fi
-  done
-
-  if [[ "$serial_connected" -ne 1 ]]; then
-    local direct_state
-    direct_state="$(adb -s "$serial" get-state 2>/dev/null || true)"
-    if [[ "$direct_state" == "device" ]]; then
-      serial_connected=1
-      export ANDROID_SERIAL="$serial"
-      echo "ANDROID_NATIVE_CHROME_DEVICE_REVALIDATED serial=$serial"
-    fi
-  fi
-
-  # Wireless debugging can drop its host-side transport while the same-device update
-  # performs PRoot and package work. The inherited host:port is already the operator's
-  # explicit selection, so reconnect only that exact endpoint and then require get-state
-  # to prove it is authorized. USB/opaque serials are never auto-connected.
-  if [[ "$serial_connected" -ne 1 && "$serial" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
+new = '''  if [[ "$serial_connected" -ne 1 && "$serial" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
     local reconnect_result reconnect_state
     reconnect_result="$(adb connect "$serial" 2>&1 || true)"
     reconnect_state="$(adb -s "$serial" get-state 2>/dev/null || true)"
     if [[ "$reconnect_state" == "device" ]]; then
       serial_connected=1
       export ANDROID_SERIAL="$serial"
+      printf '%s\\n' "$serial" > "$adb_serial_state"
+      chmod 600 "$adb_serial_state" 2>/dev/null || true
       echo "ANDROID_NATIVE_CHROME_DEVICE_RECONNECTED serial=$serial"
     else
       echo "ANDROID_NATIVE_CHROME_DEVICE_RECONNECT_FAILED serial=$serial result=$reconnect_result" >&2
     fi
   fi
-
   if [[ "$serial_connected" -ne 1 ]]; then
-    # Refresh after reconnect attempts before considering an unambiguous fallback.
     devices="$(adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }')"
-    connected=()
-    if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
-    if [[ "${#connected[@]}" -eq 1 ]] && [[ "$(adb -s "${connected[0]}" get-state 2>/dev/null || true)" == "device" ]]; then
-      serial="${connected[0]}"
-      export ANDROID_SERIAL="$serial"
-      serial_connected=1
-      echo "ANDROID_NATIVE_CHROME_DEVICE_RECOVERED serial=$serial"
+    connected=(); if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
+    if [[ "${#connected[@]}" -eq 1 ]]; then
+      serial="${connected[0]}"; export ANDROID_SERIAL="$serial"; serial_connected=1
     fi
   fi
-
   if [[ "$serial_connected" -ne 1 ]]; then
     echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: selected ANDROID_SERIAL is not an authorized connected device" >&2
     return 1
   fi
+  if [[ "$serial" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
+    printf '%s\\n' "$serial" > "$adb_serial_state"
+    chmod 600 "$adb_serial_state" 2>/dev/null || true
+  fi
 '''
-if old not in text:
-    raise SystemExit("ANDROID_LAUNCHER_ADB_SELECTION_PATCH_TARGET_MISSING")
+if old not in text: raise SystemExit('ANDROID_LAUNCHER_ADB_RECONNECT_PATCH_TARGET_MISSING')
 path.write_text(text.replace(old, new, 1))
 PY
 chmod 755 "$STACK_DEST"
-
-# The current launcher may have been parsed before a git update replaced these files.
-# Mark the completed native deployment so the freshly installed wrapper can distinguish
-# its one deployment restart from ordinary user/runtime restarts. The new wrapper
-# consumes this marker before any optional stale-CDP recovery, making recovery bounded
-# to one browser recycle per completed native launcher installation.
 touch "$DEPLOYMENT_RESTART_MARKER"
 
 echo "ANDROID_BROWSER_LAUNCHER_INSTALLED"
@@ -178,3 +107,4 @@ echo "Lever pilot controller: $PILOT_CONTROLLER_DEST"
 echo "Lever pilot controller manager: $PILOT_CONTROLLER_MANAGER_DEST"
 echo "Process identity helper: $IDENTITY_DEST"
 echo "Deployment recovery marker: $DEPLOYMENT_RESTART_MARKER"
+echo "ADB serial state: $ADB_SERIAL_STATE"
