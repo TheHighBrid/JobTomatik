@@ -65,13 +65,27 @@ Do not make the owner repeatedly perform real-world actions simply to prove a th
 
 ## Example: Lever CAPTCHA
 
-The earlier Lever planning treated post-CAPTCHA recovery as an important certification concern. Subsequent native Android Chrome operation produced 30+ owner-reported real application runs without CAPTCHA. CAPTCHA had been associated with the older Chromium lane, which was abandoned for separate runtime/reliability reasons.
+The earlier Lever planning treated post-CAPTCHA recovery as an important certification concern.
+The owner reported 30+ native Android Chrome application runs without CAPTCHA.
+That aggregate is **uncorroborated in the repository**: no per-run dates, targets, runtime revisions, and outcomes are linked here.
+It is not a verified sample, a count of successful submissions, or evidence of CAPTCHA compatibility.
 
-The evidence-driven response is:
+The retained [2026-09-21 Zopa observation](../backend/evidence/lever-native-chrome-first-confirmed-submit-2026-09-21.md) documents one successful human-controlled submission.
+It records the target, `/thanks` route, confirmation copy, and screenshot digest.
+It does not establish the exact runtime revision or CAPTCHA compatibility across employers.
+
+The [evidence ledger](../backend/evidence/lever-native-chrome-observation-ledger.md) records that distinction and the missing corroboration.
+Before using the aggregate to retire an empirical gate, retain one row per observation with dated artifacts, exact targets, runtime identities, and outcomes.
+Do not substitute the Phase A synthetic dry-run corpus for physical-device observations.
+
+The owner's current instruction is to progress through the actual application flow and hand off if CAPTCHA appears.
+That is a workflow prioritization decision, not proof that CAPTCHA cannot occur or that its recovery is certified.
+Under that instruction:
 
 - do not hunt for CAPTCHA;
 - do not force or manufacture CAPTCHA;
-- do not hold Lever certification open waiting for CAPTCHA;
+- do not wait for CAPTCHA solely to satisfy a predicted scenario;
+- limit certification claims to the paths supported by retained evidence; CAPTCHA recovery remains unverified until exercised and recorded;
 - retain safe CAPTCHA detection and human-only handling as dormant exception behavior;
 - exercise and strengthen that branch if CAPTCHA naturally appears in the supported runtime;
 - focus current certification work on the failures and transitions that actually occur: confirmation reconciliation, duplicate suppression, Answer Vault resume behavior, retained-target continuity, and stranded-state recovery.

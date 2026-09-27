@@ -24,7 +24,11 @@ Repository prose never overrides a newer explicit instruction from TheHighBrid.
 
 Roadmaps, blueprints, certification plans, task schedules, architecture proposals, issue descriptions, estimates, and AI-generated plans are working hypotheses created from the evidence available at the time. They are navigation aids, not immutable law and not proof that their assumptions are correct.
 
-When verified runtime evidence contradicts a planning assumption, contributors must investigate the contradiction and update the plan. Do not force the implementation, operator workflow, certification campaign, or physical runtime to reproduce a theoretical condition merely because an older plan predicted it.
+Investigate runtime evidence that contradicts a planning assumption.
+Update the plan when the evidence resolves the contradiction.
+An older prediction alone does not justify reproducing a condition.
+If evidence is incomplete or conflicting, record the uncertainty and preserve the affected safety gate.
+Escalate only the unresolved decision to TheHighBrid; continue independent work.
 
 Use this evidence hierarchy when sources disagree:
 
@@ -42,7 +46,13 @@ Higher evidence does not automatically erase a lower-level safety requirement. F
 - **Empirical requirement:** supported by verified real-world evidence. Preserve it while that evidence remains valid.
 - **Planning assumption:** predicted behavior, expected blocker, estimated sequence, theoretical prerequisite, or convenience rule not yet established by runtime evidence. Revise or retire it when stronger evidence contradicts it.
 
-A plan must never manufacture its own evidence. Do not hunt for, induce, or wait indefinitely for a theoretical blocker solely to satisfy an old checklist. If a condition is rare or absent in the supported runtime, keep appropriate fail-safe handling and exercise it when it naturally occurs or when a faithful non-destructive test can validate it.
+Keep observations separate from assumptions and synthetic test results.
+An old checklist alone does not justify searching for or inducing a blocker.
+Retain fail-safe handling for rare conditions and test it when they naturally occur.
+Faithful, non-destructive simulations may exercise the same handling; label their results as synthetic.
+If an unresolved condition blocks a release decision, record the missing evidence and escalate to TheHighBrid.
+The owner may defer that scenario or authorize a scoped validation with a recorded review date.
+Deferral does not certify the scenario or permit fabricated evidence or bypassed security controls.
 
 ### Required response to new runtime evidence
 
@@ -50,7 +60,7 @@ When real behavior differs from the plan:
 
 1. Record what was actually observed and distinguish direct evidence from interpretation.
 2. Determine whether the conflict affects a safety invariant, an empirical requirement, or only a planning assumption.
-3. Reproduce or corroborate the observation when reasonably possible without wasting owner time or creating unnecessary real-world actions.
+3. Before changing an empirical gate, link a dated runtime artifact with its target, runtime identity, and outcome. If none exists, run a faithful local test when it needs no external action or owner input. Label that result as synthetic. If neither source is available, record the evidence gap and escalate the gate decision to TheHighBrid.
 4. Preserve genuine safety boundaries and fail-closed behavior.
 5. Update the roadmap, issue, acceptance criteria, priority, estimate, or architecture assumption to match the best available evidence.
 6. Add regression coverage for the behavior that matters when it can be represented faithfully.
@@ -106,7 +116,10 @@ unsupported
 → certified_autonomous
 ```
 
-The progression above describes intended maturity stages, not an obligation to satisfy obsolete or unsupported sub-gates. Each promotion decision must be justified by current evidence and current safety invariants.
+Use these stages to assess maturity against current evidence and safety invariants.
+For a disputed sub-gate, record its purpose, supporting evidence, and proposed change.
+TheHighBrid may approve a scoped deferral with a review date and explicit limits on certification claims.
+Until that decision is recorded, keep the disputed gate in place and continue unrelated work.
 
 ## Required behavior for AI contributors
 

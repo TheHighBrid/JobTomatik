@@ -42,8 +42,9 @@ class _Surface:
             return self.confirmation
         return None
 
-    async def query_selector_all(self, _selector):
-        return []
+    async def query_selector_all(self, selector):
+        element = await self.query_selector(selector)
+        return [element] if element is not None else []
 
     async def inner_text(self, selector):
         if selector == "body":
