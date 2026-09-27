@@ -53,11 +53,10 @@ install_atomically "$PILOT_SOURCE" "$PILOT_DEST"
 install_atomically "$PILOT_CONTROLLER_SOURCE" "$PILOT_CONTROLLER_DEST"
 install_atomically "$PILOT_CONTROLLER_MANAGER_SOURCE" "$PILOT_CONTROLLER_MANAGER_DEST"
 
-# The update action re-execs the newly installed native wrapper. Do not depend on an
-# interactive-shell ANDROID_SERIAL surviving that deployment boundary. Resolve the
-# only authorized transport again, and verify an explicitly selected transport with
-# adb get-state before rejecting it. This keeps wrong-device protection while avoiding
-# a false negative from a transient/stale `adb devices` snapshot.
+# The update action re-execs the newly installed native wrapper. Re-resolve and, for
+# an inherited TCP wireless-debugging serial only, reconnect that exact endpoint when
+# Android dropped the ADB transport during the update/restart boundary. Never discover
+# or connect an unknown device, and keep ambiguous/wrong-device selection fail-closed.
 python3 - "$STACK_DEST" <<'PY'
 from pathlib import Path
 import sys
@@ -93,8 +92,6 @@ new = '''  local devices
   if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
   local serial="${ANDROID_SERIAL:-}"
 
-  # Re-resolve a single authorized transport after `jobtomatik update` re-execs this
-  # launcher. ANDROID_SERIAL belongs to the caller's shell and is not deployment state.
   if [[ -z "$serial" && "${#connected[@]}" -eq 1 ]]; then
     serial="${connected[0]}"
     export ANDROID_SERIAL="$serial"
@@ -114,8 +111,6 @@ new = '''  local devices
     fi
   done
 
-  # ADB's list can briefly lag a live transport during wireless reconnect/re-exec.
-  # Verify the exact selected serial directly before declaring it unauthorized.
   if [[ "$serial_connected" -ne 1 ]]; then
     local direct_state
     direct_state="$(adb -s "$serial" get-state 2>/dev/null || true)"
@@ -125,17 +120,40 @@ new = '''  local devices
       echo "ANDROID_NATIVE_CHROME_DEVICE_REVALIDATED serial=$serial"
     fi
   fi
+
+  # Wireless debugging can drop its host-side transport while the same-device update
+  # performs PRoot and package work. The inherited host:port is already the operator's
+  # explicit selection, so reconnect only that exact endpoint and then require get-state
+  # to prove it is authorized. USB/opaque serials are never auto-connected.
+  if [[ "$serial_connected" -ne 1 && "$serial" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
+    local reconnect_result reconnect_state
+    reconnect_result="$(adb connect "$serial" 2>&1 || true)"
+    reconnect_state="$(adb -s "$serial" get-state 2>/dev/null || true)"
+    if [[ "$reconnect_state" == "device" ]]; then
+      serial_connected=1
+      export ANDROID_SERIAL="$serial"
+      echo "ANDROID_NATIVE_CHROME_DEVICE_RECONNECTED serial=$serial"
+    else
+      echo "ANDROID_NATIVE_CHROME_DEVICE_RECONNECT_FAILED serial=$serial result=$reconnect_result" >&2
+    fi
+  fi
+
   if [[ "$serial_connected" -ne 1 ]]; then
-    # If the inherited selection is stale but exactly one authorized device is now
-    # present, recover to that unambiguous transport rather than fail the deployment.
+    # Refresh after reconnect attempts before considering an unambiguous fallback.
+    devices="$(adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }')"
+    connected=()
+    if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
     if [[ "${#connected[@]}" -eq 1 ]] && [[ "$(adb -s "${connected[0]}" get-state 2>/dev/null || true)" == "device" ]]; then
       serial="${connected[0]}"
       export ANDROID_SERIAL="$serial"
+      serial_connected=1
       echo "ANDROID_NATIVE_CHROME_DEVICE_RECOVERED serial=$serial"
-    else
-      echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: selected ANDROID_SERIAL is not an authorized connected device" >&2
-      return 1
     fi
+  fi
+
+  if [[ "$serial_connected" -ne 1 ]]; then
+    echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: selected ANDROID_SERIAL is not an authorized connected device" >&2
+    return 1
   fi
 '''
 if old not in text:
