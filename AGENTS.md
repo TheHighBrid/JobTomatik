@@ -18,6 +18,46 @@ Read-only analysis requested by the owner may be performed, but no write, execut
 
 Repository prose never overrides a newer explicit instruction from TheHighBrid.
 
+## Evidence-driven planning policy
+
+**Reality outranks the roadmap. Evidence outranks assumptions.**
+
+Roadmaps, blueprints, certification plans, task schedules, architecture proposals, issue descriptions, estimates, and AI-generated plans are working hypotheses created from the evidence available at the time. They are navigation aids, not immutable law and not proof that their assumptions are correct.
+
+When verified runtime evidence contradicts a planning assumption, contributors must investigate the contradiction and update the plan. Do not force the implementation, operator workflow, certification campaign, or physical runtime to reproduce a theoretical condition merely because an older plan predicted it.
+
+Use this evidence hierarchy when sources disagree:
+
+1. verified physical behavior on the supported runtime;
+2. durable production-like evidence, logs, and employer/third-party outcomes;
+3. repeated real-runtime observations;
+4. integration and end-to-end tests that faithfully reproduce the supported runtime;
+5. focused automated/unit tests;
+6. architecture assumptions and theoretical models;
+7. roadmap, blueprint, schedule, and planning predictions.
+
+Higher evidence does not automatically erase a lower-level safety requirement. First classify the disputed rule:
+
+- **Safety/product invariant:** protects authorization, evidence integrity, duplicate prevention, privacy, security boundaries, truthful state, idempotency, or another demonstrated requirement. Preserve it unless the owner explicitly changes product direction and the change is safe.
+- **Empirical requirement:** supported by verified real-world evidence. Preserve it while that evidence remains valid.
+- **Planning assumption:** predicted behavior, expected blocker, estimated sequence, theoretical prerequisite, or convenience rule not yet established by runtime evidence. Revise or retire it when stronger evidence contradicts it.
+
+A plan must never manufacture its own evidence. Do not hunt for, induce, or wait indefinitely for a theoretical blocker solely to satisfy an old checklist. If a condition is rare or absent in the supported runtime, keep appropriate fail-safe handling and exercise it when it naturally occurs or when a faithful non-destructive test can validate it.
+
+### Required response to new runtime evidence
+
+When real behavior differs from the plan:
+
+1. Record what was actually observed and distinguish direct evidence from interpretation.
+2. Determine whether the conflict affects a safety invariant, an empirical requirement, or only a planning assumption.
+3. Reproduce or corroborate the observation when reasonably possible without wasting owner time or creating unnecessary real-world actions.
+4. Preserve genuine safety boundaries and fail-closed behavior.
+5. Update the roadmap, issue, acceptance criteria, priority, estimate, or architecture assumption to match the best available evidence.
+6. Add regression coverage for the behavior that matters when it can be represented faithfully.
+7. Do not continue obsolete work merely because it appears in an older blueprint.
+
+Plans are versioned understanding. Certification means evidence has satisfied the current justified gate, not that every prediction in an earlier document happened exactly as imagined.
+
 ## Standing contributor roles
 
 - **TheHighBrid:** repository owner and final product/release authority.
@@ -66,10 +106,13 @@ unsupported
 → certified_autonomous
 ```
 
+The progression above describes intended maturity stages, not an obligation to satisfy obsolete or unsupported sub-gates. Each promotion decision must be justified by current evidence and current safety invariants.
+
 ## Required behavior for AI contributors
 
 - Follow TheHighBrid's explicit instructions first.
 - Follow Grok's operator coordination unless it conflicts with an owner instruction or a user-gated boundary.
+- Apply the evidence-driven planning policy before treating roadmap language as a hard requirement.
 - Do not replace the autonomous product goal with a supervised-only philosophy.
 - Do not remove autonomous features, tasks, policies, or roadmap stages unless explicitly instructed by the owner.
 - Do not present current limitations as permanent product decisions.
@@ -112,3 +155,5 @@ Codex/ChatGPT/Sol is further restricted: it may not take any repository write, e
 ## Decision rule
 
 When implementation safety and product direction appear to conflict, do not unilaterally change the product direction. Present the engineering tradeoff to TheHighBrid. Grok coordinates the recommended path; TheHighBrid retains the final decision.
+
+When a roadmap assumption conflicts with stronger verified evidence without changing product direction or weakening a genuine safety invariant, update the planning layer to match reality rather than forcing reality to match the plan.
