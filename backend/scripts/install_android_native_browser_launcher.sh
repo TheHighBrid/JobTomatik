@@ -53,10 +53,9 @@ install_atomically "$PILOT_SOURCE" "$PILOT_DEST"
 install_atomically "$PILOT_CONTROLLER_SOURCE" "$PILOT_CONTROLLER_DEST"
 install_atomically "$PILOT_CONTROLLER_MANAGER_SOURCE" "$PILOT_CONTROLLER_MANAGER_DEST"
 
-# The update action re-execs the newly installed native wrapper. Re-resolve and, for
-# an inherited TCP wireless-debugging serial only, reconnect that exact endpoint when
-# Android dropped the ADB transport during the update/restart boundary. Never discover
-# or connect an unknown device, and keep ambiguous/wrong-device selection fail-closed.
+# The update action re-execs the newly installed native wrapper. Keep the ADB target
+# recovery inside that native wrapper so all runtime paths resolve from native Termux
+# state rather than the PRoot installer's HOME.
 python3 - "$STACK_DEST" <<'PY'
 from pathlib import Path
 import sys
@@ -91,12 +90,28 @@ new = '''  local devices
   local -a connected=()
   if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
   local serial="${ANDROID_SERIAL:-}"
+  local adb_serial_state="${JOBTOMATIK_ADB_SERIAL_STATE:-$RUNTIME_DIR/android-serial}"
+  mkdir -p "$(dirname "$adb_serial_state")"
 
   if [[ -z "$serial" && "${#connected[@]}" -eq 1 ]]; then
     serial="${connected[0]}"
     export ANDROID_SERIAL="$serial"
     echo "ANDROID_NATIVE_CHROME_DEVICE_AUTOSELECTED serial=$serial"
   fi
+
+  # Fresh native Termux shells do not inherit ANDROID_SERIAL. Restore only a wireless
+  # host:port that a previous native invocation verified and persisted under native
+  # RUNTIME_DIR. PRoot HOME is never resolved or embedded by the installer.
+  if [[ -z "$serial" && -r "$adb_serial_state" ]]; then
+    serial="$(head -n 1 "$adb_serial_state" 2>/dev/null | tr -d '\\r\\n' || true)"
+    if [[ "$serial" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
+      export ANDROID_SERIAL="$serial"
+      echo "ANDROID_NATIVE_CHROME_DEVICE_RESTORED serial=$serial"
+    else
+      serial=""
+    fi
+  fi
+
   if [[ -z "$serial" ]]; then
     echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: select one connected authorized ADB device" >&2
     return 1
@@ -121,10 +136,8 @@ new = '''  local devices
     fi
   fi
 
-  # Wireless debugging can drop its host-side transport while the same-device update
-  # performs PRoot and package work. The inherited host:port is already the operator's
-  # explicit selection, so reconnect only that exact endpoint and then require get-state
-  # to prove it is authorized. USB/opaque serials are never auto-connected.
+  # Reconnect only an explicitly selected or previously verified wireless endpoint.
+  # USB/opaque serials are never auto-connected.
   if [[ "$serial_connected" -ne 1 && "$serial" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
     local reconnect_result reconnect_state
     reconnect_result="$(adb connect "$serial" 2>&1 || true)"
@@ -139,7 +152,6 @@ new = '''  local devices
   fi
 
   if [[ "$serial_connected" -ne 1 ]]; then
-    # Refresh after reconnect attempts before considering an unambiguous fallback.
     devices="$(adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }')"
     connected=()
     if [[ -n "$devices" ]]; then mapfile -t connected <<< "$devices"; fi
@@ -154,6 +166,13 @@ new = '''  local devices
   if [[ "$serial_connected" -ne 1 ]]; then
     echo "ANDROID_NATIVE_CHROME_DEVICE_REQUIRED: selected ANDROID_SERIAL is not an authorized connected device" >&2
     return 1
+  fi
+
+  # Persist only a verified wireless endpoint, and persist it from native Termux.
+  if [[ "$serial" =~ ^[^:[:space:]]+:[0-9]+$ ]]; then
+    printf '%s\\n' "$serial" > "${adb_serial_state}.tmp.$$"
+    chmod 600 "${adb_serial_state}.tmp.$$"
+    mv -f "${adb_serial_state}.tmp.$$" "$adb_serial_state"
   fi
 '''
 if old not in text:
