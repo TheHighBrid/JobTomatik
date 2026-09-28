@@ -18,6 +18,7 @@ Outcome contract (never a second click):
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, Optional
 
 from app.database import SessionLocal
@@ -43,6 +44,8 @@ from app.services.supervised_target_identity import (
     persist_supervised_target_metadata,
     resolve_supervised_target_metadata,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _load(db, application_id: int, handoff_public_id: str):
@@ -329,7 +332,7 @@ async def submit_retained_lever_final_action(
         try:
             _finalize(handoff_public_id, application_id, approval_reference, error=exc)
         except Exception:
-            pass
+            logger.exception("Could not record the uncertain Lever final-submit outcome")
         # The click boundary checkpoints the live page durably before touching
         # Submit. Without that checkpoint the control was provably never clicked
         # (missing, hidden, disabled, validation errors, hCaptcha, gate drift ...).
@@ -349,7 +352,7 @@ async def submit_retained_lever_final_action(
                         result=confirmed,
                     )
                 except Exception:
-                    pass
+                    logger.exception("Could not record the re-checked Lever confirmation")
                 return {
                     **confirmed,
                     "approval_reference": approval_reference,
