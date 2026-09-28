@@ -126,7 +126,6 @@ _CONFIRMATION_PATH_FRAGMENTS = (
     "/application-submitted",
     "/thank-you",
     "/thankyou",
-    "/thanks",
 )
 
 

@@ -4,7 +4,7 @@ import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
@@ -36,6 +36,8 @@ def _merge_question_catalogs(*catalogs: Iterable[Dict[str, Any]]) -> List[Dict[s
     return merged
 
 
+# V2 overrides are intentionally first. They preserve compatibility labels while
+# narrowing legacy patterns that would otherwise swallow more precise V2 families.
 QUESTION_CATALOG = _merge_question_catalogs(
     V2_OVERRIDE_QUESTION_CATALOG,
     V2_QUESTION_CATALOG,
@@ -47,27 +49,12 @@ _SCOPE_PRIORITY = {
     AnswerPolicyScope.global_scope.value: 1,
     AnswerPolicyScope.platform.value: 2,
     AnswerPolicyScope.company.value: 3,
-    AnswerPolicyScope.application.value: 4,
 }
 MIN_AUTOFILL_CONFIDENCE = 0.80
 
 
 def normalize_question_text(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", value or "").strip().lower()
-
-
-def normalize_application_url(value: Optional[str]) -> str:
-    """Canonicalize a job/application URL for exact position-scoped policy matching."""
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    parsed = urlparse(raw)
-    if not parsed.scheme or not parsed.hostname:
-        return raw.rstrip("/")
-    hostname = parsed.hostname.lower()
-    port = f":{parsed.port}" if parsed.port else ""
-    path = re.sub(r"/+", "/", parsed.path or "/").rstrip("/") or "/"
-    return urlunparse((parsed.scheme.lower(), hostname + port, path, "", "", ""))
 
 
 def get_catalog_item(canonical_key: str) -> Optional[Dict[str, Any]]:
@@ -186,11 +173,6 @@ def policy_scope_matches(policy: ApplicantAnswerPolicy, target_url: str, company
     if scope == AnswerPolicyScope.company.value:
         normalized_company = normalize_question_text(company)
         return bool(scope_value and scope_value in normalized_company)
-    if scope == AnswerPolicyScope.application.value:
-        return bool(
-            scope_value
-            and normalize_application_url(policy.scope_value) == normalize_application_url(target_url)
-        )
     return False
 
 
@@ -347,6 +329,7 @@ def policy_autofill_blockers(policy: Dict[str, Any]) -> List[str]:
 def resolve_runtime_policy(question_text: str, policies: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     policies = list(policies)
     if any((policy.get("source_metadata") or {}).get("question_match_mode") == "exact" for policy in policies):
+        # Legacy fillers must honor the same exact-question contract as recheck.
         from app.services.control_policy import resolve_control_policy
 
         return resolve_control_policy(question_text, policies)
