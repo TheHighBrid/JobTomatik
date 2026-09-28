@@ -9,6 +9,7 @@ PILOT_CONTROLLER_SOURCE="$BACKEND_ROOT/scripts/jobtomatik_pilot_control_daemon.s
 PILOT_CONTROLLER_MANAGER_SOURCE="$BACKEND_ROOT/scripts/jobtomatik_pilot_controller_manager.sh"
 IDENTITY_SOURCE="$BACKEND_ROOT/scripts/jobtomatik_process_identity.sh"
 TERMUX_PREFIX="${JOBTOMATIK_TERMUX_PREFIX:-/data/data/com.termux/files/usr}"
+TERMUX_HOME="${JOBTOMATIK_TERMUX_HOME:-${TERMUX_PREFIX%/usr}/home}"
 DEST_DIR="$TERMUX_PREFIX/bin"
 BROWSER_DEST="$DEST_DIR/jobtomatik-browser"
 STACK_DEST="$DEST_DIR/jobtomatik"
@@ -17,7 +18,7 @@ PILOT_CONTROLLER_DEST="$DEST_DIR/jobtomatik-pilot-controller"
 PILOT_CONTROLLER_MANAGER_DEST="$DEST_DIR/jobtomatik-pilot-controller-manager"
 IDENTITY_DEST="$DEST_DIR/jobtomatik_process_identity.sh"
 DEPLOYMENT_RESTART_MARKER="${JOBTOMATIK_DEPLOYMENT_RESTART_MARKER:-$DEST_DIR/.jobtomatik-deployment-restart.pending}"
-ADB_SERIAL_STATE="${JOBTOMATIK_ADB_SERIAL_STATE:-$HOME/.jobtomatik-runtime/android-serial}"
+ADB_SERIAL_STATE="${JOBTOMATIK_ADB_SERIAL_STATE:-$TERMUX_HOME/.jobtomatik-runtime/android-serial}"
 
 for source_file in "$BROWSER_SOURCE" "$STACK_SOURCE" "$PILOT_SOURCE" "$PILOT_CONTROLLER_SOURCE" "$PILOT_CONTROLLER_MANAGER_SOURCE" "$IDENTITY_SOURCE"; do
   [[ -f "$source_file" ]] || { echo "Android launcher source is missing: $source_file" >&2; exit 1; }
@@ -100,6 +101,7 @@ touch "$DEPLOYMENT_RESTART_MARKER"
 
 echo "ANDROID_BROWSER_LAUNCHER_INSTALLED"
 echo "Native prefix: $TERMUX_PREFIX"
+echo "Native home: $TERMUX_HOME"
 echo "Browser command: $BROWSER_DEST"
 echo "Stack command: $STACK_DEST"
 echo "Lever pilot command: $PILOT_DEST"
