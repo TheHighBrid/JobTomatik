@@ -27,7 +27,7 @@ def test_non_final_review_boundary_never_enters_auto_submit(monkeypatch):
         "requires_manual_review": True,
         "handoff_public_id": "handoff-question",
         "review_items": [
-            {"reason_code": ManualReviewReason.unknown_question.value}
+            {"reason_code": ManualReviewReason.ambiguous_question.value}
         ],
     }
 
