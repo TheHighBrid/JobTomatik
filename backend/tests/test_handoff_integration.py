@@ -46,8 +46,10 @@ def test_review_integration_extracts_browser_secrets_from_result(db_session):
         summary="CAPTCHA requires a human.",
         blocking_url=job.url,
     )
+    # Deliberately leave the review pending. TestingSessionLocal, like production
+    # SessionLocal, uses autoflush=False; handoff attachment must flush the just-created
+    # review itself before querying for it.
     db_session.add(review)
-    db_session.flush()
 
     result = {
         "dry_run": True,
@@ -86,6 +88,7 @@ def test_review_integration_extracts_browser_secrets_from_result(db_session):
     assert "handoff_snapshot" not in result
     assert "browser_endpoint" not in str(result)
     assert "resume_token" not in str(result)
+    assert review.id == session.manual_review_id
     assert review.details["handoff_public_id"] == session.public_id
     assert review.details["handoff_notification_id"] == notification.id
     assert "browser_endpoint" not in str(review.details)
