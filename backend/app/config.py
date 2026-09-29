@@ -157,6 +157,11 @@ class Settings(BaseSettings):
         if runtime_mode != "android_managed":
             return value
 
+        # An explicit operator-controlled global live-submit flag is authoritative.
+        # Keep the Lever platform pilot itself lease-bound below.
+        if name == "allow_real_application_submit" and value:
+            return True
+
         configured_greenhouse = bool(
             super().__getattribute__("greenhouse_supervised_pilot_enabled")
         )
