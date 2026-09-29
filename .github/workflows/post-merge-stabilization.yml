@@ -54,9 +54,6 @@ jobs:
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
 
-      - name: Diagnose Lever post-fill handoff
-        run: python -m pytest -q --tb=short -s tests/test_aaa_operator_completion_diagnostic.py
-
       - name: Compile backend
         run: python -m compileall -q app tests
 
