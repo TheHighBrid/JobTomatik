@@ -6,8 +6,11 @@ is checked on the HTTP discovery endpoint and again on the actual CDP connection
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID
@@ -107,6 +110,60 @@ def validate_native_identity(payload: Any, endpoint: str) -> dict[str, str]:
     return {key: payload[key] for key in ("Android-Package", "Browser", "User-Agent", "webSocketDebuggerUrl")}
 
 
+_NATIVE_IDENTITY_CACHE_TTL_SECONDS = 15.0
+_NATIVE_IDENTITY_CACHE_SOURCE_KEY = "_jobtomatik_identity_source"
+_NATIVE_IDENTITY_CACHE_SOURCE_VALUE = "recent_validated_http_discovery"
+
+
+def _native_identity_cache_path(endpoint: str) -> Path:
+    configured = str(os.environ.get("JOBTOMATIK_NATIVE_CHROME_IDENTITY_CACHE") or "").strip()
+    if configured:
+        return Path(configured)
+    port = _validated_native_port(endpoint)
+    return Path(f"/tmp/jobtomatik-native-chrome-identity-{os.getuid()}-{port}.json")
+
+
+def _write_native_identity_cache(endpoint: str, identity: dict[str, str]) -> None:
+    """Persist a very short-lived, already-validated discovery result for restart probes."""
+    path = _native_identity_cache_path(endpoint)
+    temp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    payload = {
+        "endpoint": endpoint,
+        "cached_at": time.time(),
+        "identity": identity,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        os.chmod(temp, 0o600)
+        os.replace(temp, path)
+    except OSError:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _read_recent_native_identity_cache(endpoint: str) -> dict[str, str] | None:
+    """Return only a fresh identity that still validates for the exact CDP endpoint."""
+    path = _native_identity_cache_path(endpoint)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        cached_at = float(payload.get("cached_at"))
+        age = time.time() - cached_at
+        if age < 0 or age > _NATIVE_IDENTITY_CACHE_TTL_SECONDS:
+            return None
+        if str(payload.get("endpoint") or "").rstrip("/") != endpoint.rstrip("/"):
+            return None
+        identity = validate_native_identity(payload.get("identity"), endpoint)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, BrowserContractError):
+        return None
+    return {
+        **identity,
+        _NATIVE_IDENTITY_CACHE_SOURCE_KEY: _NATIVE_IDENTITY_CACHE_SOURCE_VALUE,
+    }
+
+
 async def _read_native_identity_http(identity_endpoint: str) -> Any:
     """Read DevTools discovery using a fresh, non-pooled HTTP/1.1 connection."""
     timeout = httpx.Timeout(3.0, connect=1.5, read=3.0, write=3.0, pool=1.5)
@@ -127,12 +184,11 @@ async def _read_native_identity_http(identity_endpoint: str) -> Any:
 async def read_native_identity(endpoint: str) -> dict[str, str]:
     """Read and validate Android Chrome identity without opening a second CDP client.
 
-    The previous fallback called Playwright.connect_over_cdp() when /json/version
-    stalled. Playwright performs that same HTTP discovery internally, so the fallback
-    could not recover a wedged discovery server and instead added another 5 second
-    timeout while competing with the real browser attach. Keep identity discovery
-    HTTP-only and let the outer launcher re-establish the ADB forward when discovery
-    is genuinely unavailable.
+    Android Chrome's tiny DevTools HTTP discovery server can briefly stop returning
+    headers immediately after a successful ADB-forwarded probe even while the browser
+    WebSocket remains healthy. A successful HTTP identity is therefore cached for only
+    a few seconds. Persistent transport failure may reuse that exact validated identity;
+    identity mismatches never fall back to the cache.
     """
     native_port = _validated_native_port(endpoint)
     identity_endpoint = f"http://127.0.0.1:{native_port}"
@@ -141,13 +197,19 @@ async def read_native_identity(endpoint: str) -> dict[str, str]:
     for attempt in range(5):
         try:
             payload = await _read_native_identity_http(identity_endpoint)
-            return validate_native_identity(payload, identity_endpoint)
+            identity = validate_native_identity(payload, identity_endpoint)
+            _write_native_identity_cache(identity_endpoint, identity)
+            return identity
         except BrowserContractError:
             raise
         except (httpx.HTTPError, ValueError) as exc:
             last_error = exc
             if attempt < 4:
                 await asyncio.sleep(0.2 * (attempt + 1))
+
+    cached = _read_recent_native_identity_cache(identity_endpoint)
+    if cached is not None:
+        return cached
 
     raise BrowserContractError(
         "ANDROID_NATIVE_CHROME_UNAVAILABLE: native Chrome discovery remained unavailable after transient retries; preserve the application and reconnect the selected Chrome transport"
@@ -171,15 +233,36 @@ def _native_browser_instance_id(websocket_url: str) -> str:
 
 async def connect_native_browser(playwright: Any, contract: ApplicationBrowserContract, connect: Any) -> Any:
     before = await read_native_identity(contract.endpoint)
-    browser = await connect(playwright, contract.endpoint)
+    cached_identity = (
+        before.get(_NATIVE_IDENTITY_CACHE_SOURCE_KEY)
+        == _NATIVE_IDENTITY_CACHE_SOURCE_VALUE
+    )
+    connect_endpoint = (
+        before["webSocketDebuggerUrl"] if cached_identity else contract.endpoint
+    )
+    browser = await connect(playwright, connect_endpoint)
     session = await browser.new_browser_cdp_session()
     try:
         connected = await session.send("Browser.getVersion")
     finally:
         await session.detach()
-    after = await read_native_identity(contract.endpoint)
-    if before != after or connected.get("product") != before["Browser"] or connected.get("userAgent") != before["User-Agent"]:
+
+    if (
+        connected.get("product") != before["Browser"]
+        or connected.get("userAgent") != before["User-Agent"]
+    ):
         raise BrowserContractError("ANDROID_NATIVE_CHROME_CHANGED_DURING_ATTACH: application paused")
+
+    # A cached identity is used only after direct HTTP discovery has just failed.
+    # Connecting to the exact validated WebSocket avoids immediately hammering the
+    # same tiny discovery server again. Browser.getVersion above binds the live CDP
+    # session to the cached Chrome product and Android user agent. Fresh discovery
+    # keeps the stronger before/after HTTP drift check used by the normal path.
+    if not cached_identity:
+        after = await read_native_identity(contract.endpoint)
+        if before != after:
+            raise BrowserContractError("ANDROID_NATIVE_CHROME_CHANGED_DURING_ATTACH: application paused")
+
     if len(browser.contexts) != 1:
         raise BrowserContractError("ANDROID_NATIVE_CHROME_CONTEXT_AMBIGUOUS")
     browser_instance_id = _native_browser_instance_id(before["webSocketDebuggerUrl"])
@@ -193,5 +276,8 @@ async def connect_native_browser(playwright: Any, contract: ApplicationBrowserCo
         "browser_instance_id": browser_instance_id,
         "runtime_revision": os.environ.get("JOBTOMATIK_RUNTIME_REVISION", ""),
         "connection_identity_verified": True,
+        "identity_source": (
+            _NATIVE_IDENTITY_CACHE_SOURCE_VALUE if cached_identity else "live_http_discovery"
+        ),
     }
     return browser
