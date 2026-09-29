@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
@@ -21,6 +21,7 @@ import {
 import {
   authorizeOperatorFinalClick,
   createOperatorAssistedApproval,
+  completeOperatorAssistedSubmission,
   getOperatorAssistedPreflight,
   prepareOperatorAssistedSubmission,
   revalidateAnswerPolicyReview,
@@ -53,6 +54,8 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
   const queryClient = useQueryClient()
   const [confirmation, setConfirmation] = useState('')
   const [prepareTaskId, setPrepareTaskId] = useState('')
+  const [completionRequestId, setCompletionRequestId] = useState(null)
+  const dispatchedCompletion = useRef(null)
   const [policyReviewResult, setPolicyReviewResult] = useState(null)
   const [policyRepairAnswers, setPolicyRepairAnswers] = useState({})
 
@@ -79,7 +82,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
     select: (response) => response.data,
     enabled: Boolean(applicationId),
     retry: false,
-    refetchInterval: prepareTaskId ? 2000 : false,
+    refetchInterval: prepareTaskId || completionRequestId ? 2000 : false,
     refetchOnWindowFocus: true,
   })
 
@@ -132,19 +135,53 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
     ])
   }
 
+  const completionMutation = useMutation({
+    mutationFn: (requestId) => completeOperatorAssistedSubmission(applicationId, requestId),
+    retry: false,
+    onSuccess: async ({ data }) => {
+      setCompletionRequestId(null)
+      await refreshAll()
+      if (data.success && data.submission_confirmed) {
+        toast.success('Lever confirmed your application. Marked applied with confirmation evidence.')
+      } else {
+        toast.error(data.error || 'Confirmation was not observed. Check the retained page before retrying.')
+      }
+    },
+    onError: async (error) => {
+      setCompletionRequestId(null)
+      await refreshAll()
+      toast.error(getApiErrorMessage(error, 'Submission outcome could not be verified. Check the retained page before retrying.'))
+    },
+  })
+
+  const completeOnce = (requestId) => {
+    if (!requestId || dispatchedCompletion.current === requestId) return
+    dispatchedCompletion.current = requestId
+    completionMutation.mutate(requestId)
+  }
+
   useEffect(() => {
     if (!prepareTaskId || !taskQuery.data || !isApplicationTaskTerminal(taskQuery.data.status)) return
     const result = taskQuery.data.result || {}
     setPrepareTaskId('')
     refreshAll()
-    if (taskQuery.data.status === 'SUCCESS' && result.handoff_public_id) {
-      toast.success('Filled application retained. Exact owner approval is now required.')
+    const reviews = result.review_items || []
+    if (taskQuery.data.status === 'SUCCESS' && completionRequestId && result.handoff_public_id
+      && reviews.length > 0 && reviews.every((item) => item.reason_code === 'operator_final_submit_required')) {
+      completeOnce(completionRequestId)
+      return
+    }
+    setCompletionRequestId(null)
+    if (taskQuery.data.status === 'SUCCESS' && result.submission_confirmed && result.success) {
+      toast.success('Lever confirmed your application. Marked applied with confirmation evidence.')
     } else if (taskQuery.data.status === 'SUCCESS' && result.requires_manual_review) {
-      toast.error(result.error || 'Preparation reached a different manual-review boundary.')
+      toast(result.error || 'The filled application is retained and needs your attention.')
+    } else if (taskQuery.data.status === 'SUCCESS' && result.handoff_public_id) {
+      toast.success('Filled application retained for your review.')
     } else if (taskQuery.data.status !== 'SUCCESS') {
       toast.error(result.error || `Preparation ended with ${taskQuery.data.status}.`)
     }
-  }, [prepareTaskId, taskQuery.data])
+  }, [prepareTaskId, taskQuery.data, completionRequestId])
 
   useEffect(() => {
     setConfirmation('')
@@ -156,9 +193,15 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
   }, [applicationId, activePolicyReview?.id])
 
   const prepareMutation = useMutation({
-    mutationFn: () => prepareOperatorAssistedSubmission(applicationId),
+    mutationFn: (options) => prepareOperatorAssistedSubmission(applicationId, options),
     onSuccess: async (response) => {
-      if (response.data?.handoff_public_id) {
+      const requestId = response.data?.completion_request_id
+      setCompletionRequestId(requestId || null)
+      if (response.data?.handoff_public_id && !response.data?.task_id) {
+        if (requestId) {
+          completeOnce(requestId)
+          return
+        }
         await refreshAll()
         toast.success('The exact filled application is already retained.')
         return
@@ -169,7 +212,9 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
         return
       }
       setPrepareTaskId(taskId)
-      toast('Preparing the exact filled application. Final submit remains locked.')
+      toast(response.data?.completion_requested
+        ? 'Completing this application. JobTomatik will pause if it needs an answer or human verification.'
+        : 'Preparing the filled application for your review.')
     },
     onError: (error) => toast.error(
       getApiErrorMessage(error, 'Operator-assisted preparation is blocked.'),
@@ -274,7 +319,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
 
   const expectedConfirmation = `SUBMIT ${preflight.employer} | ${preflight.role} | ${preflight.application_url}`
   const confirmationMatches = confirmation === expectedConfirmation
-  const preparing = prepareMutation.isPending || Boolean(prepareTaskId)
+  const preparing = prepareMutation.isPending || Boolean(prepareTaskId) || completionMutation.isPending
   const boundaryReady = Boolean(preflight.operator_final_submit_boundary && preflight.operator_handoff_public_id)
   const executionAuthorityOff = (
     preflight.automated_submission_authorized === false
@@ -285,6 +330,9 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
     && executionAuthorityOff
     && !boundaryReady
     && !preparing
+  )
+  const canComplete = Boolean(
+    preflight.ready && executionAuthorityOff && !preparing && !finalClickUnlocked
   )
   const canApprove = Boolean(
     preflight.ready
@@ -305,7 +353,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
               <h2 className="font-semibold">Operator-assisted Lever Phase B</h2>
             </div>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-emerald-100/80">
-              JobTomatik fills and retains the exact application. Automated final submit stays disabled. You authorize one exact retained payload, then perform the single final action from the secure handoff.
+              Choose Fill and submit to authorize this application. JobTomatik fills the form, submits once, and records employer confirmation. Questions and human verification pause on the same page.
             </p>
           </div>
           <button
@@ -522,24 +570,36 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
           </div>
         </div>
 
-        {!boundaryReady && (
+        {!finalClickUnlocked && (
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
             <div className="flex items-start gap-3">
               <FileCheck2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-700" />
               <div className="flex-1">
-                <div className="text-sm font-semibold text-blue-950">1. Prepare and retain the filled application</div>
+                <div className="text-sm font-semibold text-blue-950">Complete this Lever application</div>
                 <p className="mt-1 text-xs leading-relaxed text-blue-800">
-                  This is fill-only. JobTomatik will stop before final Submit and retain the exact browser page for your review.
+                  {boundaryReady
+                    ? 'Your filled form is already retained. Submit it once and wait for employer confirmation.'
+                    : 'Authorize JobTomatik to fill and submit the application shown above. It will pause for missing answers or human verification. Keep this screen open until the result appears.'}
                 </p>
                 <button
                   type="button"
-                  onClick={() => prepareMutation.mutate()}
-                  disabled={!canPrepare}
+                  onClick={() => prepareMutation.mutate({ submitWhenReady: true })}
+                  disabled={!canComplete}
                   className="btn-primary mt-3 inline-flex items-center gap-2"
                 >
                   {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
-                  {preparing ? 'Preparing filled application…' : 'Prepare filled application'}
+                  {preparing ? 'Completing application…' : boundaryReady ? 'Submit filled application once' : 'Fill and submit application'}
                 </button>
+                {!boundaryReady && (
+                  <button
+                    type="button"
+                    onClick={() => prepareMutation.mutate({ submitWhenReady: false })}
+                    disabled={!canPrepare}
+                    className="btn-secondary ml-2 mt-3"
+                  >
+                    Fill only, review before submitting
+                  </button>
+                )}
               </div>
             </div>
           </div>

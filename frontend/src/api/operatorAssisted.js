@@ -3,8 +3,15 @@ import api from './client'
 export const getOperatorAssistedPreflight = (applicationId) =>
   api.get(`/supervised-submissions/applications/${applicationId}/operator-assisted/preflight`)
 
-export const prepareOperatorAssistedSubmission = (applicationId) =>
-  api.post(`/supervised-submissions/applications/${applicationId}/operator-assisted/prepare`)
+export const prepareOperatorAssistedSubmission = (applicationId, { submitWhenReady = false } = {}) =>
+  api.post(`/supervised-submissions/applications/${applicationId}/operator-assisted/prepare`, {
+    submit_when_ready: submitWhenReady,
+  })
+
+export const completeOperatorAssistedSubmission = (applicationId, completionRequestId) =>
+  api.post(`/supervised-submissions/applications/${applicationId}/operator-assisted/complete`, {
+    completion_request_id: completionRequestId,
+  }, { timeout: 180_000 })
 
 export const revalidateAnswerPolicyReview = (applicationId, reviewId) =>
   api.post(

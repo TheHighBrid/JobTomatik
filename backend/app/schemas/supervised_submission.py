@@ -77,6 +77,14 @@ class OperatorAssistedPreflightOut(BaseModel):
     operator_handoff_public_id: Optional[str] = None
 
 
+class OperatorAssistedPrepareRequest(BaseModel):
+    submit_when_ready: bool = Field(default=False, strict=True)
+
+
+class OperatorAssistedCompletionRequest(BaseModel):
+    completion_request_id: int = Field(gt=0)
+
+
 class OperatorAssistedPrepareOut(BaseModel):
     application_id: int
     status: str
@@ -85,6 +93,8 @@ class OperatorAssistedPrepareOut(BaseModel):
     handoff_public_id: Optional[str] = None
     automated_submission_authorized: bool = False
     final_submit_clicked_by_jobtomatik: bool = False
+    completion_requested: bool = False
+    completion_request_id: Optional[int] = None
 
 
 class OperatorAssistedAuthorizationOut(BaseModel):

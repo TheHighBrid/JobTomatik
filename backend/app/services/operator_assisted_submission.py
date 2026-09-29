@@ -53,6 +53,14 @@ settings = _OperatorSettingsProxy()
 OPERATOR_ASSISTED_APPROVAL_SOURCE = "authenticated_user_operator_assisted"
 
 
+def operator_completion_binding(preflight: Mapping[str, Any]) -> Dict[str, Any]:
+    """Bind an explicit fill-and-submit request to the owner's exact application."""
+    return {key: preflight.get(key) for key in (
+        "application_id", "platform", "application_url", "combined_payload_hash",
+        "target_identity_hash", "adapter_version",
+    )}
+
+
 class OperatorAssistedSubmissionError(ValueError):
     pass
 

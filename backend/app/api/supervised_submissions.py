@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.application import (
     Application,
     ApplicationAutomationState,
+    ApplicationEvent,
     ApplicationStatus,
     ManualReviewTask,
 )
@@ -22,10 +23,12 @@ from app.models.user import User
 from app.schemas.supervised_submission import (
     OperatorAssistedApprovalCreate,
     OperatorAssistedAuthorizationOut,
+    OperatorAssistedCompletionRequest,
     OperatorAssistedFinalSubmitOut,
     OperatorAssistedFinalSubmitRequest,
     OperatorAssistedPreflightOut,
     OperatorAssistedPrepareOut,
+    OperatorAssistedPrepareRequest,
     SupervisedApprovalCreate,
     SupervisedApprovalOut,
     SupervisedApprovalRevoke,
@@ -52,6 +55,7 @@ from app.services.operator_assisted_submission import (
     build_operator_assisted_preflight,
     get_operator_final_submit_boundary,
     issue_operator_assisted_approval,
+    operator_completion_binding,
     validate_operator_assisted_approval,
 )
 from app.services.submission_integrity import (
@@ -197,6 +201,7 @@ async def operator_assisted_preflight(
 )
 async def prepare_operator_assisted_submission(
     application_id: int,
+    data: OperatorAssistedPrepareRequest | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -208,8 +213,9 @@ async def prepare_operator_assisted_submission(
     )
     _require_open_submission(application)
 
+    completion_requested = bool(data and data.submit_when_ready)
     existing = get_operator_final_submit_boundary(db, application)
-    if existing is not None:
+    if existing is not None and not completion_requested:
         return {
             "application_id": application.id,
             "status": "retained_ready_to_submit",
@@ -237,21 +243,69 @@ async def prepare_operator_assisted_submission(
             detail="Operator-assisted preparation is blocked: "
             + ", ".join(preflight["blockers"]),
         )
+    completion_request = None
+    if completion_requested:
+        binding = operator_completion_binding(preflight)
+        if preflight["platform"] != "lever" or not all(binding.values()):
+            raise HTTPException(status_code=409, detail="Fill and submit requires an exact verified Lever target.")
+        completion_request = ApplicationEvent(
+            application_id=application.id,
+            event_type="operator_assisted_completion_requested",
+            from_state=application.automation_state,
+            to_state=application.automation_state,
+            payload={"user_id": current_user.id, **binding},
+        )
+        db.add(completion_request)
+        db.flush()
+    request_id = completion_request.id if completion_request is not None else None
     db.commit()
 
-    task = prepare_operator_assisted_application_task.apply_async(
-        args=[application_id],
-        queue="applications",
+    task = None if existing is not None else prepare_operator_assisted_application_task.apply_async(
+        args=[application_id], queue="applications",
     )
     return {
         "application_id": application_id,
-        "status": "preparing_retained_form",
-        "task_id": str(task.id),
+        "status": "retained_ready_to_submit" if existing is not None else "preparing_retained_form",
+        "task_id": str(task.id) if task is not None else None,
         "submission_mode": "operator_assisted_prepare",
-        "handoff_public_id": None,
+        "handoff_public_id": existing.public_id if existing is not None else None,
         "automated_submission_authorized": False,
         "final_submit_clicked_by_jobtomatik": False,
+        "completion_requested": completion_requested,
+        "completion_request_id": request_id,
     }
+
+
+@router.post("/applications/{application_id}/operator-assisted/complete")
+async def complete_operator_assisted_submission(
+    application_id: int,
+    data: OperatorAssistedCompletionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Finish the retained page for an explicit, payload-bound owner request.
+
+    This remains in the API's operator lane. The Android fill worker has a
+    different pilot-lease contract and must not be repurposed as a live worker.
+    """
+    application, _, _ = _owned_records(db, application_id, current_user.id)
+    _require_open_submission(application)
+    request = db.query(ApplicationEvent).filter(
+        ApplicationEvent.id == data.completion_request_id,
+        ApplicationEvent.application_id == application_id,
+        ApplicationEvent.event_type == "operator_assisted_completion_requested",
+    ).first()
+    if request is None or (request.payload or {}).get("user_id") != current_user.id:
+        raise HTTPException(status_code=409, detail="An explicit Fill and submit request is required.")
+    boundary = get_operator_final_submit_boundary(db, application)
+    if boundary is None:
+        raise HTTPException(status_code=409, detail="The filled application has not reached its final-submit boundary.")
+    binding = {key: value for key, value in request.payload.items() if key != "user_id"}
+    public_id = boundary.public_id
+    db.rollback()  # Release the read transaction before the independently durable claim.
+    from app.services.operator_assisted_completion import complete_retained_lever_application
+
+    return await complete_retained_lever_application(application_id, public_id, binding)
 
 
 @router.post(

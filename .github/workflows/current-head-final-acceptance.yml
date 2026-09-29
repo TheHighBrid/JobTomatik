@@ -79,6 +79,9 @@ jobs:
       - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
 
+      - name: Verify retained Lever fill and submit against synthetic employer pages
+        run: python -m pytest -q --tb=short -ra tests/test_operator_assisted_completion.py
+
       - name: Certify LinkedIn Apply to ATS to filled dry-run form and task state
         run: |
           python -m pytest -q --tb=short -ra \
