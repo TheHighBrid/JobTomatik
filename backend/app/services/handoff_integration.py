@@ -123,6 +123,12 @@ def _attach_handoff_session(
         })
         return
 
+    # SessionLocal intentionally uses autoflush=False. The matching review is often
+    # created immediately before this attachment step, so make that pending row
+    # queryable before looking it up. Without this flush the filled browser snapshot
+    # is retained but no ManualHandoffSession is created, leaving final Submit
+    # unreachable even though the form itself was prepared successfully.
+    db.flush()
     review = (
         db.query(ManualReviewTask)
         .filter(
