@@ -15,6 +15,12 @@ PLACEHOLDER_SECRET_MARKERS = (
     "development-secret",
 )
 SUPERVISED_SUBMISSION_SERVICE_MODULE = "app.services.supervised_submission"
+OPERATOR_ASSISTED_FINAL_ACTION_MODULES = frozenset({
+    "app.services.operator_assisted_auto_submit",
+    "app.services.operator_assisted_final_action",
+    "app.services.operator_assisted_handoff_integration",
+    "app.services.operator_assisted_submission",
+})
 
 
 def _supervised_submission_service_on_stack() -> bool:
@@ -28,6 +34,22 @@ def _supervised_submission_service_on_stack() -> bool:
         if frame is None:
             break
         if str(frame.f_globals.get("__name__") or "") == SUPERVISED_SUBMISSION_SERVICE_MODULE:
+            return True
+        frame = frame.f_back
+    return False
+
+
+def _operator_assisted_final_action_on_stack() -> bool:
+    """Return true only inside the retained operator-assisted final-action lane."""
+
+    try:
+        frame = sys._getframe(2)
+    except (AttributeError, ValueError):
+        return False
+    for _ in range(24):
+        if frame is None:
+            break
+        if str(frame.f_globals.get("__name__") or "") in OPERATOR_ASSISTED_FINAL_ACTION_MODULES:
             return True
         frame = frame.f_back
     return False
@@ -157,6 +179,13 @@ class Settings(BaseSettings):
         # Explicit operator-controlled execution flags are authoritative.
         if value:
             return True
+
+        # The retained operator-assisted lane deliberately requires the persisted
+        # global + Lever pilot switches to stay OFF. The temporary supervised
+        # worker lease belongs to a different live-submission lane and must not
+        # dynamically project those switches true inside this final-action path.
+        if _operator_assisted_final_action_on_stack():
+            return value
 
         configured_greenhouse = bool(
             super().__getattribute__("greenhouse_supervised_pilot_enabled")
