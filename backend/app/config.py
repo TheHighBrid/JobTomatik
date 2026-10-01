@@ -6,6 +6,8 @@ from typing import List, Literal
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.services.operator_assisted_context import operator_final_action_active
+
 
 DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"
 PLACEHOLDER_SECRET_MARKERS = (
@@ -15,12 +17,6 @@ PLACEHOLDER_SECRET_MARKERS = (
     "development-secret",
 )
 SUPERVISED_SUBMISSION_SERVICE_MODULE = "app.services.supervised_submission"
-OPERATOR_ASSISTED_FINAL_ACTION_MODULES = frozenset({
-    "app.services.operator_assisted_auto_submit",
-    "app.services.operator_assisted_final_action",
-    "app.services.operator_assisted_handoff_integration",
-    "app.services.operator_assisted_submission",
-})
 
 
 def _supervised_submission_service_on_stack() -> bool:
@@ -40,18 +36,8 @@ def _supervised_submission_service_on_stack() -> bool:
 
 
 def _operator_assisted_final_action_on_stack() -> bool:
-    """Return true only inside the retained operator-assisted final-action lane."""
-    try:
-        frame = sys._getframe(2)
-    except (AttributeError, ValueError):
-        return False
-    for _ in range(24):
-        if frame is None:
-            break
-        if str(frame.f_globals.get("__name__") or "") in OPERATOR_ASSISTED_FINAL_ACTION_MODULES:
-            return True
-        frame = frame.f_back
-    return False
+    """Return true only inside the explicit retained final-action context."""
+    return operator_final_action_active()
 
 
 class Settings(BaseSettings):
@@ -180,9 +166,8 @@ class Settings(BaseSettings):
             return True
 
         # The retained operator-assisted lane deliberately requires the persisted
-        # global + Lever pilot switches to stay OFF. The temporary supervised
-        # worker lease belongs to a different live-submission lane and must not
-        # dynamically project those switches true inside this final-action path.
+        # global + Lever pilot switches to stay OFF. Suppress temporary lease
+        # projection only while an explicit final-action gate scope is active.
         if _operator_assisted_final_action_on_stack():
             return value
 
@@ -229,56 +214,31 @@ class Settings(BaseSettings):
             return value
         return value
 
-    @property
-    def cors_origin_list(self) -> List[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
-
-    @property
-    def is_production(self) -> bool:
-        return self.app_environment == "production"
-
-    @property
-    def uses_placeholder_secret(self) -> bool:
-        normalized = self.secret_key.strip().lower()
-        return (
-            len(self.secret_key.encode("utf-8")) < 32
-            or normalized == DEFAULT_SECRET_KEY
-            or any(marker in normalized for marker in PLACEHOLDER_SECRET_MARKERS)
-        )
-
-    @model_validator(mode="after")
-    def validate_runtime_security(self) -> "Settings":
-        if "*" in self.cors_origin_list:
-            raise ValueError("CORS_ORIGINS cannot contain '*' when credentialed requests are enabled")
-
-        if self.supervised_approval_ttl_minutes > self.supervised_approval_max_ttl_minutes:
-            raise ValueError(
-                "SUPERVISED_APPROVAL_TTL_MINUTES cannot exceed "
-                "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
-            )
-
-        sensitive_runtime = any(
-            (
-                self.is_production,
-                self.allow_real_application_submit,
-                self.allow_real_followup_send,
-                self.greenhouse_supervised_pilot_enabled,
-                self.lever_supervised_pilot_enabled,
-            )
-        )
-        if sensitive_runtime and self.uses_placeholder_secret:
-            raise ValueError(
-                "SECRET_KEY must be a non-placeholder value of at least 32 UTF-8 bytes "
-                "for production, real-submission, or outbound-communication operation"
-            )
-
-        return self
-
     model_config = SettingsConfigDict(
         env_file=".env",
+        env_file_encoding="utf-8",
         extra="ignore",
-        populate_by_name=True,
+        case_sensitive=False,
     )
+
+    @model_validator(mode="after")
+    def validate_security_configuration(self):
+        """Reject unsafe production security configuration while keeping local dev usable."""
+
+        if self.app_environment != "production":
+            return self
+
+        secret = self.secret_key.strip()
+        lowered = secret.lower()
+        if len(secret) < 32 or any(marker in lowered for marker in PLACEHOLDER_SECRET_MARKERS):
+            raise ValueError(
+                "SECRET_KEY must be a non-default secret of at least 32 characters in production"
+            )
+        return self
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache
