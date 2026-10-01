@@ -41,7 +41,6 @@ def _supervised_submission_service_on_stack() -> bool:
 
 def _operator_assisted_final_action_on_stack() -> bool:
     """Return true only inside the retained operator-assisted final-action lane."""
-
     try:
         frame = sys._getframe(2)
     except (AttributeError, ValueError):
