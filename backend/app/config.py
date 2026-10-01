@@ -214,31 +214,56 @@ class Settings(BaseSettings):
             return value
         return value
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        case_sensitive=False,
-    )
-
-    @model_validator(mode="after")
-    def validate_security_configuration(self):
-        """Reject unsafe production security configuration while keeping local dev usable."""
-
-        if self.app_environment != "production":
-            return self
-
-        secret = self.secret_key.strip()
-        lowered = secret.lower()
-        if len(secret) < 32 or any(marker in lowered for marker in PLACEHOLDER_SECRET_MARKERS):
-            raise ValueError(
-                "SECRET_KEY must be a non-default secret of at least 32 characters in production"
-            )
-        return self
+    @property
+    def cors_origin_list(self) -> List[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @property
-    def cors_origins_list(self) -> List[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+    def is_production(self) -> bool:
+        return self.app_environment == "production"
+
+    @property
+    def uses_placeholder_secret(self) -> bool:
+        normalized = self.secret_key.strip().lower()
+        return (
+            len(self.secret_key.encode("utf-8")) < 32
+            or normalized == DEFAULT_SECRET_KEY
+            or any(marker in normalized for marker in PLACEHOLDER_SECRET_MARKERS)
+        )
+
+    @model_validator(mode="after")
+    def validate_runtime_security(self) -> "Settings":
+        if "*" in self.cors_origin_list:
+            raise ValueError("CORS_ORIGINS cannot contain '*' when credentialed requests are enabled")
+
+        if self.supervised_approval_ttl_minutes > self.supervised_approval_max_ttl_minutes:
+            raise ValueError(
+                "SUPERVISED_APPROVAL_TTL_MINUTES cannot exceed "
+                "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
+            )
+
+        sensitive_runtime = any(
+            (
+                self.is_production,
+                self.allow_real_application_submit,
+                self.allow_real_followup_send,
+                self.greenhouse_supervised_pilot_enabled,
+                self.lever_supervised_pilot_enabled,
+            )
+        )
+        if sensitive_runtime and self.uses_placeholder_secret:
+            raise ValueError(
+                "SECRET_KEY must be a non-placeholder value of at least 32 UTF-8 bytes "
+                "for production, real-submission, or outbound-communication operation"
+            )
+
+        return self
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        populate_by_name=True,
+    )
 
 
 @lru_cache
