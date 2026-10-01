@@ -12,6 +12,14 @@ IDENTITY = {
 }
 
 
+@pytest.fixture(autouse=True)
+def isolate_native_identity_cache(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        "JOBTOMATIK_NATIVE_CHROME_IDENTITY_CACHE",
+        str(tmp_path / "native-chrome-identity.json"),
+    )
+
+
 @pytest.mark.asyncio
 async def test_native_identity_recovers_after_transient_timeout(monkeypatch):
     calls = 0

@@ -6,6 +6,8 @@ from typing import List, Literal
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.services.operator_assisted_context import operator_final_action_active
+
 
 DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"
 PLACEHOLDER_SECRET_MARKERS = (
@@ -31,6 +33,11 @@ def _supervised_submission_service_on_stack() -> bool:
             return True
         frame = frame.f_back
     return False
+
+
+def _operator_assisted_final_action_on_stack() -> bool:
+    """Return true only inside the explicit retained final-action context."""
+    return operator_final_action_active()
 
 
 class Settings(BaseSettings):
@@ -157,6 +164,12 @@ class Settings(BaseSettings):
         # Explicit operator-controlled execution flags are authoritative.
         if value:
             return True
+
+        # The retained operator-assisted lane deliberately requires the persisted
+        # global + Lever pilot switches to stay OFF. Suppress temporary lease
+        # projection only while an explicit final-action gate scope is active.
+        if _operator_assisted_final_action_on_stack():
+            return value
 
         configured_greenhouse = bool(
             super().__getattribute__("greenhouse_supervised_pilot_enabled")

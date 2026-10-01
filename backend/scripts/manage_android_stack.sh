@@ -773,8 +773,8 @@ prepare_stack() {
 
   require_runtime_attestation cli
 
-  if ! "$VENV/bin/python" -c 'import jwt; assert jwt.__version__' >/dev/null 2>&1; then
-    "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.13.0'
+  if ! "$VENV/bin/python" -c 'import jwt, sys; sys.exit(0 if jwt.__version__ == "2.15.0" else 1)' >/dev/null 2>&1; then
+    "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.15.0'
   fi
 
   if ! redis-cli ping 2>/dev/null | grep -q PONG; then

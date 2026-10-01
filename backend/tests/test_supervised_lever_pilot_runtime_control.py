@@ -370,6 +370,21 @@ def test_cached_settings_stay_off_outside_exact_supervised_scopes(monkeypatch):
 
     monkeypatch.setenv("JOBTOMATIK_RUNTIME_ROLE", "worker")
     assert settings.allow_real_application_submit is False
+
+    monkeypatch.setattr(
+        config_module,
+        "_operator_assisted_final_action_on_stack",
+        lambda: True,
+    )
+    with supervised_target_scope({"platform": "lever", "posting_id": "abc"}):
+        assert settings.allow_real_application_submit is False
+        assert settings.lever_supervised_pilot_enabled is False
+
+    monkeypatch.setattr(
+        config_module,
+        "_operator_assisted_final_action_on_stack",
+        lambda: False,
+    )
     with supervised_target_scope({"platform": "greenhouse"}):
         assert settings.allow_real_application_submit is False
     with supervised_target_scope({"platform": "lever", "posting_id": "abc"}):

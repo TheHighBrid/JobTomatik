@@ -8,15 +8,22 @@ be claimed until an exact operator-assisted approval bound to that handoff is co
 
 from __future__ import annotations
 
+import hashlib
+import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Dict, Iterator, Mapping, Optional
+from urllib.parse import urlsplit
 
 from app.config import get_settings
 from app.models.application import ManualReviewReason
 from app.models.handoff import HandoffChallengeType
 from app.services.operations_policy import disabled_platforms, platform_key_for_url
 from app.services.operations_settings import get_operations_settings
+from app.services.operator_assisted_context import operator_final_action_scope
+
+
+logger = logging.getLogger(__name__)
 
 
 _OPERATOR_PREP_TARGET: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
@@ -59,6 +66,25 @@ def _challenge_type(session: Any) -> Optional[str]:
     return str(value) if value is not None else None
 
 
+def _log_target_ref(url: str) -> str:
+    """Return a diagnostic target reference without credentials or target details."""
+    raw = str(url or "")
+    parsed = urlsplit(raw)
+    host = parsed.hostname or ""
+    if host:
+        display_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+        authority = f"{display_host}:{port}" if port is not None else display_host
+        origin = f"{parsed.scheme}://{authority}" if parsed.scheme else "unknown-origin"
+    else:
+        origin = "unknown-origin"
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12] if raw else "empty"
+    return f"{origin}#{digest}"
+
+
 def _operator_final_action_blockers(url: str) -> list[str]:
     """Return current fail-closed blockers for the human-triggered Lever final action."""
 
@@ -78,6 +104,15 @@ def _operator_final_action_blockers(url: str) -> list[str]:
         blockers.append("operator_assisted_requires_global_submit_disabled")
     if bool(core.lever_supervised_pilot_enabled):
         blockers.append("operator_assisted_requires_platform_pilot_disabled")
+    logger.info(
+        "JT_LEVER_FINAL stage=gate_check platform=%s global_submit=%s "
+        "lever_pilot=%s autopilot=%s blockers=%s",
+        platform,
+        bool(core.allow_real_application_submit),
+        bool(core.lever_supervised_pilot_enabled),
+        bool(operations.autopilot_enabled),
+        blockers,
+    )
     return blockers
 
 
@@ -299,15 +334,24 @@ def install_operator_assisted_handoff_integration() -> None:
                 "single explicit Submit action."
             )
 
-        entry_blockers = _operator_final_action_blockers(str(session.current_url or ""))
+        with operator_final_action_scope():
+            entry_blockers = _operator_final_action_blockers(str(session.current_url or ""))
         if entry_blockers:
             raise browser_handoff.BrowserHandoffError(
                 "Operator-assisted final submit is blocked by the current runtime profile: "
                 + ", ".join(entry_blockers)
             )
 
+        logger.info(
+            "JT_LEVER_FINAL stage=entry_gate_passed handoff=%s",
+            str(session.public_id or ""),
+        )
         playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
         try:
+            logger.info(
+                "JT_LEVER_FINAL stage=cdp_attached target=%s",
+                _log_target_ref(str(page.url or "")),
+            )
             from app.services.operator_assisted_live_pilot_hardening import (
                 passive_verification_requires_manual_browser,
                 passive_verification_state,
@@ -341,7 +385,8 @@ def install_operator_assisted_handoff_integration() -> None:
             before_url = str(page.url or "")
             before_page_fingerprint = await browser_handoff.page_fingerprint(page)
             before_step_fingerprint = await adapter.step_fingerprint(surface)
-            snapshot_blockers = _operator_final_action_blockers(before_url)
+            with operator_final_action_scope():
+                snapshot_blockers = _operator_final_action_blockers(before_url)
             if snapshot_blockers:
                 raise browser_handoff.BrowserHandoffError(
                     "Operator-assisted final submit is blocked before live checkpointing: "
@@ -349,6 +394,10 @@ def install_operator_assisted_handoff_integration() -> None:
                 )
 
             submit_control = await adapter.find_submit_button(surface)
+            logger.info(
+                "JT_LEVER_FINAL stage=submit_lookup found=%s",
+                submit_control is not None,
+            )
             if submit_control is None:
                 raise browser_handoff.BrowserHandoffError(
                     "The exact final Submit control is no longer available. Re-prepare "
@@ -357,6 +406,11 @@ def install_operator_assisted_handoff_integration() -> None:
             try:
                 visible = await submit_control.is_visible()
                 enabled = await submit_control.is_enabled()
+                logger.info(
+                    "JT_LEVER_FINAL stage=submit_state visible=%s enabled=%s",
+                    visible,
+                    enabled,
+                )
             except Exception as exc:
                 raise browser_handoff.BrowserHandoffError(
                     "The final Submit control could not be verified safely."
@@ -367,6 +421,10 @@ def install_operator_assisted_handoff_integration() -> None:
                 )
 
             validation_errors = await adapter.extract_validation_errors(surface)
+            logger.info(
+                "JT_LEVER_FINAL stage=validation error_count=%s",
+                len(validation_errors),
+            )
             if validation_errors:
                 raise browser_handoff.BrowserHandoffError(
                     "The retained Lever form exposes validation errors. Re-prepare and "
@@ -399,7 +457,8 @@ def install_operator_assisted_handoff_integration() -> None:
 
             latest_target = await browser_handoff._verify_session_target(page, session)
             browser_handoff._require_verified_session_target(latest_target)
-            final_blockers = _operator_final_action_blockers(latest_url)
+            with operator_final_action_scope():
+                final_blockers = _operator_final_action_blockers(latest_url)
             if final_blockers:
                 raise browser_handoff.BrowserHandoffError(
                     "Operator-assisted final submit is blocked at the final action boundary: "
@@ -407,6 +466,10 @@ def install_operator_assisted_handoff_integration() -> None:
                 )
 
             submit_control = await adapter.find_submit_button(surface)
+            logger.info(
+                "JT_LEVER_FINAL stage=submit_lookup found=%s",
+                submit_control is not None,
+            )
             if submit_control is None:
                 raise browser_handoff.BrowserHandoffError(
                     "The exact final Submit control disappeared after checkpointing."
@@ -414,6 +477,11 @@ def install_operator_assisted_handoff_integration() -> None:
             try:
                 visible = await submit_control.is_visible()
                 enabled = await submit_control.is_enabled()
+                logger.info(
+                    "JT_LEVER_FINAL stage=submit_state visible=%s enabled=%s",
+                    visible,
+                    enabled,
+                )
             except Exception as exc:
                 raise browser_handoff.BrowserHandoffError(
                     "The final Submit control could not be re-verified safely."
@@ -423,6 +491,10 @@ def install_operator_assisted_handoff_integration() -> None:
                     "The final Submit control changed after checkpointing."
                 )
             validation_errors = await adapter.extract_validation_errors(surface)
+            logger.info(
+                "JT_LEVER_FINAL stage=validation error_count=%s",
+                len(validation_errors),
+            )
             if validation_errors:
                 raise browser_handoff.BrowserHandoffError(
                     "The retained Lever form changed after checkpointing and now exposes "
@@ -438,7 +510,15 @@ def install_operator_assisted_handoff_integration() -> None:
                     "human action, then capture employer confirmation evidence."
                 )
 
+            logger.info(
+                "JT_LEVER_FINAL stage=click_start target=%s",
+                _log_target_ref(before_url),
+            )
             await submit_control.click()
+            logger.info(
+                "JT_LEVER_FINAL stage=click_complete target=%s",
+                _log_target_ref(str(page.url or "")),
+            )
             await page.wait_for_timeout(900)
             confirmation_items = await adapter.detect_confirmation(
                 surface,
@@ -447,6 +527,12 @@ def install_operator_assisted_handoff_integration() -> None:
             )
             confirmation_evidence = [item.as_dict() for item in confirmation_items]
             submission_confirmed = any(item.is_sufficient for item in confirmation_items)
+            logger.info(
+                "JT_LEVER_FINAL stage=confirmation confirmed=%s evidence_count=%s target=%s",
+                submission_confirmed,
+                len(confirmation_evidence),
+                _log_target_ref(str(page.url or "")),
+            )
             after = await browser_handoff._verify_session_target(
                 page,
                 session,
