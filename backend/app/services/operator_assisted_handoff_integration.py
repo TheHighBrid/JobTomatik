@@ -8,16 +8,19 @@ be claimed until an exact operator-assisted approval bound to that handoff is co
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Dict, Iterator, Mapping, Optional
+from urllib.parse import urlsplit
 
 from app.config import get_settings
 from app.models.application import ManualReviewReason
 from app.models.handoff import HandoffChallengeType
 from app.services.operations_policy import disabled_platforms, platform_key_for_url
 from app.services.operations_settings import get_operations_settings
+from app.services.operator_assisted_context import operator_final_action_scope
 
 
 logger = logging.getLogger(__name__)
@@ -61,6 +64,19 @@ def _challenge_type(session: Any) -> Optional[str]:
     """Read the typed handoff discriminator without breaking legacy test doubles."""
     value = getattr(session, "challenge_type", None)
     return str(value) if value is not None else None
+
+
+def _log_target_ref(url: str) -> str:
+    """Return a diagnostic target reference without path, query, or fragment data."""
+    raw = str(url or "")
+    parsed = urlsplit(raw)
+    origin = (
+        f"{parsed.scheme}://{parsed.netloc}"
+        if parsed.scheme and parsed.netloc
+        else "unknown-origin"
+    )
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12] if raw else "empty"
+    return f"{origin}#{digest}"
 
 
 def _operator_final_action_blockers(url: str) -> list[str]:
@@ -312,7 +328,8 @@ def install_operator_assisted_handoff_integration() -> None:
                 "single explicit Submit action."
             )
 
-        entry_blockers = _operator_final_action_blockers(str(session.current_url or ""))
+        with operator_final_action_scope():
+            entry_blockers = _operator_final_action_blockers(str(session.current_url or ""))
         if entry_blockers:
             raise browser_handoff.BrowserHandoffError(
                 "Operator-assisted final submit is blocked by the current runtime profile: "
@@ -325,7 +342,10 @@ def install_operator_assisted_handoff_integration() -> None:
         )
         playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
         try:
-            logger.info("JT_LEVER_FINAL stage=cdp_attached url=%s", str(page.url or ""))
+            logger.info(
+                "JT_LEVER_FINAL stage=cdp_attached target=%s",
+                _log_target_ref(str(page.url or "")),
+            )
             from app.services.operator_assisted_live_pilot_hardening import (
                 passive_verification_requires_manual_browser,
                 passive_verification_state,
@@ -359,7 +379,8 @@ def install_operator_assisted_handoff_integration() -> None:
             before_url = str(page.url or "")
             before_page_fingerprint = await browser_handoff.page_fingerprint(page)
             before_step_fingerprint = await adapter.step_fingerprint(surface)
-            snapshot_blockers = _operator_final_action_blockers(before_url)
+            with operator_final_action_scope():
+                snapshot_blockers = _operator_final_action_blockers(before_url)
             if snapshot_blockers:
                 raise browser_handoff.BrowserHandoffError(
                     "Operator-assisted final submit is blocked before live checkpointing: "
@@ -430,7 +451,8 @@ def install_operator_assisted_handoff_integration() -> None:
 
             latest_target = await browser_handoff._verify_session_target(page, session)
             browser_handoff._require_verified_session_target(latest_target)
-            final_blockers = _operator_final_action_blockers(latest_url)
+            with operator_final_action_scope():
+                final_blockers = _operator_final_action_blockers(latest_url)
             if final_blockers:
                 raise browser_handoff.BrowserHandoffError(
                     "Operator-assisted final submit is blocked at the final action boundary: "
@@ -482,9 +504,15 @@ def install_operator_assisted_handoff_integration() -> None:
                     "human action, then capture employer confirmation evidence."
                 )
 
-            logger.info("JT_LEVER_FINAL stage=click_start url=%s", before_url)
+            logger.info(
+                "JT_LEVER_FINAL stage=click_start target=%s",
+                _log_target_ref(before_url),
+            )
             await submit_control.click()
-            logger.info("JT_LEVER_FINAL stage=click_complete url=%s", str(page.url or ""))
+            logger.info(
+                "JT_LEVER_FINAL stage=click_complete target=%s",
+                _log_target_ref(str(page.url or "")),
+            )
             await page.wait_for_timeout(900)
             confirmation_items = await adapter.detect_confirmation(
                 surface,
@@ -494,10 +522,10 @@ def install_operator_assisted_handoff_integration() -> None:
             confirmation_evidence = [item.as_dict() for item in confirmation_items]
             submission_confirmed = any(item.is_sufficient for item in confirmation_items)
             logger.info(
-                "JT_LEVER_FINAL stage=confirmation confirmed=%s evidence_count=%s url=%s",
+                "JT_LEVER_FINAL stage=confirmation confirmed=%s evidence_count=%s target=%s",
                 submission_confirmed,
                 len(confirmation_evidence),
-                str(page.url or ""),
+                _log_target_ref(str(page.url or "")),
             )
             after = await browser_handoff._verify_session_target(
                 page,
