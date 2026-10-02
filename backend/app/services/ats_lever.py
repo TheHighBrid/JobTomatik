@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -32,6 +33,30 @@ LEVER_POSTING_FIELDS = {
     "hostedUrl",
     "applyUrl",
 }
+LEVER_SUBMIT_SELECTORS = (
+    'button[type="submit"]:has-text("Submit application")',
+    'button[type="submit"]:has-text("Submit your application")',
+    '.application-submit button[type="submit"]',
+    '.postings-btn[type="submit"]',
+    'button[type="submit"]',
+    'input[type="submit"]',
+    '[data-qa*="submit" i]',
+    '[data-testid*="submit" i]',
+)
+LEVER_CONFIRMATION_SELECTORS = (
+    '.application-confirmation',
+    '#application-confirmation',
+    '.posting-confirmation',
+    '.confirmation',
+    '[class*="application-confirmation" i]',
+    '[class*="posting-confirmation" i]',
+    '[data-qa*="confirmation" i]',
+    '[data-testid*="confirmation" i]',
+)
+_LEVER_PRE_SUBMIT_CONFIRMATION_STATE: ContextVar[Optional[Dict[str, str]]] = ContextVar(
+    "lever_pre_submit_confirmation_state",
+    default=None,
+)
 
 
 def is_lever_host(host: str) -> bool:
@@ -202,21 +227,62 @@ class LeverAdapter(ATSAdapter):
             reject_terms=("submit", "apply", "linkedin", "finish"),
         )
 
+    async def confirmation_container_snapshot(self, surface: Any) -> Dict[str, str]:
+        """Capture visible confirmation-container text before the submit action."""
+        snapshot: Dict[str, str] = {}
+        for selector in LEVER_CONFIRMATION_SELECTORS:
+            try:
+                element = await surface.query_selector(selector)
+                if not element or not await element.is_visible():
+                    continue
+                text = normalize_text(await element.inner_text())
+                if text:
+                    snapshot[selector] = text
+            except Exception:
+                continue
+        return snapshot
+
+    async def capture_pre_submit_confirmation_state(self, surface: Any) -> Dict[str, str]:
+        """Store a flow-local pre-submit snapshot without mutating the singleton adapter."""
+        snapshot = await self.confirmation_container_snapshot(surface)
+        _LEVER_PRE_SUBMIT_CONFIRMATION_STATE.set(snapshot)
+        return snapshot
+
     async def find_submit_button(self, surface: Any) -> Any:
-        return await find_first_action(
+        submit = await find_first_action(
             surface,
-            (
-                'button[type="submit"]:has-text("Submit application")',
-                'button[type="submit"]:has-text("Submit your application")',
-                '.application-submit button[type="submit"]',
-                '.postings-btn[type="submit"]',
-                'button[type="submit"]',
-                'input[type="submit"]',
-                '[data-qa*="submit" i]',
-                '[data-testid*="submit" i]',
-            ),
+            LEVER_SUBMIT_SELECTORS,
             reject_terms=("linkedin",),
         )
+        if submit:
+            await self.capture_pre_submit_confirmation_state(surface)
+        else:
+            _LEVER_PRE_SUBMIT_CONFIRMATION_STATE.set(None)
+        return submit
+
+    async def visible_submit_control_present(self, surface: Any) -> bool:
+        """Detect a visible submit control even while it is temporarily disabled."""
+        for selector in LEVER_SUBMIT_SELECTORS:
+            try:
+                control = await surface.query_selector(selector)
+                if not control or not await control.is_visible():
+                    continue
+                label = ""
+                try:
+                    label = normalize_text(await control.inner_text())
+                except Exception:
+                    pass
+                if not label:
+                    try:
+                        label = normalize_text(await control.get_attribute("value") or "")
+                    except Exception:
+                        pass
+                if "linkedin" in label:
+                    continue
+                return True
+            except Exception:
+                continue
+        return False
 
     async def extract_validation_errors(self, surface: Any) -> List[ValidationIssue]:
         return await collect_validation_issues(
@@ -244,64 +310,198 @@ class LeverAdapter(ATSAdapter):
         current_url = getattr(surface, "url", "") or ""
         body = await safe_body_text(surface)
         normalized = normalize_text(body)
-        selectors = (
-            '.application-confirmation',
-            '.posting-confirmation',
-            '.confirmation',
-            '[data-qa*="confirmation" i]',
-            '[data-testid*="confirmation" i]',
-        )
-        for selector in selectors:
-            try:
-                element = await surface.query_selector(selector)
-                if element and await element.is_visible():
-                    text = normalize_text(await element.inner_text())
-                    if text:
-                        return [ConfirmationEvidence(
-                            evidence_type="confirmation_page",
-                            is_sufficient=True,
-                            final_url=current_url,
-                            confirmation_text=text[:500],
-                            selector=selector,
-                            metadata={"adapter": self.name, "adapter_version": self.version},
-                        )]
-            except Exception:
-                continue
+        before_confirmation_state = _LEVER_PRE_SUBMIT_CONFIRMATION_STATE.get()
+        _LEVER_PRE_SUBMIT_CONFIRMATION_STATE.set(None)
 
-        phrases = (
+        try:
+            after_fingerprint = await self.step_fingerprint(surface)
+        except Exception:
+            after_fingerprint = ""
+        try:
+            submit_control_present = await self.visible_submit_control_present(surface)
+        except Exception:
+            submit_control_present = True
+
+        url_changed = bool(current_url and current_url != before_url)
+        fingerprint_changed = bool(
+            before_fingerprint
+            and after_fingerprint
+            and after_fingerprint != before_fingerprint
+        )
+
+        strong_phrases = (
             "thank you for applying",
             "thank you for your application",
+            "thanks for applying",
+            "thanks for your application",
             "application submitted",
             "application received",
             "your application has been submitted",
+            "your application was submitted",
+            "your application was already submitted",
+            "application successfully submitted",
+            "successfully submitted your application",
             "we have received your application",
             "we've received your application",
         )
-        matched = next((phrase for phrase in phrases if phrase in normalized), "")
-        confirmation_url = bool(
-            re.search(r"/(?:thanks|thank-you|confirmation|application-submitted)(?:[/?#]|$)", current_url, re.I)
+        weak_phrases = (
+            "we'll be in touch",
+            "we will be in touch",
+            "thanks for your interest",
+            "thank you for your interest",
         )
-        if matched:
+        negative_confirmation_terms = (
+            "error",
+            "failed",
+            "failure",
+            "invalid",
+            "not submitted",
+            "could not submit",
+            "unable to submit",
+            "please correct",
+            "try again",
+            "problem processing",
+            "problem submitting",
+        )
+        body_has_negative_confirmation = any(
+            term in normalized for term in negative_confirmation_terms
+        )
+        current_path = urlparse(current_url).path
+        confirmation_url = bool(
+            re.search(
+                r"/(?:thanks|thank-you|confirmation|application-submitted)(?:/|$)",
+                current_path,
+                re.I,
+            )
+        )
+        common_metadata = {
+            "adapter": self.name,
+            "adapter_version": self.version,
+            "confirmation_url": confirmation_url,
+            "url_changed": url_changed,
+            "fingerprint_changed": fingerprint_changed,
+            "submit_control_present": submit_control_present,
+            "negative_confirmation_copy": body_has_negative_confirmation,
+            "pre_submit_confirmation_state_captured": before_confirmation_state is not None,
+        }
+
+        for selector in LEVER_CONFIRMATION_SELECTORS:
+            try:
+                element = await surface.query_selector(selector)
+                if not element or not await element.is_visible():
+                    continue
+                text = normalize_text(await element.inner_text())
+                if not text or any(term in text for term in negative_confirmation_terms):
+                    continue
+                strong_container_match = next(
+                    (phrase for phrase in strong_phrases if phrase in text),
+                    "",
+                )
+                weak_container_match = next(
+                    (phrase for phrase in weak_phrases if phrase in text),
+                    "",
+                )
+                route_transition = bool(confirmation_url and url_changed)
+                observed_container_transition = bool(
+                    before_confirmation_state is not None
+                    and before_confirmation_state.get(selector) != text
+                )
+                same_page_transition = bool(
+                    not url_changed
+                    and fingerprint_changed
+                    and observed_container_transition
+                )
+                sufficient_container = bool(
+                    not body_has_negative_confirmation
+                    and not submit_control_present
+                    and (
+                        (strong_container_match and (route_transition or same_page_transition))
+                        or (weak_container_match and route_transition)
+                    )
+                )
+                if sufficient_container:
+                    confirmation_phrase = strong_container_match or weak_container_match
+                    return [ConfirmationEvidence(
+                        evidence_type="confirmation_page",
+                        is_sufficient=True,
+                        final_url=current_url,
+                        confirmation_text=text[:500],
+                        selector=selector,
+                        metadata={
+                            **common_metadata,
+                            "confirmation_basis": (
+                                "observed_same_page_confirmation_transition"
+                                if same_page_transition
+                                else "validated_confirmation_container"
+                            ),
+                            "confirmation_phrase": confirmation_phrase,
+                            "confirmation_container_changed": observed_container_transition,
+                        },
+                    )]
+            except Exception:
+                continue
+
+        strong_match = next(
+            (phrase for phrase in strong_phrases if phrase in normalized),
+            "",
+        )
+        weak_match = next(
+            (phrase for phrase in weak_phrases if phrase in normalized),
+            "",
+        )
+        if (
+            strong_match
+            and confirmation_url
+            and url_changed
+            and not submit_control_present
+            and not body_has_negative_confirmation
+        ):
             return [ConfirmationEvidence(
                 evidence_type="success_banner",
                 is_sufficient=True,
                 final_url=current_url,
-                confirmation_text=matched,
+                confirmation_text=strong_match,
                 metadata={
-                    "adapter": self.name,
-                    "adapter_version": self.version,
-                    "confirmation_url": confirmation_url,
+                    **common_metadata,
+                    "confirmation_basis": "strong_phrase_plus_confirmation_route",
                 },
             )]
-        if confirmation_url and current_url != before_url and "application" in normalized:
+        if (
+            weak_match
+            and confirmation_url
+            and url_changed
+            and not submit_control_present
+            and not body_has_negative_confirmation
+        ):
             return [ConfirmationEvidence(
-                evidence_type="confirmation_page",
+                evidence_type="success_banner",
                 is_sufficient=True,
                 final_url=current_url,
-                confirmation_text="Lever confirmation route and application text detected after submit.",
-                metadata={"adapter": self.name, "adapter_version": self.version},
+                confirmation_text=weak_match,
+                metadata={
+                    **common_metadata,
+                    "confirmation_basis": "weak_phrase_plus_confirmation_route",
+                },
             )]
-        return []
+
+        return [ConfirmationEvidence(
+            evidence_type="post_submit_diagnostic",
+            is_sufficient=False,
+            final_url=current_url,
+            confirmation_text=(
+                "Submit action occurred; explicit confirmation was not detected."
+            ),
+            metadata={
+                **common_metadata,
+                "post_submit_diagnostic": True,
+                "submit_clicked": True,
+                "before_url": before_url,
+                "before_fingerprint": before_fingerprint,
+                "after_fingerprint": after_fingerprint,
+                "strong_confirmation_phrase": strong_match or None,
+                "weak_confirmation_phrase": weak_match or None,
+            },
+        )]
 
     def manifest(self) -> Dict[str, Any]:
         return {

@@ -17,6 +17,7 @@ from app.services.handoff_session import (
     HandoffSessionError,
     issue_handoff_session,
 )
+from app.services.manual_review_shape import normalize_misclassified_question_review_items
 
 _INSTALLED = False
 _ORIGINAL = None
@@ -211,6 +212,17 @@ def install_handoff_task_integration() -> None:
     _ORIGINAL = application_tasks._create_result_review_tasks
 
     def wrapped_create_result_review_tasks(db, app, result, method, blocking_url):
+        normalized_count = (
+            normalize_misclassified_question_review_items(result)
+            if isinstance(result, dict)
+            else 0
+        )
+        if normalized_count:
+            result.setdefault("log", []).append({
+                "action": "misclassified_question_review_items_normalized",
+                "count": normalized_count,
+                "submission_authorized": False,
+            })
         reason_code = _ORIGINAL(db, app, result, method, blocking_url)
         try:
             _attach_handoff_session(db, app, result, reason_code)

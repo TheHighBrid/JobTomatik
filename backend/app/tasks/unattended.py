@@ -3,6 +3,8 @@
 import logging
 from datetime import datetime, timezone
 
+from celery.exceptions import Retry
+
 from app.celery_app import celery_app
 from app.config import get_settings
 from app.database import SessionLocal
@@ -19,6 +21,7 @@ from app.models.user import User
 from app.services.application_integrity import install_closed_application_task_gate
 from app.services.application_state import create_manual_review_task
 from app.services.certification_scale import ensure_aware
+from app.services.day39_live_worker import enforce_day39_live_worker_gate
 from app.services.full_stack_shadow import (
     ACTIVE_SESSION_STATES,
     finalize_shadow_session,
@@ -247,6 +250,7 @@ def _block_shadow_worker(
     bind=True,
     name="app.tasks.unattended.submit_unattended_application_task",
     queue="applications",
+    max_retries=None,
 )
 def submit_unattended_application_task(
     self,
@@ -309,6 +313,17 @@ def submit_unattended_application_task(
                     shadow_session_id=effective_shadow_session_id,
                 )
 
+            if decision.code == "operator_paused":
+                # A pause is a temporary queue hold, not a policy failure.  Leave
+                # the application and its review state untouched and keep retrying
+                # until an operator resumes (or revokes the queued application).
+                db.rollback()
+                logger.info(
+                    "Deferred unattended application %s while operator pause is active",
+                    application_id,
+                )
+                raise self.retry(countdown=60)
+
             result = {
                 "success": False,
                 "dry_run": dry_run,
@@ -354,6 +369,25 @@ def submit_unattended_application_task(
                 decision.code,
             )
             return result
+
+        if effective_shadow_session_id is None and dry_run is False:
+            live_gate = enforce_day39_live_worker_gate(
+                db,
+                app=app,
+                job=job,
+                user=user,
+                dry_run=False,
+                platform=str(decision.metadata.get("platform") or ""),
+            )
+            if live_gate.get("allowed") is not True:
+                logger.warning(
+                    "Blocked live unattended application %s: %s",
+                    application_id,
+                    live_gate.get("error") or live_gate.get("reason"),
+                )
+                return live_gate
+    except Retry:
+        raise
     except Exception as exc:
         logger.exception("submit_unattended_application_task failed")
         db.rollback()

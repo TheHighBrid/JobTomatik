@@ -44,6 +44,49 @@ def test_retained_handoff_rejects_ambiguous_pages_without_exact_url():
             [_UrlPage("https://apply.example.test/form"), _UrlPage("https://help.example.test")],
         )
 
+@pytest.mark.asyncio
+async def test_retained_handoff_prefers_exact_controlled_target_id(monkeypatch):
+    from app.services import browser_runtime
+
+    first = _UrlPage("https://apply.example.test/form")
+    second = _UrlPage("https://apply.example.test/form")
+    target_ids = {id(first): "target-other", id(second): "target-276"}
+
+    async def fake_target_id(page):
+        return target_ids[id(page)]
+
+    monkeypatch.setattr(browser_runtime, "controlled_page_target_id", fake_target_id)
+
+    selected = await browser_handoff._select_retained_page_with_target(
+        [first, second],
+        expected_url="https://apply.example.test/form",
+        expected_target_id="target-276",
+    )
+
+    assert selected is second
+
+
+@pytest.mark.asyncio
+async def test_retained_handoff_never_falls_back_to_url_when_target_lease_is_missing(monkeypatch):
+    from app.services import browser_runtime
+
+    page = _UrlPage("https://apply.example.test/form")
+
+    async def fake_target_id(_page):
+        return "target-new-after-restart"
+
+    monkeypatch.setattr(browser_runtime, "controlled_page_target_id", fake_target_id)
+
+    with pytest.raises(
+        browser_handoff.BrowserHandoffUnavailable,
+        match="controlled Chrome target no longer exists",
+    ):
+        await browser_handoff._select_retained_page_with_target(
+            [page],
+            expected_url="https://apply.example.test/form",
+            expected_target_id="target-before-restart",
+        )
+
 
 @pytest.mark.asyncio
 async def test_retained_browser_survives_disconnect_and_resumes_same_form(tmp_path):

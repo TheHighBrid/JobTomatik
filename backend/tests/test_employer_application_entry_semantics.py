@@ -93,8 +93,10 @@ class _SerializedTargetPage:
     def __init__(self, *, body: str, urls: list[str]):
         self.body = body
         self.urls = urls
+        self.last_expression = ""
 
-    async def evaluate(self, _expression):
+    async def evaluate(self, expression):
+        self.last_expression = expression
         return {"body": self.body, "urls": list(self.urls)}
 
 
@@ -171,6 +173,8 @@ async def test_embedded_hosted_ats_target_requires_visible_requisition_identity(
     )
 
     assert await _embedded_hosted_ats_target(page) == target
+    assert r"[^\s" in page.last_expression
+    assert r"[^\\s" not in page.last_expression
 
 
 @pytest.mark.asyncio

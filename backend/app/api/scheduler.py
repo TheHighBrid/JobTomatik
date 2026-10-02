@@ -7,6 +7,7 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.scheduler import SchedulerDispatchOut
+from app.services.operator_autonomy_control import scheduler_control_decision
 from app.services.scheduler_policy import build_scheduler_preview, scheduler_settings
 from app.tasks.scraping import run_user_scheduler_cycle
 
@@ -20,7 +21,9 @@ def get_scheduler_preview(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return build_scheduler_preview(db, current_user, candidate_limit=candidate_limit)
+    preview = build_scheduler_preview(db, current_user, candidate_limit=candidate_limit)
+    preview["operator_control"] = scheduler_control_decision(current_user)
+    return preview
 
 
 @router.post("/run", response_model=SchedulerDispatchOut)
@@ -28,6 +31,10 @@ def dispatch_scheduler_cycle(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    control = scheduler_control_decision(current_user)
+    if not control["allowed"]:
+        raise HTTPException(status_code=409, detail=control)
+
     preview = build_scheduler_preview(db, current_user, candidate_limit=20)
     settings = scheduler_settings(current_user)
     search_enabled = bool(settings.get("auto_search_enabled"))

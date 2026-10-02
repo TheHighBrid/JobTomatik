@@ -1,0 +1,202 @@
+name: Day 37 shadow endurance tooling gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/day37_shadow_admission.py"
+      - "backend/app/services/day37_shadow_incidents.py"
+      - "backend/app/services/day37_shadow_endurance.py"
+      - "backend/app/services/discovery_search.py"
+      - "backend/app/services/day36_shadow_endurance.py"
+      - "backend/app/services/day36_endurance_runtime.py"
+      - "backend/app/services/full_stack_shadow.py"
+      - "backend/app/models/certification.py"
+      - "backend/app/api/shadow_runs.py"
+      - "backend/app/tasks/shadow_runs.py"
+      - "backend/app/services/browser_runtime.py"
+      - "backend/app/services/listing_availability.py"
+      - "backend/app/services/answer_policy.py"
+      - "backend/scripts/export_day37_shadow_endurance.py"
+      - "backend/tests/test_day37_shadow_admission.py"
+      - "backend/tests/test_day37_shadow_preflight.py"
+      - "backend/tests/test_day37_shadow_incidents.py"
+      - "backend/tests/test_day37_shadow_endurance.py"
+      - "backend/tests/test_day37_exporter_cli.py"
+      - "backend/tests/test_android_static_frontend_runtime.py"
+      - "backend/evidence/day35-unattended-pilot-configuration.json"
+      - ".github/workflows/day37-shadow-endurance-tooling-gate.yml"
+      - "backend/requirements.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: sqlite:///./day37-shadow-endurance-tooling.db
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: day37-shadow-endurance-ci-only-secret-000000000000
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  AUTOMATION_GLOBAL_KILL_SWITCH: "false"
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  day37-endurance-tooling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20.19.0"
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Compile Day 37 surfaces
+        working-directory: backend
+        run: |
+          python -m compileall -q \
+            app/services/day37_shadow_admission.py \
+            app/services/day37_shadow_incidents.py \
+            app/services/day37_shadow_endurance.py \
+            app/services/discovery_search.py \
+            app/services/day36_shadow_endurance.py \
+            app/services/full_stack_shadow.py \
+            app/models/certification.py \
+            app/api/shadow_runs.py \
+            app/tasks/shadow_runs.py \
+            scripts/export_day37_shadow_endurance.py
+
+      - name: Smoke-test standalone Day 37 exporter CLI
+        working-directory: backend
+        run: env -u PYTHONPATH python scripts/export_day37_shadow_endurance.py --help >/dev/null
+
+      - name: Run Day 37 and inherited shadow regressions
+        working-directory: backend
+        run: |
+          pytest -q --tb=short -ra \
+            tests/test_day37_shadow_admission.py \
+            tests/test_day37_shadow_preflight.py \
+            tests/test_day37_shadow_incidents.py \
+            tests/test_day37_shadow_endurance.py \
+            tests/test_day37_exporter_cli.py \
+            tests/test_day36_shadow_endurance.py \
+            tests/test_shadow_evidence_provenance.py \
+            tests/test_full_stack_shadow.py \
+            tests/test_full_stack_shadow_recovery.py \
+            tests/test_android_static_frontend_runtime.py \
+            tests/test_android_shadow_launch_admission.py \
+            tests/test_android_shadow_preflight_truth.py \
+            tests/test_shadow_worker_exception.py \
+            tests/test_shadow_worker_cap_exclusion.py \
+            --junitxml=day37-shadow-endurance-tooling-junit.xml
+
+      - name: Verify canonical safety
+        run: bash scripts/verify.sh safety
+
+      - name: Record tooling readiness without claiming an eight-hour run
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_version": "1.0",
+              "verification_commit": os.environ["SOURCE_COMMIT"],
+              "tooling_ready": True,
+              "real_eight_hour_run_claimed": False,
+              "day37_complete": False,
+              "day38_entry_eligible": False,
+              "contract": {
+                  "exact_duration_seconds": 28800,
+                  "persisted_elapsed_time_required": True,
+                  "continuous_cycle_coverage_required": True,
+                  "stable_worker_process_identity_required": True,
+                  "memory_telemetry_required": True,
+                  "browser_cleanup_reconciliation_required": True,
+                  "notification_quality_required": True,
+                  "verified_day36_predecessor_required": True,
+                  "source_outage_injection_required": True,
+                  "browser_crash_recovery_injection_required": True,
+                  "stale_posting_injection_required": True,
+                  "ambiguous_question_injection_required": True,
+                  "all_incidents_must_pass_exactly_once": True,
+                  "cluster_breaker_must_remain_correct": True,
+                  "zero_duplicate_tasks_required": True,
+                  "zero_false_status_required": True,
+                  "zero_runaway_retry_required": True,
+                  "real_submission_must_remain_disabled": True,
+                  "real_followup_send_must_remain_disabled": True,
+                  "adapter_maturity_must_remain_dry_run": True,
+                  "exporter_cannot_start_advance_or_inject_session": True,
+              },
+              "next_required_evidence": (
+                  "A completed physical-runtime shadow_run_8h session with at least "
+                  "28,800 persisted elapsed seconds and all four retained Day 37 "
+                  "incident recovery drills exported by scripts/export_day37_shadow_endurance.py"
+              ),
+          }
+          Path("day37-shadow-endurance-tooling-gate.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Assert CI did not counterfeit Day 37 completion
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          gate = json.load(open('day37-shadow-endurance-tooling-gate.json', encoding='utf-8'))
+          assert gate['verification_commit'] == os.environ['SOURCE_COMMIT']
+          assert gate['tooling_ready'] is True
+          assert gate['real_eight_hour_run_claimed'] is False
+          assert gate['day37_complete'] is False
+          assert gate['day38_entry_eligible'] is False
+          contract = gate['contract']
+          assert contract['exact_duration_seconds'] == 28800
+          assert contract['persisted_elapsed_time_required'] is True
+          assert contract['continuous_cycle_coverage_required'] is True
+          assert contract['stable_worker_process_identity_required'] is True
+          assert contract['verified_day36_predecessor_required'] is True
+          assert contract['source_outage_injection_required'] is True
+          assert contract['browser_crash_recovery_injection_required'] is True
+          assert contract['stale_posting_injection_required'] is True
+          assert contract['ambiguous_question_injection_required'] is True
+          assert contract['all_incidents_must_pass_exactly_once'] is True
+          assert contract['real_submission_must_remain_disabled'] is True
+          assert contract['real_followup_send_must_remain_disabled'] is True
+          assert contract['adapter_maturity_must_remain_dry_run'] is True
+          PY
+
+      - name: Upload Day 37 tooling evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: day37-shadow-endurance-tooling-gate
+          path: |
+            backend/day37-shadow-endurance-tooling-gate.json
+            backend/day37-shadow-endurance-tooling-junit.xml
+          if-no-files-found: error
+          retention-days: 30

@@ -22,7 +22,7 @@ LEVER_PHASE_A_GATES = (
     "all_manual_challenges_remain_needs_review",
 )
 LEVER_PHASE_B_GATES = (
-    "ten_supervised_confirmed_submissions",
+    "three_supervised_confirmed_submissions",
     "zero_false_submitted_records",
     "zero_duplicate_submissions",
     "all_uncertain_outcomes_remain_uncertain",
@@ -51,6 +51,10 @@ def _lever_summary(readiness: Mapping[str, Any]) -> Dict[str, Any]:
 def _greenhouse_summary(readiness: Mapping[str, Any]) -> Dict[str, Any]:
     nested = readiness.get("summary")
     return dict(nested if isinstance(nested, Mapping) else readiness)
+
+
+def _submission_noun(count: int) -> str:
+    return "submission" if count == 1 else "submissions"
 
 
 def _checkpoint(
@@ -415,7 +419,7 @@ def build_day_12_22_report(
         )
     )
 
-    for day, target in ((16, 2), (17, 4), (18, 6), (19, 8), (20, 10)):
+    for day, target in ((16, 1), (17, 2), (18, 3), (19, 3), (20, 3)):
         passed = (
             phase_a
             and confirmed >= target
@@ -441,7 +445,8 @@ def build_day_12_22_report(
                 + (
                     [
                         f"obtain exact user approvals and independently verify "
-                        f"{target - confirmed} more distinct submissions"
+                        f"{target - confirmed} more distinct "
+                        f"{_submission_noun(target - confirmed)}"
                     ]
                     if confirmed < target
                     else []

@@ -20,14 +20,14 @@ def _readiness() -> dict[str, object]:
             "qualifying_dry_run_count": 30,
             "distinct_site_count": 30,
             "regions_covered": ["global", "eu"],
-            "supervised_confirmed_count": 10,
-            "raw_supervised_confirmed_count": 10,
+            "supervised_confirmed_count": 3,
+            "raw_supervised_confirmed_count": 3,
             "gates": {
                 "thirty_qualifying_dry_runs": True,
                 "thirty_distinct_lever_sites": True,
                 "global_and_eu_hosts_covered": True,
                 "all_phase_a_records_have_successful_matching_inspection": True,
-                "ten_supervised_confirmed_submissions": True,
+                "three_supervised_confirmed_submissions": True,
                 **SAFETY_GATES,
             },
         }
@@ -43,13 +43,13 @@ def test_lever_dossier_marks_complete_only_when_every_gate_passes():
 
 
 @pytest.mark.parametrize("failed_gate", sorted(SAFETY_GATES))
-def test_lever_dossier_rejects_raw_ten_count_when_safety_gate_fails(failed_gate):
+def test_lever_dossier_rejects_raw_three_count_when_safety_gate_fails(failed_gate):
     readiness = _readiness()
     readiness["summary"]["gates"][failed_gate] = False
 
     progress = _pilot_progress(readiness, "lever")
 
-    assert progress["phase_b_confirmed_records"] == 10
+    assert progress["phase_b_confirmed_records"] == 3
     assert progress["phase_b_complete"] is False
     assert failed_gate in progress["phase_b_safety_blockers"]
 
@@ -61,7 +61,7 @@ def test_lever_dossier_does_not_infer_missing_gates_from_counts():
                 "qualifying_dry_run_count": 30,
                 "distinct_site_count": 30,
                 "regions_covered": ["global", "eu"],
-                "supervised_confirmed_count": 10,
+                "supervised_confirmed_count": 3,
                 "gates": {},
             }
         },

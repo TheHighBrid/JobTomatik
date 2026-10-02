@@ -146,7 +146,7 @@ bootstrap() {
   step "Install Playwright Chromium and Linux system dependencies"
   "$PYTHON_BIN" -m playwright install --with-deps chromium
   step "Install frontend dependencies"
-  (cd "$ROOT_DIR/frontend" && npm ci)
+  (cd "$ROOT_DIR/frontend" && npm ci --engine-strict)
 }
 
 backend_fast() {
@@ -210,6 +210,7 @@ dependency_check() {
   step "Audit frontend runtime dependencies at high severity"
   (
     cd "$ROOT_DIR/frontend"
+    npm ci --engine-strict --ignore-scripts --no-audit --no-fund
     local report
     report="$(mktemp)"
     trap 'rm -f "$report"' EXIT
@@ -305,8 +306,8 @@ android_check() {
   [[ -x "$aapt" ]] || fail "Missing Android aapt at $aapt. Install Build Tools $JOBTOMATIK_ANDROID_BUILD_TOOLS."
   badging="$($aapt dump badging "$apk")"
   grep -Fq "package: name='ca.jobtomatik.app'" <<<"$badging" || fail "Unexpected Android application ID."
-  grep -Fq "versionCode='200'" <<<"$badging" || fail "Unexpected Android versionCode."
-  grep -Fq "versionName='2.0.0'" <<<"$badging" || fail "Unexpected Android versionName."
+  grep -Fq "versionCode='211'" <<<"$badging" || fail "Unexpected Android versionCode."
+  grep -Fq "versionName='2.1.1'" <<<"$badging" || fail "Unexpected Android versionName."
 }
 
 case "$MODE" in

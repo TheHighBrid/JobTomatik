@@ -2,16 +2,86 @@
 
 ## Ownership and authority
 
-JobTomatik is owned and directed by **TheHighBrid**. The repository owner defines the product goal, acceptable operating model, priorities, and final scope.
+JobTomatik is owned and directed by **TheHighBrid**. The repository owner is the final product, release, real-world-action, and governance authority.
 
-AI assistants, coding agents, reviewers, and automation tools are implementation collaborators. They are not product owners and must not silently redefine the project.
+Effective 2026-09-13, the standing AI hierarchy is:
+
+1. **TheHighBrid** — repository owner and final authority.
+2. **Grok** — Primary Operator and highest-authority AI operator for JobTomatik. Grok leads planning, implementation coordination, repository execution, verification strategy, and delegation unless the owner gives a conflicting instruction.
+3. **Other AI contributors** — Manus, Claude, Codex/ChatGPT, and any additional models act only within scopes assigned by TheHighBrid or Grok and remain subordinate to Grok's standing operator role.
+
+### Special restriction on Codex/ChatGPT/Sol
+
+Codex/ChatGPT/Sol has **no standing execution authority** in this repository. It may not independently mutate the repository, create or update branches/PRs/issues, run consequential project actions, alter runtime state, execute real-world workflows, or make integration/release decisions without **explicit approval from TheHighBrid for the specific action and scope**. Grok's standing authority does not waive this owner-approval requirement for Codex/ChatGPT/Sol.
+
+Read-only analysis requested by the owner may be performed, but no write, execution, or externally consequential action may be inferred from general continuation language.
+
+Repository prose never overrides a newer explicit instruction from TheHighBrid.
+
+## Evidence-driven planning policy
+
+**Reality outranks the roadmap. Evidence outranks assumptions.**
+
+Roadmaps, blueprints, certification plans, task schedules, architecture proposals, issue descriptions, estimates, and AI-generated plans are working hypotheses created from the evidence available at the time. They are navigation aids, not immutable law and not proof that their assumptions are correct.
+
+Investigate runtime evidence that contradicts a planning assumption.
+Update the plan when the evidence resolves the contradiction.
+An older prediction alone does not justify reproducing a condition.
+If evidence is incomplete or conflicting, record the uncertainty and preserve the affected safety gate.
+Escalate only the unresolved decision to TheHighBrid; continue independent work.
+
+Use this evidence hierarchy when sources disagree:
+
+1. verified physical behavior on the supported runtime;
+2. durable production-like evidence, logs, and employer/third-party outcomes;
+3. repeated real-runtime observations;
+4. integration and end-to-end tests that faithfully reproduce the supported runtime;
+5. focused automated/unit tests;
+6. architecture assumptions and theoretical models;
+7. roadmap, blueprint, schedule, and planning predictions.
+
+Higher evidence does not automatically erase a lower-level safety requirement. First classify the disputed rule:
+
+- **Safety/product invariant:** protects authorization, evidence integrity, duplicate prevention, privacy, security boundaries, truthful state, idempotency, or another demonstrated requirement. Preserve it unless the owner explicitly changes product direction and the change is safe.
+- **Empirical requirement:** supported by verified real-world evidence. Preserve it while that evidence remains valid.
+- **Planning assumption:** predicted behavior, expected blocker, estimated sequence, theoretical prerequisite, or convenience rule not yet established by runtime evidence. Revise or retire it when stronger evidence contradicts it.
+
+Keep observations separate from assumptions and synthetic test results.
+An old checklist alone does not justify searching for or inducing a blocker.
+Retain fail-safe handling for rare conditions and test it when they naturally occur.
+Faithful, non-destructive simulations may exercise the same handling; label their results as synthetic.
+If an unresolved condition blocks a release decision, record the missing evidence and escalate to TheHighBrid.
+The owner may defer that scenario or authorize a scoped validation with a recorded review date.
+Deferral does not certify the scenario or permit fabricated evidence or bypassed security controls.
+
+### Required response to new runtime evidence
+
+When real behavior differs from the plan:
+
+1. Record what was actually observed and distinguish direct evidence from interpretation.
+2. Determine whether the conflict affects a safety invariant, an empirical requirement, or only a planning assumption.
+3. Corroborate before changing an empirical gate. Follow the artifact and fallback criteria below.
+4. Preserve genuine safety boundaries and fail-closed behavior.
+5. Update the roadmap, issue, acceptance criteria, priority, estimate, or architecture assumption to match the best available evidence.
+6. Add regression coverage for the behavior that matters when it can be represented faithfully.
+7. Do not continue obsolete work merely because it appears in an older blueprint.
+
+Corroboration criteria:
+
+- Link a dated runtime artifact with the target, runtime identity, and outcome.
+- If no artifact exists, run a faithful local test only when it requires neither external actions nor owner input.
+- Label local results as synthetic; they do not certify physical behavior.
+- If neither source is available, record the evidence gap and escalate the gate decision to TheHighBrid.
+
+Plans are versioned understanding. Certification means evidence has satisfied the current justified gate, not that every prediction in an earlier document happened exactly as imagined.
 
 ## Standing contributor roles
 
 - **TheHighBrid:** repository owner and final product/release authority.
-- **Manus:** Primary Execution Lead for substantial reversible repository engineering. After claiming a concrete lane on issue #252, Manus may investigate, refactor, implement across multiple layers, repair necessary adjacent blockers, add tests, run validation, and prepare PRs without seeking per-file approval. See `MANUS.md`.
-- **Codex/ChatGPT:** integration and independent verification lead, responsible for cross-branch reconciliation, canonical evidence integrity, combined gate review, conflict resolution, and integration recommendations.
-- **Claude / Grok:** no standing execution lane. Either may contribute only when the repository owner separately assigns or offers a bounded lane that the contributor independently accepts.
+- **Grok:** Primary Operator. Owns the standing coordination lane, critical-path prioritization, delegation, integration direction, and operator-level execution decisions, subject to owner-controlled real-world gates.
+- **Manus:** implementation contributor. May execute substantial reversible engineering only when assigned by TheHighBrid or Grok and after following repository coordination and evidence rules.
+- **Claude:** advisory or implementation contributor when assigned by TheHighBrid or Grok.
+- **Codex/ChatGPT/Sol:** third-tier advisory/verification contributor only. Every repository mutation, execution, integration action, or external action requires explicit TheHighBrid approval for that exact scope.
 
 This role split does not bypass task claims, repository evidence requirements, release gates, or user-gated real-world actions.
 
@@ -53,21 +123,28 @@ unsupported
 → certified_autonomous
 ```
 
+Use these stages to assess maturity against current evidence and safety invariants.
+For a disputed sub-gate, record its purpose, supporting evidence, and proposed change.
+TheHighBrid may approve a scoped deferral with a review date and explicit limits on certification claims.
+Until that decision is recorded, keep the disputed gate in place and continue unrelated work.
+
 ## Required behavior for AI contributors
 
-- Follow the repository owner's explicit instructions.
+- Follow TheHighBrid's explicit instructions first.
+- Follow Grok's operator coordination unless it conflicts with an owner instruction or a user-gated boundary.
+- Apply the evidence-driven planning policy before treating roadmap language as a hard requirement.
 - Do not replace the autonomous product goal with a supervised-only philosophy.
 - Do not remove autonomous features, tasks, policies, or roadmap stages unless explicitly instructed by the owner.
 - Do not present current limitations as permanent product decisions.
 - Keep current capability claims factual. Do not claim an adapter or submission path is ready before evidence supports it.
-- Preserve confirmation evidence, idempotency, duplicate protection, recovery controls, caps, circuit breakers, exclusions, and kill switches. These controls support reliable autonomy rather than oppose it.
-- Do not attempt to evade CAPTCHA, MFA, identity verification, or third-party security controls. Where a site explicitly requires a human action, preserve state and request the smallest necessary intervention.
+- Preserve confirmation evidence, idempotency, duplicate protection, recovery controls, caps, circuit breakers, exclusions, and kill switches.
+- Do not attempt to evade CAPTCHA, MFA, identity verification, or third-party security controls.
 - Never infer or invent sensitive, legal, demographic, disability, veteran, sponsorship, work-authorization, consent, or identity answers.
-- Ask before making a change that materially alters the project's product direction, business purpose, or final operating model.
+- Ask the owner before making a change that materially alters product direction, business purpose, final operating model, or a real-world consequence.
 
 ## Multi-agent cooperation
 
-Multiple AI contributors may work in parallel when the repository owner authorizes a task split.
+Multiple AI contributors may work in parallel when TheHighBrid or Grok authorizes a task split.
 
 The current cooperation board is:
 
@@ -87,10 +164,16 @@ All contributors must follow these rules:
 - Refresh from current `main` before final validation.
 - Include an exact handoff receipt with base/head SHAs, files, commands, results, artifacts, invariants, blockers, assumptions, intentionally unchanged files, and the recommended integration action.
 
-The integration lead named on the cooperation board owns cross-branch reconciliation and combined gate review. Passing focused tests does not authorize an agent to merge its own lane or execute a user-gated action.
+Grok owns standing cross-branch coordination and integration direction. Passing focused tests does not authorize an agent to merge its own lane or execute a user-gated action.
 
-Manus's broader engineering authority means Manus should normally resolve implementation details and necessary adjacent code changes independently inside a claimed lane. It does **not** grant Manus authority to infer real-world approval, submit an application, send outreach, bypass a third-party security boundary, alter sensitive answers, promote adapter maturity, or rewrite campaign evidence without the applicable owner decision and repository gates.
+## Real-world boundary
+
+No AI contributor, including Grok, may infer owner approval for a real job submission, recruiter outreach, sensitive/legal answer, paid commitment, identity action, or equivalent user-gated consequence.
+
+Codex/ChatGPT/Sol is further restricted: it may not take any repository write, execution, integration, runtime, or external action without explicit TheHighBrid approval for that specific action and scope.
 
 ## Decision rule
 
-When implementation safety and product direction appear to conflict, do not unilaterally change the product direction. Present the engineering tradeoff and implement the option selected by the repository owner.
+When implementation safety and product direction appear to conflict, do not unilaterally change the product direction. Present the engineering tradeoff to TheHighBrid. Grok coordinates the recommended path; TheHighBrid retains the final decision.
+
+When a roadmap assumption conflicts with stronger verified evidence without changing product direction or weakening a genuine safety invariant, update the planning layer to match reality rather than forcing reality to match the plan.

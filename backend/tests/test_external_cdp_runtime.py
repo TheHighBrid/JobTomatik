@@ -27,9 +27,16 @@ class FakePage:
         self.url = url
         self.viewport = None
         self.closed = False
+        self.brought_to_front = 0
+        self.bring_to_front_error = None
 
     async def set_viewport_size(self, viewport):
         self.viewport = viewport
+
+    async def bring_to_front(self):
+        self.brought_to_front += 1
+        if self.bring_to_front_error is not None:
+            raise self.bring_to_front_error
 
     def is_closed(self):
         return self.closed
@@ -188,9 +195,45 @@ async def test_application_attachment_creates_new_controlled_page_when_browser_h
     assert runtime.page is context.created_pages[0]
     assert runtime.page.url == "about:blank"
     assert runtime.page.viewport == {"width": 900, "height": 700}
+    assert runtime.page.brought_to_front == 1
     assert first.url == "https://www.linkedin.com/feed/"
     assert second.url == "http://localhost:3000/applications/220"
     assert len(context.pages) == 3
+
+
+@pytest.mark.asyncio
+async def test_application_attachment_fails_closed_when_controlled_page_cannot_be_activated(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("HANDOFF_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(browser_runtime, "_wait_for_external_cdp_endpoint", _noop_wait)
+    context = FakeContext([FakePage("https://www.linkedin.com/feed/")])
+    browser = FakeBrowser([context])
+    playwright = FakePlaywright(browser)
+
+    original_new_page = context.new_page
+
+    async def new_page_with_activation_failure():
+        page = await original_new_page()
+        page.bring_to_front_error = RuntimeError("target activation failed")
+        return page
+
+    context.new_page = new_page_with_activation_failure
+
+    with pytest.raises(
+        BrowserRuntimeError,
+        match="APPLICATION_BROWSER_CONTROLLED_PAGE_NOT_VISIBLE",
+    ):
+        await browser_runtime.attach_retainable_browser(
+            playwright,
+            cdp_endpoint="http://127.0.0.1:9222",
+            create_controlled_page=True,
+        )
+
+    assert len(context.created_pages) == 1
+    assert context.created_pages[0].brought_to_front == 1
+    assert context.created_pages[0].closed is True
 
 
 @pytest.mark.asyncio
@@ -328,3 +371,69 @@ def test_android_maintenance_scripts_do_not_require_single_application_tab():
     assert "launch_application_browser" not in refresh_source
     assert "probe_external_playwright_cdp" in check_source
     assert "launch_application_browser" not in check_source
+
+
+def test_human_boundary_preserves_controlled_page_before_handoff_identity_persistence():
+    form_source = (
+        BACKEND_ROOT / "app" / "services" / "form_filler_handoff.py"
+    ).read_text(encoding="utf-8")
+    form_block = form_source.split("if _resumable_boundary(result):", 1)[1].split(
+        "finally:", 1
+    )[0]
+    assert form_block.index("retained = True") < form_block.index(
+        "retainable_application_browser_identity("
+    )
+
+    resolver_source = (
+        BACKEND_ROOT / "app" / "services" / "application_target_resolver.py"
+    ).read_text(encoding="utf-8")
+    resolver_block = resolver_source.split(
+        "if challenge and reason_code in _RESUMABLE_TARGET_REASONS:", 1
+    )[1].split("return result", 1)[0]
+    assert resolver_block.index("retained = True") < resolver_block.index(
+        "retainable_application_browser_identity("
+    )
+
+@pytest.mark.asyncio
+async def test_controlled_page_creation_recovers_android_target_create_refusal(monkeypatch):
+    seed = FakePage("https://www.linkedin.com/feed/")
+    recovered = FakePage("about:blank")
+
+    class RecoverySession:
+        detached = False
+
+        async def send(self, method, params=None):
+            assert method == "Runtime.evaluate"
+            assert params["userGesture"] is True
+            context.pages.append(recovered)
+            return {"result": {}}
+
+        async def detach(self):
+            self.detached = True
+
+    class RecoveryContext(FakeContext):
+        async def new_page(self):
+            raise RuntimeError("BrowserContext.new_page: Protocol error (Target.createTarget): Could not create a Tab")
+
+        async def new_cdp_session(self, page):
+            assert page is seed
+            self.recovery_session = RecoverySession()
+            return self.recovery_session
+
+    context = RecoveryContext([seed])
+    page = await browser_runtime._create_controlled_external_page(context)
+
+    assert page is recovered
+    assert context.pages == [seed, recovered]
+    assert context.recovery_session.detached is True
+
+
+@pytest.mark.asyncio
+async def test_controlled_page_creation_does_not_mask_unrelated_new_page_failure():
+    class BrokenContext(FakeContext):
+        async def new_page(self):
+            raise RuntimeError("permission denied")
+
+    context = BrokenContext([FakePage()])
+    with pytest.raises(RuntimeError, match="permission denied"):
+        await browser_runtime._create_controlled_external_page(context)

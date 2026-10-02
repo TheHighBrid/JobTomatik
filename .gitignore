@@ -36,6 +36,7 @@ backend/*.db
 backend/*.sqlite
 backend/*.sqlite3
 backend/uploads/
+backend/.promotion-state/
 backend/.runtime/
 backend/runtime_backups/
 *.log

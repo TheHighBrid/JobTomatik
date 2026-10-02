@@ -234,6 +234,51 @@ def _apply_early_application_path_watchdog(db, result: dict, session_id: int) ->
     }
 
 
+def _attach_due_day37_incident(db, result: dict, session_id: int) -> dict:
+    """Retain one due Day 37 incident without changing shadow-cycle qualification state."""
+
+    if result.get("status") != "running" or not result.get("schedule_next"):
+        return result
+
+    session = (
+        db.query(ShadowRunSession)
+        .filter(ShadowRunSession.id == int(session_id))
+        .first()
+    )
+    if session is None or str(session.target_evidence_type or "") != "shadow_run_8h":
+        return result
+
+    from app.services.day37_shadow_incidents import run_due_day37_incident
+
+    incident = run_due_day37_incident(db, session)
+    if incident is None:
+        return result
+
+    cycle = (
+        db.query(ShadowRunCycle)
+        .filter(
+            ShadowRunCycle.session_id == int(session_id),
+            ShadowRunCycle.status == "completed",
+        )
+        .order_by(ShadowRunCycle.cycle_number.desc(), ShadowRunCycle.id.desc())
+        .first()
+    )
+    if cycle is None:
+        logger.error("Day 37 incident had no completed cycle container session=%s", session_id)
+        return result
+
+    observability = dict(cycle.observability_snapshot or {})
+    observability["day37_incident"] = incident
+    cycle.observability_snapshot = observability
+    result["day37_incident"] = {
+        "incident_type": incident.get("incident_type"),
+        "status": incident.get("status"),
+        "recovery_contract": incident.get("recovery_contract"),
+    }
+    db.flush()
+    return result
+
+
 @celery_app.task(
     name="app.tasks.shadow_runs.run_shadow_session_cycle",
     queue="scraping",
@@ -264,6 +309,7 @@ def run_shadow_session_cycle(session_id: int):
 
         result = execute_shadow_cycle(db, session_id=int(session_id))
         result = _apply_early_application_path_watchdog(db, result, int(session_id))
+        result = _attach_due_day37_incident(db, result, int(session_id))
         db.commit()
     except Exception:
         logger.exception("Shadow campaign cycle failed for session %s", session_id)

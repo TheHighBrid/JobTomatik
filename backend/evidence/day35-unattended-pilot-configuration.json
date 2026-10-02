@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "phase": "day35_operations_rehearsal",
+  "candidate": {
+    "adapter": "lever",
+    "adapter_version": "1.1.0",
+    "required_current_maturity": "dry_run",
+    "target_maturity": "certified_autonomous",
+    "promotion_authorized": false
+  },
+  "simulation": {
+    "mode": "no_submit",
+    "discovery_enabled": true,
+    "scoring_enabled": true,
+    "material_preparation_enabled": true,
+    "dry_run_form_fill_enabled": true,
+    "final_submit_allowed": false,
+    "recruiter_outreach_allowed": false
+  },
+  "policy": {
+    "daily_application_cap": 3,
+    "weekly_application_cap": 5,
+    "per_platform_daily_cap": 2,
+    "quiet_hours_start_utc": 0,
+    "quiet_hours_end_utc": 6,
+    "maximum_automatic_retries_per_attempt": 1,
+    "unknown_required_answers": "hold_for_review",
+    "challenge_boundary": "manual_handoff_only",
+    "uncertain_submission": "never_retry_automatically"
+  },
+  "runtime_invariants": {
+    "canonical_autopilot_default_must_remain_false": true,
+    "real_application_submit_must_remain_false": true,
+    "real_followup_send_must_remain_false": true,
+    "adapter_maturity_must_not_change": true,
+    "no_live_employer_contact_in_rehearsal": true,
+    "no_submit_route_in_rehearsal": true
+  },
+  "freeze_policy": {
+    "adapter_or_version_drift_requires_regate": true,
+    "adapter_source_digest_drift_requires_regate": true,
+    "fixture_digest_drift_requires_regate": true,
+    "retained_evidence_digest_drift_requires_regate": true,
+    "configuration_digest_drift_requires_regate": true,
+    "day39_remains_blocked_until_day38_evidence_and_separate_promotion": true
+  }
+}

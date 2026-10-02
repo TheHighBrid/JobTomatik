@@ -455,7 +455,7 @@ def build_certification_scale_manifest(
     db: Session,
     *,
     user_id: int,
-    release_version: str = "v2.00",
+    release_version: str = "v2.1.0",
     adapter: str | None = None,
     revision: str | None = None,
 ) -> dict[str, Any]:
@@ -515,8 +515,6 @@ def build_certification_scale_manifest(
 
 def default_authorization_expiry(scope: str, *, now: datetime | None = None) -> datetime:
     current = ensure_aware(now) or utc_now()
-    # Live pilot permission should be intentionally short. Release authorization can
-    # survive long enough to complete artifact publication while remaining bounded.
     return current + (timedelta(hours=4) if scope == "autonomous_pilot" else timedelta(hours=24))
 
 

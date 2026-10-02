@@ -25,6 +25,7 @@ class HandoffChallengeType(str, enum.Enum):
     login = "login"
     anti_bot = "anti_bot"
     navigation = "navigation"
+    final_submit = "final_submit"
 
 
 class HandoffActorType(str, enum.Enum):

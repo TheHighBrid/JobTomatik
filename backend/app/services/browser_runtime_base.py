@@ -60,7 +60,8 @@ def resumable_handoffs_enabled() -> bool:
 
 
 def handoff_storage_root() -> Path:
-    return Path(os.getenv("HANDOFF_STORAGE_DIR", "handoff_sessions"))
+    configured = os.getenv("HANDOFF_STORAGE_DIR") or get_settings().handoff_storage_dir
+    return Path(configured or "handoff_sessions")
 
 
 def _reserve_port() -> int:

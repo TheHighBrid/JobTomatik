@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Mapping, Optional
 
-from app.models.application import Application, ManualReviewTask
+from app.models.application import Application, ManualReviewReason, ManualReviewTask
 from app.models.handoff import ManualHandoffSession
 from app.models.job import Job
 from app.models.user import User
 from app.services.operational_safety import (
+    HandoffReasonPolicy,
     OperationalSafetyViolation,
     build_handoff_target_binding,
     classify_handoff_reason,
@@ -45,6 +47,94 @@ def _records(db, session: ManualHandoffSession):
             metadata={"operator_reason_code": "handoff_records_missing"},
         )
     return application, review, job, user
+
+
+def _operator_final_submit_review_details(review: ManualReviewTask) -> dict[str, Any]:
+    """Read final-submit evidence from both direct and grouped review-task shapes."""
+
+    details = dict(review.details or {})
+    if details.get("handoff_stage") == "operator_final_submit":
+        return details
+    for item in details.get("questions") or []:
+        if not isinstance(item, Mapping):
+            continue
+        if str(item.get("reason_code") or "") != ManualReviewReason.operator_final_submit_required.value:
+            continue
+        nested = item.get("details")
+        if isinstance(nested, Mapping):
+            return dict(nested)
+    return {}
+
+
+def _operator_final_submit_reason_policy(
+    review: ManualReviewTask,
+    metadata: Optional[Mapping[str, Any]],
+) -> Optional[HandoffReasonPolicy]:
+    """Certify only the dedicated, fail-safe Lever owner-final-click boundary.
+
+    The global Day 6 reason matrix deliberately does not treat
+    ``operator_final_submit_required`` as generically resumable. This scoped policy
+    exists only when persisted review evidence and the retained browser snapshot
+    jointly prove that the handoff came from the operator-assisted preparation lane.
+    """
+
+    final_reason = ManualReviewReason.operator_final_submit_required.value
+    if str(review.reason_code or "") != final_reason:
+        return None
+
+    review_details = _operator_final_submit_review_details(review)
+    snapshot = dict(metadata or {})
+    supervised_target = dict(snapshot.get("supervised_target") or {})
+
+    review_identity_hash = str(review_details.get("target_identity_hash") or "")
+    snapshot_identity_hash = str(snapshot.get("operator_target_identity_hash") or "")
+    target_identity_hash = str(supervised_target.get("identity_hash") or "")
+    snapshot_adapter_version = str(snapshot.get("adapter_version") or "")
+    target_adapter_version = str(supervised_target.get("adapter_version") or "")
+
+    certified = bool(
+        review_details.get("handoff_stage") == "operator_final_submit"
+        and review_details.get("operator_final_click_required") is True
+        and review_details.get("submit_clicked") is False
+        and review_details.get("automated_submission_authorized") is False
+        and review_details.get("queue_submission_authorized") is False
+        and snapshot.get("operator_assisted_final_submit") is True
+        and snapshot.get("operator_final_click_required") is True
+        and snapshot.get("automated_submission_authorized") is False
+        and snapshot.get("queue_submission_authorized") is False
+        and snapshot.get("dry_run") is True
+        and str(snapshot.get("adapter") or "") == "lever"
+        and snapshot_adapter_version
+        and supervised_target.get("verified") is True
+        and not list(supervised_target.get("blockers") or [])
+        and str(supervised_target.get("platform") or "") == "lever"
+        and str(supervised_target.get("adapter") or "") == "lever"
+        and target_adapter_version == snapshot_adapter_version
+        and review_identity_hash
+        and review_identity_hash == snapshot_identity_hash == target_identity_hash
+    )
+    if not certified:
+        return HandoffReasonPolicy(
+            reason_code=final_reason,
+            disposition="non_resumable",
+            resumable=False,
+            operator_reason_code="operator_final_submit_not_certified",
+            explanation=(
+                "The final-submit review is not bound to a certified operator-assisted "
+                "Lever snapshot with automated and queue authority disabled."
+            ),
+        )
+
+    return HandoffReasonPolicy(
+        reason_code=final_reason,
+        disposition="operator_final_submit",
+        resumable=True,
+        operator_reason_code="operator_final_submit_owner_boundary",
+        explanation=(
+            "A retained Lever form may be opened only after exact owner approval, and "
+            "only the dedicated once-only final Submit action is permitted."
+        ),
+    )
 
 
 def _ensure_target_binding(
@@ -139,7 +229,12 @@ def install_handoff_safety_integration() -> None:
             metadata=None,
             ttl_minutes=None,
         ):
+            safe_metadata = dict(metadata or {})
             policy = classify_handoff_reason(review.reason_code)
+            if not policy.resumable:
+                operator_policy = _operator_final_submit_reason_policy(review, safe_metadata)
+                if operator_policy is not None:
+                    policy = operator_policy
             if not policy.resumable:
                 _raise_handoff_conflict(OperationalSafetyViolation(
                     "handoff_reason_not_resumable",
@@ -156,7 +251,6 @@ def install_handoff_safety_integration() -> None:
                     metadata={"operator_reason_code": "handoff_records_missing"},
                 ))
 
-            safe_metadata = dict(metadata or {})
             dry_run = bool(safe_metadata.get("dry_run", True))
             resolved_url = _target_url(application, job, current_url)
             execution = evaluate_execution_safety(

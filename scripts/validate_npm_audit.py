@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
-"""Fail on npm production vulnerabilities outside reviewed, inapplicable findings."""
+"""Fail on any production npm vulnerability reported by npm audit."""
 
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
-
-
-# JobTomatik is a client-rendered Vite SPA and does not enable React Router RSC
-# mode or server actions. No patched React Router release exists as of 2026-07-31.
-# Remove this exception as soon as an upstream patched release is available.
-ALLOWED_ADVISORY_URLS = {
-    "https://github.com/advisories/GHSA-qwww-vcr4-c8h2",
-}
 
 
 def main() -> int:
@@ -32,57 +24,15 @@ def main() -> int:
         print("Invalid npm audit report: vulnerabilities object missing", file=sys.stderr)
         return 2
 
-    unapproved: list[str] = []
-    observed_urls: set[str] = set()
-    for package, finding in vulnerabilities.items():
-        if not isinstance(finding, dict):
-            unapproved.append(str(package))
-            continue
-
-        via = finding.get("via")
-        if not isinstance(via, list) or not via:
-            unapproved.append(str(package))
-            continue
-
-        finding_is_approved = True
-        for item in via:
-            if isinstance(item, dict):
-                url = item.get("url")
-                if not isinstance(url, str) or not url:
-                    finding_is_approved = False
-                    continue
-                observed_urls.add(url)
-                if url not in ALLOWED_ADVISORY_URLS:
-                    finding_is_approved = False
-            elif isinstance(item, str):
-                if not item or item not in vulnerabilities:
-                    finding_is_approved = False
-            else:
-                finding_is_approved = False
-
-        if not finding_is_approved:
-            unapproved.append(str(package))
-
-    if unapproved:
+    if vulnerabilities:
         print(
             "Unapproved production npm vulnerabilities: "
-            + ", ".join(sorted(unapproved)),
+            + ", ".join(sorted(str(package) for package in vulnerabilities)),
             file=sys.stderr,
         )
         return 1
 
-    unused = ALLOWED_ADVISORY_URLS - observed_urls
-    if vulnerabilities and unused == ALLOWED_ADVISORY_URLS:
-        print("Audit findings did not resolve to the reviewed advisory", file=sys.stderr)
-        return 1
-
-    if vulnerabilities:
-        print(
-            "Production npm audit passed with reviewed RSC-only exception: "
-            + ", ".join(sorted(observed_urls))
-        )
-    else:
-        print("Production npm audit passed with no vulnerabilities")
+    print("Production npm audit passed with no vulnerabilities")
     return 0
 
 

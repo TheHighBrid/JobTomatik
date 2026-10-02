@@ -15,11 +15,20 @@ This facade changes only the external Android CDP attachment contract:
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import async_playwright
+
 from app.config import get_settings
+from app.services.application_browser_contract import (
+    BrowserContractError,
+    application_browser_contract,
+    connect_native_browser,
+)
 from app.services import browser_runtime_base as _base
 from app.services.browser_runtime_base import (
     BrowserRuntimeError,
@@ -86,9 +95,193 @@ async def connect_external_playwright_browser(
     """
 
     endpoint = _normalize_external_cdp_endpoint(cdp_endpoint)
+    contract = application_browser_contract(get_settings())
+    if contract.native:
+        if endpoint != contract.endpoint:
+            raise BrowserRuntimeError("ANDROID_NATIVE_CHROME_ENDPOINT_MISMATCH: retained or requested endpoint differs from managed configuration")
+
+        # Android Chrome can briefly drop /json/version while the app transitions
+        # between foreground/background or after a previous CDP controller detaches.
+        # Retry only the explicit UNAVAILABLE discovery state. Identity mismatch,
+        # browser drift, context ambiguity, and every other contract failure remain
+        # immediately fail-closed.
+        last_contract_error: BrowserContractError | None = None
+        for attempt in range(1, 5):
+            try:
+                browser = await connect_native_browser(
+                    playwright,
+                    contract,
+                    _connect_external_playwright_over_cdp,
+                )
+                return endpoint, browser
+            except BrowserContractError as exc:
+                last_contract_error = exc
+                if "ANDROID_NATIVE_CHROME_UNAVAILABLE" not in str(exc) or attempt >= 4:
+                    raise BrowserRuntimeError(str(exc)) from exc
+                await asyncio.sleep(0.5)
+
+        raise BrowserRuntimeError(str(last_contract_error or "ANDROID_NATIVE_CHROME_UNAVAILABLE"))
     await _wait_for_external_cdp_endpoint(endpoint)
     browser = await _connect_external_playwright_over_cdp(playwright, endpoint)
     return endpoint, browser
+
+
+async def connect_retained_application_browser(playwright: Any, endpoint: str) -> Any:
+    """Recheck native identity at handoff reconnect; retain legacy desktop support."""
+    contract = application_browser_contract(get_settings())
+    if contract.native:
+        _, browser = await connect_external_playwright_browser(playwright, cdp_endpoint=endpoint)
+        return browser
+    return await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
+
+
+def application_browser_identity(runtime: Any) -> Dict[str, Any]:
+    """Return retained-browser identity metadata without dereferencing a missing browser."""
+
+    browser = getattr(runtime, "browser", None)
+    if browser is None:
+        return {}
+    identity = getattr(browser, "_jobtomatik_application_browser_identity", None)
+    return dict(identity) if isinstance(identity, dict) else {}
+
+
+def retainable_application_browser_identity(
+    runtime: Any,
+    *,
+    controlled_page_target_id: str = "",
+) -> Dict[str, Any]:
+    """Return identity metadata with a restart-sensitive native continuity lease.
+
+    Desktop Chrome commonly exposes /devtools/browser/<uuid>. Some Android Chrome
+    builds expose only /devtools/browser. In that case the exact controlled top-level
+    target id is the continuity lease: it survives a CDP reconnect to the same live
+    browser target and changes or disappears across a browser restart.
+    """
+
+    identity = application_browser_identity(runtime)
+    if identity.get("provider") != "native_chrome":
+        return identity
+
+    if str(identity.get("browser_instance_id") or ""):
+        return {
+            **identity,
+            "continuity_mode": "browser_instance_id",
+        }
+
+    target_id = str(controlled_page_target_id or "").strip()
+    if target_id:
+        return {
+            **identity,
+            "continuity_mode": "controlled_page_target_id",
+            "controlled_page_target_id": target_id,
+        }
+
+    raise BrowserRuntimeError(
+        "ANDROID_NATIVE_CHROME_RETAIN_IDENTITY_UNAVAILABLE: native Chrome exposed "
+        "neither a restart-sensitive browser UUID nor a controlled page target id; "
+        "preserve the filled application page without creating a retained handoff."
+    )
+
+
+def require_retained_application_browser_identity(
+    expected_identity: Any,
+    browser: Any,
+) -> None:
+    """Reject a retained native handoff if its browser lease changed."""
+
+    if not isinstance(expected_identity, dict) or not expected_identity:
+        # Historical handoffs predate browser-lease metadata. They retain the
+        # existing target/url safety checks instead of being made unreadable.
+        return
+    if expected_identity.get("provider") != "native_chrome":
+        return
+
+    continuity_mode = str(expected_identity.get("continuity_mode") or "").strip()
+    browser_instance_id = str(expected_identity.get("browser_instance_id") or "").strip()
+    controlled_target_id = str(
+        expected_identity.get("controlled_page_target_id") or ""
+    ).strip()
+
+    if browser_instance_id:
+        continuity_mode = continuity_mode or "browser_instance_id"
+    elif controlled_target_id:
+        continuity_mode = continuity_mode or "controlled_page_target_id"
+    else:
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_LEASE_INCOMPLETE: retained native-Chrome handoff "
+            "has neither a browser instance id nor a controlled page target id; "
+            "recovery is fail-closed."
+        )
+
+    if continuity_mode not in {"browser_instance_id", "controlled_page_target_id"}:
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_LEASE_INCOMPLETE: retained native-Chrome handoff "
+            "has an unsupported continuity mode; recovery is fail-closed."
+        )
+
+    observed = dict(
+        getattr(browser, "_jobtomatik_application_browser_identity", {}) or {}
+    )
+    required_fields = [
+        "provider",
+        "android_package",
+        "transport",
+        "cdp_endpoint",
+        "runtime_revision",
+    ]
+    if continuity_mode == "browser_instance_id":
+        required_fields.append("browser_instance_id")
+    changed = [
+        field
+        for field in required_fields
+        if expected_identity.get(field)
+        and str(observed.get(field) or "") != str(expected_identity.get(field))
+    ]
+    if changed:
+        raise BrowserRuntimeError(
+            "ANDROID_NATIVE_CHROME_LEASE_CHANGED: retained application browser "
+            "identity no longer matches the handoff lease; preserve the application "
+            "and require controlled recovery. changed="
+            + ",".join(changed)
+        )
+
+
+async def connect_verified_retained_application_browser(
+    playwright: Any,
+    endpoint: str,
+    expected_identity: Any,
+) -> Any:
+    """Reconnect a retained browser and enforce its recorded native-Chrome lease."""
+
+    browser = await connect_retained_application_browser(playwright, endpoint)
+    require_retained_application_browser_identity(expected_identity, browser)
+    return browser
+
+
+async def open_verified_retained_application_context(
+    endpoint: str,
+    expected_identity: Any,
+) -> tuple[Any, Any, Any]:
+    """Open one verified retained browser context and own Playwright cleanup on failure."""
+
+    manager = async_playwright()
+    playwright = await manager.start()
+    connected = False
+    try:
+        browser = await connect_verified_retained_application_browser(
+            playwright,
+            endpoint,
+            expected_identity,
+        )
+        contexts = list(browser.contexts)
+        if not contexts:
+            raise BrowserRuntimeError("The retained browser has no active context.")
+        connected = True
+        return playwright, browser, contexts[0]
+    finally:
+        if not connected:
+            with suppress(PlaywrightError):
+                await playwright.stop()
 
 
 def external_browser_inventory(browser: Any) -> Dict[str, Any]:
@@ -120,6 +313,80 @@ def _single_external_context(browser: Any) -> Any:
     return contexts[0]
 
 
+async def _create_controlled_external_page(context: Any) -> Any:
+    """Create a tab, recovering Android Chrome's intermittent Target.createTarget refusal.
+
+    Native Android Chrome can keep CDP healthy while rejecting the browser-level
+    Target.createTarget command used by Playwright new_page(). For that exact failure,
+    ask one existing tab to open about:blank with a CDP user gesture, then claim only
+    the newly observed page. Existing tabs are never navigated, closed, or selected.
+    """
+    try:
+        return await context.new_page()
+    except Exception as exc:
+        detail = str(exc)
+        if "Target.createTarget" not in detail or "Could not create a Tab" not in detail:
+            raise
+
+    baseline = list(context.pages)
+    baseline_ids = {id(page) for page in baseline}
+    seed = next(
+        (
+            page
+            for page in reversed(baseline)
+            if not callable(getattr(page, "is_closed", None)) or not page.is_closed()
+        ),
+        None,
+    )
+    if seed is None:
+        raise BrowserRuntimeError(
+            "APPLICATION_BROWSER_CONTROLLED_PAGE_CREATE_FAILED: native Chrome refused "
+            "Target.createTarget and exposed no live tab for safe recovery"
+        )
+
+    session = None
+    try:
+        session = await context.new_cdp_session(seed)
+        await session.send(
+            "Runtime.evaluate",
+            {
+                "expression": "window.open('about:blank', '_blank'); void 0",
+                "userGesture": True,
+                "awaitPromise": False,
+            },
+        )
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 3.0
+        while loop.time() < deadline:
+            created = [
+                page for page in list(context.pages) if id(page) not in baseline_ids
+            ]
+            if len(created) == 1:
+                return created[0]
+            if len(created) > 1:
+                raise BrowserRuntimeError(
+                    "APPLICATION_BROWSER_CONTROLLED_PAGE_CREATE_AMBIGUOUS: "
+                    "recovery opened multiple tabs"
+                )
+            await asyncio.sleep(0.05)
+    except BrowserRuntimeError:
+        raise
+    except Exception as recovery_exc:
+        raise BrowserRuntimeError(
+            "APPLICATION_BROWSER_CONTROLLED_PAGE_CREATE_FAILED: native Chrome refused "
+            "Target.createTarget and user-gesture recovery could not create a tab"
+        ) from recovery_exc
+    finally:
+        if session is not None:
+            with suppress(Exception):
+                await session.detach()
+
+    raise BrowserRuntimeError(
+        "APPLICATION_BROWSER_CONTROLLED_PAGE_CREATE_FAILED: native Chrome refused "
+        "Target.createTarget and no recovery tab appeared"
+    )
+
+
 async def attach_retainable_browser(
     playwright: Any,
     *,
@@ -142,9 +409,21 @@ async def attach_retainable_browser(
 
     if create_controlled_page:
         context = _single_external_context(browser)
-        page = await context.new_page()
+        page = await _create_controlled_external_page(context)
         if viewport:
             await page.set_viewport_size(viewport)
+        try:
+            # Application execution must control the visible Chrome tab. Creating a
+            # CDP target alone does not guarantee that the authenticated browser is
+            # showing that target to the operator.
+            await page.bring_to_front()
+        except Exception as exc:
+            with suppress(Exception):
+                await page.close(run_before_unload=False)
+            raise BrowserRuntimeError(
+                "APPLICATION_BROWSER_CONTROLLED_PAGE_NOT_VISIBLE: "
+                "could not activate the newly created application tab"
+            ) from exc
     else:
         context, page = await _select_context_page(
             browser,
@@ -242,8 +521,6 @@ async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:
     reported as inventory rather than rejected as ambiguous.
     """
 
-    from playwright.async_api import async_playwright
-
     async with async_playwright() as playwright:
         normalized_endpoint, browser = await connect_external_playwright_browser(
             playwright,
@@ -255,6 +532,7 @@ async def probe_external_playwright_cdp(endpoint: str) -> Dict[str, Any]:
             "cdp_endpoint": normalized_endpoint,
             **inventory,
             "browser_owned_by_jobtomatik": False,
+            **getattr(browser, "_jobtomatik_application_browser_identity", {}),
         }
 
 
@@ -271,6 +549,7 @@ async def launch_application_browser(
     """
 
     settings = get_settings()
+    application_browser_contract(settings)
     cdp_endpoint = (settings.application_browser_cdp_endpoint or "").strip()
     if cdp_endpoint:
         return await attach_retainable_browser(

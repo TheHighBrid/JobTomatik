@@ -351,6 +351,8 @@ def record_submission_evidence(
         # expected approval snapshot and detect drift instead of erasing it.
         observed_defaults = {
             "platform": "lever",
+            "adapter": "lever",
+            "adapter_version": approval_metadata.get("adapter_version"),
             "approval_reference": lever_approval.reference,
             "combined_payload_hash": expected_payload_hash,
             "site": target_identity.get("site"),

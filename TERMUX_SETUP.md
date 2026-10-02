@@ -64,7 +64,7 @@ Do **not** add `/api`. Then sign up or log in.
 ## Notes
 
 - Uses **SQLite** locally — no PostgreSQL needed on Android
-- Managed Playwright Chromium is not the Android path. Use Termux-native Chromium through the repository's external-CDP runtime; keep application execution in dry-run until the relevant evidence and release gates pass.
+- Managed Playwright Chromium and Termux Chromium are not the managed Android application path. The integrated `jobtomatik` launcher requires native Android Chrome over the verified ADB-forwarded CDP bridge; keep application execution in dry-run until the relevant evidence and release gates pass.
 - Cover letter generation works without `ANTHROPIC_API_KEY` (uses a template fallback)
 - Redis starts automatically inside Ubuntu; if it fails the app still works for login/signup
 

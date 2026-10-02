@@ -7,11 +7,13 @@ REPO_ROOT="$(cd -- "$BACKEND_ROOT/.." && pwd)"
 FRONTEND_ROOT="${JOBTOMATIK_FRONTEND_ROOT:-$REPO_ROOT/frontend}"
 RUNTIME_DIR="${JOBTOMATIK_RUNTIME_DIR:-$BACKEND_ROOT/.runtime}"
 VENV="${JOBTOMATIK_BACKEND_VENV:-$BACKEND_ROOT/.venv}"
+PROC_ROOT="${JOBTOMATIK_PROC_ROOT:-/proc}"
 BEAT_SCHEDULE="$RUNTIME_DIR/celerybeat-schedule"
 RUNTIME_REVISION="${JOBTOMATIK_RUNTIME_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)}"
 FRONTEND_ARTIFACT_ROOT="${JOBTOMATIK_FRONTEND_ARTIFACT_ROOT:-$RUNTIME_DIR/frontend-artifacts/$RUNTIME_REVISION}"
 FRONTEND_DIST_ROOT="$FRONTEND_ARTIFACT_ROOT/dist"
 STATIC_FRONTEND_SERVER="$BACKEND_ROOT/scripts/serve_static_frontend.py"
+STALE_API_RETIRER="$BACKEND_ROOT/scripts/retire_stale_android_api.py"
 
 # shellcheck source=jobtomatik_process_identity.sh
 source "$SCRIPT_DIR/jobtomatik_process_identity.sh"
@@ -86,9 +88,28 @@ sanitize_pid_file() {
   echo "ANDROID_STALE_PID_REJECTED role=$role pid=$pid action=pid_file_removed_process_not_signaled"
 }
 
+retire_verified_stale_api_without_pid_file() {
+  [[ -f "$RUNTIME_DIR/api.pid" ]] && return 0
+
+  # PID sanitization must remain usable in lightweight CI/test fixtures that do not
+  # install the backend virtualenv. On a real Android installation the venv and
+  # retire helper are present. If either is absent, skip this optional recovery phase;
+  # manage_android_stack.sh still refuses any unknown process occupying port 8010.
+  if [[ ! -x "$VENV/bin/python" || ! -f "$STALE_API_RETIRER" ]]; then
+    echo "ANDROID_STALE_API_RETIRE_SKIPPED reason=retirer_unavailable"
+    return 0
+  fi
+
+  "$VENV/bin/python" "$STALE_API_RETIRER" \
+    --backend-root "$BACKEND_ROOT" \
+    --proc-root "$PROC_ROOT" \
+    --port 8010
+}
+
 mkdir -p "$RUNTIME_DIR"
 sanitize_pid_file frontend "$RUNTIME_DIR/frontend.pid"
 sanitize_pid_file beat "$RUNTIME_DIR/celery-beat.pid"
 sanitize_pid_file worker "$RUNTIME_DIR/celery.pid"
 sanitize_pid_file api "$RUNTIME_DIR/api.pid"
+retire_verified_stale_api_without_pid_file
 echo "ANDROID_RUNTIME_PID_FILES_SANITIZED"

@@ -16,6 +16,7 @@ ROADMAP_PATH = ROOT / "docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md"
 BASELINE_PATH = ROOT / "backend/evidence/lever-phase-a-baseline.csv"
 READINESS_PATH = ROOT / "backend/evidence/lever-pilot-readiness.json"
 SUPERSESSION_PATH = ROOT / "backend/evidence/lever-phase-a-supersessions.json"
+PHASE_1_FREEZE_SOURCE_COMMIT = "8406a5a9bf638c180851fdd625a941f8adef8935"
 
 
 def _json(path: Path):
@@ -31,6 +32,27 @@ def _env_example():
         key, value = line.split("=", 1)
         values[key] = value
     return values
+
+
+def _git_commit_available(commit: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _repository_is_shallow() -> bool:
+    value = subprocess.check_output(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=ROOT,
+        text=True,
+    ).strip()
+    assert value in {"true", "false"}
+    return value == "true"
 
 
 def test_phase_1_manifest_covers_every_completed_control_day():
@@ -119,22 +141,39 @@ def test_lever_phase_2_freeze_keeps_launch_snapshot_separate_from_current_progre
     assert freeze["promotion"]["real_submission_allowed"] is False
 
 
-def test_frozen_lever_inputs_match_exact_git_blob_identities():
+def test_frozen_lever_inputs_match_canonical_historical_snapshot():
     freeze = _json(FREEZE_PATH)
     locked = freeze["locked_input_blobs"]
+    freeze_source_commit = str(freeze.get("freeze_source_commit") or "")
 
+    assert freeze_source_commit == PHASE_1_FREEZE_SOURCE_COMMIT
+    assert re.fullmatch(r"[0-9a-f]{40}", freeze_source_commit)
     assert set(locked) == set(freeze["canonical_inputs"])
     assert all(re.fullmatch(r"[0-9a-f]{40}", sha) for sha in locked.values())
+
+    if not _git_commit_available(freeze_source_commit):
+        # Broad CI intentionally uses depth-1 checkouts. Only accept the
+        # metadata-only branch when Git itself proves history is shallow.
+        # The dedicated Phase 1 release gate uses fetch-depth: 0 and therefore
+        # must execute the exact historical commit/blob verification below.
+        assert _repository_is_shallow() is True
+        return
 
     for relative_path, expected_sha in locked.items():
         source = ROOT / relative_path
         assert source.is_file(), relative_path
-        actual_sha = subprocess.check_output(
-            ["git", "hash-object", str(source)],
+        snapshot_sha = subprocess.check_output(
+            ["git", "rev-parse", f"{freeze_source_commit}:{relative_path}"],
             cwd=ROOT,
             text=True,
         ).strip()
-        assert actual_sha == expected_sha, relative_path
+        assert snapshot_sha == expected_sha, relative_path
+        object_type = subprocess.check_output(
+            ["git", "cat-file", "-t", expected_sha],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+        assert object_type == "blob", relative_path
 
 
 def test_phase_2_daily_targets_restart_from_zero_without_phantom_credit():
@@ -194,3 +233,4 @@ def test_phase_1_workflow_covers_measurement_and_clean_release_contracts():
     assert "AUTOPILOT_ENABLED: \"false\"" in workflow
     assert "ALLOW_REAL_APPLICATION_SUBMIT: \"false\"" in workflow
     assert "ENABLE_RESUMABLE_HANDOFFS: \"false\"" in workflow
+    assert "fetch-depth: 0" in workflow

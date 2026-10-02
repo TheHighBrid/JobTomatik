@@ -145,8 +145,10 @@ def mock_celery(monkeypatch):
     """Stub API-triggered Celery calls so tests do not need Redis."""
     fake_result = MagicMock(id="test-task-id")
     mock_task = MagicMock()
+    mock_task.name = "app.tasks.applications.submit_application_task"
     mock_task.delay.return_value = fake_result
     mock_task.apply_async.return_value = fake_result
+    mock_task.app.send_task.return_value = fake_result
 
     monkeypatch.setattr("app.api.applications.generate_cover_letter_task", mock_task)
     monkeypatch.setattr("app.api.applications.submit_application_task", mock_task)

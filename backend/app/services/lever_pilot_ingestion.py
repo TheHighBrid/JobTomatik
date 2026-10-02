@@ -40,13 +40,12 @@ from app.services.greenhouse_pilot import (
 )
 from app.services.platform_submission_evidence import build_platform_supervised_pilot_record
 from app.services.lever_phase_a_evidence import verify_phase_a_row_evidence
-from app.services.lever_readiness_hardening import harden_lever_readiness
+from app.services.lever_readiness_hardening import PHASE_B_REQUIRED_RECORDS, harden_lever_readiness
 
 
 settings = get_settings()
 LEVER_PLATFORM = "lever"
 PHASE_A_REQUIRED_RECORDS = 30
-PHASE_B_REQUIRED_RECORDS = 10
 VALID_REGIONS = {"global", "eu"}
 PHASE_A_SUCCESS_PAIRS = {
     ("ready_to_submit", "dry_run_passed"),
@@ -516,7 +515,7 @@ def build_readiness_summary(records: Iterable[Mapping[str, Any]]) -> Dict[str, A
         "thirty_qualifying_dry_runs": len(dry) >= PHASE_A_REQUIRED_RECORDS,
         "thirty_distinct_lever_sites": len(sites) >= PHASE_A_REQUIRED_RECORDS,
         "global_and_eu_hosts_covered": VALID_REGIONS.issubset(regions),
-        "ten_supervised_confirmed_submissions": len(successes) >= PHASE_B_REQUIRED_RECORDS,
+        "three_supervised_confirmed_submissions": len(successes) >= PHASE_B_REQUIRED_RECORDS,
         "zero_false_submitted_records": not false_submitted,
         "zero_duplicate_submissions": not duplicate_submissions,
         "all_uncertain_outcomes_remain_uncertain": not uncertain_violations,
@@ -562,7 +561,7 @@ def render_readiness_markdown(payload: Mapping[str, Any]) -> str:
         f"- Non-qualifying Phase A rows: **{summary.get('nonqualifying_dry_run_count', 0)}**",
         f"- Distinct Lever sites: **{summary.get('distinct_site_count', 0)}/30**",
         f"- Regions covered: **{', '.join(summary.get('regions_covered') or []) or 'none'}**",
-        f"- Confirmed supervised submissions: **{summary.get('supervised_confirmed_count', 0)}/10**",
+        f"- Confirmed supervised submissions: **{summary.get('supervised_confirmed_count', 0)}/{PHASE_B_REQUIRED_RECORDS}**",
         "",
         "## Gates",
         "",

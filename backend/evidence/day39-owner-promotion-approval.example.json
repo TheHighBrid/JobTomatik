@@ -1,0 +1,12 @@
+{
+  "approved": false,
+  "approval_reference": "REPLACE_WITH_EXACT_OWNER_PROMOTION_REFERENCE",
+  "approved_for_commit": "0000000000000000000000000000000000000000",
+  "adapter": "lever",
+  "adapter_version": "1.1.0",
+  "target_maturity": "certified_autonomous",
+  "example_only": true,
+  "submission_authorized": false,
+  "live_window_authorized": false,
+  "outreach_authorized": false
+}

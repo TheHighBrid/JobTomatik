@@ -12,6 +12,7 @@ from app.api import (
     answer_policies,
     applications,
     auth,
+    autonomy_control,
     certification,
     controller,
     evaluations,
@@ -21,6 +22,7 @@ from app.api import (
     intelligence,
     jobs,
     lever_pilot_ledger,
+    manual_review_policies,
     materials,
     notifications,
     operations,
@@ -50,15 +52,20 @@ from app.services.control_engine import certification_manifest
 from app.services.followup_schema import ensure_followup_schema
 from app.services.handoff_integration import install_handoff_task_integration
 from app.services.material_task_integration import install_verified_material_task_integration
+from app.services.operator_assisted_live_pilot_hardening import (
+    install_operator_assisted_live_pilot_hardening,
+)
 from app.services.operations_policy import operations_readiness_manifest
 from app.services.runtime_identity import runtime_identity_manifest
 from app.services.supervised_submission_integration import (
     install_supervised_submission_task_gate,
 )
+from app.version import APP_VERSION
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 install_handoff_task_integration()
+install_operator_assisted_live_pilot_hardening()
 install_application_target_handoff_task_persistence()
 install_application_target_task_integration()
 install_verified_material_task_integration()
@@ -219,7 +226,7 @@ app = FastAPI(
         "AI-powered job-search and application automation platform progressing "
         "toward evidence-backed autonomous real submission"
     ),
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
     docs_url="/docs" if api_docs_enabled else None,
     redoc_url="/redoc" if api_docs_enabled else None,
@@ -238,6 +245,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(controller.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
+app.include_router(manual_review_policies.router, prefix="/api")
 app.include_router(supervised_submissions.router, prefix="/api")
 app.include_router(supervised_pilot_roster.router, prefix="/api")
 app.include_router(submission_evidence_reviews.router, prefix="/api")
@@ -257,6 +265,7 @@ app.include_router(agent_execution.router, prefix="/api")
 app.include_router(evaluations.router, prefix="/api")
 app.include_router(operations.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
+app.include_router(autonomy_control.router, prefix="/api")
 app.include_router(post_application.router, prefix="/api")
 app.include_router(certification.router, prefix="/api")
 app.include_router(recovery.router, prefix="/api")
@@ -266,7 +275,7 @@ app.include_router(shadow_runs.router, prefix="/api")
 @app.get("/health")
 @app.get("/api/system/health")
 async def health():
-    return {"status": "ok", "service": "JobTomatik API", "version": "1.0.0"}
+    return {"status": "ok", "service": "JobTomatik API", "version": APP_VERSION}
 
 
 @app.get("/api/system/ready")
@@ -274,7 +283,7 @@ def readiness_probe():
     """Confirm the API process can execute a database query."""
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
-    return {"status": "ready", "service": "JobTomatik API", "version": "1.0.0"}
+    return {"status": "ready", "service": "JobTomatik API", "version": APP_VERSION}
 
 
 @app.get("/api/system/runtime-identity")
