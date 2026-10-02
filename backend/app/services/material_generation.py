@@ -195,7 +195,8 @@ def _as_sentence(value: Any) -> str:
     text = _clean_material_statement(value).rstrip()
     if not text:
         return ""
-    if text[-1] not in ".!?”\"'":
+    text_without_closing_quotes = text.rstrip("”’\"'")
+    if not text_without_closing_quotes.endswith((".", "!", "?")):
         text += "."
     return text
 

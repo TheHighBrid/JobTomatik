@@ -5,6 +5,7 @@ from app.models.job import Job, JobSource, JobStatus
 from app.models.material import ApplicationMaterial, ApplicationMaterialEvidence
 from app.models.user import User
 from app.services.material_generation import (
+    _as_sentence,
     _clean_material_statement,
     _cover_letter_content,
     _resume_summary_content,
@@ -12,6 +13,17 @@ from app.services.material_generation import (
     generate_application_material,
     validate_claims,
 )
+
+
+def test_as_sentence_places_missing_punctuation_after_closing_quote():
+    assert (
+        _as_sentence('Known for being a "customer advocate"')
+        == 'Known for being a "customer advocate".'
+    )
+    assert (
+        _as_sentence('Known for being a "customer advocate."')
+        == 'Known for being a "customer advocate."'
+    )
 
 
 def _user(db_session):
