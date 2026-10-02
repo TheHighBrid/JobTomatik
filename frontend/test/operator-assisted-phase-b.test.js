@@ -67,3 +67,16 @@ test('final action uses a dedicated once-only API instead of generic handoff act
   assert.equal(finalPanel.includes('automatic retry is forbidden'), true)
   assert.equal(finalPanel.includes('Do not submit again; verify the employer page instead.'), true)
 })
+
+test('retained employer questions are presented as an inspection state requiring fresh preparation', () => {
+  assert.equal(operatorPanel.includes('result.operator_question_review_page_retained'), true)
+  assert.equal(operatorPanel.includes('Employer questions retained for inspection'), true)
+  assert.equal(operatorPanel.includes('No answer was inferred and no submission occurred.'), true)
+  assert.equal(operatorPanel.includes('then run a fresh preparation'), true)
+  assert.equal(operatorPanel.includes('this inspection page cannot be resumed'), true)
+  assert.equal(
+    operatorPanel.indexOf('result.operator_question_review_page_retained')
+      < operatorPanel.indexOf('result.requires_manual_review'),
+    true,
+  )
+})

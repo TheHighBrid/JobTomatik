@@ -42,6 +42,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
   const queryClient = useQueryClient()
   const [confirmation, setConfirmation] = useState('')
   const [prepareTaskId, setPrepareTaskId] = useState('')
+  const [questionReviewReceipt, setQuestionReviewReceipt] = useState(null)
 
   const preflightQuery = useQuery({
     queryKey: ['operator-assisted-preflight', applicationId],
@@ -106,7 +107,11 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
     const result = taskQuery.data.result || {}
     setPrepareTaskId('')
     refreshAll()
-    if (taskQuery.data.status === 'SUCCESS' && result.handoff_public_id) {
+    if (taskQuery.data.status === 'SUCCESS' && result.operator_question_review_page_retained) {
+      setQuestionReviewReceipt(result)
+      toast.success('Employer questions are ready for inspection in the retained browser page.')
+    } else if (taskQuery.data.status === 'SUCCESS' && result.handoff_public_id) {
+      setQuestionReviewReceipt(null)
       toast.success('Filled application retained. Exact owner approval is now required.')
     } else if (taskQuery.data.status === 'SUCCESS' && result.requires_manual_review) {
       toast.error(result.error || 'Preparation reached a different manual-review boundary.')
@@ -117,6 +122,7 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
 
   useEffect(() => {
     setConfirmation('')
+    setQuestionReviewReceipt(null)
   }, [applicationId, preflight?.combined_payload_hash, preflight?.operator_handoff_public_id])
 
   const prepareMutation = useMutation({
@@ -265,6 +271,25 @@ export default function OperatorAssistedSubmissionPanel({ application }) {
                 <li key={blocker}>• {supervisedBlockerLabel(blocker, preflight.platform)}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {questionReviewReceipt && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-4" role="status">
+            <div className="flex items-start gap-3">
+              <FileCheck2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-700" />
+              <div>
+                <div className="text-sm font-semibold text-violet-950">Employer questions retained for inspection</div>
+                <p className="mt-1 text-xs leading-relaxed text-violet-800">
+                  Inspect the unanswered questions in the externally controlled browser page now. No answer was inferred and no submission occurred. Record only owner-approved answer policies, then run a fresh preparation; this inspection page cannot be resumed.
+                </p>
+                {questionReviewReceipt.operator_question_review_url && (
+                  <div className="mt-2 break-all text-[11px] text-violet-700">
+                    Retained page: {questionReviewReceipt.operator_question_review_url}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

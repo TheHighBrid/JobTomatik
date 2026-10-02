@@ -15,6 +15,7 @@ from app.services.operator_assisted_handoff_integration import (
     operator_prepare_scope,
 )
 from app.services.operator_assisted_question_retention import (
+    cleanup_operator_question_review_browser,
     install_operator_assisted_question_retention,
     summarize_operator_question_retention_result,
 )
@@ -39,6 +40,24 @@ def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     except RuntimeError:
         return asyncio.run(coro)
     return loop.run_until_complete(coro)
+
+
+@celery_app.task(
+    name="app.tasks.operator_assisted.cleanup_operator_question_review_browser_task",
+    queue="applications",
+)
+def cleanup_operator_question_review_browser_task(cleanup_handle: dict[str, Any]):
+    """Run the non-resumable inspection cleanup after its bounded retention window."""
+
+    return {"cleaned": cleanup_operator_question_review_browser(cleanup_handle)}
+
+
+def _schedule_question_review_cleanup(cleanup_handle: dict[str, Any], countdown: int) -> None:
+    cleanup_operator_question_review_browser_task.apply_async(
+        args=[cleanup_handle],
+        countdown=countdown,
+        queue="applications",
+    )
 
 
 @celery_app.task(
@@ -93,7 +112,9 @@ def prepare_operator_assisted_application_task(self, application_id: int):
         with operator_prepare_scope(target_metadata or {}):
             result = submit_application_task.run(application_id, dry_run=True)
         if isinstance(result, dict):
-            result = summarize_operator_question_retention_result(dict(result))
+            result = summarize_operator_question_retention_result(
+                dict(result), schedule_cleanup=_schedule_question_review_cleanup
+            )
             result["operator_assisted"] = True
             result["automated_submission_authorized"] = False
             result["final_submit_clicked_by_jobtomatik"] = False
@@ -102,4 +123,7 @@ def prepare_operator_assisted_application_task(self, application_id: int):
         raise self.retry(exc=exc, countdown=30, max_retries=1)
 
 
-__all__ = ["prepare_operator_assisted_application_task"]
+__all__ = [
+    "cleanup_operator_question_review_browser_task",
+    "prepare_operator_assisted_application_task",
+]

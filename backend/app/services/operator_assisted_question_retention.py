@@ -10,17 +10,24 @@ enough for the owner to inspect the exact questions and approve answer policies.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from typing import Any, Callable, Dict, Mapping
+from uuid import UUID
 
 from app.models.application import ManualReviewReason
 from app.services.operator_assisted_handoff_integration import (
     current_operator_prepare_target,
 )
+from app.services.browser_handoff import current_browser_node_id
+from app.services.browser_runtime import handoff_storage_root
+from app.services.retained_browser_operator import terminate_and_cleanup_retained_browser
 
 
 QUESTION_REASON = ManualReviewReason.ambiguous_question.value
 _INSTALLED = False
 _ORIGINAL_RESUMABLE_BOUNDARY = None
+QUESTION_REVIEW_RETENTION_SECONDS = 15 * 60
 
 
 def _review_reasons(result: Mapping[str, Any]) -> set[str]:
@@ -69,7 +76,52 @@ def install_operator_assisted_question_retention() -> None:
     _INSTALLED = True
 
 
-def summarize_operator_question_retention_result(result: Dict[str, Any]) -> Dict[str, Any]:
+def _cleanup_handle(snapshot: Mapping[str, Any]) -> Dict[str, Any]:
+    """Return only the non-secret fields needed by the bounded cleanup task."""
+
+    return {
+        "browser_provider": snapshot.get("browser_provider"),
+        "browser_session_id": snapshot.get("browser_session_id"),
+        "browser_node_id": snapshot.get("browser_node_id") or current_browser_node_id(),
+        "browser_process_id": snapshot.get("browser_process_id"),
+    }
+
+
+def _remove_question_snapshot_artifacts(snapshot: Mapping[str, Any]) -> None:
+    """Delete captured cookies/HTML/images without closing an external browser page."""
+
+    raw_session_id = str(snapshot.get("browser_session_id") or "").strip()
+    try:
+        session_id = str(UUID(raw_session_id))
+    except ValueError:
+        return
+    session_dir = (handoff_storage_root().resolve() / session_id).resolve()
+    if session_dir.parent != handoff_storage_root().resolve():
+        return
+    for filename in ("storage-state.json", "page.html", "handoff.png"):
+        path = session_dir / filename
+        if path.is_file():
+            path.unlink()
+
+
+def cleanup_operator_question_review_browser(cleanup_handle: Mapping[str, Any]) -> bool:
+    """Close an owned runtime and remove its transient directory at the TTL boundary."""
+
+    return terminate_and_cleanup_retained_browser(
+        SimpleNamespace(
+            browser_provider=cleanup_handle.get("browser_provider"),
+            browser_session_id=cleanup_handle.get("browser_session_id"),
+            browser_node_id=cleanup_handle.get("browser_node_id"),
+            browser_process_id=cleanup_handle.get("browser_process_id"),
+        )
+    )
+
+
+def summarize_operator_question_retention_result(
+    result: Dict[str, Any],
+    *,
+    schedule_cleanup: Callable[[Dict[str, Any], int], Any] | None = None,
+) -> Dict[str, Any]:
     """Strip raw snapshot data while reporting that the live page was intentionally kept.
 
     ``fill_and_submit_application_with_handoff`` captures a browser snapshot before
@@ -87,6 +139,19 @@ def summarize_operator_question_retention_result(result: Dict[str, Any]) -> Dict
     if not isinstance(snapshot, Mapping):
         return normalized
 
+    cleanup_handle = _cleanup_handle(snapshot)
+    _remove_question_snapshot_artifacts(snapshot)
+    retained_until = datetime.now(timezone.utc) + timedelta(
+        seconds=QUESTION_REVIEW_RETENTION_SECONDS
+    )
+    if schedule_cleanup is not None:
+        try:
+            schedule_cleanup(cleanup_handle, QUESTION_REVIEW_RETENTION_SECONDS)
+        except Exception:
+            # A failed enqueue must never turn a local retained runtime into an orphan.
+            cleanup_operator_question_review_browser(cleanup_handle)
+            raise
+
     normalized["operator_question_review_page_retained"] = True
     normalized["operator_question_review_url"] = (
         snapshot.get("current_url")
@@ -97,6 +162,8 @@ def summarize_operator_question_retention_result(result: Dict[str, Any]) -> Dict
         "browser_provider"
     )
     normalized["operator_question_review_handoff_created"] = False
+    normalized["operator_question_review_cleanup_scheduled"] = schedule_cleanup is not None
+    normalized["operator_question_review_retained_until"] = retained_until.isoformat()
     normalized["requires_answer_policy_review"] = True
     normalized["requires_fresh_reprepare_after_answer_policy"] = True
     normalized["automated_submission_authorized"] = False
@@ -105,6 +172,8 @@ def summarize_operator_question_retention_result(result: Dict[str, Any]) -> Dict
 
 
 __all__ = [
+    "QUESTION_REVIEW_RETENTION_SECONDS",
+    "cleanup_operator_question_review_browser",
     "install_operator_assisted_question_retention",
     "is_operator_question_review_result",
     "summarize_operator_question_retention_result",
