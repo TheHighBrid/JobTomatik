@@ -1,0 +1,33 @@
+name: PR 621 Codacy high-security diagnostic
+
+on:
+  push:
+    branches:
+      - codex/fix-high-priority-bugs-from-codex-review-470fio
+    paths:
+      - .github/workflows/pr621-codacy-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/fix-high-priority-bugs-from-codex-review-470fio
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Codacy analysis CLI
+        run: npm install -g @codacy/analysis-cli
+      - name: Initialize high-security rules
+        run: codacy-analysis init --auto Critical,High,Security
+      - name: Analyze PR diff
+        shell: bash
+        run: |
+          codacy-analysis analyze --diff origin/main --install-dependencies --output-format json 2>&1 | tee /tmp/codacy-pr621.json || true
+          echo '===== HIGH / SECURITY MATCHES ====='
+          grep -Ei 'critical|high|security|secret|workflow|vulnerab|injection|unsafe|permission|pin' /tmp/codacy-pr621.json || true
