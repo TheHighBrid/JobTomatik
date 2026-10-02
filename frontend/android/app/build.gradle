@@ -1,5 +1,7 @@
 apply plugin: 'com.android.application'
 
+import java.util.Properties
+
 // Persistent release signing must be provided outside source control.
 // One external directory is accepted through JOBTOMATIK_SIGNING_DIR or
 // the jobtomatikSigningDir Gradle property. Its contents are ephemeral:
@@ -37,6 +39,26 @@ if (distributionReleaseTaskRequested && !releaseSigningConfigured) {
             "Provide JOBTOMATIK_SIGNING_DIR outside source control."
     )
 }
+
+// The normal debug/certification lane intentionally remains on the current
+// repository candidate identity. Production release identity is isolated in
+// release-version.properties so an APK can advance without invalidating the
+// established debug verification contract.
+def releaseVersionPropertiesFile = rootProject.file('release-version.properties')
+if (!releaseVersionPropertiesFile.isFile()) {
+    throw new GradleException("Missing Android production release identity: ${releaseVersionPropertiesFile}")
+}
+def releaseVersionProperties = new Properties()
+releaseVersionPropertiesFile.withInputStream { stream ->
+    releaseVersionProperties.load(stream)
+}
+def productionVersionCodeText = releaseVersionProperties.getProperty('VERSION_CODE')?.trim()
+def productionVersionName = releaseVersionProperties.getProperty('VERSION_NAME')?.trim()
+if (!(productionVersionCodeText ==~ /[0-9]+/) || !(productionVersionName ==~ /[0-9]+\.[0-9]+\.[0-9]+/)) {
+    throw new GradleException("Invalid Android production release identity in ${releaseVersionPropertiesFile}")
+}
+def productionVersionCode = productionVersionCodeText.toInteger()
+
 android {
     namespace "ca.jobtomatik.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -45,8 +67,8 @@ android {
         applicationId "ca.jobtomatik.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 400
-        versionName "4.0.0"
+        versionCode 211
+        versionName "2.1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             // Files and directories omitted from the packaged web assets.
@@ -71,6 +93,15 @@ android {
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.each { output ->
+            output.versionCode.set(productionVersionCode)
+            output.versionName.set(productionVersionName)
         }
     }
 }
