@@ -2,6 +2,11 @@ name: Build JobTomatik Android production-signed release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/android/app/build.gradle"
 
 permissions:
   contents: read
@@ -107,7 +112,6 @@ jobs:
         with:
           signing_bundle_base64: ${{ secrets.JOBTOMATIK_ANDROID_SIGNING_BUNDLE_BASE64 }}
 
-
       - name: Verify production APK identity and persistent certificate
         shell: bash
         env:
@@ -127,17 +131,20 @@ jobs:
           mkdir -p production-release
           cp "$APK" "production-release/JobTomatik-$VERSION_NAME.apk"
 
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging             "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-BADGING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
+            "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-BADGING.txt
           grep -q "package: name='ca.jobtomatik.app'" production-release/APK-BADGING.txt
           grep -q "versionCode='$VERSION_CODE'" production-release/APK-BADGING.txt
           grep -q "versionName='$VERSION_NAME'" production-release/APK-BADGING.txt
 
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs             "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-SIGNING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs \
+            "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-SIGNING.txt
           SIGNING_CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' production-release/APK-SIGNING.txt | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
           [[ "$SIGNING_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]]
           test "$SIGNING_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
 
-          sha256sum "production-release/JobTomatik-$VERSION_NAME.apk" >             "production-release/JobTomatik-$VERSION_NAME.sha256"
+          sha256sum "production-release/JobTomatik-$VERSION_NAME.apk" > \
+            "production-release/JobTomatik-$VERSION_NAME.sha256"
           printf '%s\n' "$SOURCE_COMMIT" > production-release/SOURCE-COMMIT.txt
           cat > production-release/BUILD-INFO.txt <<EOF
           JobTomatik Android production-signed build
