@@ -188,7 +188,7 @@ def test_malformed_experience_is_filtered_before_sentence_composition():
     )
 
 
-def test_job_alignment_claim_validates_hidden_fragmentary_referenced_evidence():
+def test_stale_v1_job_alignment_claim_validates_fourth_hidden_fragmentary_unit():
     units = [
         _unit("Risk Management", 50, kind="skill"),
         _unit("Python", 51, kind="skill"),
@@ -205,6 +205,9 @@ def test_job_alignment_claim_validates_hidden_fragmentary_referenced_evidence():
 
     errors = validate_claims([claim], units)
 
+    # The rendered v1 claim only described terms from the first three units, so
+    # claim-text validation cannot discover the malformed fourth unit.
+    assert not any("item 0 contains a likely incomplete narrative" in error for error in errors)
     assert any(
         "likely incomplete skill evidence unit 53" in warning
         for warning in errors
