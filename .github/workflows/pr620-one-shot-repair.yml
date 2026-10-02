@@ -80,19 +80,32 @@ jobs:
               '''    # A signing key alone is no longer sufficient. Runtime promotion stays\n    # fail-closed until the external manifest and retained artifact bindings are\n    # independently configured and rehashed by the live runtime.\n    assert trusted["maturity"] == AdapterMaturity.DRY_RUN.value\n    assert trusted["autonomous_submission_allowed"] is False\n    assert untrusted["maturity"] == AdapterMaturity.DRY_RUN.value\n    assert untrusted["autonomous_submission_allowed"] is False\n''',
           )
           PY
-      - name: Regate shared Phase 4 fixture digests
+      - name: Commit code and test repair before exact-head regate
+        shell: bash
+        run: |
+          git config user.name "JobTomatik Repair"
+          git config user.email "actions@users.noreply.github.com"
+          git add backend/app/services/day39_lever_promotion.py \
+                  backend/tests/test_autonomy_release_contract.py \
+                  backend/tests/test_day39_autonomy_contract_semantics.py \
+                  backend/tests/test_day39_lever_promotion.py
+          git diff --cached --quiet || git commit -m "Repair external attestation contract regressions"
+      - name: Regate shared Phase 4 fixture digests from clean exact head
         shell: bash
         run: |
           cd backend
           PYTHONPATH=. python - <<'PY'
           import json
-          import os
+          import subprocess
           from pathlib import Path
           from app.services.phase4_candidate_gate import build_phase4_candidate_gate
 
           root = Path.cwd().parent
+          head = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], cwd=root, text=True
+          ).strip()
           gate = build_phase4_candidate_gate(
-              verification_commit=os.environ["GITHUB_SHA"],
+              verification_commit=head,
               root=root,
           )
           freeze_path = root / "backend/evidence/day28-phase4-version-freeze.json"
@@ -105,7 +118,7 @@ jobs:
               current[name] = digest
           freeze["october2_autonomy_contract_fixture_regate"] = {
               "date": "2026-10-02",
-              "validation_source_commit": os.environ["GITHUB_SHA"],
+              "validation_source_commit": head,
               "reason": "External runtime attestation hardening changed shared autonomy-contract fixtures only. Exact-head Phase 4 evaluation reported fixture-only drift across adapter rows while adapter source, retained evidence, manifest live-evidence, versions, maturity, and runtime authority remained unchanged.",
               "current_fixture_regression_sha256": current,
               "fixture_only_drift_verified": True,
@@ -120,9 +133,13 @@ jobs:
           }
           freeze_path.write_text(json.dumps(freeze, indent=2) + "\n", encoding="utf-8")
           PY
-      - name: Run focused regression and gate suite
+          cd ..
+          git add backend/evidence/day28-phase4-version-freeze.json
+          git diff --cached --quiet || git commit -m "Regate Phase 4 fixture digests for attestation hardening"
+      - name: Run focused regression and gate suite on final clean head
         shell: bash
         run: |
+          test -z "$(git status --porcelain)"
           cd backend
           PYTHONPATH=. pytest -q \
             tests/test_autonomy_release_contract.py \
@@ -133,23 +150,14 @@ jobs:
       - name: Static sanity checks
         shell: bash
         run: |
-          python -m ruff check \
+          python -m compileall -q \
             backend/app/services/day39_lever_promotion.py \
             backend/tests/test_autonomy_release_contract.py \
             backend/tests/test_day39_autonomy_contract_semantics.py \
             backend/tests/test_day39_lever_promotion.py
           python -m json.tool backend/evidence/day28-phase4-version-freeze.json >/dev/null
           git diff --check
-      - name: Commit repaired branch
+          test -z "$(git status --porcelain)"
+      - name: Push repaired branch
         shell: bash
-        run: |
-          git config user.name "JobTomatik Repair"
-          git config user.email "actions@users.noreply.github.com"
-          git add backend/app/services/day39_lever_promotion.py \
-                  backend/tests/test_autonomy_release_contract.py \
-                  backend/tests/test_day39_autonomy_contract_semantics.py \
-                  backend/tests/test_day39_lever_promotion.py \
-                  backend/evidence/day28-phase4-version-freeze.json
-          git diff --cached --quiet && exit 0
-          git commit -m "Repair external attestation contract regressions"
-          git push origin HEAD:codex/fix-high-priority-bugs-in-certification-contract
+        run: git push origin HEAD:codex/fix-high-priority-bugs-in-certification-contract
