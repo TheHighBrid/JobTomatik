@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from app.models.application import Application, ApplicationEvent
-from app.models.job import Job
+from app.models.application import (
+    Application,
+    ApplicationAutomationState,
+    ApplicationEvent,
+    ApplicationStatus,
+)
+from app.models.job import Job, JobSource, JobStatus
 from app.models.submission_approval import SubmissionApproval
 from app.models.submission_integrity import SubmissionIdentityAlias
 from app.services import lever_phase_b_current_intake as intake_service
-
 
 POSTING_ID = "0d95c00e-3019-4390-8a57-c05d9bf58a10"
 HOSTED_URL = f"https://jobs.lever.co/eqbank/{POSTING_ID}"
@@ -63,7 +67,9 @@ def test_current_lever_intake_requires_verified_live_identity(
         blocked,
     )
 
-    response = auth_client.post("/api/supervised-pilot/lever-candidates", json=_payload())
+    response = auth_client.post(
+        "/api/supervised-pilot/lever-candidates", json=_payload()
+    )
     assert response.status_code == 422
     assert "lever_official_metadata_unavailable" in response.json()["detail"]
     assert db_session.query(Job).count() == 0
@@ -147,3 +153,101 @@ def test_current_lever_intake_rejects_forged_authority_fields(auth_client):
     }
     response = auth_client.post("/api/supervised-pilot/lever-candidates", json=payload)
     assert response.status_code == 422
+
+
+def _existing_job(*, external_id: str) -> Job:
+    return Job(
+        external_id=external_id,
+        title=_payload()["role"],
+        company=_payload()["employer"],
+        location=_payload()["location"],
+        url=APPLY_URL,
+        source=JobSource.lever,
+        status=JobStatus.queued,
+        raw_data={"selected_apply_url": APPLY_URL},
+    )
+
+
+def test_current_lever_intake_backfills_aliases_for_existing_application(
+    auth_client,
+    db_session,
+    monkeypatch,
+):
+    async def verified(_job):
+        return _verified_target()
+
+    monkeypatch.setattr(intake_service, "resolve_supervised_target_metadata", verified)
+    job = _existing_job(external_id=f"lever:eqbank:{POSTING_ID}")
+    db_session.add(job)
+    db_session.flush()
+    application = Application(
+        user_id=1,
+        job_id=job.id,
+        status=ApplicationStatus.pending,
+        automation_state=ApplicationAutomationState.ready_to_apply.value,
+        submission_idempotency_key="preserved-existing-key",
+    )
+    db_session.add(application)
+    db_session.commit()
+
+    response = auth_client.post(
+        "/api/supervised-pilot/lever-candidates", json=_payload()
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["application_id"] == application.id
+    db_session.refresh(application)
+    assert application.submission_idempotency_key == "preserved-existing-key"
+    assert (
+        application.automation_state == ApplicationAutomationState.ready_to_apply.value
+    )
+    assert (
+        db_session.query(SubmissionIdentityAlias)
+        .filter(SubmissionIdentityAlias.application_id == application.id)
+        .count()
+        >= 2
+    )
+
+
+def test_current_lever_intake_reuses_alias_owner_and_discards_duplicate_job(
+    auth_client,
+    db_session,
+    monkeypatch,
+):
+    async def verified(_job):
+        return _verified_target()
+
+    monkeypatch.setattr(intake_service, "resolve_supervised_target_metadata", verified)
+    owning_job = _existing_job(external_id="legacy-lever-discovery-row")
+    db_session.add(owning_job)
+    db_session.flush()
+    application = Application(
+        user_id=1,
+        job_id=owning_job.id,
+        status=ApplicationStatus.pending,
+        automation_state=ApplicationAutomationState.preparing.value,
+        submission_idempotency_key="preserved-owner-key",
+    )
+    db_session.add(application)
+    db_session.flush()
+    aliases = intake_service.build_submission_identity_aliases(
+        owning_job,
+        target_metadata=_verified_target(),
+    )
+    intake_service.claim_submission_identity_aliases(db_session, application, aliases)
+    db_session.commit()
+
+    response = auth_client.post(
+        "/api/supervised-pilot/lever-candidates", json=_payload()
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["application_id"] == application.id
+    assert body["job_id"] == owning_job.id
+    assert body["created_job"] is False
+    assert body["created_application"] is False
+    assert db_session.query(Job).count() == 1
+    db_session.refresh(application)
+    assert application.job_id == owning_job.id
+    assert application.submission_idempotency_key == "preserved-owner-key"

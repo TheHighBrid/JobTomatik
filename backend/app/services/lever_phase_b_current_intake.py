@@ -35,7 +35,6 @@ from app.services.supervised_target_identity import (
     resolve_supervised_target_metadata,
 )
 
-
 INTAKE_SOURCE = "manual_lever_phase_b_current"
 SELECTION_POLICY = "user_selected_exact_application_no_ranking"
 
@@ -80,6 +79,31 @@ def _candidate_job(
             "source_reference": source_reference,
         },
     )
+
+
+def _validate_existing_job(
+    job: Job,
+    *,
+    employer: str,
+    role: str,
+    application_url: str,
+) -> None:
+    raw = dict(job.raw_data or {})
+    existing_url = canonical_lever_application_url(
+        str(raw.get("selected_apply_url") or job.url or "")
+    )
+    if existing_url != application_url:
+        raise CurrentLeverPhaseBIntakeError(
+            "Existing Lever job identity points at a different target"
+        )
+    if str(job.title or "").strip().casefold() != role.casefold():
+        raise CurrentLeverPhaseBIntakeError(
+            "Existing Lever job role does not match current official target"
+        )
+    if str(job.company or "").strip().casefold() != employer.casefold():
+        raise CurrentLeverPhaseBIntakeError(
+            "Existing Lever job employer does not match current selection"
+        )
 
 
 async def import_current_lever_phase_b_candidate(
@@ -147,21 +171,12 @@ async def import_current_lever_phase_b_candidate(
         db.add(job)
         db.flush()
     else:
-        existing_url = canonical_lever_application_url(
-            str((job.raw_data or {}).get("selected_apply_url") or job.url or "")
+        _validate_existing_job(
+            job,
+            employer=employer_value,
+            role=role_value,
+            application_url=canonical_url,
         )
-        if existing_url != canonical_url:
-            raise CurrentLeverPhaseBIntakeError(
-                "Existing Lever job identity points at a different target"
-            )
-        if str(job.title or "").strip().casefold() != role_value.casefold():
-            raise CurrentLeverPhaseBIntakeError(
-                "Existing Lever job role does not match current official target"
-            )
-        if str(job.company or "").strip().casefold() != employer_value.casefold():
-            raise CurrentLeverPhaseBIntakeError(
-                "Existing Lever job employer does not match current selection"
-            )
         raw = dict(job.raw_data or {})
         job.raw_data = {
             **raw,
@@ -169,9 +184,11 @@ async def import_current_lever_phase_b_candidate(
             "selected_apply_url": canonical_url,
             "selection_policy": SELECTION_POLICY,
             "selection_source": INTAKE_SOURCE,
-            "source_reference": source_reference_value
-            if source_reference_value is not None
-            else raw.get("source_reference"),
+            "source_reference": (
+                source_reference_value
+                if source_reference_value is not None
+                else raw.get("source_reference")
+            ),
         }
         db.add(job)
 
@@ -186,6 +203,25 @@ async def import_current_lever_phase_b_candidate(
             .order_by(Application.id.asc())
             .first()
         )
+
+    if application is not None and application.job_id != job.id:
+        application_job = db.query(Job).filter(Job.id == application.job_id).first()
+        if application_job is None:
+            raise CurrentLeverPhaseBIntakeError("Existing application job is missing")
+        _validate_existing_job(
+            application_job,
+            employer=employer_value,
+            role=role_value,
+            application_url=canonical_url,
+        )
+        if created_job:
+            db.delete(job)
+            created_job = False
+        job = application_job
+        persist_supervised_target_metadata(job, target)
+        db.add(job)
+        db.flush()
+        aliases = build_submission_identity_aliases(job, target_metadata=target)
 
     created_application = application is None
     if application is None:
@@ -203,10 +239,6 @@ async def import_current_lever_phase_b_candidate(
             aliases,
             fallback_job_id=job.id,
         )
-        try:
-            claim_submission_identity_aliases(db, application, aliases)
-        except DuplicateSubmissionIdentityError as exc:
-            raise CurrentLeverPhaseBIntakeError(str(exc)) from exc
         db.add(
             ApplicationEvent(
                 application_id=application.id,
@@ -230,10 +262,11 @@ async def import_current_lever_phase_b_candidate(
                 },
             )
         )
-    elif application.job_id != job.id:
-        raise CurrentLeverPhaseBIntakeError(
-            "Exact Lever posting identity is already owned by another application"
-        )
+
+    try:
+        claim_submission_identity_aliases(db, application, aliases)
+    except DuplicateSubmissionIdentityError as exc:
+        raise CurrentLeverPhaseBIntakeError(str(exc)) from exc
 
     return {
         "application_id": application.id,
