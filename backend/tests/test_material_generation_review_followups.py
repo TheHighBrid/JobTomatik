@@ -128,75 +128,93 @@ def test_evidence_normalization_preserves_signed_metrics_before_rendering():
     assert "10% error rate" not in statements
 
 
-def test_job_alignment_validates_every_referenced_fragment_sensitive_unit():
-    units = [
-        _unit("Fraud Investigation", 1, kind="skill"),
-        _unit("Case Documentation", 2, kind="skill"),
-        _unit("Customer Support", 3, kind="skill"),
-        _unit("Risk management, data analysis, and", 4, kind="skill"),
-    ]
-    claim = {
-        "text": "This background overlaps with the posting in fraud investigation.",
-        "category": "job_alignment",
-        "applicant_fact": True,
-        "evidence_unit_ids": [unit.id for unit in units],
-        "evidence_hashes": [unit.source_hash for unit in units],
-    }
-
-    warnings = validate_claims([claim], units)
-
-    assert any("skill evidence unit 4" in warning for warning in warnings)
-
-
-def test_capitalized_labels_are_not_mistaken_for_dangling_articles():
-    complete = (
-        _unit("Commercial Driver's License Class A", 1, kind="credential"),
-        _unit("Maintained Grade A.", 2, kind="achievement"),
+def test_capitalized_terminal_labels_are_not_treated_as_fragments():
+    cases = (
+        ("Commercial Driver's License Class A", "credential"),
+        ("Maintained Grade A.", "achievement"),
     )
-    dangling = _unit("Worked on a", 3, kind="achievement")
 
-    assert all(_usable_narrative_unit(unit) for unit in complete)
-    assert _usable_narrative_unit(dangling) is False
-    for unit in complete:
+    for index, (statement, kind) in enumerate(cases, start=20):
+        unit = _unit(statement, index, kind=kind)
+        assert _usable_narrative_unit(unit) is True
         claim = {
-            "text": unit.statement,
-            "category": unit.kind,
+            "text": statement,
+            "category": kind,
             "applicant_fact": True,
             "evidence_unit_ids": [unit.id],
             "evidence_hashes": [unit.source_hash],
         }
         assert validate_claims([claim], [unit]) == []
 
+    broken = _unit("Completed the", 30, kind="achievement")
+    assert _usable_narrative_unit(broken) is False
+    broken_claim = {
+        "text": "Completed the.",
+        "category": "achievement",
+        "applicant_fact": True,
+        "evidence_unit_ids": [broken.id],
+        "evidence_hashes": [broken.source_hash],
+    }
+    assert any(
+        "likely incomplete" in warning
+        for warning in validate_claims([broken_claim], [broken])
+    )
 
-def test_malformed_experience_is_filtered_from_generation_and_stale_claims():
-    experience = _unit("4 and", 1, kind="experience")
+
+def test_malformed_experience_is_filtered_before_sentence_composition():
+    bad_years = _unit("4 and", 40, kind="experience")
+    role = _unit("Fraud Analyst", 41, kind="role")
     user = SimpleNamespace(full_name=None)
 
-    cover, cover_claims, _ = _cover_letter_content(user, _job(), [experience])
-    summary, summary_claims, _ = _resume_summary_content(user, _job(), [experience])
+    assert _usable_narrative_unit(bad_years) is False
+    cover, cover_claims, _ = _cover_letter_content(user, _job(), [role, bad_years])
+    summary, summary_claims, _ = _resume_summary_content(user, _job(), [role, bad_years])
 
     assert "4 and years" not in cover
     assert "4 and years" not in summary
-    assert all(experience.id not in claim["evidence_unit_ids"] for claim in cover_claims)
-    assert all(experience.id not in claim["evidence_unit_ids"] for claim in summary_claims)
+    assert all(bad_years.id not in claim["evidence_unit_ids"] for claim in cover_claims)
+    assert all(bad_years.id not in claim["evidence_unit_ids"] for claim in summary_claims)
 
     stale_claim = {
-        "text": "Fraud Analyst with 4 and years of experience.",
+        "text": "Background includes 4 and years of experience.",
         "category": "career_summary",
         "applicant_fact": True,
-        "evidence_unit_ids": [experience.id],
-        "evidence_hashes": [experience.source_hash],
+        "evidence_unit_ids": [bad_years.id],
+        "evidence_hashes": [bad_years.source_hash],
     }
     assert any(
-        "experience evidence unit 1" in warning
-        for warning in validate_claims([stale_claim], [experience])
+        "likely incomplete experience evidence unit" in warning
+        for warning in validate_claims([stale_claim], [bad_years])
+    )
+
+
+def test_job_alignment_claim_validates_hidden_fragmentary_referenced_evidence():
+    units = [
+        _unit("Risk Management", 50, kind="skill"),
+        _unit("Python", 51, kind="skill"),
+        _unit("Case Documentation", 52, kind="skill"),
+        _unit("Risk management, data analysis, and", 53, kind="skill"),
+    ]
+    claim = {
+        "text": "Together, this background overlaps with the posting in areas including risk, python.",
+        "category": "job_alignment",
+        "applicant_fact": True,
+        "evidence_unit_ids": [unit.id for unit in units],
+        "evidence_hashes": [unit.source_hash for unit in units],
+    }
+
+    errors = validate_claims([claim], units)
+
+    assert any(
+        "likely incomplete skill evidence unit 53" in warning
+        for warning in errors
     )
 
 
 def test_structured_employment_preserves_organization_terminal_punctuation():
     employment = _unit(
-        "Investigated fraud alerts at Yahoo!",
-        1,
+        "Structured employment record.",
+        60,
         kind="employment",
         organization="Yahoo!",
         role="Fraud Analyst",
@@ -208,8 +226,182 @@ def test_structured_employment_preserves_organization_terminal_punctuation():
         [employment],
     )
 
-    assert "work as Fraud Analyst with Yahoo!" in content
+    assert "with Yahoo!" in content
     assert "with Yahoo." not in content
-    employment_claim = next(claim for claim in claims if claim["category"] == "employment")
-    assert employment_claim["evidence_unit_ids"] == [employment.id]
+    assert "Yahoo!." not in content
+    employment_claim = next(
+        claim
+        for claim in claims
+        if claim["category"] == "employment"
+        and claim["evidence_unit_ids"] == [employment.id]
+    )
+    assert "with Yahoo!" in employment_claim["text"]
     assert employment_claim["evidence_hashes"] == [employment.source_hash]
+
+
+def test_complete_phrase_ending_in_and_strong_remains_usable():
+    valid = _unit(
+        "Maintained controls that were effective and strong.",
+        70,
+        kind="achievement",
+    )
+    known_fragment = _unit(
+        "Resolved client issues using authentication procedures, analytical troubleshooting, clear bilingual communication, and strong",
+        71,
+        kind="employment",
+    )
+
+    assert _usable_narrative_unit(valid) is True
+    assert _usable_narrative_unit(known_fragment) is False
+
+    valid_claim = {
+        "text": valid.statement,
+        "category": "achievement",
+        "applicant_fact": True,
+        "evidence_unit_ids": [valid.id],
+        "evidence_hashes": [valid.source_hash],
+    }
+    assert validate_claims([valid_claim], [valid]) == []
+
+
+def test_structured_employment_rejects_malformed_role_field():
+    employment = _unit(
+        "Yahoo! | Fraud Analyst and | Investigated fraud alerts.",
+        80,
+        kind="employment",
+        organization="Yahoo!",
+        role="Fraud Analyst and",
+    )
+
+    assert _usable_narrative_unit(employment) is False
+
+    cover, cover_claims, _ = _cover_letter_content(
+        SimpleNamespace(full_name=None),
+        _job(),
+        [employment],
+    )
+    summary, summary_claims, _ = _resume_summary_content(
+        SimpleNamespace(full_name=None),
+        _job(),
+        [employment],
+    )
+
+    assert "Fraud Analyst and with" not in cover
+    assert "Fraud Analyst and" not in summary
+    assert all(employment.id not in claim["evidence_unit_ids"] for claim in cover_claims)
+    assert all(employment.id not in claim["evidence_unit_ids"] for claim in summary_claims)
+
+    stale_claim = {
+        "text": "My experience includes work as Fraud Analyst and with Yahoo!",
+        "category": "employment",
+        "applicant_fact": True,
+        "evidence_unit_ids": [employment.id],
+        "evidence_hashes": [employment.source_hash],
+    }
+    assert any(
+        "likely incomplete employment role in evidence unit 80" in warning
+        for warning in validate_claims([stale_claim], [employment])
+    )
+
+
+def test_serial_and_strong_narrative_is_preserved_while_known_fragments_stay_blocked():
+    valid = _unit(
+        "Maintained controls that were reliable, effective, and strong.",
+        90,
+        kind="achievement",
+    )
+    observed_strong_fragment = _unit(
+        "Resolved client issues using authentication procedures, analytical troubleshooting, clear bilingual communication, and strong",
+        91,
+        kind="employment",
+    )
+    observed_internal_fragment = _unit(
+        "Assess hardship scenarios and arrange payment solutions aligned with client affordability, account status, and internal",
+        92,
+        kind="employment",
+    )
+
+    assert _usable_narrative_unit(valid) is True
+    assert _usable_narrative_unit(observed_strong_fragment) is False
+    assert _usable_narrative_unit(observed_internal_fragment) is False
+
+    valid_claim = {
+        "text": valid.statement,
+        "category": "achievement",
+        "applicant_fact": True,
+        "evidence_unit_ids": [valid.id],
+        "evidence_hashes": [valid.source_hash],
+    }
+    assert validate_claims([valid_claim], [valid]) == []
+
+
+def test_role_phrase_rejects_dangling_preposition_but_narrative_preposition_remains_valid():
+    role = _unit("Fraud Analyst with", 100, kind="role")
+    employment = _unit(
+        "Yahoo! | Fraud Analyst with | Investigated fraud alerts.",
+        101,
+        kind="employment",
+        organization="Yahoo!",
+        role="Fraud Analyst with",
+    )
+    narrative = _unit(
+        "Built the reporting tool customers asked for.",
+        102,
+        kind="achievement",
+    )
+
+    assert _usable_narrative_unit(role) is False
+    assert _usable_narrative_unit(employment) is False
+    assert _usable_narrative_unit(narrative) is True
+
+    role_claim = {
+        "text": "Background includes experience as Fraud Analyst with.",
+        "category": "career_summary",
+        "applicant_fact": True,
+        "evidence_unit_ids": [role.id],
+        "evidence_hashes": [role.source_hash],
+    }
+    employment_claim = {
+        "text": "My experience includes work as Fraud Analyst with with Yahoo!",
+        "category": "employment",
+        "applicant_fact": True,
+        "evidence_unit_ids": [employment.id],
+        "evidence_hashes": [employment.source_hash],
+    }
+
+    assert any(
+        "likely incomplete role evidence unit 100" in warning
+        for warning in validate_claims([role_claim], [role])
+    )
+    assert any(
+        "likely incomplete employment role in evidence unit 101" in warning
+        for warning in validate_claims([employment_claim], [employment])
+    )
+
+
+def test_experience_phrase_rejects_dangling_preposition_before_material_composition():
+    bad_years = _unit("4 to", 110, kind="experience")
+    role = _unit("Fraud Analyst", 111, kind="role")
+    user = SimpleNamespace(full_name=None)
+
+    assert _usable_narrative_unit(bad_years) is False
+
+    cover, cover_claims, _ = _cover_letter_content(user, _job(), [role, bad_years])
+    summary, summary_claims, _ = _resume_summary_content(user, _job(), [role, bad_years])
+
+    assert "4 to years" not in cover
+    assert "4 to years" not in summary
+    assert all(bad_years.id not in claim["evidence_unit_ids"] for claim in cover_claims)
+    assert all(bad_years.id not in claim["evidence_unit_ids"] for claim in summary_claims)
+
+    stale_claim = {
+        "text": "Fraud Analyst with 4 to years of experience.",
+        "category": "career_summary",
+        "applicant_fact": True,
+        "evidence_unit_ids": [bad_years.id],
+        "evidence_hashes": [bad_years.source_hash],
+    }
+    assert any(
+        "likely incomplete experience evidence unit 110" in warning
+        for warning in validate_claims([stale_claim], [bad_years])
+    )

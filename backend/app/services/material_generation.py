@@ -25,7 +25,18 @@ TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9+.#/-]{1,}", re.IGNORECASE)
 LEADING_BULLET_RE = re.compile(r"^\s*(?:[•·▪◦\uf0b7]\s*|[-*–]\s+)")
 MALFORMED_PUNCTUATION_RE = re.compile(r"[,;:]\s*\.")
 TRAILING_FRAGMENT_RE = re.compile(
-    r"(?:[,;:]|\b(?:and|or|when|while|because|including)|\band\s+(?:internal|strong))\s*[.!?\"'”’]*\s*$",
+    r"(?:[,;:]|\b(?:and|or|when|while|because|including))\s*[.!?\"'”’]*\s*$",
+    re.IGNORECASE,
+)
+KNOWN_RESUME_FRAGMENT_RE = re.compile(
+    r"(?:\bclear bilingual communication,\s*and strong|\baccount status,\s*and internal)\s*[.!?\"'”’]*\s*$",
+    re.IGNORECASE,
+)
+TRAILING_LOWERCASE_ARTICLE_RE = re.compile(
+    r"\b(?:the|a|an)\s*[.!?\"'”’]*\s*$"
+)
+TRAILING_FIELD_CONNECTOR_RE = re.compile(
+    r"\b(?:and|or|when|while|because|including|with|for|to|of|in|on|at|by|from)\s*[.!?\"'”’]*\s*$",
     re.IGNORECASE,
 )
 TRAILING_ARTICLE_FRAGMENT_RE = re.compile(
@@ -171,15 +182,58 @@ def _narrative_fragment_reason(
         return "private-use bullet glyph"
     if MALFORMED_PUNCTUATION_RE.search(text):
         return "malformed punctuation"
-    if TRAILING_FRAGMENT_RE.search(text) or TRAILING_ARTICLE_FRAGMENT_RE.search(text):
+    if KNOWN_RESUME_FRAGMENT_RE.search(text):
+        return "known wrapped resume fragment"
+    if TRAILING_FRAGMENT_RE.search(text):
+        return "truncated or dangling ending"
+    if TRAILING_LOWERCASE_ARTICLE_RE.search(text):
         return "truncated or dangling ending"
     return None
 
 
+def _field_fragment_reason(
+    value: Any,
+    *,
+    reject_pdf_bullet: bool = True,
+) -> str | None:
+    reason = _narrative_fragment_reason(
+        value,
+        reject_pdf_bullet=reject_pdf_bullet,
+    )
+    if reason:
+        return reason
+    text = _clean_material_statement(value)
+    if TRAILING_FIELD_CONNECTOR_RE.search(text):
+        return "truncated or dangling field ending"
+    return None
+
+
+def _evidence_fragment_reason(unit: EvidenceUnit) -> str | None:
+    if unit.kind in {"role", "experience"}:
+        return _field_fragment_reason(
+            unit.statement,
+            reject_pdf_bullet=False,
+        )
+    if unit.kind in FRAGMENT_SENSITIVE_KINDS:
+        return _narrative_fragment_reason(
+            unit.statement,
+            reject_pdf_bullet=False,
+        )
+    return None
+
+
 def _usable_narrative_unit(unit: EvidenceUnit) -> bool:
-    if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
-        return True
-    return _narrative_fragment_reason(unit.statement, reject_pdf_bullet=False) is None
+    reason = _evidence_fragment_reason(unit)
+    if reason:
+        return False
+    if unit.kind == "employment" and unit.role:
+        role_reason = _field_fragment_reason(
+            unit.role,
+            reject_pdf_bullet=False,
+        )
+        if role_reason:
+            return False
+    return True
 
 
 def _clean_units(
@@ -279,7 +333,11 @@ def _cover_letter_content(
     opening_parts = [opening]
 
     current_role = next(
-        (unit for unit in ranked if unit.kind == "role" and _usable_narrative_unit(unit)),
+        (
+            unit
+            for unit in ranked
+            if unit.kind == "role" and _usable_narrative_unit(unit)
+        ),
         None,
     )
     years = next(
@@ -618,18 +676,23 @@ def validate_claims(
                     warnings.append(
                         f"Claim {index} item {item_index} contains a likely incomplete narrative: {reason}"
                     )
+
         for unit_id in ids:
             unit = unit_by_id[unit_id]
-            if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
-                continue
-            reason = _narrative_fragment_reason(
-                unit.statement,
-                reject_pdf_bullet=False,
-            )
+            reason = _evidence_fragment_reason(unit)
             if reason:
                 warnings.append(
                     f"Claim {index} references likely incomplete {unit.kind} evidence unit {unit_id}: {reason}"
                 )
+            if unit.kind == "employment" and unit.role:
+                role_reason = _field_fragment_reason(
+                    unit.role,
+                    reject_pdf_bullet=False,
+                )
+                if role_reason:
+                    warnings.append(
+                        f"Claim {index} references likely incomplete employment role in evidence unit {unit_id}: {role_reason}"
+                    )
     return warnings
 
 
