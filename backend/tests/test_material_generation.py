@@ -330,6 +330,38 @@ def test_resume_summary_attaches_employment_only_when_rendered_alignment_uses_it
     assert 3 not in summary_claim["evidence_unit_ids"]
 
 
+def test_punctuated_role_and_year_phrases_are_normalized_without_losing_evidence():
+    role = _unit("Fraud Analyst.", 11, kind="role")
+    years = _unit("4.", 12, kind="experience")
+
+    cover_content, cover_claims, _ = _cover_letter_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [role, years],
+    )
+    resume_content, resume_claims, _ = _resume_summary_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [role, years],
+    )
+
+    cover_sentence = (
+        "My background includes 4 years of experience, including work as Fraud Analyst."
+    )
+    resume_sentence = "Fraud Analyst with 4 years of experience."
+    assert cover_sentence in cover_content
+    assert resume_sentence in resume_content
+    assert "Fraud Analyst. with" not in resume_content
+    assert "4. years" not in cover_content
+    for claims, sentence in (
+        (cover_claims, cover_sentence),
+        (resume_claims, resume_sentence),
+    ):
+        claim = next(item for item in claims if item["text"] == sentence)
+        assert claim["evidence_unit_ids"] == [11, 12]
+        assert claim["evidence_hashes"] == ["hash-11", "hash-12"]
+
+
 def test_dangling_skill_fragment_is_filtered_and_stale_skill_claim_is_blocked():
     skill = _unit("Risk management, data analysis, and", 1, kind="skill")
 

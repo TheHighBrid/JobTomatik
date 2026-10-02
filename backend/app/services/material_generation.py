@@ -149,6 +149,11 @@ def _clean_material_statement(value: Any) -> str:
     return text
 
 
+def _clean_material_phrase(value: Any) -> str:
+    """Normalize evidence that will be embedded inside a larger sentence."""
+    return _clean_material_statement(value).rstrip(".!? ")
+
+
 def _display_skill(value: Any) -> str:
     text = _clean_material_statement(value)
     return SKILL_DISPLAY_ALIASES.get(text.casefold(), text)
@@ -271,21 +276,21 @@ def _cover_letter_content(
     years = _first(ranked, "experience")
     if current_role and years:
         sentence = (
-            f"My background includes {_clean_material_statement(years.statement)} years of "
-            f"experience, including work as {_clean_material_statement(current_role.statement)}."
+            f"My background includes {_clean_material_phrase(years.statement)} years of "
+            f"experience, including work as {_clean_material_phrase(current_role.statement)}."
         )
         opening_parts.append(sentence)
         claims.append(_claim(sentence, [current_role, years], category="career_summary"))
     elif current_role:
         sentence = (
             "My background includes experience as "
-            f"{_clean_material_statement(current_role.statement)}."
+            f"{_clean_material_phrase(current_role.statement)}."
         )
         opening_parts.append(sentence)
         claims.append(_claim(sentence, [current_role], category="career_summary"))
     elif years:
         sentence = (
-            f"My background includes {_clean_material_statement(years.statement)} years of experience."
+            f"My background includes {_clean_material_phrase(years.statement)} years of experience."
         )
         opening_parts.append(sentence)
         claims.append(_claim(sentence, [years], category="career_summary"))
@@ -459,18 +464,18 @@ def _resume_summary_content(
         summary_claim_units: list[EvidenceUnit] = []
         if current_role and years:
             summary_parts.append(
-                f"{_clean_material_statement(current_role.statement)} with "
-                f"{_clean_material_statement(years.statement)} years of experience."
+                f"{_clean_material_phrase(current_role.statement)} with "
+                f"{_clean_material_phrase(years.statement)} years of experience."
             )
             summary_claim_units.extend([current_role, years])
         elif current_role:
             summary_parts.append(
-                f"Background includes experience as {_clean_material_statement(current_role.statement)}."
+                f"Background includes experience as {_clean_material_phrase(current_role.statement)}."
             )
             summary_claim_units.append(current_role)
         elif years:
             summary_parts.append(
-                f"Background includes {_clean_material_statement(years.statement)} years of experience."
+                f"Background includes {_clean_material_phrase(years.statement)} years of experience."
             )
             summary_claim_units.append(years)
         if narrative:
