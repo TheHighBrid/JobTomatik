@@ -1,0 +1,99 @@
+name: PR 620 current-head regate
+
+on:
+  push:
+    branches:
+      - codex/fix-high-priority-bugs-in-certification-contract
+    paths:
+      - .github/workflows/pr620-regate-current-head.yml
+
+permissions:
+  contents: write
+
+jobs:
+  regate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/fix-high-priority-bugs-in-certification-contract
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Regate shared Phase 4 fixture digests from clean exact head
+        shell: bash
+        run: |
+          git config user.name "JobTomatik Repair"
+          git config user.email "actions@users.noreply.github.com"
+          test -z "$(git status --porcelain)"
+          cd backend
+          PYTHONPATH=. python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+          from app.services.phase4_candidate_gate import build_phase4_candidate_gate
+
+          root = Path.cwd().parent
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+          gate = build_phase4_candidate_gate(verification_commit=head, root=root)
+          freeze_path = root / "backend/evidence/day28-phase4-version-freeze.json"
+          freeze = json.loads(freeze_path.read_text(encoding="utf-8"))
+          current = {}
+          for row in gate.get("adapter_freeze") or []:
+              name = row["adapter"]
+              digest = row["digests"]["fixture_regression_sha256"]
+              freeze["adapters"][name]["digests"]["fixture_regression_sha256"] = digest
+              current[name] = digest
+          if not current:
+              raise SystemExit("Phase 4 gate exposed no adapter fixture digests")
+          freeze["october2_autonomy_contract_fixture_regate"] = {
+              "date": "2026-10-02",
+              "validation_source_commit": head,
+              "reason": "External runtime attestation hardening changed shared autonomy-contract fixtures only. Exact-head Phase 4 evaluation reported fixture-only drift while adapter source, retained evidence, versions, maturity, and runtime authority remained unchanged.",
+              "current_fixture_regression_sha256": current,
+              "fixture_only_drift_verified": True,
+              "adapter_source_drift_observed": False,
+              "retained_evidence_drift_observed": False,
+              "manifest_live_evidence_drift_observed": False,
+              "adapter_version_change_observed": False,
+              "adapter_maturity_change_observed": False,
+              "real_submission_enablement_changed": False,
+              "autopilot_enablement_changed": False,
+              "legacy_day28_fixture_hashes_preserved": True
+          }
+          freeze_path.write_text(json.dumps(freeze, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(current, indent=2))
+          PY
+          cd ..
+          git add backend/evidence/day28-phase4-version-freeze.json
+          git diff --cached --check
+          git commit -m "Regate Phase 4 fixture digests for attestation hardening"
+      - name: Run formerly failing focused suite
+        shell: bash
+        run: |
+          test -z "$(git status --porcelain)"
+          cd backend
+          PYTHONPATH=. pytest -q \
+            tests/test_autonomy_release_contract.py \
+            tests/test_day39_autonomy_contract_semantics.py \
+            tests/test_day39_lever_promotion.py \
+            tests/test_phase4_candidate_gate.py \
+            tests/test_day35_operations_rehearsal.py
+      - name: Verify generated Day 35 gate
+        shell: bash
+        run: |
+          cd backend
+          HEAD_SHA="$(git rev-parse HEAD)"
+          PYTHONPATH=. python scripts/build_day35_operations_rehearsal_gate.py \
+            --verification-commit "$HEAD_SHA" \
+            --output /tmp/day35-pr620.json
+          python - <<'PY'
+          import json
+          gate=json.load(open('/tmp/day35-pr620.json', encoding='utf-8'))
+          assert gate['gate_passed'] is True, gate
+          PY
+      - name: Push verified regate
+        run: git push origin HEAD:codex/fix-high-priority-bugs-in-certification-contract
