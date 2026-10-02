@@ -75,6 +75,7 @@ FRAGMENT_SENSITIVE_KINDS = NARRATIVE_KINDS | {
     "education",
     "language",
     "role",
+    "experience",
 }
 FRAGMENT_SENSITIVE_CATEGORIES = {
     "employment",
@@ -275,7 +276,10 @@ def _cover_letter_content(
     opening_parts = [opening]
 
     current_role = _first(ranked, "role")
-    years = _first(ranked, "experience")
+    years = _first(
+        (unit for unit in ranked if _usable_narrative_unit(unit)),
+        "experience",
+    )
     if current_role and years:
         sentence = (
             f"My background includes {_as_phrase(years.statement)} years of "

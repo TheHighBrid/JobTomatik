@@ -352,6 +352,33 @@ def test_dangling_skill_fragment_is_filtered_and_stale_skill_claim_is_blocked():
     assert any("likely incomplete" in error for error in errors)
 
 
+def test_dangling_experience_is_filtered_from_generation_and_stale_claims():
+    experience = _unit("4 and", 1, kind="experience")
+    user = SimpleNamespace(full_name=None)
+
+    assert _usable_narrative_unit(experience) is False
+
+    cover, cover_claims, _ = _cover_letter_content(user, _simple_job(), [experience])
+    summary, summary_claims, _ = _resume_summary_content(user, _simple_job(), [experience])
+
+    assert "4 and years of experience" not in cover
+    assert "4 and years of experience" not in summary
+    assert all(experience.id not in claim["evidence_unit_ids"] for claim in cover_claims)
+    assert all(experience.id not in claim["evidence_unit_ids"] for claim in summary_claims)
+
+    stale_claim = {
+        "text": "My background includes 4 and years of experience.",
+        "category": "career_summary",
+        "applicant_fact": True,
+        "evidence_unit_ids": [experience.id],
+        "evidence_hashes": [experience.source_hash],
+    }
+
+    errors = validate_claims([stale_claim], [experience])
+
+    assert any("incomplete experience evidence unit 1" in error for error in errors)
+
+
 def test_stale_v1_dangling_fragment_with_terminal_period_is_blocked():
     unit = _unit("Resolved cases and", 1)
     claim = {
