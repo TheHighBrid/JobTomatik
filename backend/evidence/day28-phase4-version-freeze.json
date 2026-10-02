@@ -241,8 +241,8 @@
   },
   "october2_autonomy_contract_fixture_regate": {
     "date": "2026-10-02",
-    "validation_source_commit": "1fda68c91435024828fe5a77bf7f783d5ad64394",
-    "reason": "External runtime attestation hardening changed shared autonomy-contract fixtures only. Exact-head Phase 4 evaluation reported fixture-only drift across adapter rows while adapter source, retained evidence, manifest live-evidence, versions, maturity, and runtime authority remained unchanged.",
+    "validation_source_commit": "d5c777aa63f82d5b6e969b2c85bbf09fb674ccbc",
+    "reason": "External runtime attestation hardening changed shared autonomy-contract fixtures only. Exact-head Phase 4 evaluation reported fixture-only drift while adapter source, retained evidence, versions, maturity, and runtime authority remained unchanged.",
     "current_fixture_regression_sha256": {
       "greenhouse": "e3f22a4a8269150e9634880848c3b41b5d2626d4b2bc131c29980e359274fcec",
       "lever": "1e7a56eb765e4e00932af751f874615efe09718871f3e70ad6c8d8d0ea580454",
