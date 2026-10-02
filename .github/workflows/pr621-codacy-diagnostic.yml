@@ -1,4 +1,4 @@
-name: PR 621 Codacy high-security diagnostic
+name: PR 621 Checkov diagnostic
 
 on:
   push:
@@ -18,16 +18,31 @@ jobs:
         with:
           ref: codex/fix-high-priority-bugs-from-codex-review-470fio
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: '24'
-      - name: Install Codacy analysis CLI
-        run: npm install -g @codacy/analysis-cli
-      - name: Initialize high-security rules
-        run: codacy-analysis init --auto Critical,High,Security
-      - name: Analyze PR diff
+          python-version: '3.11'
+      - name: Install Checkov
+        run: python -m pip install checkov==3.3.8
+      - name: Analyze changed Day 35 workflow
         shell: bash
         run: |
-          codacy-analysis analyze --diff origin/main --install-dependencies --output-format json 2>&1 | tee /tmp/codacy-pr621.json || true
-          echo '===== HIGH / SECURITY MATCHES ====='
-          grep -Ei 'critical|high|security|secret|workflow|vulnerab|injection|unsafe|permission|pin' /tmp/codacy-pr621.json || true
+          checkov -f .github/workflows/day35-operations-rehearsal-gate.yml --framework github_actions -o json --compact 2>&1 | tee /tmp/checkov.json || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          text=Path('/tmp/checkov.json').read_text(encoding='utf-8')
+          start=text.find('{')
+          if start < 0:
+              print(text)
+              raise SystemExit(0)
+          data=json.loads(text[start:])
+          for item in data.get('results', {}).get('failed_checks', []):
+              print(json.dumps({
+                  'check_id': item.get('check_id'),
+                  'check_name': item.get('check_name'),
+                  'file_path': item.get('file_path'),
+                  'file_line_range': item.get('file_line_range'),
+                  'resource': item.get('resource'),
+                  'guideline': item.get('guideline'),
+              }, indent=2))
+          PY
