@@ -5,6 +5,7 @@ from app.models.job import Job, JobSource, JobStatus
 from app.models.material import ApplicationMaterial, ApplicationMaterialEvidence
 from app.models.user import User
 from app.services.material_generation import (
+    _as_sentence,
     _clean_material_statement,
     _cover_letter_content,
     _resume_summary_content,
@@ -269,6 +270,33 @@ def test_complete_short_narrative_evidence_is_preserved():
         assert _usable_narrative_unit(_narrative_unit(statement)) is True
 
 
+def test_complete_narratives_ending_in_prepositions_are_preserved():
+    for statement in (
+        "Built the reporting tool customers asked for.",
+        "Led the engineering team I worked with.",
+        "Created the support process customers refer to.",
+    ):
+        unit = _narrative_unit(statement)
+        assert _usable_narrative_unit(unit) is True
+        claim = {
+            "text": statement,
+            "category": "achievement",
+            "applicant_fact": True,
+            "evidence_unit_ids": [unit.id],
+            "evidence_hashes": [unit.source_hash],
+        }
+        assert validate_claims([claim], [unit]) == []
+
+
+def test_as_sentence_handles_closing_quotes_without_losing_sentence_boundary():
+    assert _as_sentence('Known for being a "customer advocate"') == (
+        'Known for being a "customer advocate".'
+    )
+    assert _as_sentence('Known for being a "customer advocate."') == (
+        'Known for being a "customer advocate."'
+    )
+
+
 def test_cleaner_preserves_signed_metrics_and_nix_terms():
     assert _clean_material_statement("-10% error rate") == "-10% error rate"
     assert _clean_material_statement("*nix administration") == "*nix administration"
@@ -311,6 +339,46 @@ def test_employment_alignment_is_applicant_fact_and_only_uses_supporting_units()
     assert all(claim["applicant_fact"] is True for claim in alignment_claims)
     assert any(claim["evidence_unit_ids"] == [1] for claim in alignment_claims)
     assert all(2 not in claim["evidence_unit_ids"] for claim in alignment_claims)
+
+
+def test_unstructured_employment_alignment_is_rendered_and_claimed_once():
+    employment = _unit("Investigated fraud alerts and documented cases.", 1)
+
+    content, claims, _ = _cover_letter_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [employment],
+    )
+
+    alignment_claims = [claim for claim in claims if claim["category"] == "job_alignment"]
+    assert len(alignment_claims) == 1
+    assert alignment_claims[0]["applicant_fact"] is True
+    assert alignment_claims[0]["evidence_unit_ids"] == [employment.id]
+    assert content.count("fraud") == 1
+
+
+def test_punctuated_role_and_year_values_are_normalized_in_generated_phrases():
+    role = _unit("Fraud Analyst.", 1, kind="role")
+    years = _unit("4.", 2, kind="experience")
+
+    cover_content, cover_claims, _ = _cover_letter_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [role, years],
+    )
+    resume_content, resume_claims, _ = _resume_summary_content(
+        SimpleNamespace(full_name=None),
+        _simple_job(),
+        [role, years],
+    )
+
+    assert "4 years of experience, including work as Fraud Analyst." in cover_content
+    assert "Fraud Analyst with 4 years of experience." in resume_content
+    assert "Fraud Analyst. with" not in resume_content
+    cover_summary = next(claim for claim in cover_claims if claim["category"] == "career_summary")
+    resume_summary = next(claim for claim in resume_claims if claim["category"] == "career_summary")
+    assert cover_summary["evidence_unit_ids"] == [role.id, years.id]
+    assert resume_summary["evidence_unit_ids"] == [role.id, years.id]
 
 
 def test_resume_summary_attaches_employment_only_when_rendered_alignment_uses_it():
