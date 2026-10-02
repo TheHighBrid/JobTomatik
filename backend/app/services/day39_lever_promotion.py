@@ -491,12 +491,29 @@ def build_day39_lever_promotion(
         adapter_name=DAY39_LEVER_ADAPTER,
         adapter_version=DAY39_LEVER_VERSION,
         trusted_signing_key=signing_key,
+        trusted_release_commit=release_commit,
     )
-    if validation.get("passed") is not True:
+    # Generation can verify the signed record and exact release commit, but the
+    # retained fixture/evidence/policy artifacts are intentionally independent
+    # runtime trust inputs. Do not fake those bindings from manifest-owned data.
+    runtime_binding_checks = {
+        "fixture_digest_matches_retained_artifact",
+        "evidence_digest_matches_retained_artifact",
+        "policy_digest_matches_retained_artifact",
+    }
+    validation_missing = list(validation.get("missing") or [])
+    generation_missing = [
+        name for name in validation_missing if name not in runtime_binding_checks
+    ]
+    if generation_missing:
         raise Day39LeverPromotionError(
-            "Generated autonomy manifest failed its own contract validation: "
-            + ", ".join(validation.get("missing") or [])
+            "Generated autonomy manifest failed its generation-time contract validation: "
+            + ", ".join(generation_missing)
         )
+    validation["generation_passed"] = True
+    validation["runtime_binding_pending"] = bool(
+        set(validation_missing) & runtime_binding_checks
+    )
 
     autonomy_release: dict[str, Any] = {
         gate: True for gate in AUTONOMY_RELEASE_GATES

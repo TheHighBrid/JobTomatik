@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -17,6 +18,15 @@ from app.services.autonomy_release_contract import (
 
 
 SIGNING_KEY = "jobtomatik-day39-contract-test-key-000001"
+TEST_ARTIFACTS = {
+    "fixture_digest": b"retained day39 fixture evidence",
+    "evidence_digest": b"retained day39 supervised evidence",
+    "policy_digest": b"retained day39 policy evidence",
+}
+TEST_DIGESTS = {
+    name: "sha256:" + hashlib.sha256(content).hexdigest()
+    for name, content in TEST_ARTIFACTS.items()
+}
 
 
 def _resign(manifest: dict) -> dict:
@@ -35,9 +45,7 @@ def _manifest() -> dict:
         "adapter": {"name": "lever", "version": "1.1.0"},
         "source": {
             "release_commit": commit,
-            "fixture_digest": "sha256:" + "1" * 64,
-            "evidence_digest": "sha256:" + "2" * 64,
-            "policy_digest": "sha256:" + "3" * 64,
+            **TEST_DIGESTS,
         },
         "reliability_window": {
             "evidence_type": "supervised_real_submission",
@@ -97,6 +105,8 @@ def _validate(manifest: dict) -> dict:
         adapter_name="lever",
         adapter_version="1.1.0",
         trusted_signing_key=SIGNING_KEY,
+        trusted_release_commit=str(manifest["source"]["release_commit"]),
+        trusted_source_artifacts=TEST_ARTIFACTS,
     )
 
 

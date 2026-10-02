@@ -16,6 +16,7 @@ from app.services.ats_maturity import AUTONOMY_RELEASE_GATES, HUMAN_REVIEWED_REL
 from app.services.autonomy_release_contract import (
     AUTONOMY_RELEASE_CONTRACT_VERSION,
     autonomy_release_contract_requirements,
+    load_autonomy_release_manifest,
     validate_autonomy_release_manifest,
 )
 from app.services.operations_policy import operations_readiness_manifest
@@ -130,11 +131,23 @@ def _adapter_certification_plan(adapter: Mapping[str, Any]) -> Dict[str, Any]:
     release = adapter.get("autonomy_release")
     if not isinstance(release, Mapping):
         release = {}
+    settings = get_settings()
+    candidate = load_autonomy_release_manifest(
+        settings.autonomy_release_manifest_dir,
+        release_commit=settings.autonomy_release_commit or None,
+        adapter_name=str(adapter.get("name") or ""),
+    )
     contract = validate_autonomy_release_manifest(
-        release.get("certification_manifest"),
+        candidate,
         adapter_name=str(adapter.get("name") or ""),
         adapter_version=str(adapter.get("version") or ""),
-        trusted_signing_key=get_settings().autonomy_certification_signing_key or None,
+        trusted_signing_key=settings.autonomy_certification_signing_key or None,
+        trusted_release_commit=settings.autonomy_release_commit or None,
+        trusted_source_artifacts={
+            "fixture_digest": settings.autonomy_fixture_artifact,
+            "evidence_digest": settings.autonomy_evidence_artifact,
+            "policy_digest": settings.autonomy_policy_artifact,
+        },
     )
     autonomy["certification_manifest"] = contract
     if not contract.get("passed"):

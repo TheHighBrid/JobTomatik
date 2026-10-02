@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     # Separate trust root for signed certified-autonomous release manifests.
     # It must remain empty until an operator intentionally configures a release key.
     autonomy_certification_signing_key: str = ""
+    # Runtime provenance and retained evidence are independent trust inputs. A
+    # signed manifest cannot nominate either its own revision or its own evidence.
+    autonomy_release_commit: str = ""
+    # Immutable release metadata is deployed separately from application code.
+    # Files are addressed as <root>/<attested-sha>/<adapter>.json.
+    autonomy_release_manifest_dir: str = ""
+    autonomy_fixture_artifact: str = ""
+    autonomy_evidence_artifact: str = ""
+    autonomy_policy_artifact: str = ""
     algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = Field(default=10080, ge=5, le=43200)
 
