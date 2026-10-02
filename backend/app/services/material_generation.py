@@ -604,18 +604,18 @@ def validate_claims(
                     warnings.append(
                         f"Claim {index} item {item_index} contains a likely incomplete narrative: {reason}"
                     )
-            for unit_id in ids:
-                unit = unit_by_id[unit_id]
-                if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
-                    continue
-                reason = _narrative_fragment_reason(
-                    unit.statement,
-                    reject_pdf_bullet=False,
+        for unit_id in ids:
+            unit = unit_by_id[unit_id]
+            if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
+                continue
+            reason = _narrative_fragment_reason(
+                unit.statement,
+                reject_pdf_bullet=False,
+            )
+            if reason:
+                warnings.append(
+                    f"Claim {index} references likely incomplete {unit.kind} evidence unit {unit_id}: {reason}"
                 )
-                if reason:
-                    warnings.append(
-                        f"Claim {index} references likely incomplete {unit.kind} evidence unit {unit_id}: {reason}"
-                    )
     return warnings
 
 

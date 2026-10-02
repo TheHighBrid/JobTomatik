@@ -396,3 +396,26 @@ def test_clean_combined_claim_does_not_gain_fragment_warnings():
     }
 
     assert validate_claims([claim], [first, second]) == []
+
+
+def test_job_alignment_claim_validates_hidden_fourth_referenced_skill_unit():
+    skills = [
+        _unit("Risk Management", 1, kind="skill"),
+        _unit("Python", 2, kind="skill"),
+        _unit("Fraud Investigation", 3, kind="skill"),
+        _unit("Risk management, data analysis, and", 4, kind="skill"),
+    ]
+    claim = {
+        "text": "Together, this background aligns with the role.",
+        "category": "job_alignment",
+        "applicant_fact": True,
+        "evidence_unit_ids": [unit.id for unit in skills],
+        "evidence_hashes": [unit.source_hash for unit in skills],
+    }
+
+    errors = validate_claims([claim], skills)
+
+    assert any(
+        "incomplete skill evidence unit 4" in error
+        for error in errors
+    )
