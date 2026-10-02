@@ -49,14 +49,16 @@ def test_worker_lease_is_suppressed_only_inside_explicit_final_action_scope(
 
 def test_final_action_log_reference_drops_sensitive_url_components():
     raw = (
-        "https://jobs.lever.co/example/private-posting/apply"
+        "https://candidate:password@jobs.lever.co:8443/example/private-posting/apply"
         "?candidate=123&token=super-secret#session-fragment"
     )
 
     reference = _log_target_ref(raw)
 
-    assert reference.startswith("https://jobs.lever.co#")
+    assert reference.startswith("https://jobs.lever.co:8443#")
     for sensitive_value in (
+        "candidate:password@",
+        "password",
         "private-posting",
         "candidate",
         "123",
@@ -73,6 +75,7 @@ def test_android_stack_requires_exact_current_pyjwt_version():
         encoding="utf-8"
     )
 
-    assert 'jwt.__version__ == "2.15.0"' in script
+    assert 'sys.exit(jwt.__version__ != "2.15.0")' in script
+    assert 'assert jwt.__version__ == "2.15.0"' not in script
     assert "'PyJWT==2.15.0'" in script
     assert "'PyJWT==2.13.0'" not in script

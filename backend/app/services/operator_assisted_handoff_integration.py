@@ -70,11 +70,17 @@ def _log_target_ref(url: str) -> str:
     """Return a diagnostic target reference without path, query, or fragment data."""
     raw = str(url or "")
     parsed = urlsplit(raw)
-    origin = (
-        f"{parsed.scheme}://{parsed.netloc}"
-        if parsed.scheme and parsed.netloc
-        else "unknown-origin"
-    )
+    hostname = parsed.hostname
+    if parsed.scheme and hostname:
+        display_hostname = f"[{hostname}]" if ":" in hostname else hostname
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+        authority = f"{display_hostname}:{port}" if port is not None else display_hostname
+        origin = f"{parsed.scheme}://{authority}"
+    else:
+        origin = "unknown-origin"
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12] if raw else "empty"
     return f"{origin}#{digest}"
 

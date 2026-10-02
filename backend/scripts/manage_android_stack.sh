@@ -773,7 +773,7 @@ prepare_stack() {
 
   require_runtime_attestation cli
 
-  if ! "$VENV/bin/python" -c 'import jwt; assert jwt.__version__ == "2.15.0"' >/dev/null 2>&1; then
+  if ! "$VENV/bin/python" -c 'import sys, jwt; sys.exit(jwt.__version__ != "2.15.0")' >/dev/null 2>&1; then
     "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.15.0'
   fi
 
