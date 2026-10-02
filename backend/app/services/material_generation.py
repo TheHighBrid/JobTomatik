@@ -25,7 +25,18 @@ TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9+.#/-]{1,}", re.IGNORECASE)
 LEADING_BULLET_RE = re.compile(r"^\s*(?:[•·▪◦\uf0b7]\s*|[-*–]\s+)")
 MALFORMED_PUNCTUATION_RE = re.compile(r"[,;:]\s*\.")
 TRAILING_FRAGMENT_RE = re.compile(
-    r"(?:[,;:]|\b(?:and|or|with|when|while|because|including|for|to|of|the|a|an)|\band\s+(?:internal|strong))\s*[.!?\"'”’]*\s*$",
+    r"(?:[,;:]|\b(?:and|or|when|while|because|including))\s*[.!?\"'”’]*\s*$",
+    re.IGNORECASE,
+)
+KNOWN_RESUME_FRAGMENT_RE = re.compile(
+    r"(?:\bclear bilingual communication,\s*and strong|\baccount status,\s*and internal)\s*[.!?\"'”’]*\s*$",
+    re.IGNORECASE,
+)
+TRAILING_LOWERCASE_ARTICLE_RE = re.compile(
+    r"\b(?:the|a|an)\s*[.!?\"'”’]*\s*$"
+)
+TRAILING_FIELD_CONNECTOR_RE = re.compile(
+    r"\b(?:and|or|when|while|because|including|with|for|to|of|in|on|at|by|from)\s*[.!?\"'”’]*\s*$",
     re.IGNORECASE,
 )
 GENERIC_ALIGNMENT_TERMS = {
@@ -75,6 +86,7 @@ FRAGMENT_SENSITIVE_KINDS = NARRATIVE_KINDS | {
     "education",
     "language",
     "role",
+    "experience",
 }
 FRAGMENT_SENSITIVE_CATEGORIES = {
     "employment",
@@ -172,15 +184,58 @@ def _narrative_fragment_reason(
         return "private-use bullet glyph"
     if MALFORMED_PUNCTUATION_RE.search(text):
         return "malformed punctuation"
+    if KNOWN_RESUME_FRAGMENT_RE.search(text):
+        return "known wrapped resume fragment"
     if TRAILING_FRAGMENT_RE.search(text):
+        return "truncated or dangling ending"
+    if TRAILING_LOWERCASE_ARTICLE_RE.search(text):
         return "truncated or dangling ending"
     return None
 
 
+def _field_fragment_reason(
+    value: Any,
+    *,
+    reject_pdf_bullet: bool = True,
+) -> str | None:
+    reason = _narrative_fragment_reason(
+        value,
+        reject_pdf_bullet=reject_pdf_bullet,
+    )
+    if reason:
+        return reason
+    text = _clean_material_statement(value)
+    if TRAILING_FIELD_CONNECTOR_RE.search(text):
+        return "truncated or dangling field ending"
+    return None
+
+
+def _evidence_fragment_reason(unit: EvidenceUnit) -> str | None:
+    if unit.kind in {"role", "experience"}:
+        return _field_fragment_reason(
+            unit.statement,
+            reject_pdf_bullet=False,
+        )
+    if unit.kind in FRAGMENT_SENSITIVE_KINDS:
+        return _narrative_fragment_reason(
+            unit.statement,
+            reject_pdf_bullet=False,
+        )
+    return None
+
+
 def _usable_narrative_unit(unit: EvidenceUnit) -> bool:
-    if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
-        return True
-    return _narrative_fragment_reason(unit.statement, reject_pdf_bullet=False) is None
+    reason = _evidence_fragment_reason(unit)
+    if reason:
+        return False
+    if unit.kind == "employment" and unit.role:
+        role_reason = _field_fragment_reason(
+            unit.role,
+            reject_pdf_bullet=False,
+        )
+        if role_reason:
+            return False
+    return True
 
 
 def _clean_units(
@@ -196,11 +251,18 @@ def _clean_units(
     ][:limit]
 
 
+def _as_phrase(value: Any) -> str:
+    text = _clean_material_statement(value).strip()
+    if not text:
+        return ""
+    return re.sub(r"[.!?]+(?=(?:[\"'”’]*)$)", "", text).strip()
+
+
 def _as_sentence(value: Any) -> str:
     text = _clean_material_statement(value).rstrip()
     if not text:
         return ""
-    if text[-1] not in ".!?”\"'":
+    if not re.search(r"[.!?][\"'”’]*$", text):
         text += "."
     return text
 
@@ -272,25 +334,39 @@ def _cover_letter_content(
     claims.append(_claim(opening, category="target_role", applicant_fact=False))
     opening_parts = [opening]
 
-    current_role = _first(ranked, "role")
-    years = _first(ranked, "experience")
+    current_role = next(
+        (
+            unit
+            for unit in ranked
+            if unit.kind == "role" and _usable_narrative_unit(unit)
+        ),
+        None,
+    )
+    years = next(
+        (
+            unit
+            for unit in ranked
+            if unit.kind == "experience" and _usable_narrative_unit(unit)
+        ),
+        None,
+    )
     if current_role and years:
         sentence = (
-            f"My background includes {_clean_material_phrase(years.statement)} years of "
-            f"experience, including work as {_clean_material_phrase(current_role.statement)}."
+            f"My background includes {_as_phrase(years.statement)} years of "
+            f"experience, including work as {_as_phrase(current_role.statement)}."
         )
         opening_parts.append(sentence)
         claims.append(_claim(sentence, [current_role, years], category="career_summary"))
     elif current_role:
         sentence = (
             "My background includes experience as "
-            f"{_clean_material_phrase(current_role.statement)}."
+            f"{_as_phrase(current_role.statement)}."
         )
         opening_parts.append(sentence)
         claims.append(_claim(sentence, [current_role], category="career_summary"))
     elif years:
         sentence = (
-            f"My background includes {_clean_material_phrase(years.statement)} years of experience."
+            f"My background includes {_as_phrase(years.statement)} years of experience."
         )
         opening_parts.append(sentence)
         claims.append(_claim(sentence, [years], category="career_summary"))
@@ -300,14 +376,15 @@ def _cover_letter_content(
 
     employment_candidates = [unit for unit in ranked if unit.kind == "employment"]
     employment = _clean_units(ranked, {"employment"}, limit=3)
+    employment_alignment_unit_ids: set[int] = set()
     if employment:
         role_items: list[tuple[str, EvidenceUnit]] = []
         detail_units: list[EvidenceUnit] = []
         for unit in employment:
             if unit.organization and unit.role:
-                sentence = (
-                    f"My experience includes work as {_clean_material_statement(unit.role)} "
-                    f"with {_clean_material_statement(unit.organization)}."
+                sentence = _as_sentence(
+                    f"My experience includes work as {_as_phrase(unit.role)} "
+                    f"with {_clean_material_statement(unit.organization)}"
                 )
                 if sentence not in {item[0] for item in role_items}:
                     role_items.append((sentence, unit))
@@ -327,11 +404,13 @@ def _cover_letter_content(
                     "My documented employment history also covers areas directly relevant to "
                     "this role, including " + ", ".join(terms) + "."
                 )
+                supporting_units = _units_supporting_terms(detail_units, terms)
+                employment_alignment_unit_ids.update(unit.id for unit in supporting_units)
                 paragraphs.append(sentence)
                 claims.append(
                     _claim(
                         sentence,
-                        _units_supporting_terms(detail_units, terms),
+                        supporting_units,
                         category="job_alignment",
                         applicant_fact=True,
                     )
@@ -389,7 +468,11 @@ def _cover_letter_content(
     else:
         warnings.append("No source-backed achievements, skills, credentials, projects, or languages were available")
 
-    alignment_source = [*employment, *relevant]
+    alignment_source = [
+        unit
+        for unit in [*employment, *relevant]
+        if unit.id not in employment_alignment_unit_ids
+    ]
     alignment_terms = _alignment_terms(job, alignment_source)
     if alignment_terms:
         sentence = (
@@ -464,18 +547,18 @@ def _resume_summary_content(
         summary_claim_units: list[EvidenceUnit] = []
         if current_role and years:
             summary_parts.append(
-                f"{_clean_material_phrase(current_role.statement)} with "
-                f"{_clean_material_phrase(years.statement)} years of experience."
+                f"{_as_phrase(current_role.statement)} with "
+                f"{_as_phrase(years.statement)} years of experience."
             )
             summary_claim_units.extend([current_role, years])
         elif current_role:
             summary_parts.append(
-                f"Background includes experience as {_clean_material_phrase(current_role.statement)}."
+                f"Background includes experience as {_as_phrase(current_role.statement)}."
             )
             summary_claim_units.append(current_role)
         elif years:
             summary_parts.append(
-                f"Background includes {_clean_material_phrase(years.statement)} years of experience."
+                f"Background includes {_as_phrase(years.statement)} years of experience."
             )
             summary_claim_units.append(years)
         if narrative:
@@ -595,17 +678,22 @@ def validate_claims(
                     warnings.append(
                         f"Claim {index} item {item_index} contains a likely incomplete narrative: {reason}"
                     )
-            for unit_id in ids:
-                unit = unit_by_id[unit_id]
-                if unit.kind not in FRAGMENT_SENSITIVE_KINDS:
-                    continue
-                reason = _narrative_fragment_reason(
-                    unit.statement,
+
+        for unit_id in ids:
+            unit = unit_by_id[unit_id]
+            reason = _evidence_fragment_reason(unit)
+            if reason:
+                warnings.append(
+                    f"Claim {index} references likely incomplete {unit.kind} evidence unit {unit_id}: {reason}"
+                )
+            if unit.kind == "employment" and unit.role:
+                role_reason = _field_fragment_reason(
+                    unit.role,
                     reject_pdf_bullet=False,
                 )
-                if reason:
+                if role_reason:
                     warnings.append(
-                        f"Claim {index} references likely incomplete {unit.kind} evidence unit {unit_id}: {reason}"
+                        f"Claim {index} references likely incomplete employment role in evidence unit {unit_id}: {role_reason}"
                     )
     return warnings
 
