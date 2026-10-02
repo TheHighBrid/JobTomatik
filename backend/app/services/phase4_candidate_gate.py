@@ -44,10 +44,14 @@ ADAPTER_INTEGRATION_PATHS = {
         "backend/app/services/workday_port_integration.py",
     ),
 }
+COMMON_SOURCE_PATHS = (
+    "backend/app/services/ats_base.py",
+    "backend/app/services/ats_registry.py",
+)
 SOURCE_PATHS = {
     name: (
         f"backend/app/services/ats_{name}.py",
-        "backend/app/services/ats_registry.py",
+        *COMMON_SOURCE_PATHS,
         *ADAPTER_INTEGRATION_PATHS.get(name, ()),
     )
     for name in ADAPTERS
