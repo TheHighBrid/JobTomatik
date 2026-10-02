@@ -20,8 +20,8 @@
     "build:apk:release": "npm run android:prepare && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
-    "@capacitor/android": "^7.6.8",
-    "@capacitor/core": "^7.6.8",
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
     "@headlessui/react": "^2.0.4",
     "@tanstack/react-query": "^5.102.8",
     "axios": "^1.20.0",
@@ -38,7 +38,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.6.7",
+    "@capacitor/cli": "^7.6.9",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
