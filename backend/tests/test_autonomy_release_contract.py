@@ -154,6 +154,8 @@ def test_lever_uses_three_confirmed_supervised_submissions():
         adapter_name="lever",
         adapter_version="1.1.0",
         trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
     )
 
     assert result["passed"] is True

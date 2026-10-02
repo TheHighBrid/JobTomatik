@@ -256,7 +256,9 @@ def test_complete_evidence_builds_signed_record_but_does_not_enable_submit():
     assert release is not None
     assert release["approved"] is True
     assert release["certification_manifest"]["source"]["release_commit"] == REVISION
-    assert result["certification_validation"]["passed"] is True
+    assert result["certification_validation"]["passed"] is False
+    assert result["certification_validation"]["generation_passed"] is True
+    assert result["certification_validation"]["runtime_binding_pending"] is True
 
     raw_adapter = {
         "name": "lever",
@@ -271,8 +273,11 @@ def test_complete_evidence_builds_signed_record_but_does_not_enable_submit():
     }
     trusted = annotate_adapter_manifest(raw_adapter, trusted_signing_key=KEY)
     untrusted = annotate_adapter_manifest(raw_adapter, trusted_signing_key="")
-    assert trusted["maturity"] == AdapterMaturity.CERTIFIED_AUTONOMOUS.value
-    assert trusted["autonomous_submission_allowed"] is True
+    # A signing key alone is no longer sufficient. Runtime promotion stays
+    # fail-closed until the external manifest and retained artifact bindings are
+    # independently configured and rehashed by the live runtime.
+    assert trusted["maturity"] == AdapterMaturity.DRY_RUN.value
+    assert trusted["autonomous_submission_allowed"] is False
     assert untrusted["maturity"] == AdapterMaturity.DRY_RUN.value
     assert untrusted["autonomous_submission_allowed"] is False
 
