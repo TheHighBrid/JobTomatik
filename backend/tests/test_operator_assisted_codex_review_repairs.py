@@ -69,6 +69,14 @@ def test_final_action_log_reference_drops_sensitive_url_components():
         assert sensitive_value not in reference
 
 
+def test_final_action_log_reference_preserves_ipv6_authority_format():
+    reference = _log_target_ref("https://candidate:token@[2001:db8::1]:8443/apply")
+
+    assert reference.startswith("https://[2001:db8::1]:8443#")
+    assert "candidate" not in reference
+    assert "token" not in reference
+
+
 def test_android_stack_requires_exact_current_pyjwt_version():
     script = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
