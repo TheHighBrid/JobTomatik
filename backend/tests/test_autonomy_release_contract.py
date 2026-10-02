@@ -14,6 +14,7 @@ from app.services.autonomy_release_contract import (
     autonomy_release_contract_requirements,
     compute_autonomy_manifest_digest,
     compute_autonomy_manifest_signature,
+    load_autonomy_release_manifest,
     validate_autonomy_release_manifest,
 )
 
@@ -217,6 +218,28 @@ def test_source_digests_are_recomputed_from_retained_artifacts():
     )
     assert result["passed"] is False
     assert "evidence_digest_matches_retained_artifact" in result["missing"]
+
+
+def test_release_manifest_is_loaded_outside_build_by_attested_sha(tmp_path):
+    commit = "c" * 40
+    manifest = valid_manifest(commit=commit)
+    release_dir = tmp_path / commit
+    release_dir.mkdir()
+    (release_dir / "ashby.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    loaded = load_autonomy_release_manifest(
+        tmp_path, release_commit=commit, adapter_name="ashby"
+    )
+    assert loaded == manifest
+
+
+def test_release_manifest_loader_fails_closed_for_untrusted_keys(tmp_path):
+    assert load_autonomy_release_manifest(
+        tmp_path, release_commit="../not-a-sha", adapter_name="ashby"
+    ) is None
+    assert load_autonomy_release_manifest(
+        tmp_path, release_commit="a" * 40, adapter_name="../ashby"
+    ) is None
 
 
 def test_reliability_window_requires_supervised_distinct_reviewed_evidence():

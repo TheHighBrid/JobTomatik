@@ -15,6 +15,7 @@ from typing import Any, Dict, Iterable, Mapping, Tuple
 from app.config import get_settings
 from app.services.autonomy_release_contract import (
     AUTONOMY_RELEASE_CONTRACT_VERSION,
+    load_autonomy_release_manifest,
     validate_autonomy_release_manifest,
 )
 from app.services.runtime_identity import runtime_identity_manifest
@@ -145,8 +146,18 @@ def _autonomy_release_status(
         runtime_commit = trusted_release_commit
     if trusted_source_artifacts is not None:
         artifacts = dict(trusted_source_artifacts)
+    # Explicit identity/artifacts are test and offline-validation injection points.
+    # The live path ignores code-defined adapter metadata and loads the separately
+    # deployed record by the revision attested at startup.
+    candidate = section.get("certification_manifest")
+    if trusted_release_commit is None and trusted_source_artifacts is None:
+        candidate = load_autonomy_release_manifest(
+            get_settings().autonomy_release_manifest_dir,
+            release_commit=runtime_commit,
+            adapter_name=str(manifest.get("name") or ""),
+        )
     contract = validate_autonomy_release_manifest(
-        section.get("certification_manifest"),
+        candidate,
         adapter_name=str(manifest.get("name") or ""),
         adapter_version=str(manifest.get("version") or ""),
         trusted_signing_key=_runtime_signing_key(trusted_signing_key),

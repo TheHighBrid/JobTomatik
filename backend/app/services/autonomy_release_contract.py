@@ -137,6 +137,7 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
         "minimum_signing_key_bytes": MIN_SIGNING_KEY_BYTES,
         "trusted_runtime_signing_key_required": True,
         "trusted_runtime_release_commit_required": True,
+        "external_release_manifest_keyed_by_attested_commit": True,
         "retained_source_artifacts_rehashed_at_runtime": True,
         "approval_must_bind_exact_release_commit": True,
         "day39_promotion_blocked_until_shadow_checks_pass": True,
@@ -164,6 +165,31 @@ def _artifact_digest(value: str | bytes | Path | None) -> str | None:
     except (OSError, ValueError):
         return None
     return "sha256:" + hashlib.sha256(content).hexdigest()
+
+
+def load_autonomy_release_manifest(
+    manifest_root: str | Path | None,
+    *,
+    release_commit: str | None,
+    adapter_name: str,
+) -> Dict[str, Any] | None:
+    """Load release metadata from the immutable store addressed by attested SHA.
+
+    Certification metadata cannot live in an adapter's source manifest: embedding
+    the current Git SHA in that source would change the SHA.  Operators instead
+    publish ``<root>/<sha>/<adapter>.json`` alongside (not inside) the build.
+    Invalid keys, missing files, and non-object JSON all fail closed.
+    """
+    root = str(manifest_root or "").strip()
+    commit = str(release_commit or "").strip().lower()
+    adapter = str(adapter_name or "").strip().lower()
+    if not root or not _COMMIT_RE.fullmatch(commit) or not re.fullmatch(r"[a-z0-9_-]+", adapter):
+        return None
+    try:
+        value = json.loads((Path(root) / commit / f"{adapter}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    return dict(value) if isinstance(value, Mapping) else None
 
 
 def validate_autonomy_release_manifest(
