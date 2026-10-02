@@ -69,12 +69,22 @@ def _challenge_type(session: Any) -> Optional[str]:
 def _log_target_ref(url: str) -> str:
     """Return a diagnostic target reference without path, query, or fragment data."""
     raw = str(url or "")
-    parsed = urlsplit(raw)
-    origin = (
-        f"{parsed.scheme}://{parsed.netloc}"
-        if parsed.scheme and parsed.netloc
-        else "unknown-origin"
-    )
+    try:
+        parsed = urlsplit(raw)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        parsed = None
+        hostname = None
+        port = None
+
+    if parsed is not None and parsed.scheme and hostname:
+        authority = f"[{hostname}]" if ":" in hostname else hostname
+        if port is not None:
+            authority = f"{authority}:{port}"
+        origin = f"{parsed.scheme}://{authority}"
+    else:
+        origin = "unknown-origin"
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12] if raw else "empty"
     return f"{origin}#{digest}"
 

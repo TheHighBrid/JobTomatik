@@ -68,6 +68,18 @@ def test_final_action_log_reference_drops_sensitive_url_components():
     ):
         assert sensitive_value not in reference
 
+    ipv6_reference = _log_target_ref("https://user:secret@[2001:db8::1]:8443/apply")
+    assert ipv6_reference.startswith("https://[2001:db8::1]:8443#")
+    assert "user" not in ipv6_reference
+    assert "secret" not in ipv6_reference
+
+    invalid_port_reference = _log_target_ref(
+        "https://user:secret@example.com:bad/apply"
+    )
+    assert invalid_port_reference.startswith("unknown-origin#")
+    assert "user" not in invalid_port_reference
+    assert "secret" not in invalid_port_reference
+
 
 def test_android_stack_requires_exact_current_pyjwt_version():
     script = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
