@@ -1,0 +1,157 @@
+diff --git a/docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md b/docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md
+--- a/docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md
++++ b/docs/roadmaps/JOBTOMATIK_AUTONOMY_42_DAY_PLAN.md
+@@ -569,1 +569,1 @@
+-
++
+diff --git a/docs/operations/LEVER_PHASE_B_COMPLETION_SPRINT.md b/docs/operations/LEVER_PHASE_B_COMPLETION_SPRINT.md
+--- a/docs/operations/LEVER_PHASE_B_COMPLETION_SPRINT.md
++++ b/docs/operations/LEVER_PHASE_B_COMPLETION_SPRINT.md
+@@ -19,1 +19,1 @@
+-### Fresh candidate
++### Fresh candidate
+
+@@ -21,1 +21,1 @@
+-- zero prior prepares;
++
+- zero prior prepares;
+@@ -26,1 +26,1 @@
+-### One prepare + one recheck
++### One prepare + one recheck
+
+@@ -28,1 +28,1 @@
+-1. one initial preparation; and
++
+1. one initial preparation; and
+@@ -33,1 +33,1 @@
+-### Objective acceptance rule
++### Objective acceptance rule
+
+@@ -37,1 +37,1 @@
+-- the exact employer and official Lever target were resolved and locked;
++
+- the exact employer and official Lever target were resolved and locked;
+@@ -45,1 +45,1 @@
+-### Completed objective record
++### Completed objective record
+
+@@ -49,1 +49,1 @@
+-- exact Wave HQ Product Designer Lever target resolution;
++
+- exact Wave HQ Product Designer Lever target resolution;
+@@ -66,1 +66,1 @@
+-### Quarantine rule
++### Quarantine rule
+
+@@ -73,1 +73,1 @@
+-### Legitimate human gates
++### Legitimate human gates
+
+@@ -78,1 +78,1 @@
+-### Runtime freeze and unfreeze
++### Runtime freeze and unfreeze
+
+@@ -82,1 +82,1 @@
+-- false confirmation;
++
+- false confirmation;
+@@ -92,1 +92,1 @@
+-### CI policy
++### CI policy
+
+@@ -97,1 +97,1 @@
+-### Candidate runway
++### Candidate runway
+
+@@ -100,1 +100,1 @@
+-### Downstream lock
++### Downstream lock
+
+@@ -105,1 +105,1 @@
+-## Progress rule
++## Progress rule
+
+diff --git a/BUILDING_APK.md b/BUILDING_APK.md
+--- a/BUILDING_APK.md
++++ b/BUILDING_APK.md
+@@ -7,1 +7,1 @@
+-| Node.js | 18+ | https://nodejs.org |
++| Node.js | 18+ | <https://nodejs.org> |
+@@ -8,1 +8,1 @@
+-| Java (JDK) | 17 | `brew install openjdk@17` or https://adoptium.net |
++| Java (JDK) | 17 | `brew install openjdk@17` or <https://adoptium.net> |
+@@ -9,1 +9,1 @@
+-| Android Studio | Latest | https://developer.android.com/studio |
++| Android Studio | Latest | <https://developer.android.com/studio> |
+@@ -84,1 +84,1 @@
+-1. Wait for Gradle sync to complete
++
+1. Wait for Gradle sync to complete
+@@ -125,1 +125,1 @@
+-### "Network request failed" in the APK
++### "Network request failed" in the APK
+
+@@ -126,1 +126,1 @@
+-- Make sure the backend is running and reachable from your phone
++
+- Make sure the backend is running and reachable from your phone
+@@ -130,1 +130,1 @@
+-### "Cleartext traffic not permitted"
++### "Cleartext traffic not permitted"
+
+@@ -131,1 +131,1 @@
+-- The backend must be served over **HTTPS** for production, OR
++
+- The backend must be served over **HTTPS** for production, OR
+@@ -134,1 +134,1 @@
+-### "CORS error" from the backend
++### "CORS error" from the backend
+
+@@ -135,1 +135,1 @@
+-- The backend already allows `*` â no change needed
++
+- The backend already allows `*` â no change needed
+@@ -138,1 +138,1 @@
+-### White screen after install
++### White screen after install
+
+@@ -139,1 +139,1 @@
+-- Run `npx cap sync` then rebuild â the web assets may be out of date
++
+- Run `npx cap sync` then rebuild â the web assets may be out of date
+@@ -141,1 +141,1 @@
+-### Android SDK not found
++### Android SDK not found
+
+diff --git a/docs/operations/LEVER_PROMOTION_EVIDENCE_RUNTIME_LANE.md b/docs/operations/LEVER_PROMOTION_EVIDENCE_RUNTIME_LANE.md
+--- a/docs/operations/LEVER_PROMOTION_EVIDENCE_RUNTIME_LANE.md
++++ b/docs/operations/LEVER_PROMOTION_EVIDENCE_RUNTIME_LANE.md
+@@ -240,1 +240,1 @@
+-
++
+diff --git a/.agents/skills/JobTomatik/SKILL.md b/.agents/skills/JobTomatik/SKILL.md
+--- a/.agents/skills/JobTomatik/SKILL.md
++++ b/.agents/skills/JobTomatik/SKILL.md
+@@ -23,1 +23,1 @@
+-- Making changes to this repository
++
+- Making changes to this repository
+@@ -40,1 +40,1 @@
+-
++
+diff --git a/.claude/skills/JobTomatik/SKILL.md b/.claude/skills/JobTomatik/SKILL.md
+--- a/.claude/skills/JobTomatik/SKILL.md
++++ b/.claude/skills/JobTomatik/SKILL.md
+@@ -23,1 +23,1 @@
+-- Making changes to this repository
++
+- Making changes to this repository
+@@ -40,1 +40,1 @@
+-
++
+diff --git a/docs/operations/LEVER_POST_PHASE_B_PROMOTION_DECISION_2026-09-16.md b/docs/operations/LEVER_POST_PHASE_B_PROMOTION_DECISION_2026-09-16.md
+--- a/docs/operations/LEVER_POST_PHASE_B_PROMOTION_DECISION_2026-09-16.md
++++ b/docs/operations/LEVER_POST_PHASE_B_PROMOTION_DECISION_2026-09-16.md
+@@ -61,1 +61,1 @@
+-
++
