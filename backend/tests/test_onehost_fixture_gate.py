@@ -58,7 +58,10 @@ async def test_final_submit_sensor_detects_a_click_even_without_a_post(monkeypat
     fill = form_filler_v3._fill_step_fields
 
     async def fill_then_click_fixture_submit(surface, **kwargs):
-        outcome = await fill(surface, **kwargs)
+        outcome = await fill(
+            surface, profile=kwargs["profile"], cover_letter=kwargs["cover_letter"],
+            resume_path=kwargs["resume_path"], log=kwargs["log"], step_number=kwargs["step_number"],
+        )
         await surface.locator("#submit_app").click()
         return outcome
 
@@ -78,7 +81,10 @@ async def test_unexpected_network_request_is_blocked_and_fails_proof(monkeypatch
     fill = form_filler_v3._fill_step_fields
 
     async def fill_then_attempt_nonfixture_request(surface, **kwargs):
-        outcome = await fill(surface, **kwargs)
+        outcome = await fill(
+            surface, profile=kwargs["profile"], cover_letter=kwargs["cover_letter"],
+            resume_path=kwargs["resume_path"], log=kwargs["log"], step_number=kwargs["step_number"],
+        )
         await surface.evaluate("fetch('http://employer.invalid/fixture').catch(() => null)")
         return outcome
 

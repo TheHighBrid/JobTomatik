@@ -1,4 +1,5 @@
-"""Repeat the owned-browser proof on an HTTP fixture, retaining synthetic evidence.
+"""
+Repeat the owned-browser proof on an HTTP fixture, retaining synthetic evidence.
 
 This exercises the current v3 filler and ATS flow, not API/Celery dispatch or
 retained handoffs. It cannot certify an employer application or adapter maturity.
@@ -31,6 +32,7 @@ class FixtureServer:
     """Serve only the fixture on loopback; observe and reject other HTTP requests."""
 
     def __init__(self, html: bytes):
+        """Bind an isolated loopback server and prepare its request observer."""
         self.requests: list[dict] = []
         requests = self.requests
 
@@ -63,10 +65,12 @@ class FixtureServer:
         )
 
     def __enter__(self):
+        """Start serving the fixture."""
         self.thread.start()
         return self
 
     def __exit__(self, *_args):
+        """Stop the server, close its socket and join its serving thread."""
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
@@ -125,85 +129,68 @@ def _source_digest() -> str:
     return digest.hexdigest()
 
 
-async def run_once(output_dir: Path, index: int) -> dict:
+async def _fill_and_observe(context, fixture: FixtureServer, record: dict) -> None:
     # Import the production functions, without monkeypatching URL, policy or
     # browser-provider guards to pretend this is an employer application.
     sys.path.insert(0, str(BACKEND_ROOT))
     from app.services.ats_base import ATSAdapter
     from app.services.ats_flow import run_ats_application_flow
     from app.services.form_filler_v3 import _fill_step_fields
-    from playwright.async_api import Error as PlaywrightError
-    from playwright.async_api import async_playwright
 
-    run_dir = output_dir / f"run-{index:03d}"
-    run_dir.mkdir(parents=True, exist_ok=False)
-    trace = run_dir / "trace.zip"
-    record = {
-        "run": index,
-        "synthetic": True,
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "status": "failed",
-        "errors": [],
-        "blocked_requests": [],
+    async def guard(route):
+        request = route.request
+        if request_allowed(request.url, request.method, fixture.url):
+            await route.continue_()
+        else:
+            record["blocked_requests"].append({"url": request.url, "method": request.method})
+            await route.abort("blockedbyclient")
+
+    await context.route("**/*", guard)
+    page = await context.new_page()
+    response = await page.goto(fixture.url, wait_until="domcontentloaded", timeout=15000)
+    record["navigation_status"] = response.status if response else None
+    log = []
+
+    async def fill_step(surface, step_number):
+        return await _fill_step_fields(
+            surface, profile=dict(PROFILE), cover_letter="", resume_path="",
+            log=log, step_number=step_number,
+        )
+
+    flow = await run_ats_application_flow(page, ATSAdapter(), fill_step=fill_step, dry_run=True, log=log)
+    record["flow"] = flow.as_dict()
+    record["log"] = log
+    record["values"] = {
+        field: await page.locator(f"#{field}").input_value() for field in EXPECTED_VALUES
     }
+    record["submit_observations"] = await page.evaluate("window.fixtureObservations")
+
+
+async def _exercise_browser(playwright, fixture, record, trace, processes):
     browser = context = None
     tracing = False
-    tracked = {}
-    baseline = _child_processes()
-    fixture = FixtureServer(FIXTURE_PATH.read_bytes())
     try:
-        with fixture:
-            record["fixture_url"] = fixture.url
-            async with async_playwright() as playwright:
-                try:
-                    browser = await playwright.chromium.launch(headless=True, args=LAUNCH_ARGS)
-                    record["browser"] = {"type": browser.browser_type.name, "version": browser.version}
-                    context = await browser.new_context(service_workers="block")
-                    await context.tracing.start(screenshots=True, snapshots=True, sources=True)
-                    tracing = True
+        browser = await playwright.chromium.launch(headless=True, args=LAUNCH_ARGS)
+        record["browser"] = {"type": browser.browser_type.name, "version": browser.version}
+        context = await browser.new_context(service_workers="block")
+        await context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        tracing = True
+        await _fill_and_observe(context, fixture, record)
+    finally:
+        processes["tracked"].update({
+            pid: started for pid, started in _child_processes().items()
+            if pid not in processes["baseline"]
+        })
+        try:
+            if tracing:
+                await context.tracing.stop(path=str(trace))
+        finally:
+            if browser is not None:
+                await browser.close()
+                record["browser_closed"] = not browser.is_connected()
 
-                    async def guard(route):
-                        request = route.request
-                        if request_allowed(request.url, request.method, fixture.url):
-                            await route.continue_()
-                        else:
-                            record["blocked_requests"].append({"url": request.url, "method": request.method})
-                            await route.abort("blockedbyclient")
 
-                    await context.route("**/*", guard)
-                    page = await context.new_page()
-                    response = await page.goto(fixture.url, wait_until="domcontentloaded", timeout=15000)
-                    record["navigation_status"] = response.status if response else None
-                    log = []
-
-                    async def fill_step(surface, step_number):
-                        return await _fill_step_fields(
-                            surface, profile=dict(PROFILE), cover_letter="", resume_path="",
-                            log=log, step_number=step_number,
-                        )
-
-                    flow = await run_ats_application_flow(
-                        page, ATSAdapter(), fill_step=fill_step, dry_run=True, log=log,
-                    )
-                    record["flow"] = flow.as_dict()
-                    record["log"] = log
-                    record["values"] = {
-                        field: await page.locator(f"#{field}").input_value()
-                        for field in EXPECTED_VALUES
-                    }
-                    record["submit_observations"] = await page.evaluate("window.fixtureObservations")
-                finally:
-                    tracked = {pid: started for pid, started in _child_processes().items() if pid not in baseline}
-                    try:
-                        if tracing:
-                            await context.tracing.stop(path=str(trace))
-                    finally:
-                        if browser is not None:
-                            await browser.close()
-                            record["browser_closed"] = not browser.is_connected()
-    except (PlaywrightError, OSError, RuntimeError, ValueError) as exc:
-        record["errors"].append(f"{type(exc).__name__}: {str(exc)[:500]}")
-
+async def _record_shutdown(record: dict, tracked: dict, fixture: FixtureServer) -> None:
     # The Playwright driver has also exited by this point. Check tracked Linux
     # child identities rather than treating a disconnected client as shutdown.
     deadline = time.monotonic() + 3
@@ -213,6 +200,9 @@ async def run_once(output_dir: Path, index: int) -> dict:
     record["remaining_child_processes"] = _still_running(tracked)
     record["fixture_server_stopped"] = not fixture.thread.is_alive()
     record["http_requests"] = list(fixture.requests)
+
+
+def _record_trace(record: dict, trace: Path) -> None:
     try:
         with zipfile.ZipFile(trace) as archive:
             if archive.testzip() is not None or not any(name.endswith(".trace") for name in archive.namelist()):
@@ -222,21 +212,61 @@ async def run_once(output_dir: Path, index: int) -> dict:
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         record["errors"].append(f"Trace verification failed: {exc}")
 
-    checks = {
+
+def _navigation_checks(record: dict) -> dict:
+    requests = record["http_requests"]
+    return {
         "local_http_navigation": record.get("navigation_status") == 200
-        and {"method": "GET", "path": "/fixture"} in fixture.requests,
+        and {"method": "GET", "path": "/fixture"} in requests,
         "values_verified": record.get("values") == EXPECTED_VALUES,
+        "no_nonfixture_requests": not record["blocked_requests"]
+        and all(item == {"method": "GET", "path": "/fixture"} for item in requests),
+    }
+
+
+def _flow_checks(record: dict) -> dict:
+    return {
         "current_flow_ready": record.get("flow", {}).get("success") is True
         and record.get("flow", {}).get("ready_to_submit") is True,
         "submit_not_clicked": record.get("submit_observations") == {"submitClicks": 0, "submitEvents": 0}
         and not any("submit_clicked" in str(item.get("action")) for item in record.get("log", [])),
-        "no_nonfixture_requests": not record["blocked_requests"]
-        and all(item == {"method": "GET", "path": "/fixture"} for item in fixture.requests),
+    }
+
+
+def _resource_checks(record: dict) -> dict:
+    return {
         "browser_shutdown": record.get("browser_closed") is True
-        and len(tracked) > 0 and not record["remaining_child_processes"],
+        and record["tracked_child_process_count"] > 0 and not record["remaining_child_processes"],
         "server_shutdown": record["fixture_server_stopped"],
         "trace_retained": bool(record.get("trace_sha256")),
     }
+
+
+async def run_once(output_dir: Path, index: int) -> dict:
+    """Observe one fresh browser run and persist its outcome after cleanup."""
+    from playwright.async_api import Error as PlaywrightError
+    from playwright.async_api import async_playwright
+
+    run_dir = output_dir / f"run-{index:03d}"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    trace = run_dir / "trace.zip"
+    record = {
+        "run": index, "synthetic": True,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "status": "failed", "errors": [], "blocked_requests": [],
+    }
+    processes = {"baseline": _child_processes(), "tracked": {}}
+    fixture = FixtureServer(FIXTURE_PATH.read_bytes())
+    try:
+        with fixture:
+            record["fixture_url"] = fixture.url
+            async with async_playwright() as playwright:
+                await _exercise_browser(playwright, fixture, record, trace, processes)
+    except (PlaywrightError, OSError, RuntimeError, ValueError) as exc:
+        record["errors"].append(f"{type(exc).__name__}: {str(exc)[:500]}")
+    await _record_shutdown(record, processes["tracked"], fixture)
+    _record_trace(record, trace)
+    checks = _navigation_checks(record) | _flow_checks(record) | _resource_checks(record)
     record["checks"] = checks
     record["status"] = "passed" if all(checks.values()) and not record["errors"] else "failed"
     (run_dir / "evidence.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")

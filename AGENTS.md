@@ -179,13 +179,15 @@ Grok owns standing cross-branch coordination and integration direction. Passing 
 ## Fixture-first recovery and owner intervention
 
 Follow `docs/ONEHOST_RECOVERY_CONTRACT.md` for the current recovery lane. Freeze
-new Android execution, ADB, PRoot and native-Chrome transport work. Gate 1 is
-Compose plus owned Playwright Chromium against a local HTTP fixture: navigate,
+new Android execution, Android Debug Bridge (ADB), PRoot and native-Chrome
+transport work. Gate 1 is Compose plus owned Playwright Chromium against a local HTTP fixture: navigate,
 fill, retain trace/evidence, shut down, and repeat independently. Gate 2 is one
 Greenhouse dry-run after Gate 1 passes. No employer submission is included.
 
-Never use TheHighBrid as a troubleshooting agent. Exhaust reasonable independent
-investigation, logs, fixtures, tests, verification and alternative routes first.
+Routine troubleshooting is the contributors' responsibility. Owner involvement
+is permitted only at the human gates or verified final acceptance described below.
+Exhaust reasonable independent investigation, logs, fixtures, tests,
+verification and alternative routes first.
 Involve the owner only at a genuine human gate requiring their access,
 authorization, identity, sensitive answer or unique judgment, or for final
 execution acceptance after multiple thorough independent tests have passed,
