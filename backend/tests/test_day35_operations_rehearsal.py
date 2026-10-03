@@ -202,7 +202,10 @@ def test_gate_rejects_drift_in_each_frozen_safety_section(monkeypatch):
             root=REPO_ROOT,
         )
 
-        assert gate["pilot_configuration_freeze"]["valid"] is False
+        if gate["pilot_configuration_freeze"]["valid"] is not False:
+            raise AssertionError(
+                "pilot_configuration_freeze.valid must be False after frozen safety drift"
+            )
         assert gate["gate_passed"] is False
         assert gate["provisional_autonomy_recommendation"]["eligible_to_enter_shadow_runs"] is False
 
