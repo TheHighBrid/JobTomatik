@@ -15,6 +15,7 @@ trap cleanup EXIT
 "${compose[@]}" config --format json > "$ONEHOST_EVIDENCE_DIR/compose.json"
 "${compose[@]}" build backend 2>&1 | tee "$ONEHOST_EVIDENCE_DIR/build.log"
 "${compose[@]}" run --rm -T backend python -m pytest -q \
+  --basetemp /evidence/test-runs --junitxml /evidence/pytest.xml \
   tests/test_onehost_fixture_gate.py tests/test_ats_flow_safety.py \
   tests/test_control_engine_playwright.py 2>&1 | tee "$ONEHOST_EVIDENCE_DIR/tests.log"
 "${compose[@]}" run --rm -T backend 2>&1 | tee "$ONEHOST_EVIDENCE_DIR/proof.log"
