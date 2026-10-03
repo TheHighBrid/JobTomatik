@@ -258,7 +258,7 @@ async def is_actionable(element) -> bool:
         if not await element.is_visible():
             return False
     except Exception:
-        pass
+        return False
     if await element.get_attribute("disabled") is not None:
         return False
     if await element.get_attribute("readonly") is not None:
@@ -268,7 +268,7 @@ async def is_actionable(element) -> bool:
     try:
         return await element.is_enabled()
     except Exception:
-        return True
+        return False
 
 
 async def is_required(element, group=None) -> bool:

@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   detectSupervisedPlatform,
   getSupervisedPlatformConfig,
+  normalizeSupervisedPlatform,
   readLeverTargetIdentity,
   shortHash,
   supervisedBlockerLabel,
@@ -49,6 +50,18 @@ test('blocker labels remain platform-specific and fail closed for unknown target
     supervisedBlockerLabel('unsupported_platform', null),
     'This application is not a registered supervised-submission target.',
   )
+})
+
+test('inherited object properties cannot become supported platforms or blocker labels', () => {
+  for (const value of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    assert.equal(normalizeSupervisedPlatform(value), null)
+    assert.equal(getSupervisedPlatformConfig(value), null)
+    assert.equal(supervisedBlockerLabel(value, 'lever'), value.replaceAll('_', ' '))
+    assert.equal(
+      supervisedBlockerLabel('unsupported_platform', value),
+      'This application is not a registered supervised-submission target.',
+    )
+  }
 })
 
 test('hashes are shortened for display without losing both identifying ends', () => {
