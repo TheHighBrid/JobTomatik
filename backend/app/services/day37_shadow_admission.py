@@ -156,8 +156,14 @@ def day37_predecessor_admission(
             CertificationEvidence.recorded_by_user_id == int(user_id),
             CertificationEvidence.evidence_type == DAY36_TARGET,
         )
-        .order_by(CertificationEvidence.created_at.desc(), CertificationEvidence.id.desc())
         .all()
+    )
+    records.sort(
+        key=lambda record: (
+            ensure_aware(record.created_at) or datetime.min.replace(tzinfo=timezone.utc),
+            int(record.id or 0),
+        ),
+        reverse=True,
     )
     attempts: list[dict[str, Any]] = []
     for record in records:
