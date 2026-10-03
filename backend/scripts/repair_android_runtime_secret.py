@@ -12,6 +12,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -135,6 +138,36 @@ def _backup_env(env_file: Path, runtime_dir: Path) -> Path | None:
     return backup_path
 
 
+def _require_fresh_store_for_missing_keys(env_file: Path) -> None:
+    """Do not strand legacy ciphertext when its previous key is unknown.
+
+    A nonempty local database, a remote database or an unparseable configuration
+    requires key recovery/migration before rotation. This check never opens or
+    modifies the database and never attempts a network connection.
+    """
+    database_url = (
+        _read_env_value(env_file, "DATABASE_URL")
+        or os.environ.get("DATABASE_URL")
+        or "sqlite:///./jobtomatik.db"
+    )
+    try:
+        parsed = make_url(database_url)
+        if parsed.get_backend_name() != "sqlite":
+            raise ValueError("Cannot establish that a remote store is fresh")
+        if not parsed.database or parsed.database == ":memory:":
+            return
+        # URI-mode database paths may select a different existing store.
+        if parsed.database.startswith("file:") or parsed.query:
+            raise ValueError("Cannot establish that a URI store is fresh")
+        database_path = Path(parsed.database)
+        if not database_path.is_absolute():
+            database_path = env_file.parent / database_path
+        if database_path.exists() and database_path.stat().st_size:
+            raise ValueError("Existing store may contain legacy ciphertext")
+    except (ArgumentError, ValueError, OSError) as exc:
+        raise RuntimeError("RUNTIME_SECRET_KEY_RECOVERY_REQUIRED") from exc
+
+
 def repair_android_runtime_secret(
     env_file: Path,
     runtime_dir: Path,
@@ -152,6 +185,9 @@ def repair_android_runtime_secret(
             "vault_key_preserved": bool(current_vault_key),
             "secret_key_safe": True,
         }
+
+    if not configured_secret and not current_vault_key:
+        _require_fresh_store_for_missing_keys(env_file)
 
     generated_secret = token_factory(48)
     if _secret_is_unsafe(generated_secret):
@@ -204,7 +240,10 @@ def main() -> int:
         print("ANDROID_RUNTIME_SECRET_MIGRATED")
         if result["backup_path"]:
             print(f"Environment backup: {result['backup_path']}")
-        print("Existing vault/handoff encryption key preserved: yes")
+        print(
+            "Existing vault/handoff encryption key preserved: "
+            + ("yes" if result["vault_key_preserved"] else "no (fresh store)")
+        )
         print("Existing login tokens may require re-authentication after restart.")
     else:
         print("ANDROID_RUNTIME_SECRET_READY")

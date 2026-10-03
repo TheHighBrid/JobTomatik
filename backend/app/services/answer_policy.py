@@ -9,7 +9,7 @@ from urllib.parse import urlparse, urlunparse
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
+from app.config import get_settings, require_persistent_secret
 from app.models.answer_policy import (
     ApplicantAnswerPolicy,
     AnswerPolicyMode,
@@ -103,7 +103,10 @@ def classify_question(question_text: str) -> Dict[str, str]:
 
 def _fernet() -> Fernet:
     settings = get_settings()
-    secret = settings.answer_vault_key or settings.secret_key
+    secret = require_persistent_secret(
+        settings.answer_vault_key or settings.secret_key,
+        "persisting Answer Policy Vault data (ANSWER_VAULT_KEY or SECRET_KEY)",
+    )
     digest = hashlib.sha256(secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 

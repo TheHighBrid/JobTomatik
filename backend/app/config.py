@@ -20,6 +20,17 @@ PLACEHOLDER_SECRET_MARKERS = (
 SUPERVISED_SUBMISSION_SERVICE_MODULE = "app.services.supervised_submission"
 
 
+def require_persistent_secret(secret: str, purpose: str) -> str:
+    """Reject the process-only fallback at durable cryptographic boundaries.
+
+    Explicit legacy keys remain readable for migration. Sensitive operation still
+    requires the stronger placeholder/length validation in Settings.
+    """
+    if not secret.strip() or secret == DEFAULT_SECRET_KEY:
+        raise ValueError(f"Configure a stable secret before {purpose}")
+    return secret
+
+
 def _supervised_submission_service_on_stack() -> bool:
     """Return true only while the exact supervised submission service is executing."""
 
