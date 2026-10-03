@@ -221,6 +221,7 @@ def _verify_run(
     trace = _verify_trace(trace_path)
     database = _database_evidence(application_id)
 
+    browser_checks = browser_evidence.get("checks", {})
     checks = {
         "api_dispatched_celery_task": bool(task_id) and task_state == "SUCCESS",
         "real_application_task_returned": task_result.get("phase0_owned_browser_proof") is True,
@@ -234,11 +235,12 @@ def _verify_run(
         "attempt_checkpointed": int(database["submission_attempt_count"] or 0) == 1,
         "state_events_persisted": "application_attempt_started" in database["events"]
         and "dry_run_completed" in database["events"],
-        "browser_values_verified": browser_evidence.get("checks", {}).get("values_verified") is True,
-        "submit_not_clicked": browser_evidence.get("checks", {}).get("submit_not_clicked") is True,
-        "network_is_fixture_only": browser_evidence.get("checks", {}).get("no_nonfixture_requests") is True,
-        "browser_and_driver_shutdown": browser_evidence.get("checks", {}).get("browser_and_driver_shutdown") is True,
-        "trace_retained": browser_evidence.get("checks", {}).get("trace_retained") is True,
+        "browser_values_verified": browser_checks.get("values_verified") is True,
+        "submit_not_clicked": browser_checks.get("submit_not_clicked") is True,
+        "network_is_fixture_only": browser_checks.get("no_blocked_requests") is True
+        and browser_checks.get("no_unexpected_observed_requests") is True,
+        "browser_and_driver_shutdown": browser_checks.get("browser_and_driver_shutdown") is True,
+        "trace_retained": browser_checks.get("trace_retained") is True,
     }
 
     record = {
