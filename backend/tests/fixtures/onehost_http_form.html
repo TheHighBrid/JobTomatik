@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>JobTomatik local fixture</title></head>
+  <body>
+    <h1>Synthetic application fixture</h1>
+    <form id="application_form" action="/submit" method="post">
+      <label for="first">First name</label>
+      <input id="first" name="first_name" required>
+      <label for="last">Last name</label>
+      <input id="last" name="last_name" required>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required>
+      <button id="submit_app" type="submit">Submit Application</button>
+    </form>
+    <script>
+      window.fixtureObservations = { submitClicks: 0, submitEvents: 0 };
+      document.querySelector('#submit_app').addEventListener('click', () => {
+        window.fixtureObservations.submitClicks += 1;
+      });
+      document.querySelector('#application_form').addEventListener('submit', event => {
+        event.preventDefault();
+        window.fixtureObservations.submitEvents += 1;
+      });
+    </script>
+  </body>
+</html>

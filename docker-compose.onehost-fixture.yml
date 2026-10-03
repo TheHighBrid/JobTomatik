@@ -1,0 +1,23 @@
+# Reuse the existing backend image. Browser and loopback fixture are owned by
+# this one process; no browser service, external CDP endpoint or host ports.
+services:
+  backend:
+    build: ./backend
+    init: true
+    network_mode: none
+    command: [python, scripts/run_onehost_fixture_gate.py, --output-dir, /evidence/proof, --repeats, "3"]
+    environment:
+      APP_ENV: test
+      AI_PROVIDER: template
+      APPLICATION_BROWSER_PROVIDER: local
+      APPLICATION_BROWSER_CDP_ENDPOINT: ""
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ALLOW_REAL_FOLLOWUP_SEND: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+      REQUIRE_BROWSER_TESTS: "1"
+      JOBTOMATIK_RUNTIME_REVISION: ${JOBTOMATIK_RUNTIME_REVISION:?run scripts/verify-onehost-fixture.sh}
+    volumes:
+      - type: bind
+        source: ${ONEHOST_EVIDENCE_DIR:?run scripts/verify-onehost-fixture.sh}
+        target: /evidence

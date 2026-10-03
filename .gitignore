@@ -41,6 +41,7 @@ backend/.runtime/
 backend/runtime_backups/
 *.log
 logs/
+verification-artifacts/
 
 # Persistent browser identity and retained handoff evidence
 # These directories can contain cookies, storage state, screenshots, and page HTML.
