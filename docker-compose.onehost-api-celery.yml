@@ -128,7 +128,8 @@ services:
     init: true
     command:
       - python
-      - scripts/run_onehost_api_celery_gate.py
+      - -m
+      - scripts.run_onehost_api_celery_gate
       - --output-dir
       - /evidence/proof
       - --repeats
