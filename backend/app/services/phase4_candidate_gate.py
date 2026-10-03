@@ -11,14 +11,15 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from app.services.ats_manifest import ats_certification_manifest
 from app.services.autonomy_release_contract import (
-    MIN_RELIABILITY_ATTEMPTS,
     MIN_SUCCESS_RATE,
     REQUIRED_SHADOW_CHECKS,
+    autonomy_reliability_thresholds,
 )
 from app.services.operations_policy import operations_readiness_manifest
 
@@ -32,10 +33,31 @@ EVIDENCE_PATHS = {
     "lever": "backend/evidence/lever-pilot-readiness.json",
     "ashby": "backend/evidence/ashby-certification-dossier.json",
 }
+ADAPTER_INTEGRATION_PATHS = {
+    "ashby": (
+        "backend/app/services/ashby_profile_aliases.py",
+        "backend/app/services/form_filler_v2.py",
+    ),
+    "smartrecruiters": (
+        "backend/app/services/smartrecruiters_challenge.py",
+        "backend/app/services/smartrecruiters_contract.py",
+    ),
+    "workday": (
+        "backend/app/services/workday_challenge.py",
+        "backend/app/services/workday_popup_boundaries.py",
+        "backend/app/services/workday_port_integration.py",
+    ),
+}
+COMMON_SOURCE_PATHS = (
+    "backend/app/services/ats_base.py",
+    "backend/app/services/ats_registry.py",
+    "backend/app/services/control_engine.py",
+)
 SOURCE_PATHS = {
     name: (
         f"backend/app/services/ats_{name}.py",
-        "backend/app/services/ats_registry.py",
+        *COMMON_SOURCE_PATHS,
+        *ADAPTER_INTEGRATION_PATHS.get(name, ()),
     )
     for name in ADAPTERS
 }
@@ -47,6 +69,31 @@ COMMON_FIXTURE_PATHS = (
 
 def _root() -> Path:
     return Path(__file__).resolve().parents[3]
+
+
+def _verify_repository_tree(root: Path, verification_commit: str) -> None:
+    """Require the digest inputs to come from the exact claimed Git tree."""
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "diff", "--quiet", verification_commit, "--"],
+            cwd=root,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(
+            "repository tree must be a clean checkout of verification_commit"
+        ) from exc
+    if head != verification_commit:
+        raise ValueError(
+            "verification_commit must match the checked-out repository HEAD"
+        )
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -118,7 +165,9 @@ def _greenhouse_metrics(data: Mapping[str, Any]) -> dict[str, Any]:
         "final_submit_clicked": False,
         "independent_success_review_complete": bool(gates.get("all_success_evidence_independently_reviewed")),
         "explicit_promotion_approval": bool(gates.get("explicit_release_approval_reference")),
-        "ten_supervised_confirmed_submissions": bool(gates.get("ten_supervised_confirmed_submissions")),
+        "required_supervised_confirmed_submissions": bool(
+            gates.get("ten_supervised_confirmed_submissions")
+        ),
     }
 
 
@@ -137,14 +186,24 @@ def _lever_metrics(data: Mapping[str, Any]) -> dict[str, Any]:
             int(summary.get("manual_challenge_boundary_count") or 0) > 0
             and int(summary.get("manual_challenge_violation_count") or 0) == 0
         ),
-        "zero_false_submissions": int(summary.get("false_submitted_count") or 0) == 0,
-        "zero_duplicate_submissions": int(summary.get("duplicate_submission_count") or 0) == 0,
-        "zero_uncertain_status_violations": int(summary.get("uncertain_status_violation_count") or 0) == 0,
+        "zero_false_submissions": _is_explicit_zero(summary, "false_submitted_count"),
+        "zero_duplicate_submissions": _is_explicit_zero(summary, "duplicate_submission_count"),
+        "zero_uncertain_status_violations": _is_explicit_zero(
+            summary, "uncertain_status_violation_count"
+        ),
         "final_submit_clicked": False,
         "independent_success_review_complete": bool(gates.get("all_success_evidence_independently_reviewed")),
         "explicit_promotion_approval": bool(gates.get("explicit_separate_promotion_approval")),
-        "ten_supervised_confirmed_submissions": bool(gates.get("ten_supervised_confirmed_submissions")),
+        "required_supervised_confirmed_submissions": bool(
+            gates.get("three_supervised_confirmed_submissions")
+        ),
     }
+
+
+def _is_explicit_zero(values: Mapping[str, Any], key: str) -> bool:
+    """Accept safety evidence only when an explicit nonnegative integer is zero."""
+    value = values.get(key)
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0 and value == 0
 
 
 def _ashby_metrics(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -180,7 +239,7 @@ def _ashby_metrics(data: Mapping[str, Any]) -> dict[str, Any]:
         "final_submit_clicked": bool(safety.get("final_submit_clicked")),
         "independent_success_review_complete": False,
         "explicit_promotion_approval": False,
-        "ten_supervised_confirmed_submissions": False,
+        "required_supervised_confirmed_submissions": False,
         "promotion_blockers": list(readiness.get("promotion_blockers") or []),
     }
 
@@ -205,7 +264,7 @@ def _metrics_for(adapter: str, evidence: Mapping[str, Any]) -> dict[str, Any]:
         "final_submit_clicked": False,
         "independent_success_review_complete": False,
         "explicit_promotion_approval": False,
-        "ten_supervised_confirmed_submissions": False,
+        "required_supervised_confirmed_submissions": False,
     }
 
 
@@ -240,6 +299,7 @@ def build_phase4_candidate_gate(
         raise ValueError("verification_commit must be an exact 40-character git SHA")
 
     repository_root = root or _root()
+    _verify_repository_tree(repository_root, verification_commit)
     freeze = _load_json(repository_root / FREEZE_PATH)
     manifest_by_name, ats = _manifest_map()
     operations = operations_readiness_manifest()
@@ -277,6 +337,23 @@ def build_phase4_candidate_gate(
 
         metrics = _metrics_for(adapter, evidence)
         live_evidence = current.get("live_certification") or {}
+        digests = {
+            "adapter_source_sha256": _digest_paths(repository_root, source_files),
+            "fixture_regression_sha256": _digest_paths(repository_root, fixture_files),
+            "retained_evidence_sha256": retained_evidence_sha256,
+            "manifest_live_evidence_sha256": _canonical_sha256(live_evidence),
+        }
+        frozen_digests = frozen.get("digests")
+        if not isinstance(frozen_digests, Mapping):
+            drift.append(f"{adapter}:missing_frozen_digests")
+        else:
+            for digest_name, computed_digest in digests.items():
+                if (
+                    digest_name not in frozen_digests
+                    or frozen_digests.get(digest_name) != computed_digest
+                ):
+                    drift.append(f"{adapter}:{digest_name}_drift")
+
         row = {
             "adapter": adapter,
             "version": version,
@@ -284,12 +361,7 @@ def build_phase4_candidate_gate(
             "candidate_eligible": _candidate_eligible(maturity, metrics),
             "ranking_key": list(_ranking_key(metrics)),
             "metrics": metrics,
-            "digests": {
-                "adapter_source_sha256": _digest_paths(repository_root, source_files),
-                "fixture_regression_sha256": _digest_paths(repository_root, fixture_files),
-                "retained_evidence_sha256": retained_evidence_sha256,
-                "manifest_live_evidence_sha256": _canonical_sha256(live_evidence),
-            },
+            "digests": digests,
             "sources": {
                 "adapter_source_paths": [item.relative_to(repository_root).as_posix() for item in source_files],
                 "fixture_regression_paths": [item.relative_to(repository_root).as_posix() for item in sorted(fixture_files)],
@@ -319,8 +391,8 @@ def build_phase4_candidate_gate(
     candidate_name = str(selected.get("adapter") if selected else "")
     candidate_metrics = dict(selected.get("metrics") or {}) if selected else {}
     supervised_blockers: list[str] = []
-    if candidate_metrics.get("ten_supervised_confirmed_submissions") is not True:
-        supervised_blockers.append("ten_distinct_supervised_confirmed_submissions_missing")
+    if candidate_metrics.get("required_supervised_confirmed_submissions") is not True:
+        supervised_blockers.append("required_supervised_confirmed_submissions_missing")
     if candidate_metrics.get("independent_success_review_complete") is not True:
         supervised_blockers.append("independent_success_review_missing")
     if candidate_metrics.get("explicit_promotion_approval") is not True:
@@ -342,6 +414,8 @@ def build_phase4_candidate_gate(
         and candidate_metrics.get("supervised_confirmed_count") == 0
         and supervised_blockers
     )
+
+    autonomy_thresholds = autonomy_reliability_thresholds(candidate_name)
 
     payload: dict[str, Any] = {
         "schema_version": "1.0",
@@ -371,7 +445,12 @@ def build_phase4_candidate_gate(
         "adapter_freeze": rows,
         "remaining_supervised_only_boundaries": freeze.get("remaining_supervised_only_boundaries") or {},
         "autonomy_contract_thresholds": {
-            "minimum_supervised_attempts": MIN_RELIABILITY_ATTEMPTS,
+            "minimum_supervised_attempts": autonomy_thresholds[
+                "minimum_reliability_attempts"
+            ],
+            "minimum_distinct_confirmed_submissions": autonomy_thresholds[
+                "minimum_distinct_confirmed_submissions"
+            ],
             "minimum_success_rate": MIN_SUCCESS_RATE,
             "required_shadow_checks": list(REQUIRED_SHADOW_CHECKS),
         },

@@ -25,6 +25,7 @@ from tests.conftest import TestingSessionLocal
 REVISION = "a" * 40
 OTHER_REVISION = "b" * 40
 SHADOW_TYPES = {"shadow_run_4h", "shadow_run_8h", "shadow_run_24h"}
+RELEASE_VERSION = "v2.1.0"
 
 
 def _patch_revision(monkeypatch, revision: str = REVISION) -> None:
@@ -372,7 +373,7 @@ def test_evidence_is_account_scoped(monkeypatch, auth_client):
             db,
             user_id=other.id,
             scope="autonomous_pilot",
-            release_version="v2.00",
+            release_version=RELEASE_VERSION,
             revision=REVISION,
         )
         assert track["evidence"]["duplicate_prevention"]["qualifying"] is False
@@ -387,10 +388,10 @@ def test_pilot_authorization_requires_verified_prerequisites_exact_head_and_exac
         "/api/certification/authorizations",
         json={
             "scope": "autonomous_pilot",
-            "release_version": "v2.00",
+            "release_version": RELEASE_VERSION,
             "commit_sha": REVISION,
             "approval_reference": "owner:test:premature",
-            "acknowledgment": f"AUTHORIZE AUTONOMOUS_PILOT v2.00 {REVISION[:12]}",
+            "acknowledgment": f"AUTHORIZE AUTONOMOUS_PILOT {RELEASE_VERSION} {REVISION[:12]}",
         },
     )
     assert premature.status_code == 409
@@ -404,11 +405,11 @@ def test_pilot_authorization_requires_verified_prerequisites_exact_head_and_exac
         "/api/certification/authorizations",
         json={
             "scope": "autonomous_pilot",
-            "release_version": "v2.00",
+            "release_version": RELEASE_VERSION,
             "commit_sha": OTHER_REVISION,
             "approval_reference": "owner:test:wrong-head",
             "acknowledgment": (
-                f"AUTHORIZE AUTONOMOUS_PILOT v2.00 {OTHER_REVISION[:12]}"
+                f"AUTHORIZE AUTONOMOUS_PILOT {RELEASE_VERSION} {OTHER_REVISION[:12]}"
             ),
         },
     )
@@ -418,7 +419,7 @@ def test_pilot_authorization_requires_verified_prerequisites_exact_head_and_exac
         "/api/certification/authorizations",
         json={
             "scope": "autonomous_pilot",
-            "release_version": "v2.00",
+            "release_version": RELEASE_VERSION,
             "commit_sha": REVISION,
             "approval_reference": "owner:test:wrong-ack",
             "acknowledgment": "AUTHORIZE",
@@ -432,10 +433,10 @@ def test_pilot_authorization_requires_verified_prerequisites_exact_head_and_exac
         "/api/certification/authorizations",
         json={
             "scope": "autonomous_pilot",
-            "release_version": "v2.00",
+            "release_version": RELEASE_VERSION,
             "commit_sha": REVISION,
             "approval_reference": "owner:test:pilot-ready",
-            "acknowledgment": f"AUTHORIZE AUTONOMOUS_PILOT v2.00 {REVISION[:12]}",
+            "acknowledgment": f"AUTHORIZE AUTONOMOUS_PILOT {RELEASE_VERSION} {REVISION[:12]}",
         },
     )
     assert approved.status_code == 201, approved.text
@@ -500,10 +501,10 @@ def test_authorization_revocation_and_expiry_fail_closed(monkeypatch, auth_clien
         "/api/certification/authorizations",
         json={
             "scope": "autonomous_pilot",
-            "release_version": "v2.00",
+            "release_version": RELEASE_VERSION,
             "commit_sha": REVISION,
             "approval_reference": "owner:test:revoke",
-            "acknowledgment": f"AUTHORIZE AUTONOMOUS_PILOT v2.00 {REVISION[:12]}",
+            "acknowledgment": f"AUTHORIZE AUTONOMOUS_PILOT {RELEASE_VERSION} {REVISION[:12]}",
         },
     )
     assert approved.status_code == 201
@@ -532,7 +533,7 @@ def test_authorization_revocation_and_expiry_fail_closed(monkeypatch, auth_clien
         user_id = db.query(User).filter(User.email == "test@example.com").one().id
         expired = ReleaseAuthorization(
             scope="autonomous_pilot",
-            release_version="v2.00",
+            release_version=RELEASE_VERSION,
             commit_sha=REVISION,
             approval_reference="owner:test:expired-auth",
             payload_hash="3" * 64,
@@ -548,7 +549,7 @@ def test_authorization_revocation_and_expiry_fail_closed(monkeypatch, auth_clien
             db,
             user_id=user_id,
             scope="autonomous_pilot",
-            release_version="v2.00",
+            release_version=RELEASE_VERSION,
             revision=REVISION,
         )
         assert track["owner_authorized"] is False

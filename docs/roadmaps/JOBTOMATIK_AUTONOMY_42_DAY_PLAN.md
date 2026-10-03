@@ -70,7 +70,7 @@ Documentation, synthetic fixtures, counters, or elapsed dates cannot substitute 
 | Before starting | Required predecessor | Required retained proof |
 |---|---|---|
 | Lever Phase B (Day 15) | Lever Phase A (Day 14) | 30 qualifying distinct-site dry runs, global/EU coverage, locked provenance, zero final submits |
-| Lever promotion (Day 21) | Lever Phase B (Days 16–20) | 10 exact-approved, independently reviewed confirmations; zero duplicates/false submissions; separate owner approval |
+| Lever promotion (Day 21) | Lever Phase B (Days 16–20) | 3 exact-approved, independently reviewed confirmations; zero duplicates/false submissions; separate owner approval |
 | Multi-adapter candidate selection (Day 28) | certification contract (Day 27) | versioned contract, adapter/fixture/evidence digests, recovery and breaker thresholds |
 | Operations rehearsal (Day 35) | scheduler and control centre (Days 29–34) | no-submit end-to-end rehearsal, dependency/security checks, recovery evidence |
 | Live unattended pilot (Day 39) | shadow runs (Days 36–38) **and** post-shadow exact-head autonomous promotion | Day 36–38 shadow evidence; exact-head release matrix; separately reviewed `certified_autonomous` approval; policy readiness; owner-authorized live configuration |
@@ -261,54 +261,55 @@ A day is not complete until:
 ## Day 15, Wednesday August 12: Phase B launch dossier
 
 - [ ] Confirm the user’s profile, résumé, job filters, legal-answer policies, and application caps are current.
-- [ ] Present ten high-match real Lever roles for explicit selection.
+- [ ] Present at least three high-match real Lever roles for explicit selection.
 - [ ] Generate exact payload hashes and one-time approval dossiers only for selected applications.
 - [ ] Run dry previews before any final-submit authorization.
 
-**User gate:** select/approve the first two real applications and resolve any truthful policy blocker.  
+**User gate:** approve each of the three real applications at the exact supervised final-action boundary and resolve any truthful policy blocker.  
 **End-of-day proof:** two ready dossiers, no submission without explicit approval.
 
-## Day 16, Thursday August 13: Supervised submissions 1 and 2
+## Day 16, Thursday August 13: Supervised submission 1
 
-- [ ] Execute up to two approved applications, one exact approval per attempt.
-- [ ] Stop for challenge or ambiguity and preserve the session.
+- [ ] Execute one approved application with one exact approval.
+- [ ] Stop only for a genuine challenge or ambiguity and preserve the session.
 - [ ] Capture strong confirmation evidence and independent review.
 - [ ] Verify no retry is possible after approval consumption.
 
-**Daily target:** 2/10 confirmed or a truthful blocker report.
+**Daily target:** 1/3 confirmed or a truthful blocker report.
 
-## Day 17, Friday August 14: Supervised submissions 3 and 4
+## Day 17, Friday August 14: Supervised submission 2
 
-- [ ] Select next best distinct employers and repeat the exact approval flow.
-- [ ] Exercise at least one non-trivial custom-question form.
+- [ ] Execute the next approved application at a distinct employer.
+- [ ] Exercise a non-trivial custom-question form when naturally encountered.
 - [ ] Reconcile confirmation page and confirmation email when available.
 
-**Daily target:** 4/10 confirmed; zero duplicates and zero uncertain outcomes promoted.
+**Daily target:** 2/3 confirmed; zero duplicates and zero uncertain outcomes promoted.
 
-## Day 18, Saturday August 15: Supervised submissions 5 and 6
+## Day 18, Saturday August 15: Supervised submission 3
 
-- [ ] Execute two approved applications with different control profiles.
+- [ ] Execute the third approved application.
 - [ ] Exercise retained handoff only if a real challenge appears.
 - [ ] Verify resume after handoff cannot cross employer, posting, region, or adapter.
+- [ ] Independently review every successful evidence record.
 
-**Daily target:** 6/10 confirmed or safely paused.
+**Gate:** 3 distinct confirmed supervised submissions, one click maximum per approval, zero duplicates, zero silent retries, strong evidence for every success.
 
-## Day 19, Sunday August 16: Supervised submissions 7 and 8
+## Day 19, Sunday August 16: Phase B evidence reconciliation
 
-- [ ] Execute two approved applications.
+- [ ] Reconcile all three retained confirmation records.
 - [ ] Inspect worker timing, retries, browser memory, and evidence durability.
 - [ ] Confirm application caps and quiet-hour policy enforcement.
-
-**Daily target:** 8/10 confirmed; no clustered failures.
-
-## Day 20, Monday August 17: Supervised submissions 9 and 10
-
-- [ ] Execute final two approved pilot applications.
-- [ ] Independently review every successful evidence record.
 - [ ] Classify any failure without weakening the gate.
-- [ ] Re-run duplicate and crash-recovery tests using sanitized pilot metadata.
 
-**Gate:** 10 distinct confirmed supervised submissions, one click maximum per approval, zero duplicates, zero silent retries, strong evidence for every success.
+**Daily target:** retain a clean 3/3 evidence set or replace any nonqualifying attempt with a fresh supervised candidate.
+
+## Day 20, Monday August 17: Phase B closeout
+
+- [ ] Re-run duplicate and crash-recovery tests using sanitized pilot metadata.
+- [ ] Verify all three successes remain independently reviewed and strongly confirmed.
+- [ ] Freeze the qualifying Phase B evidence set for the separate promotion decision.
+
+**Gate:** 3/3 retained, independently reviewed, distinct confirmed supervised submissions with zero duplicates and zero false submissions.
 
 ## Day 21, Tuesday August 18: Lever promotion decision
 
@@ -564,3 +565,57 @@ Use this at the end of every scheduled mission:
 - [ ] Evidence and readiness snapshots are regenerated from locked inputs.
 - [ ] Active issue and PR descriptions state exact progress.
 - [ ] Tomorrow’s task is unblocked or the blocker is documented with the smallest required user action.
+
+
+---
+
+# September 21, 2026 Physical Acceptance Milestone
+
+The operator-assisted Lever path has now completed one genuine physical Android submission through employer confirmation.
+
+## Proven path
+
+`resolve exact Lever target -> prepare truthful payload -> fill -> retain/review -> human final action -> Lever confirmation`
+
+Observed acceptance:
+
+- Employer: Zopa
+- Role: Zopa for Business - Risk Lead
+- Browser: native Android Chrome
+- JobTomatik filled the exact retained application
+- Final Submit remained a human/operator action
+- Lever returned a confirmation route ending in `/thanks`
+- Visible employer confirmation text: `Application submitted!`
+- Physical evidence record: `backend/evidence/lever-native-chrome-first-confirmed-submit-2026-09-21.md`
+
+Supporting implementation sequence:
+
+- PR #552: retained native-Chrome target continuity and preserved filled application tab
+- PR #553: post-stack native-Chrome recovery and revalidation
+- PR #554: physical acceptance evidence and passive retained-page confirmation reconciliation
+
+## Roadmap interpretation
+
+This milestone upgrades the evidence status of the **operator-assisted Lever path** from synthetic/supervised-preparation proof to at least one genuine physical end-to-end confirmation.
+
+It does **not**:
+
+- promote Lever to `certified_autonomous`;
+- enable unattended final submit;
+- reopen the retired Lever promotion quota;
+- prove CAPTCHA compatibility for every Lever employer;
+- relax exact-target, idempotency, duplicate-prevention, kill-switch, confirmation-evidence, or answer-policy requirements.
+
+The CAPTCHA-specific retained-browser failure remains separately tracked in issue #539 until a human-completed CAPTCHA path is physically revalidated.
+
+## Golden regression contract from this milestone
+
+Future browser/runtime work must preserve all of the following:
+
+1. Native Android Chrome remains the selected application browser when configured.
+2. JobTomatik can fill the exact approved Lever form without switching browser/profile.
+3. The exact filled page survives the review boundary.
+4. Final submit remains under the configured human authority boundary.
+5. Strong confirmation evidence such as Lever `/thanks` plus explicit success text is recognized.
+6. Confirmation reconciliation does not require a second bookkeeping action after the human click.
+7. A missing retained target, browser drift, ambiguous outcome, or insufficient confirmation remains fail-closed.

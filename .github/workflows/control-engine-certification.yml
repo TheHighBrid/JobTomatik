@@ -7,6 +7,8 @@ on:
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/browser_navigation.py"
       - "backend/tests/test_control_engine_*.py"
+      - "backend/tests/test_control_descriptor_lever_context.py"
+      - "backend/tests/fixtures/lever_phase_b_descriptor_specimens.html"
       - ".github/workflows/control-engine-certification.yml"
   push:
     branches:
@@ -16,6 +18,8 @@ on:
       - "backend/app/services/form_filler*.py"
       - "backend/app/services/browser_navigation.py"
       - "backend/tests/test_control_engine_*.py"
+      - "backend/tests/test_control_descriptor_lever_context.py"
+      - "backend/tests/fixtures/lever_phase_b_descriptor_specimens.html"
       - ".github/workflows/control-engine-certification.yml"
 
 permissions:
@@ -65,6 +69,8 @@ jobs:
             tests/test_control_engine_playwright.py \
             tests/test_control_engine_combobox_overlay.py \
             tests/test_control_engine_searchable_combobox.py \
+            tests/test_control_descriptor_lever_context.py \
+            tests/test_control_engine_lever_owned_label.py \
             > control-certification.txt 2>&1
           status=$?
           cat control-certification.txt

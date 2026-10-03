@@ -12,12 +12,25 @@ from app.services.autonomy_release_contract import (
     MIN_SUCCESS_RATE,
     REQUIRED_SHADOW_CHECKS,
     autonomy_release_contract_requirements,
+    autonomy_reliability_thresholds,
     compute_autonomy_manifest_digest,
     compute_autonomy_manifest_signature,
+    load_autonomy_release_manifest,
     validate_autonomy_release_manifest,
 )
 
 TEST_SIGNING_KEY = "jobtomatik-day27-test-signing-key-0001"
+TEST_ARTIFACTS = {
+    "fixture_digest": b"retained fixture evidence",
+    "evidence_digest": b"retained supervised submission ledger",
+    "policy_digest": b"retained policy snapshot",
+}
+
+
+def _digest(content):
+    import hashlib
+
+    return "sha256:" + hashlib.sha256(content).hexdigest()
 
 
 def _resign(manifest):
@@ -35,9 +48,7 @@ def valid_manifest(*, adapter_name="ashby", adapter_version="1.1.0", commit="a" 
         "adapter": {"name": adapter_name, "version": adapter_version},
         "source": {
             "release_commit": commit,
-            "fixture_digest": "sha256:" + "1" * 64,
-            "evidence_digest": "sha256:" + "2" * 64,
-            "policy_digest": "sha256:" + "3" * 64,
+            **{name: _digest(content) for name, content in TEST_ARTIFACTS.items()},
         },
         "reliability_window": {
             "evidence_type": "supervised_real_submission",
@@ -97,6 +108,8 @@ def validate(manifest, *, version="1.1.0", signing_key=TEST_SIGNING_KEY):
         adapter_name="ashby",
         adapter_version=version,
         trusted_signing_key=signing_key,
+        trusted_release_commit=str(manifest.get("source", {}).get("release_commit") or ""),
+        trusted_source_artifacts=TEST_ARTIFACTS,
     )
 
 
@@ -116,6 +129,46 @@ def test_valid_signed_manifest_satisfies_day27_contract():
     assert result["requirements"]["trusted_runtime_signing_key_required"] is True
     assert result["requirements"]["day39_promotion_blocked_until_shadow_checks_pass"] is True
 
+
+
+def test_lever_uses_three_confirmed_supervised_submissions():
+    thresholds = autonomy_reliability_thresholds("lever")
+    assert thresholds == {
+        "minimum_reliability_attempts": 3,
+        "minimum_distinct_confirmed_submissions": 3,
+    }
+
+    manifest = valid_manifest(adapter_name="lever")
+    manifest["reliability_window"].update(
+        {
+            "attempts": 3,
+            "confirmed_successes": 3,
+            "distinct_confirmed_submissions": 3,
+            "independently_reviewed_successes": 3,
+            "success_rate": 1.0,
+        }
+    )
+    _resign(manifest)
+    result = validate_autonomy_release_manifest(
+        manifest,
+        adapter_name="lever",
+        adapter_version="1.1.0",
+        trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
+    )
+
+    assert result["passed"] is True
+    assert result["requirements"]["minimum_reliability_attempts"] == 3
+    assert result["requirements"]["minimum_distinct_confirmed_submissions"] == 3
+
+
+def test_non_lever_adapters_keep_ten_attempt_default():
+    thresholds = autonomy_reliability_thresholds("ashby")
+    assert thresholds == {
+        "minimum_reliability_attempts": MIN_RELIABILITY_ATTEMPTS,
+        "minimum_distinct_confirmed_submissions": MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+    }
 
 def test_manifest_requires_a_separate_trusted_signing_key():
     manifest = valid_manifest()
@@ -169,6 +222,65 @@ def test_adapter_version_and_exact_commit_are_immutable_bindings():
     assert result["passed"] is False
     assert "approval_exact_release_commit" in result["missing"]
     assert result["checks"]["attestation_signature_matches"] is True
+
+
+def test_empty_adapter_version_cannot_be_certified():
+    manifest = valid_manifest(adapter_version="")
+    result = validate(manifest, version="")
+    assert result["passed"] is False
+    assert "adapter_version" in result["missing"]
+
+
+def test_release_commit_must_match_independent_runtime_identity():
+    manifest = valid_manifest()
+    result = validate_autonomy_release_manifest(
+        manifest,
+        adapter_name="ashby",
+        adapter_version="1.1.0",
+        trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="b" * 40,
+        trusted_source_artifacts=TEST_ARTIFACTS,
+    )
+    assert result["passed"] is False
+    assert "release_commit_matches_runtime" in result["missing"]
+
+
+def test_source_digests_are_recomputed_from_retained_artifacts():
+    manifest = valid_manifest()
+    artifacts = dict(TEST_ARTIFACTS)
+    artifacts["evidence_digest"] = b"fabricated replacement ledger"
+    result = validate_autonomy_release_manifest(
+        manifest,
+        adapter_name="ashby",
+        adapter_version="1.1.0",
+        trusted_signing_key=TEST_SIGNING_KEY,
+        trusted_release_commit="a" * 40,
+        trusted_source_artifacts=artifacts,
+    )
+    assert result["passed"] is False
+    assert "evidence_digest_matches_retained_artifact" in result["missing"]
+
+
+def test_release_manifest_is_loaded_outside_build_by_attested_sha(tmp_path):
+    commit = "c" * 40
+    manifest = valid_manifest(commit=commit)
+    release_dir = tmp_path / commit
+    release_dir.mkdir()
+    (release_dir / "ashby.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    loaded = load_autonomy_release_manifest(
+        tmp_path, release_commit=commit, adapter_name="ashby"
+    )
+    assert loaded == manifest
+
+
+def test_release_manifest_loader_fails_closed_for_untrusted_keys(tmp_path):
+    assert load_autonomy_release_manifest(
+        tmp_path, release_commit="../not-a-sha", adapter_name="ashby"
+    ) is None
+    assert load_autonomy_release_manifest(
+        tmp_path, release_commit="a" * 40, adapter_name="../ashby"
+    ) is None
 
 
 def test_reliability_window_requires_supervised_distinct_reviewed_evidence():
@@ -278,8 +390,10 @@ def test_machine_readable_schema_tracks_contract_shape():
 
     assert schema["properties"]["schema_version"]["const"] == AUTONOMY_RELEASE_SCHEMA_VERSION
     reliability = schema["properties"]["reliability_window"]
-    assert reliability["properties"]["attempts"]["minimum"] == MIN_RELIABILITY_ATTEMPTS
-    assert reliability["properties"]["distinct_confirmed_submissions"]["minimum"] == MIN_DISTINCT_CONFIRMED_SUBMISSIONS
+    assert reliability["properties"]["attempts"]["minimum"] == 3
+    assert reliability["properties"]["distinct_confirmed_submissions"]["minimum"] == 3
+    assert schema["allOf"][0]["else"]["properties"]["reliability_window"]["properties"]["attempts"]["minimum"] == MIN_RELIABILITY_ATTEMPTS
+    assert schema["allOf"][0]["else"]["properties"]["reliability_window"]["properties"]["distinct_confirmed_submissions"]["minimum"] == MIN_DISTINCT_CONFIRMED_SUBMISSIONS
     assert reliability["properties"]["evidence_type"]["const"] == "supervised_real_submission"
     assert reliability["properties"]["success_rate"]["minimum"] == MIN_SUCCESS_RATE
     assert schema["properties"]["attestation"]["properties"]["method"]["const"] == AUTONOMY_SIGNATURE_METHOD

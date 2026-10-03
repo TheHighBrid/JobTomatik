@@ -2,8 +2,10 @@
 
 A worker can disappear after the lifecycle is moved to ``applying``. Leaving the
 row there forever blocks every future attempt. Recovery never assumes that a
-live submission did or did not complete. Dry-run interruptions route to manual
-review; live or unknown interruptions route to ``submission_uncertain``.
+live submission did or did not complete. Periodic stale dry runs still route to
+manual review. A managed-runtime interruption may reset a known dry run directly to
+``ready_to_apply`` because that path never had final-submit authority; live or
+unknown interruptions remain ``submission_uncertain``.
 """
 
 from __future__ import annotations
@@ -19,12 +21,17 @@ from app.models.application import (
     ManualReviewReason,
 )
 from app.models.notification import Notification, NotificationType
-from app.services.application_state import create_manual_review_task, normalize_state
+from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
+from app.services.application_state import (
+    create_manual_review_task,
+    normalize_state,
+    transition_application_state,
+)
 from app.services.operations_settings import get_operations_settings
-
 
 RECOVERY_KIND = "stale_application_attempt"
 RUNTIME_INTERRUPTION_KIND = "runtime_interrupted_application_attempt"
+OPERATOR_ASSISTED_APPROVAL_SOURCE = "authenticated_user_operator_assisted"
 
 
 def _naive_utc(value: datetime | None) -> datetime | None:
@@ -51,8 +58,97 @@ def _attempt_dry_run(db, application: Application) -> bool | None:
     event = _latest_attempt_event(db, application.id)
     if not event:
         return None
-    value = (event.payload or {}).get("dry_run")
+    payload = event.payload or {}
+    attempt = payload.get("attempt")
+    if (
+        not isinstance(attempt, int)
+        or isinstance(attempt, bool)
+        or attempt != int(application.submission_attempt_count or 0)
+    ):
+        return None
+    value = payload.get("dry_run")
     return value if isinstance(value, bool) else None
+
+
+def _operator_final_submit_checkpoint(
+    db,
+    application: Application,
+    *,
+    now: datetime | None = None,
+) -> Dict[str, Any] | None:
+    """Return the newest consumed human-final-click checkpoint, if one exists.
+
+    The preparation task is a dry run and therefore leaves a historical dry-run
+    attempt event. Once an exact operator approval is consumed, that old event must
+    never make later recovery retryable because the owner may have reached or used the
+    consequential final-submit boundary.
+    """
+
+    current = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
+    approvals = (
+        db.query(SubmissionApproval)
+        .filter(
+            SubmissionApproval.application_id == application.id,
+            SubmissionApproval.user_id == application.user_id,
+            SubmissionApproval.status == SubmissionApprovalStatus.consumed.value,
+        )
+        .order_by(SubmissionApproval.consumed_at.desc(), SubmissionApproval.id.desc())
+        .all()
+    )
+    approval = next(
+        (
+            item
+            for item in approvals
+            if (item.approval_metadata or {}).get("approval_source")
+            == OPERATOR_ASSISTED_APPROVAL_SOURCE
+            and (item.approval_metadata or {}).get("operator_final_click_required") is True
+            and (item.approval_metadata or {}).get("automated_submission_authorized") is False
+            and (item.approval_metadata or {}).get("queue_submission_authorized") is False
+        ),
+        None,
+    )
+    if approval is None:
+        return None
+
+    metadata = dict(approval.approval_metadata or {})
+    handoff_public_id = str(metadata.get("handoff_public_id") or "").strip()
+    session = None
+    active = False
+    expires_at = None
+    if handoff_public_id:
+        from app.models.handoff import (
+            ACTIVE_HANDOFF_STATUSES,
+            HandoffChallengeType,
+            ManualHandoffSession,
+        )
+
+        session = (
+            db.query(ManualHandoffSession)
+            .filter(
+                ManualHandoffSession.public_id == handoff_public_id,
+                ManualHandoffSession.application_id == application.id,
+                ManualHandoffSession.user_id == application.user_id,
+                ManualHandoffSession.challenge_type == HandoffChallengeType.final_submit.value,
+            )
+            .first()
+        )
+        expires_at = _naive_utc(getattr(session, "expires_at", None))
+        active = bool(
+            session
+            and session.status in ACTIVE_HANDOFF_STATUSES
+            and expires_at is not None
+            and expires_at > current
+        )
+
+    return {
+        "approval_reference": approval.reference,
+        "handoff_public_id": handoff_public_id or None,
+        "handoff_active": active,
+        "handoff_status": getattr(session, "status", None),
+        "handoff_expires_at": expires_at.isoformat() if expires_at else None,
+        "final_action_started": bool(metadata.get("operator_submit_action_started_at")),
+        "automatic_retry_allowed": False,
+    }
 
 
 def recover_stale_application_attempt(
@@ -62,8 +158,14 @@ def recover_stale_application_attempt(
     now: datetime | None = None,
     timeout_minutes: int | None = None,
     force_interrupted: bool = False,
+    recover_dry_run_to_ready: bool = False,
 ) -> Dict[str, Any]:
-    """Recover one stale or explicitly interrupted attempt fail-closed."""
+    """Recover one stale or explicitly interrupted attempt fail-closed.
+
+    recover_dry_run_to_ready is a narrow liveness permission for callers that
+    have independently proved the owning worker is gone. It has no effect on live,
+    unknown, or operator-final-submit checkpoints.
+    """
 
     normalized_now = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
     timeout = max(
@@ -77,6 +179,26 @@ def recover_stale_application_attempt(
             "recovered": False,
             "reason": "not_applying",
             "state": state,
+        }
+
+    operator_checkpoint = _operator_final_submit_checkpoint(
+        db,
+        application,
+        now=normalized_now,
+    )
+    if (
+        operator_checkpoint
+        and operator_checkpoint.get("handoff_active")
+        and not force_interrupted
+    ):
+        return {
+            "application_id": application.id,
+            "recovered": False,
+            "reason": "operator_final_submit_handoff_active",
+            "state": state,
+            "approval_reference": operator_checkpoint.get("approval_reference"),
+            "handoff_public_id": operator_checkpoint.get("handoff_public_id"),
+            "automatic_retry_allowed": False,
         }
 
     started_at = _naive_utc(
@@ -103,10 +225,80 @@ def recover_stale_application_attempt(
             "timeout_minutes": timeout,
         }
 
-    dry_run = _attempt_dry_run(db, application)
+    # A consumed operator approval is consequential even though the form was prepared
+    # by a dry-run task. Never inherit that historical dry-run bit into recovery.
+    dry_run = None if operator_checkpoint else _attempt_dry_run(db, application)
     job = application.job
     blocking_url = getattr(job, "url", None)
     job_title = getattr(job, "title", None) or f"Application {application.id}"
+
+    recovery_kind = RUNTIME_INTERRUPTION_KIND if force_interrupted else RECOVERY_KIND
+    details = {
+        "kind": recovery_kind,
+        "dry_run": dry_run,
+        "attempt_age_seconds": age_seconds,
+        "timeout_minutes": timeout,
+        "runtime_interrupted": bool(force_interrupted),
+        "submission_attempt_count": int(application.submission_attempt_count or 0),
+        "idempotency_key": application.submission_idempotency_key,
+        "recovered_at": normalized_now.replace(microsecond=0).isoformat() + "Z",
+        "operator_final_submit_checkpoint": operator_checkpoint,
+        "automatic_retry_allowed": (
+            True
+            if (
+                force_interrupted
+                and recover_dry_run_to_ready
+                and dry_run is True
+                and operator_checkpoint is None
+            )
+            else (False if operator_checkpoint else None)
+        ),
+    }
+
+    if (
+        force_interrupted
+        and recover_dry_run_to_ready
+        and dry_run is True
+        and operator_checkpoint is None
+    ):
+        transition_application_state(
+            db,
+            application,
+            ApplicationAutomationState.ready_to_apply,
+            "runtime_interrupted_application_attempt_recovered",
+            details,
+        )
+        application.status = ApplicationStatus.pending
+        db.add(Notification(
+            user_id=application.user_id,
+            type=NotificationType.system,
+            title=f"Dry-run application attempt recovered: {job_title}",
+            message=(
+                "The managed worker stopped during a dry-run application attempt. "
+                "No final-submit authority was active, so the application was safely "
+                "returned to ready-to-apply."
+            ),
+            data={
+                "kind": recovery_kind,
+                "application_id": application.id,
+                "job_id": application.job_id,
+                "dry_run": True,
+                "automatic_retry_allowed": True,
+            },
+        ))
+        return {
+            "application_id": application.id,
+            "recovered": True,
+            "dry_run": True,
+            "reason_code": None,
+            "target_state": ApplicationAutomationState.ready_to_apply.value,
+            "review_id": None,
+            "age_seconds": age_seconds,
+            "timeout_minutes": timeout,
+            "runtime_interrupted": True,
+            "operator_final_submit_checkpoint": None,
+            "automatic_retry_allowed": True,
+        }
 
     if dry_run is True:
         target_state = ApplicationAutomationState.needs_review
@@ -123,17 +315,6 @@ def recover_stale_application_attempt(
             "attempt. Verify the employer portal before any retry."
         )
 
-    recovery_kind = RUNTIME_INTERRUPTION_KIND if force_interrupted else RECOVERY_KIND
-    details = {
-        "kind": recovery_kind,
-        "dry_run": dry_run,
-        "attempt_age_seconds": age_seconds,
-        "timeout_minutes": timeout,
-        "runtime_interrupted": bool(force_interrupted),
-        "submission_attempt_count": int(application.submission_attempt_count or 0),
-        "idempotency_key": application.submission_idempotency_key,
-        "recovered_at": normalized_now.replace(microsecond=0).isoformat() + "Z",
-    }
     review = create_manual_review_task(
         db,
         application,
@@ -185,6 +366,8 @@ def recover_stale_application_attempt(
         "age_seconds": age_seconds,
         "timeout_minutes": timeout,
         "runtime_interrupted": bool(force_interrupted),
+        "operator_final_submit_checkpoint": operator_checkpoint,
+        "automatic_retry_allowed": False if operator_checkpoint else None,
     }
 
 
@@ -242,8 +425,9 @@ def recover_interrupted_application_attempts(
 
     This is intentionally stronger than the periodic stale-attempt sweep. The Android
     runtime manager calls it only after retiring/stopping the workers that could own
-    those attempts, so no age grace period is appropriate. Live or unknown attempts
-    remain fail-closed as submission-uncertain rather than being made retryable.
+    those attempts, so no age grace period is appropriate. Known dry runs can safely
+    return to ready-to-apply because final submission was never authorized. Live or
+    unknown attempts remain fail-closed as submission-uncertain.
     """
     normalized_now = _naive_utc(now or datetime.utcnow()) or datetime.utcnow()
     applications = (
@@ -258,6 +442,7 @@ def recover_interrupted_application_attempts(
             application,
             now=normalized_now,
             force_interrupted=True,
+            recover_dry_run_to_ready=True,
         )
         for application in applications
     ]

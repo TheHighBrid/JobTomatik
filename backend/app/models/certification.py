@@ -135,16 +135,18 @@ class ShadowRunCycle(Base):
 
 _ANDROID_TIMED_SHADOW_TARGETS = frozenset({"shadow_run_4h", "shadow_run_8h", "shadow_run_24h"})
 _ANDROID_FOUR_HOUR_SECONDS = 4 * 60 * 60
+_ANDROID_EIGHT_HOUR_SECONDS = 8 * 60 * 60
 
 
 def _require_android_shadow_admission(target: ShadowRunSession) -> None:
-    """Make timed Android evidence impossible to start without device/canary proof.
+    """Make timed Android evidence impossible to start without stage-specific proof.
 
     The guard sits at the ORM insert boundary so an API, CLI, test helper, or future
-    internal caller cannot bypass the qualification receipt merely by skipping the
-    current UI/preflight route. Non-Android environments retain their existing test
-    and development behavior. The 8h/24h stages intentionally remain closed until a
-    legitimate 4h campaign has passed and a duration-specific admission gate lands.
+    internal caller cannot bypass exact-runtime admission merely by skipping the current
+    UI/preflight route. Four-hour admission retains its account-scoped application-path
+    canary. Eight-hour admission requires fresh exact-runtime acceptance here and the
+    verified Day 36 predecessor in the ORM before-flush gate below. Android 24h remains
+    closed until the Day 38 duration-specific gate lands.
     """
 
     if os.environ.get("JOBTOMATIK_RUNTIME_MODE") != "android_managed":
@@ -152,10 +154,23 @@ def _require_android_shadow_admission(target: ShadowRunSession) -> None:
     evidence_type = str(target.target_evidence_type or "")
     if evidence_type not in _ANDROID_TIMED_SHADOW_TARGETS:
         return
-    if evidence_type != "shadow_run_4h":
+    if evidence_type == "shadow_run_24h":
         raise ValueError(
-            "Android 8h/24h shadow evidence is intentionally locked until the 4h stage passes."
+            "Android shadow_run_24h evidence is intentionally locked until the 8h stage passes."
         )
+
+    if evidence_type == "shadow_run_8h":
+        from app.services.runtime_acceptance import runtime_acceptance_status
+
+        admission = runtime_acceptance_status(max_age_seconds=15 * 60)
+        if not admission.get("ok"):
+            blockers = ",".join(admission.get("blockers") or []) or "runtime_acceptance_invalid"
+            raise ValueError(
+                "Android shadow_run_8h requires fresh exact-runtime acceptance: " + blockers
+            )
+        if str(admission.get("revision") or "") != str(target.candidate_revision or ""):
+            raise ValueError("Android shadow_run_8h runtime revision does not match the campaign revision")
+        return
 
     from app.services.runtime_acceptance import canary_receipt_status
 
@@ -179,23 +194,26 @@ def _require_android_shadow_admission(target: ShadowRunSession) -> None:
 
 
 def _require_android_shadow_live_launch_policy(session: OrmSession, target: ShadowRunSession) -> None:
-    """Re-evaluate mutable policy immediately before Android 4h insertion.
-
-    The canary receipt proves that the path worked on the exact runtime. It is not a
-    reservation of future policy state. Capacity, quiet hours, circuit breakers, user
-    scheduler settings, or hard submit/outreach controls may change during the receipt
-    freshness window. Re-evaluating here prevents a campaign from being admitted only
-    to fail its first cycle because the live policy no longer supports the full run.
-    """
+    """Re-evaluate mutable policy immediately before Android timed-shadow insertion."""
 
     if os.environ.get("JOBTOMATIK_RUNTIME_MODE") != "android_managed":
         return
-    if str(target.target_evidence_type or "") != "shadow_run_4h":
+    evidence_type = str(target.target_evidence_type or "")
+    if evidence_type not in {"shadow_run_4h", "shadow_run_8h"}:
         return
 
     blockers: list[str] = []
-    if int(target.requested_duration_seconds or 0) != _ANDROID_FOUR_HOUR_SECONDS:
-        blockers.append("requested_duration_not_exactly_4h")
+    expected_seconds = (
+        _ANDROID_FOUR_HOUR_SECONDS
+        if evidence_type == "shadow_run_4h"
+        else _ANDROID_EIGHT_HOUR_SECONDS
+    )
+    if int(target.requested_duration_seconds or 0) != expected_seconds:
+        blockers.append(
+            "requested_duration_not_exactly_4h"
+            if evidence_type == "shadow_run_4h"
+            else "requested_duration_not_exactly_8h"
+        )
     if target.final_submit_allowed is not False:
         blockers.append("final_submit_allowed_not_false")
     if target.stop_requested not in {False, None}:
@@ -210,7 +228,6 @@ def _require_android_shadow_live_launch_policy(session: OrmSession, target: Shad
         blockers.append("outreach_not_disabled")
 
     from app.models.user import User
-    from app.services.shadow_qualification import campaign_policy_readiness
 
     with session.no_autoflush:
         user = (
@@ -220,8 +237,9 @@ def _require_android_shadow_live_launch_policy(session: OrmSession, target: Shad
         )
         if user is None:
             blockers.append("active_user_missing")
-            policy = {"ok": False, "blockers": ["active_user_missing"]}
-        else:
+        elif evidence_type == "shadow_run_4h":
+            from app.services.shadow_qualification import campaign_policy_readiness
+
             policy = campaign_policy_readiness(
                 session,
                 user,
@@ -229,10 +247,20 @@ def _require_android_shadow_live_launch_policy(session: OrmSession, target: Shad
                 required_remaining_applications=1,
             )
             blockers.extend(str(item) for item in (policy.get("blockers") or []))
+        else:
+            from app.services.day37_shadow_admission import day37_android_launch_admission
+
+            admission = day37_android_launch_admission(
+                session,
+                user,
+                candidate_revision=str(target.candidate_revision or ""),
+                requested_duration_seconds=int(target.requested_duration_seconds or 0),
+            )
+            blockers.extend(str(item) for item in (admission.get("blockers") or []))
 
     if blockers:
         raise ValueError(
-            "Android shadow_run_4h live launch policy blocked: "
+            f"Android {evidence_type} live launch policy blocked: "
             + ",".join(sorted(set(blockers)))
         )
 

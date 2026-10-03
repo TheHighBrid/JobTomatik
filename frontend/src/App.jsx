@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store'
 import Layout from './components/Layout'
+import RuntimeUiRevisionBoundary from './components/RuntimeUiRevisionBoundary'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const CommandCenter = lazy(() => import('./pages/CommandCenter'))
@@ -20,6 +21,7 @@ const Queue = lazy(() => import('./pages/Queue'))
 const Applications = lazy(() => import('./pages/Applications'))
 const ApplicationDetail = lazy(() => import('./pages/ApplicationDetail'))
 const EvidenceMaterials = lazy(() => import('./pages/EvidenceMaterials'))
+const CurrentLeverOperator = lazy(() => import('./pages/CurrentLeverOperator'))
 const AdapterHealth = lazy(() => import('./pages/AdapterHealth'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -28,7 +30,12 @@ const Register = lazy(() => import('./pages/Register'))
 
 function PrivateRoute({ children }) {
   const token = useAuthStore((s) => s.token)
-  return token ? children : <Navigate to="/login" replace />
+  return token ? (
+    <>
+      <RuntimeUiRevisionBoundary />
+      {children}
+    </>
+  ) : <Navigate to="/login" replace />
 }
 
 export default function App() {
@@ -63,6 +70,7 @@ export default function App() {
             <Route path="applications" element={<Applications />} />
             <Route path="applications/:id" element={<ApplicationDetail />} />
             <Route path="evidence-materials" element={<EvidenceMaterials />} />
+            <Route path="current-lever" element={<CurrentLeverOperator />} />
             <Route path="adapter-health" element={<AdapterHealth />} />
             <Route path="profile" element={<Profile />} />
             <Route path="settings" element={<Settings />} />

@@ -102,6 +102,37 @@ def test_android_browser_supervisor_requires_identity_before_signal():
     assert "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED" in browser
 
 
+def test_android_browser_defaults_to_verification_compatible_graphics():
+    browser = (BACKEND_ROOT / "scripts/start_android_browser_cdp.sh").read_text(
+        encoding="utf-8"
+    )
+    command = browser.split("browser_command() {", 1)[1].split("\n}\n", 1)[0]
+
+    assert 'GRAPHICS_MODE="${JOBTOMATIK_ANDROID_BROWSER_GRAPHICS_MODE:-verification}"' in browser
+    assert 'local -a graphics_args=(--disable-features=Vulkan,WebGPU)' in command
+    assert 'graphics_args=(--disable-gpu --disable-features=Vulkan,WebGPU)' in command
+    assert 'verification)' in command
+    assert 'safe)' in command
+    assert '"${graphics_args[@]}"' in command
+    assert "ANDROID_BROWSER_INVALID_GRAPHICS_MODE" in command
+
+
+def test_android_browser_recycles_only_managed_graphics_contract_drift():
+    browser = (BACKEND_ROOT / "scripts/start_android_browser_cdp.sh").read_text(
+        encoding="utf-8"
+    )
+    start_case = browser.split("  start)\n", 1)[1].rsplit("\nesac", 1)[0]
+
+    assert "process_has_exact_token" in browser
+    assert "browser_graphics_contract_matches" in browser
+    assert "managed_browser_graphics_contract_ready" in browser
+    assert 'process_has_exact_token "$pid" "--disable-gpu"' in browser
+    assert "ANDROID_BROWSER_LAUNCH_CONTRACT_CHANGED" in start_case
+    assert 'contract_status=0' in start_case
+    assert '"$SCRIPT_PATH" stop' in start_case
+    assert "ANDROID_BROWSER_CDP_CONNECTED_UNMANAGED_PRESERVED" in start_case
+
+
 def test_android_worker_is_revisioned_and_consumes_all_runtime_queues():
     manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
         encoding="utf-8"
@@ -201,7 +232,8 @@ def test_android_runtime_forces_nonblocking_automatic_application_entry():
     )
 
     assert "set_env_value APPLICATION_TARGET_HUMAN_WAIT_SECONDS '0'" in manager
-    assert "set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'" in manager
+    assert 'set_env_value APPLICATION_BROWSER_CDP_ENDPOINT "${contract[1]}"' in manager
+    assert 'set_env_value APPLICATION_BROWSER_PROVIDER "${contract[0]}"' in manager
 
 
 def test_android_manager_does_not_shell_source_the_secrets_env_file():
@@ -213,7 +245,7 @@ def test_android_manager_does_not_shell_source_the_secrets_env_file():
     assert '. "$ENV_FILE"' not in manager
 
 
-def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_refresh():
+def test_restart_preserves_browser_and_refreshes_frontend_only_after_post_stack_recovery():
     wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
         encoding="utf-8"
     )
@@ -222,11 +254,38 @@ def test_restart_preserves_browser_and_manager_performs_single_jobtomatik_tab_re
     )
 
     assert 'activate_stack()' in wrapper
-    assert '"$BROWSER_COMMAND" start' in wrapper
+    assert 'recover_native_browser_after_stack_start' in wrapper
+    assert 'run_frontend_tab_refresh' in wrapper
+    assert '"$BROWSER_COMMAND" start' not in wrapper
     assert '"$BROWSER_COMMAND" restart' not in wrapper
-    assert "refresh_frontend_tabs" not in wrapper
     assert "refresh_frontend_runtime" in manager
     assert "refresh_android_jobtomatik_tabs.py" in manager
+
+    manager_start = manager.split("start_stack() {", 1)[1].split("\n}\n", 1)[0]
+    assert "refresh_frontend_runtime" not in manager_start
+    assert "refresh-frontend)" in manager
+
+    activate = wrapper.split("activate_stack() {", 1)[1].split("\n}\n", 1)[0]
+    assert activate.index('start_stack_detached "$action"') < activate.index(
+        "recover_native_browser_after_stack_start"
+    )
+    assert activate.index("recover_native_browser_after_stack_start") < activate.index(
+        "run_runtime_acceptance"
+    )
+
+    recovery = wrapper.split(
+        "recover_native_browser_after_stack_start() {", 1
+    )[1].split("\n}\n", 1)[0]
+    assert recovery.index("ensure_application_browser_endpoint") < recovery.index(
+        "ensure_browser_playwright_ready"
+    )
+    assert recovery.index("ensure_browser_playwright_ready") < recovery.index(
+        "run_frontend_tab_refresh"
+    )
+    assert recovery.rindex("ensure_browser_playwright_ready") > recovery.index(
+        "run_frontend_tab_refresh"
+    )
+
     restart_case = wrapper.split("restart)", 1)[1].split(";;", 1)[0]
     assert "activate_stack restart" in restart_case
 
@@ -246,3 +305,84 @@ def test_android_update_always_fast_forwards_authoritative_main():
     assert "activate_stack restart" not in executable_update_case
     assert "JOBTOMATIK_ANDROID_LAUNCHER_REEXECUTING" in executable_update_case
     assert 'exec "${JOBTOMATIK_STACK_COMMAND:-$0}" restart' in executable_update_case
+
+
+def test_android_update_syncs_and_attests_backend_environment_before_reexec():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    update_case = wrapper.split("  update)\n", 1)[1].split("    ;;", 1)[0]
+
+    assert "verify_python_environment_requirements.py" in wrapper
+    assert "pip install --disable-pip-version-check -r backend/requirements.txt" in wrapper
+    assert update_case.index("update_main") < update_case.index("sync_backend_environment")
+    assert update_case.index("sync_backend_environment") < update_case.index("install_native_commands")
+    assert update_case.index("install_native_commands") < update_case.index("exec ")
+
+
+def test_deployment_restart_propagates_one_bounded_legacy_endpoint_migration():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    installer = (
+        BACKEND_ROOT / "scripts/install_android_native_browser_launcher.sh"
+    ).read_text(encoding="utf-8")
+    consume = wrapper.split("consume_deployment_restart_marker() {", 1)[1].split(
+        "\n}\n", 1
+    )[0]
+
+    assert 'touch "$DEPLOYMENT_RESTART_MARKER"' in installer
+    assert '[[ -f "$DEPLOYMENT_RESTART_MARKER" ]]' in consume
+    assert "export JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT=1" in consume
+    assert "JOBTOMATIK_MIGRATE_LEGACY_BROWSER_ENDPOINT='$migration_flag'" in wrapper
+    assert 'rm -f "$DEPLOYMENT_RESTART_MARKER"' in consume
+
+
+def test_standalone_acceptance_revalidates_selected_adb_device_binding():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    acceptance_case = wrapper.split("  acceptance)\n", 1)[1].split("    ;;", 1)[0]
+
+    assert "ensure_application_browser_endpoint" in acceptance_case
+    assert acceptance_case.index("ensure_application_browser_endpoint") < (
+        acceptance_case.index("run_runtime_acceptance")
+    )
+
+
+def test_runtime_acceptance_runs_from_backend_config_root():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+    function = wrapper.split("run_runtime_acceptance() {", 1)[1].split("\n}\n", 1)[0]
+
+    assert "cd '$PROOT_REPO/backend'" in function
+    assert ".venv/bin/python scripts/android_runtime_acceptance.py" in function
+    assert "cd '$PROOT_REPO';" not in function
+    assert "backend/.venv/bin/python backend/scripts/android_runtime_acceptance.py" not in function
+
+
+def test_android_manager_invokes_browser_contract_as_backend_module():
+    manager = (BACKEND_ROOT / "scripts/manage_android_stack.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        '"$VENV/bin/python" -m scripts.application_browser_contract identity'
+        in manager
+    )
+    assert (
+        '"$VENV/bin/python" -m scripts.application_browser_contract config'
+        in manager
+    )
+    assert "$BACKEND_ROOT/scripts/application_browser_contract.py" not in manager
+
+
+def test_runtime_sensitive_actions_fail_closed_on_python_environment_drift():
+    wrapper = (BACKEND_ROOT / "scripts/jobtomatik_termux_wrapper.sh").read_text(
+        encoding="utf-8"
+    )
+
+    for action in ("start", "restart", "status", "acceptance"):
+        section = wrapper.split(f"  {action})\n", 1)[1].split("    ;;", 1)[0]
+        assert "verify_backend_environment" in section

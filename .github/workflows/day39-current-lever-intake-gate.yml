@@ -1,0 +1,65 @@
+name: Day 39 current Lever intake gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/services/lever_phase_b_current_intake.py"
+      - "backend/app/schemas/lever_phase_b_current_intake.py"
+      - "backend/app/api/supervised_pilot_roster.py"
+      - "backend/tests/test_day39_current_lever_intake.py"
+      - ".github/workflows/day39-current-lever-intake-gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  current-lever-intake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: sqlite:///./day39-current-lever-intake.db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: day39-current-lever-intake-ci-only-secret-000000000000
+      AI_PROVIDER: template
+      DEV_MOCK_JOBS: "false"
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ALLOW_REAL_FOLLOWUP_SEND: "false"
+      AUTOPILOT_ENABLED: "false"
+      AUTOMATION_GLOBAL_KILL_SWITCH: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Run current Lever intake regressions
+        working-directory: backend
+        run: python -m pytest -q --tb=short -ra tests/test_day39_current_lever_intake.py
+
+      - name: Assert preparation-only source boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path("backend/app/services/lever_phase_b_current_intake.py").read_text(encoding="utf-8")
+          forbidden = (
+              "submit_application_task",
+              ".delay(",
+              ".send_task(",
+              "issue_supervised_approval",
+              "ALLOW_REAL_APPLICATION_SUBMIT=true",
+          )
+          assert all(item not in source for item in forbidden)
+          assert '"submission_queued": False' in source
+          assert '"approval_issued": False' in source
+          assert '"runtime_flags_changed": False' in source
+          print("CURRENT_LEVER_PHASE_B_INTAKE=PREPARATION_ONLY")
+          PY

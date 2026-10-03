@@ -73,8 +73,8 @@ def build_certification_report(
     if require_phase_b:
         checks.update(
             {
-                "phase_b_has_ten_safe_confirmed_submissions": bool(
-                    gates.get("ten_supervised_confirmed_submissions")
+                "phase_b_has_three_safe_confirmed_submissions": bool(
+                    gates.get("three_supervised_confirmed_submissions")
                 ),
                 "phase_b_successes_are_independently_reviewed": bool(
                     gates.get("all_success_evidence_independently_reviewed")

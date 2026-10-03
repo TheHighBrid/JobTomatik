@@ -1,10 +1,17 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.application import ApplicationStatus
 from app.schemas.job import JobOut
+from app.services.manual_review_shape import (
+    application_step_blockers,
+    effective_answer_policy_reason,
+    is_answer_policy_question_item,
+    retained_questions,
+    result_review_summary,
+)
 
 
 class ApplicationCreate(BaseModel):
@@ -130,6 +137,8 @@ class ManualReviewTaskOut(BaseModel):
     status: str
     summary: str
     details: Dict[str, Any] = Field(default_factory=dict)
+    answer_policy_question_count: int = 0
+    application_step_blockers: List[str] = Field(default_factory=list)
     blocking_url: Optional[str]
     screenshot_path: Optional[str]
     resume_token: Optional[str]
@@ -138,6 +147,23 @@ class ManualReviewTaskOut(BaseModel):
     resolution_notes: Optional[str]
     created_at: datetime
     updated_at: Optional[datetime]
+
+    @model_validator(mode="after")
+    def normalize_misclassified_answer_policy_review(self):
+        self.reason_code = effective_answer_policy_reason(
+            reason_code=self.reason_code,
+            summary=self.summary,
+            details=self.details,
+        )
+        items = retained_questions(self.details)
+        self.answer_policy_question_count = sum(
+            is_answer_policy_question_item(item, self.reason_code) for item in items
+        )
+        self.application_step_blockers = application_step_blockers(items, self.reason_code)
+        if self.application_step_blockers:
+            # Correct the display of historical rows without rewriting their evidence.
+            self.summary = result_review_summary(items, self.reason_code)
+        return self
 
 
 class SubmissionEvidenceOut(BaseModel):

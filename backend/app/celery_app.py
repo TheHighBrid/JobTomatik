@@ -31,6 +31,7 @@ celery_app = Celery(
         "app.tasks.discovery",
         "app.tasks.applications",
         "app.tasks.handoffs",
+        "app.tasks.operator_assisted",
         "app.tasks.unattended",
         "app.tasks.followup",
         "app.tasks.operations",
@@ -54,6 +55,7 @@ celery_app.conf.update(
         "app.tasks.shadow_runs.*": {"queue": "scraping"},
         "app.tasks.applications.*": {"queue": "applications"},
         "app.tasks.handoffs.*": {"queue": "applications"},
+        "app.tasks.operator_assisted.*": {"queue": "applications"},
         "app.tasks.unattended.*": {"queue": "applications"},
         "app.tasks.followup.*": {"queue": "followup"},
         "app.tasks.operations.*": {"queue": "followup"},
@@ -113,7 +115,7 @@ def ensure_worker_runtime_schema() -> None:
 
 @worker_init.connect
 def install_worker_task_integrations(**_kwargs):
-    """Install schema, safety, discovery, policy, target-resolution, and browser extensions."""
+    """Install schema, safety, policy, telemetry, target, and browser extensions."""
     from app.services.application_integrity import install_closed_application_task_gate
     from app.services.application_queue_policy_integration import install_application_queue_policy
     from app.services.application_target_handoff import (
@@ -122,15 +124,28 @@ def install_worker_task_integrations(**_kwargs):
     from app.services.application_target_task_integration import (
         install_application_target_task_integration,
     )
+    from app.services.day36_endurance_runtime import install_day36_endurance_runtime
+    from app.services.day38_runtime import install_day38_worker_integration
     from app.services.discovery_freshness_integration import install_scheduler_freshness_gate
     from app.services.handoff_integration import install_handoff_task_integration
+    from app.services.operator_assisted_handoff_integration import (
+        install_operator_assisted_handoff_integration,
+    )
+    from app.services.operator_assisted_live_pilot_hardening import (
+        install_operator_assisted_live_pilot_hardening,
+    )
     from app.services.operator_autonomy_control_integration import install_operator_autonomy_control
     from app.services.supervised_submission_integration import (
         install_supervised_submission_task_gate,
     )
 
     ensure_worker_runtime_schema()
+    # Install telemetry before the first shadow cycle can retain observability evidence.
+    install_day36_endurance_runtime()
+    install_day38_worker_integration()
     install_handoff_task_integration()
+    install_operator_assisted_handoff_integration()
+    install_operator_assisted_live_pilot_hardening()
     install_application_target_handoff_task_persistence()
     install_application_target_task_integration()
     install_scheduler_freshness_gate()

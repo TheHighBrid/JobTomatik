@@ -31,6 +31,8 @@ java_state=missing
 has_command java && java_state=available
 docker_state=missing
 has_command docker && docker_state=available
+adb_state=missing
+has_command adb && adb_state=available
 
 profile=standard_linux
 if $is_termux && $is_arm; then
@@ -50,21 +52,22 @@ proot=$is_proot
 chromium=$browser
 java=$java_state
 docker=$docker_state
+adb=$adb_state
 EOF
 
 case "$profile" in
   termux_arm64)
     cat <<'EOF'
-recommended_runtime=Termux-native Chromium plus the Ubuntu/proot API-worker stack
-recommended_gate=bash backend/scripts/android_frontend_guard.sh status
-defer=Playwright-managed Chromium, Docker Compose, and Gradle APK builds
+recommended_runtime=Native Android Chrome over an authorized ADB-forwarded CDP bridge plus the Ubuntu/proot API-worker stack
+recommended_gate=jobtomatik browser-preflight
+defer=Termux Chromium for managed application execution, Playwright-managed Chromium, Docker Compose, and Gradle APK builds
 EOF
     ;;
   ubuntu_proot_arm64)
     cat <<'EOF'
-recommended_runtime=SQLite, Redis, API, worker, Beat, Vite, and external Termux Chromium CDP
-recommended_gate=(cd backend && python -m pytest -q tests/test_android_runtime_scripts.py tests/test_external_cdp_runtime.py tests/test_campaign_day_gates.py)
-defer=Docker Compose and on-device Gradle unless their toolchains are explicitly installed
+recommended_runtime=SQLite, Redis, API, worker, Beat, static frontend, with native Android Chrome transport owned by the native Termux wrapper
+recommended_gate=(cd backend && python -m pytest -q tests/test_android_runtime_scripts.py tests/test_native_application_browser_contract.py tests/test_external_cdp_runtime.py)
+defer=Physical native-Chrome ADB preflight must run from native Termux; Docker Compose and on-device Gradle remain optional
 EOF
     ;;
   linux_arm64)

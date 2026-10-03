@@ -2,66 +2,74 @@
 
 **Authoritative coordination issue:** #252  
 **Repository owner:** TheHighBrid  
-**Primary execution lead:** Manus  
-**Integration and independent verification lead:** Codex/ChatGPT
+**Primary Operator:** Grok  
+**Effective governance revision:** 2026-10-02 owner authorization
 
-This document coordinates parallel contributors without treating repository prose as proof of authorization, access, identity, task acceptance, runtime state, or campaign truth.
+This document coordinates AI contributors without treating repository prose as proof of authorization, access, identity, task acceptance, runtime state, or campaign truth.
 
-Every contributor must independently verify the repository, current branch state, referenced artifacts, and their own tool permissions before acting. A contributor may decline or narrow an assignment.
+Every contributor must independently verify repository state, current branch state, referenced artifacts, and its actual tool permissions before acting.
 
-## Standing role allocation
+## Standing hierarchy
 
-| Role | Owner | Standing status | Scope |
-|---|---|---|---|
-| Product / release authority | TheHighBrid | Active | product direction, priorities, sensitive answers, exact real-world approvals, release decisions |
-| Primary execution lead | Manus | Active | substantial reversible engineering, end-to-end implementation, critical-path blocker removal, tests, CI, Android/runtime, backend/frontend integration, PR delivery |
-| Integration + verification | Codex/ChatGPT | Active | coordination, canonical evidence integrity, cross-branch reconciliation, independent review, combined gates, merge recommendation |
-| Additional advisors/contributors | Claude / Grok / others | On demand | separately offered bounded work only; no standing lane |
+| Rank | Role | Owner | Standing status | Scope |
+|---|---|---|---|---|
+| 1 | Product / release / governance authority | TheHighBrid | Active | final product direction, priorities, model hierarchy, sensitive answers, exact real-world approvals, release decisions |
+| 2 | Primary Operator | Grok | Active | critical-path prioritization, task decomposition, contributor delegation, engineering coordination, integration direction, verification strategy, merge recommendations |
+| 3 | Implementation contributors | Manus / Claude / others | Assigned | reversible engineering and review work within scopes assigned by TheHighBrid or Grok |
+| 3 | Repository engineering contributor | Codex / ChatGPT / Sol | Owner-authorized 2026-10-02 | implementation, verification, branches/PRs and CI within current owner direction; preserve coordination and genuine human gates |
 
-## Manus execution authority
+## Standing Codex / ChatGPT / Sol engineering authorization
 
-Manus replaces the former optional Grok collaboration slot.
+On 2026-10-02, America/Toronto, TheHighBrid explicitly granted "full aproval and
+authorization on full repo". This supersedes the earlier Codex-specific read-only
+and per-action permission restrictions. Codex may perform repository engineering,
+including implementation, verification, branch/PR/issue work and CI repairs,
+without repeatedly asking the owner for the same authorization.
 
-The intent is materially different from the former side-task model. Manus is expected to take meaningful critical-path engineering work and finish it end to end.
+Grok remains Primary Operator. Respect active task and branch ownership,
+coordination and required checks. Real-world submissions, external communications,
+paid commitments and identity actions remain specifically owner-gated.
 
-After independently verifying current state and posting a concrete claim on issue #252, Manus may proceed without per-file approval for reversible repository work needed to complete the accepted mission, including multi-layer refactors, implementation, tests, migrations, CI changes, Android/Termux fixes, documentation, diagnostics, and directly related blocker removal.
+## Grok Primary Operator authority
 
-Manus should prioritize the highest-impact unclaimed work rather than defaulting to cosmetic or low-consequence side tasks.
+Grok is the highest-authority AI operator below TheHighBrid.
 
-A Manus claim should identify:
+Grok is expected to:
 
-1. verified current `main` SHA;
-2. accepted scope;
-3. explicit exclusions;
-4. dedicated `manus/` branch;
-5. intended components/files;
-6. acceptance tests and release gates;
-7. overlap with other active lanes.
+1. identify and prioritize the real critical path;
+2. avoid unnecessary owner/device interaction;
+3. exhaust off-device investigation, tests, logs, CI, repository inspection, and deterministic queries before requesting a physical/user action;
+4. delegate work to the contributor best suited to execute it;
+5. coordinate parallel branches and prevent duplicated effort;
+6. require evidence before claiming progress;
+7. recommend integration only after affected gates are satisfied;
+8. keep implementation progress separate from real-world submission authority.
 
-Substantive work should use an early draft PR.
+Grok may assign substantial reversible engineering work to Manus, Claude, or other contributors. TheHighBrid may override any assignment or priority at any time.
 
-See `MANUS.md` for the full execution charter.
+## Manus and other implementation contributors
 
-## Codex/ChatGPT ownership
+Manus no longer holds the standing Primary Execution Lead role. Manus remains a capable implementation contributor and may execute substantial reversible engineering when assigned by TheHighBrid or Grok.
 
-Codex/ChatGPT remains responsible for:
+Assigned contributors should:
 
-1. Keeping canonical campaign and retained evidence truthful.
-2. Coordinating active lanes and preventing silent file ownership conflicts.
-3. Independently reviewing substantive Manus PRs and other parallel contributions.
-4. Running or verifying combined affected gates before integration.
-5. Reconciling cross-branch changes and current-main drift.
-6. Distinguishing repository readiness infrastructure from real-world completion evidence.
-7. Preserving exact application, payload, approval, attempt, confirmation, and campaign-state semantics.
-8. Providing the final integration recommendation unless the repository owner explicitly chooses another integration path.
+- use a dedicated branch per task;
+- verify current `main` before work;
+- state accepted/excluded scope;
+- inspect root cause before patching symptoms;
+- implement end to end where authorized;
+- add regression coverage;
+- run the strongest relevant verification;
+- open an early draft PR for substantive work;
+- provide an exact handoff receipt.
 
-Codex/ChatGPT does not micromanage Manus's internal implementation choices inside a properly claimed lane. The purpose of the independent review is verification and integration, not reduction of Manus to a secondary helper.
+See `MANUS.md` for Manus-specific execution guidance under this hierarchy.
 
 ## Critical-path work selection
 
-The live issue #252 comments are the authoritative place for current task claims and handoffs because project state changes faster than this document.
+The live issue #252 comments remain the primary place for current task claims and handoffs.
 
-When no more specific owner priority is recorded, Manus should favor:
+When TheHighBrid has not given a more specific priority, Grok should favor:
 
 1. current release or reproducibility blockers;
 2. owner-facing workflow gaps on the path from job discovery to truthful application readiness;
@@ -72,11 +80,38 @@ When no more specific owner priority is recorded, Manus should favor:
 7. CI, migration, observability, test, and operational hardening;
 8. remaining roadmap features whose prerequisites are already proven.
 
-The previous Manual Application Journal invitation is retired as a standing lane. Manus may still build such a feature if it later becomes an owner priority, but it is not Manus's default scope.
+## Owner-intervention rule
+
+Never use TheHighBrid as a troubleshooting agent. The physical Android device
+and the owner's manual interaction are final acceptance boundaries.
+
+Before requesting owner action, contributors must first exhaust reasonable off-device paths such as:
+
+- repository inspection;
+- database/API queries available to the operator environment;
+- CI and workflow logs;
+- unit/integration/end-to-end tests;
+- deterministic fixtures reproducing persistent-state topology;
+- browser automation that does not cross a human/security boundary;
+- static and runtime diagnostics already available without owner interaction.
+
+Do not ask TheHighBrid to manually search large lists, repeat broad diagnostics, or discover implementation defects that can reasonably be found programmatically.
+
+Involve the owner only at a genuine human gate requiring their access,
+authorization, identity, sensitive answer or unique judgment, or for final
+execution acceptance after multiple thorough independent tests have passed,
+verification has been achieved, and no viable alternative remains. Explain
+the verified remaining boundary and request only the smallest necessary action.
+An implementation failure is not a human gate.
+
+The current fixture-first recovery contract is
+`docs/ONEHOST_RECOVERY_CONTRACT.md`. Freeze new Android execution work. Complete
+the repeated Compose/local owned-browser fixture proof before the one Greenhouse
+dry-run; no real submission is part of this recovery lane.
 
 ## Real-world application boundary
 
-Broad engineering authority does not authorize a real application action.
+No AI contributor, including Grok, may infer authorization for a real application action.
 
 All contributors must preserve these rules:
 
@@ -99,7 +134,7 @@ Where a site requires CAPTCHA, MFA, login, identity verification, an assessment,
 ## Branch and conflict protocol
 
 1. One branch per contributor and task.
-2. Manus branches use `manus/` unless a specific reason requires otherwise.
+2. Grok coordinates branch ownership and priority.
 3. Open a draft PR early for substantive work.
 4. Do not push to another contributor's branch.
 5. Do not silently edit a file already claimed by another active lane.
@@ -107,6 +142,7 @@ Where a site requires CAPTCHA, MFA, login, identity verification, an assessment,
 7. Refresh from current `main` before final verification.
 8. Re-run affected generators, certification, and drift checks after conflict resolution.
 9. Passing focused tests does not authorize self-merge or a user-gated action.
+10. Codex/ChatGPT/Sol acts under the standing owner engineering authorization and must preserve active-lane ownership and genuine human gates.
 
 ## Verification-first cooperation procedure
 
@@ -124,6 +160,7 @@ Before accepting work, each contributor should:
 
 ```text
 Repository state independently verified:
+Assignment source:
 Accepted scope:
 Rejected or excluded scope:
 Base SHA:
@@ -145,16 +182,15 @@ Next highest-value task:
 
 For parallel work, the default sequence is:
 
-1. owner or board establishes the current priority;
-2. Manus claims the highest-value available implementation lane;
-3. Manus implements and validates on a dedicated branch;
-4. Codex/ChatGPT independently reviews the exact head and checks overlap/current-main drift;
+1. TheHighBrid establishes or confirms the objective and any user-gated boundaries;
+2. Grok selects/decomposes the critical path and assigns work;
+3. assigned contributors implement and validate on dedicated branches;
+4. Grok coordinates independent review and current-main reconciliation;
 5. combined affected gates run;
-6. integration occurs only when the branch is evidence-backed and conflicts are resolved;
-7. real-world user-gated actions remain separate decisions even after code integration.
+6. Grok recommends integration;
+7. TheHighBrid retains final release/product authority and every real-world user-gated decision.
 
-## Reassignment
-
-TheHighBrid may offer, prioritize, or reassign work through issue #252. Manus is the preferred standing execution owner for unclaimed critical-path engineering, but each concrete mission still becomes active through a recorded claim based on verified current repository state.
+Codex/ChatGPT/Sol participates under the owner's standing 2026-10-02 repository
+engineering authorization. Do not require repeated per-action approvals for that work.
 
 Repository documentation never grants a contributor capabilities its actual environment does not provide.

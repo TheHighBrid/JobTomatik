@@ -6,18 +6,30 @@ import hashlib
 import hmac
 import json
 import re
+from pathlib import Path
 from typing import Any, Dict, Mapping
 
 
-AUTONOMY_RELEASE_SCHEMA_VERSION = "autonomy_release_v1"
-AUTONOMY_RELEASE_CONTRACT_VERSION = "day27_v1"
+# v2 is intentionally not backward-compatible with the provisional Day 27 schema.
+# Day 38 proved that production's "daily" capacity is a rolling previous-24-hours
+# window, not a UTC-midnight reset. A v1 manifest must therefore be regenerated and
+# re-approved rather than silently reinterpreted under different evidence semantics.
+AUTONOMY_RELEASE_SCHEMA_VERSION = "autonomy_release_v2"
+AUTONOMY_RELEASE_CONTRACT_VERSION = "day39_v2"
 AUTONOMY_SIGNATURE_METHOD = "hmac-sha256"
 MIN_SIGNING_KEY_BYTES = 32
-# The roadmap's supervised gate is ten distinct confirmed submissions. Sustained
-# autonomy evidence starts from that established sample and must additionally pass
-# the 4h, 8h, and 24h unattended shadow gates below.
+# Default autonomous reliability minimum for adapters without an explicit override.
+# Lever uses a smaller owner-approved supervised sample while retaining every other
+# autonomous promotion gate, including independent review, shadow runs, recovery,
+# policy controls, zero duplicates, and zero false submitted records.
 MIN_RELIABILITY_ATTEMPTS = 10
 MIN_DISTINCT_CONFIRMED_SUBMISSIONS = 10
+ADAPTER_RELIABILITY_MINIMUMS = {
+    "lever": {
+        "attempts": 3,
+        "distinct_confirmed_submissions": 3,
+    },
+}
 MIN_SUCCESS_RATE = 0.98
 MAX_AUTOMATIC_RETRIES_PER_ATTEMPT = 1
 REQUIRED_RECOVERY_DRILLS = (
@@ -45,7 +57,9 @@ REQUIRED_SHADOW_CHECKS = (
     "stale_posting_rejected",
     "ambiguous_question_held",
     "quiet_hour_transition_verified",
-    "daily_cap_reset_verified",
+    "production_policy_diagnostics_non_authoritative",
+    "rolling_24h_semantics_verified",
+    "rolling_24h_membership_rollover_verified",
     "zero_policy_escapes",
     "zero_unexplained_records",
     "zero_duplicate_tasks",
@@ -103,15 +117,37 @@ def compute_autonomy_manifest_signature(
     return f"{AUTONOMY_SIGNATURE_METHOD}:{signature}"
 
 
-def autonomy_release_contract_requirements() -> Dict[str, Any]:
-    """Return the machine-readable Day 27 autonomous promotion requirements."""
+def autonomy_reliability_thresholds(adapter_name: str | None = None) -> Dict[str, int]:
+    """Return adapter-specific supervised reliability minima."""
+    adapter = str(adapter_name or "").strip().lower()
+    override = ADAPTER_RELIABILITY_MINIMUMS.get(adapter, {})
+    return {
+        "minimum_reliability_attempts": int(
+            override.get("attempts", MIN_RELIABILITY_ATTEMPTS)
+        ),
+        "minimum_distinct_confirmed_submissions": int(
+            override.get(
+                "distinct_confirmed_submissions",
+                MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+            )
+        ),
+    }
+
+
+def autonomy_release_contract_requirements(
+    adapter_name: str | None = None,
+) -> Dict[str, Any]:
+    """Return the machine-readable post-shadow autonomous promotion requirements."""
+    thresholds = autonomy_reliability_thresholds(adapter_name)
     return {
         "contract_version": AUTONOMY_RELEASE_CONTRACT_VERSION,
         "schema_version": AUTONOMY_RELEASE_SCHEMA_VERSION,
         "target_maturity": "certified_autonomous",
         "reliability_evidence_type": "supervised_real_submission",
-        "minimum_reliability_attempts": MIN_RELIABILITY_ATTEMPTS,
-        "minimum_distinct_confirmed_submissions": MIN_DISTINCT_CONFIRMED_SUBMISSIONS,
+        "minimum_reliability_attempts": thresholds["minimum_reliability_attempts"],
+        "minimum_distinct_confirmed_submissions": thresholds[
+            "minimum_distinct_confirmed_submissions"
+        ],
         "all_confirmed_successes_require_independent_review": True,
         "minimum_success_rate": MIN_SUCCESS_RATE,
         "maximum_automatic_retries_per_attempt": MAX_AUTOMATIC_RETRIES_PER_ATTEMPT,
@@ -123,6 +159,8 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
         "required_recovery_drills": list(REQUIRED_RECOVERY_DRILLS),
         "required_policy_controls": list(REQUIRED_POLICY_CONTROLS),
         "required_shadow_checks": list(REQUIRED_SHADOW_CHECKS),
+        "capacity_semantics": "rolling_previous_24_hours",
+        "legacy_utc_midnight_daily_reset_claims_rejected": True,
         "required_source_bindings": [
             "adapter_name",
             "adapter_version",
@@ -135,6 +173,9 @@ def autonomy_release_contract_requirements() -> Dict[str, Any]:
         "signature_method": AUTONOMY_SIGNATURE_METHOD,
         "minimum_signing_key_bytes": MIN_SIGNING_KEY_BYTES,
         "trusted_runtime_signing_key_required": True,
+        "trusted_runtime_release_commit_required": True,
+        "external_release_manifest_keyed_by_attested_commit": True,
+        "retained_source_artifacts_rehashed_at_runtime": True,
         "approval_must_bind_exact_release_commit": True,
         "day39_promotion_blocked_until_shadow_checks_pass": True,
         "runtime_eligibility_requires_certified_autonomous": True,
@@ -147,19 +188,63 @@ def _record_check(checks: Dict[str, bool], errors: list[str], name: str, passed:
         errors.append(name)
 
 
+def _artifact_digest(value: str | bytes | Path | None) -> str | None:
+    """Hash retained evidence content; precomputed digest strings are not trusted."""
+    try:
+        if isinstance(value, Path):
+            content = value.read_bytes()
+        elif isinstance(value, bytes):
+            content = value
+        elif isinstance(value, str) and value.strip():
+            content = Path(value).read_bytes()
+        else:
+            return None
+    except (OSError, ValueError):
+        return None
+    return "sha256:" + hashlib.sha256(content).hexdigest()
+
+
+def load_autonomy_release_manifest(
+    manifest_root: str | Path | None,
+    *,
+    release_commit: str | None,
+    adapter_name: str,
+) -> Dict[str, Any] | None:
+    """Load release metadata from the immutable store addressed by attested SHA.
+
+    Certification metadata cannot live in an adapter's source manifest: embedding
+    the current Git SHA in that source would change the SHA.  Operators instead
+    publish ``<root>/<sha>/<adapter>.json`` alongside (not inside) the build.
+    Invalid keys, missing files, and non-object JSON all fail closed.
+    """
+    root = str(manifest_root or "").strip()
+    commit = str(release_commit or "").strip().lower()
+    adapter = str(adapter_name or "").strip().lower()
+    if not root or not _COMMIT_RE.fullmatch(commit) or not re.fullmatch(r"[a-z0-9_-]+", adapter):
+        return None
+    try:
+        value = json.loads((Path(root) / commit / f"{adapter}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    return dict(value) if isinstance(value, Mapping) else None
+
+
 def validate_autonomy_release_manifest(
     manifest: Any,
     *,
     adapter_name: str,
     adapter_version: str,
     trusted_signing_key: str | bytes | None = None,
+    trusted_release_commit: str | None = None,
+    trusted_source_artifacts: Mapping[str, str | bytes | Path] | None = None,
 ) -> Dict[str, Any]:
     """Validate one candidate autonomous certification manifest.
 
     Passing release booleans or prose labels cannot promote an adapter unless the
     immutable certification record satisfies the full contract, is bound to the exact
-    adapter version and release commit, includes the roadmap supervised/shadow evidence,
-    and carries a valid attestation under the separately configured runtime signing key.
+    adapter version and release commit, includes the supervised and physical shadow
+    evidence, and carries a valid attestation under the separately configured runtime
+    signing key.
     """
     checks: Dict[str, bool] = {}
     missing: list[str] = []
@@ -169,7 +254,7 @@ def validate_autonomy_release_manifest(
             "passed": False,
             "checks": {"manifest_present": False},
             "missing": ["manifest_present"],
-            "requirements": autonomy_release_contract_requirements(),
+            "requirements": autonomy_release_contract_requirements(adapter_name),
         }
 
     _record_check(
@@ -189,11 +274,15 @@ def validate_autonomy_release_manifest(
         str(adapter.get("name") or "").strip().lower()
         == str(adapter_name or "").strip().lower(),
     )
+    expected_adapter_version = str(adapter_version or "").strip()
+    certified_adapter_version = str(adapter.get("version") or "").strip()
     _record_check(
         checks,
         missing,
         "adapter_version",
-        str(adapter.get("version") or "").strip() == str(adapter_version or "").strip(),
+        bool(expected_adapter_version)
+        and bool(certified_adapter_version)
+        and certified_adapter_version == expected_adapter_version,
     )
 
     source = manifest.get("source")
@@ -201,13 +290,32 @@ def validate_autonomy_release_manifest(
         source = {}
     release_commit = str(source.get("release_commit") or "").strip().lower()
     _record_check(checks, missing, "release_commit", bool(_COMMIT_RE.fullmatch(release_commit)))
+    runtime_commit = str(trusted_release_commit or "").strip().lower()
+    _record_check(
+        checks,
+        missing,
+        "release_commit_matches_runtime",
+        bool(_COMMIT_RE.fullmatch(runtime_commit)) and release_commit == runtime_commit,
+    )
+    artifacts = trusted_source_artifacts or {}
     for name in ("fixture_digest", "evidence_digest", "policy_digest"):
         value = str(source.get(name) or "").strip().lower()
         _record_check(checks, missing, name, bool(_SHA256_RE.fullmatch(value)))
+        _record_check(
+            checks,
+            missing,
+            f"{name}_matches_retained_artifact",
+            _artifact_digest(artifacts.get(name)) == value,
+        )
 
     reliability = manifest.get("reliability_window")
     if not isinstance(reliability, Mapping):
         reliability = {}
+    reliability_thresholds = autonomy_reliability_thresholds(adapter_name)
+    minimum_attempts = reliability_thresholds["minimum_reliability_attempts"]
+    minimum_distinct = reliability_thresholds[
+        "minimum_distinct_confirmed_submissions"
+    ]
     evidence_type = str(reliability.get("evidence_type") or "").strip().lower()
     attempts = reliability.get("attempts")
     successes = reliability.get("confirmed_successes")
@@ -223,7 +331,7 @@ def validate_autonomy_release_manifest(
     attempts_valid = (
         isinstance(attempts, int)
         and not isinstance(attempts, bool)
-        and attempts >= MIN_RELIABILITY_ATTEMPTS
+        and attempts >= minimum_attempts
     )
     successes_valid = (
         isinstance(successes, int)
@@ -235,7 +343,7 @@ def validate_autonomy_release_manifest(
         isinstance(distinct_successes, int)
         and not isinstance(distinct_successes, bool)
         and isinstance(successes, int)
-        and MIN_DISTINCT_CONFIRMED_SUBMISSIONS <= distinct_successes <= successes
+        and minimum_distinct <= distinct_successes <= successes
     )
     independent_review_valid = (
         isinstance(independently_reviewed, int)
@@ -395,5 +503,5 @@ def validate_autonomy_release_manifest(
         "manifest_digest": digest or None,
         "computed_manifest_digest": expected_digest,
         "attestation_key_id": key_id or None,
-        "requirements": autonomy_release_contract_requirements(),
+        "requirements": autonomy_release_contract_requirements(adapter_name),
     }

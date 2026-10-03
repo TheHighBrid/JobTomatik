@@ -1,8 +1,12 @@
+import os
+import sys
 from functools import lru_cache
 from typing import List, Literal
 
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.services.operator_assisted_context import operator_final_action_active
 
 
 DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"
@@ -12,6 +16,28 @@ PLACEHOLDER_SECRET_MARKERS = (
     "supersecretkey",
     "development-secret",
 )
+SUPERVISED_SUBMISSION_SERVICE_MODULE = "app.services.supervised_submission"
+
+
+def _supervised_submission_service_on_stack() -> bool:
+    """Return true only while the exact supervised submission service is executing."""
+
+    try:
+        frame = sys._getframe(2)
+    except (AttributeError, ValueError):
+        return False
+    for _ in range(20):
+        if frame is None:
+            break
+        if str(frame.f_globals.get("__name__") or "") == SUPERVISED_SUBMISSION_SERVICE_MODULE:
+            return True
+        frame = frame.f_back
+    return False
+
+
+def _operator_assisted_final_action_on_stack() -> bool:
+    """Return true only inside the explicit retained final-action context."""
+    return operator_final_action_active()
 
 
 class Settings(BaseSettings):
@@ -28,6 +54,15 @@ class Settings(BaseSettings):
     # Separate trust root for signed certified-autonomous release manifests.
     # It must remain empty until an operator intentionally configures a release key.
     autonomy_certification_signing_key: str = ""
+    # Runtime provenance and retained evidence are independent trust inputs. A
+    # signed manifest cannot nominate either its own revision or its own evidence.
+    autonomy_release_commit: str = ""
+    # Immutable release metadata is deployed separately from application code.
+    # Files are addressed as <root>/<attested-sha>/<adapter>.json.
+    autonomy_release_manifest_dir: str = ""
+    autonomy_fixture_artifact: str = ""
+    autonomy_evidence_artifact: str = ""
+    autonomy_policy_artifact: str = ""
     algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = Field(default=10080, ge=5, le=43200)
 
@@ -61,13 +96,21 @@ class Settings(BaseSettings):
     application_browser_profile_dir: str = "browser_profiles/jobtomatik-operator"
     application_browser_headless: bool = True
     application_browser_executable: str = ""
-    # Android-only installs may keep Chromium running natively in Termux and let
-    # the Ubuntu PRoot worker attach over Chrome DevTools Protocol. When set,
-    # JobTomatik never launches or terminates the external browser process.
+    # External CDP is supported for explicit desktop/local modes. The managed
+    # Android application route requires native Android Chrome over a loopback
+    # ADB-forwarded CDP endpoint and never substitutes Termux Chromium.
     application_browser_cdp_endpoint: str = ""
+    # auto preserves desktop behavior; Android-managed execution requires native
+    # Chrome. A missing/unavailable endpoint must never launch a different browser.
+    application_browser_provider: Literal["auto", "native_chrome", "external_cdp", "local"] = "auto"
     # Keep target resolution nonblocking for headless and solo-worker deployments.
     # A positive value is an explicit opt-in that occupies the current worker task.
     application_target_human_wait_seconds: int = Field(default=0, ge=0, le=3600)
+
+    # Runtime-affinity and retained handoff paths must be loadable from backend/.env
+    # because Android-managed API/worker processes intentionally sanitize shell env.
+    jobtomatik_browser_node_id: str = ""
+    handoff_storage_dir: str = "handoff_sessions"
 
     # Defense-in-depth gate for any non-dry-run application attempt.
     # Keep disabled until the active adapter has passed supervised certification.
@@ -103,6 +146,82 @@ class Settings(BaseSettings):
     lever_pilot_readiness_json_path: str = "evidence/lever-pilot-readiness.json"
     lever_pilot_readiness_markdown_path: str = "evidence/lever-pilot-readiness.md"
     lever_phase_b_launch_path: str = "evidence/lever-phase-b-launch.json"
+
+    def __getattribute__(self, name: str):
+        """Resolve operator-controlled submission gates and temporary Lever leases.
+
+        Explicit Android-managed values for ``ALLOW_REAL_APPLICATION_SUBMIT`` and
+        ``LEVER_SUPERVISED_PILOT_ENABLED`` are authoritative when the operator has
+        intentionally enabled them. When the Lever pilot is not persistently enabled,
+        the existing process-bound lease may still project the flag true only inside
+        the exact supervised API/worker scopes.
+
+        The documented Greenhouse supervised pilot remains configuration-driven.
+        Non-Android runtimes preserve their existing explicit configuration behavior.
+        """
+
+        value = super().__getattribute__(name)
+        if name not in {"allow_real_application_submit", "lever_supervised_pilot_enabled"}:
+            return value
+
+        runtime_mode = str(os.environ.get("JOBTOMATIK_RUNTIME_MODE") or "")
+        runtime_role = str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "")
+
+        if runtime_mode != "android_managed":
+            return value
+
+        # Explicit operator-controlled execution flags are authoritative.
+        if value:
+            return True
+
+        # The retained operator-assisted lane deliberately requires the persisted
+        # global + Lever pilot switches to stay OFF. Suppress temporary lease
+        # projection only while an explicit final-action gate scope is active.
+        if _operator_assisted_final_action_on_stack():
+            return value
+
+        configured_greenhouse = bool(
+            super().__getattribute__("greenhouse_supervised_pilot_enabled")
+        )
+        configured_lever = bool(
+            super().__getattribute__("lever_supervised_pilot_enabled")
+        )
+
+        if (
+            name == "allow_real_application_submit"
+            and configured_greenhouse
+            and not configured_lever
+        ):
+            return value
+
+        # If the Lever pilot is not explicitly enabled, preserve the existing
+        # process-bound supervised lease behavior as a temporary authorization path.
+        value = False
+        try:
+            from app.services.supervised_runtime_mode import (
+                lever_supervised_runtime_lease_active,
+            )
+
+            if runtime_role == "api":
+                if (
+                    _supervised_submission_service_on_stack()
+                    and lever_supervised_runtime_lease_active(required_role="api")
+                ):
+                    return True
+                return value
+
+            if runtime_role == "worker":
+                from app.services.supervised_runtime import current_supervised_target
+
+                target = dict(current_supervised_target() or {})
+                if (
+                    str(target.get("platform") or "").strip().lower() == "lever"
+                    and lever_supervised_runtime_lease_active(required_role="worker")
+                ):
+                    return True
+        except Exception:
+            return value
+        return value
 
     @property
     def cors_origin_list(self) -> List[str]:

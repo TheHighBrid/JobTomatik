@@ -292,6 +292,9 @@ def install_supervised_submission_task_gate() -> None:
             # Refresh and validate approval payload before checking the queue attempt.
             # This preserves truthful drift/revocation reporting for stale direct calls,
             # while a valid approval still cannot reach a browser without a reservation.
+            # The exact supervised target context is also what makes the ephemeral
+            # worker lease visible to the legacy live-submit gate. It is intentionally
+            # scoped only around this exact approval validation and later browser run.
             if policy.requires_exact_target_identity:
                 target_metadata = application_tasks._run_async(
                     resolve_supervised_target_metadata(job)
@@ -299,15 +302,16 @@ def install_supervised_submission_task_gate() -> None:
                 if target_metadata:
                     persist_supervised_target_metadata(job, target_metadata)
             try:
-                validate_supervised_approval(
-                    db,
-                    application,
-                    user,
-                    job,
-                    reference=approval_reference,
-                    consume=False,
-                    target_metadata=target_metadata,
-                )
+                with supervised_target_scope(target_metadata):
+                    validate_supervised_approval(
+                        db,
+                        application,
+                        user,
+                        job,
+                        reference=approval_reference,
+                        consume=False,
+                        target_metadata=target_metadata,
+                    )
             except SupervisedSubmissionApprovalError as exc:
                 reason = str(exc)
                 _record_block(
@@ -404,15 +408,16 @@ def install_supervised_submission_task_gate() -> None:
                 )
 
             try:
-                approval = validate_supervised_approval(
-                    db,
-                    application,
-                    user,
-                    job,
-                    reference=approval_reference,
-                    consume=True,
-                    target_metadata=target_metadata,
-                )
+                with supervised_target_scope(target_metadata):
+                    approval = validate_supervised_approval(
+                        db,
+                        application,
+                        user,
+                        job,
+                        reference=approval_reference,
+                        consume=True,
+                        target_metadata=target_metadata,
+                    )
             except SupervisedSubmissionApprovalError as exc:
                 reason = str(exc)
                 finalize_submission_attempt(

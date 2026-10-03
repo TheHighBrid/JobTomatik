@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
+from app.config import get_settings
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.services.ats_base import page_fingerprint
 from app.services.ats_registry import detect_ats_adapter
@@ -29,6 +30,36 @@ class BrowserHandoffError(RuntimeError):
 class BrowserHandoffUnavailable(BrowserHandoffError):
     pass
 
+
+async def _select_retained_page_with_target(
+    pages: list[Any],
+    *,
+    expected_url: str = "",
+    expected_target_id: str = "",
+) -> Any:
+    """Prefer the exact Chromium target lease before any URL-based fallback."""
+
+    target_id = str(expected_target_id or "").strip()
+    if target_id:
+        from app.services.browser_runtime import controlled_page_target_id
+
+        matches = []
+        for candidate in pages:
+            if await controlled_page_target_id(candidate) == target_id:
+                matches.append(candidate)
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise BrowserHandoffUnavailable(
+                "The retained browser exposed duplicate controlled target ids; "
+                "recovery is ambiguous."
+            )
+        raise BrowserHandoffUnavailable(
+            "The retained controlled Chrome target no longer exists; the browser "
+            "may have restarted and recovery is fail-closed."
+        )
+
+    return _select_retained_page(pages, expected_url)
 
 def _select_retained_page(pages: list[Any], expected_url: str = "") -> Any:
     """Select only an unambiguous retained page; never guess by tab order."""
@@ -95,11 +126,13 @@ _CONFIRMATION_PATH_FRAGMENTS = (
     "/application-submitted",
     "/thank-you",
     "/thankyou",
+    "/thanks",
 )
 
 
 def current_browser_node_id() -> str:
-    return os.getenv("JOBTOMATIK_BROWSER_NODE_ID") or socket.gethostname()
+    configured = os.getenv("JOBTOMATIK_BROWSER_NODE_ID") or get_settings().jobtomatik_browser_node_id
+    return configured or socket.gethostname()
 
 
 def _require_local_affinity(session: ManualHandoffSession) -> None:
@@ -126,24 +159,35 @@ async def _connect_local_cdp(session: ManualHandoffSession):
     if not endpoint:
         raise BrowserHandoffUnavailable("The encrypted browser endpoint is missing or unreadable.")
 
-    from playwright.async_api import async_playwright
-
-    manager = async_playwright()
-    playwright = await manager.start()
     try:
-        browser = await playwright.chromium.connect_over_cdp(endpoint, timeout=5000)
-    except Exception:
-        await playwright.stop()
-        raise BrowserHandoffUnavailable("The retained browser process is no longer reachable.")
+        from app.services.browser_runtime import (
+            open_verified_retained_application_context,
+        )
 
-    contexts = list(browser.contexts)
-    if not contexts:
-        await playwright.stop()
-        raise BrowserHandoffUnavailable("The retained browser has no active context.")
-    context = contexts[0]
+        playwright, browser, context = await open_verified_retained_application_context(
+            endpoint,
+            metadata.get("application_browser_identity"),
+        )
+    except Exception as exc:
+        raise BrowserHandoffUnavailable(
+            "The retained application browser is unavailable or its identity changed; preserve the application."
+        ) from exc
     pages = list(context.pages)
     expected_url = str(session.current_url or binding.get("expected_url") or "")
-    page = _select_retained_page(pages, expected_url)
+    expected_target_id = str(
+        metadata.get("controlled_page_target_id")
+        or (metadata.get("application_browser_identity") or {}).get("controlled_page_target_id")
+        or ""
+    )
+    try:
+        page = await _select_retained_page_with_target(
+            pages,
+            expected_url=expected_url,
+            expected_target_id=expected_target_id,
+        )
+    except BrowserHandoffUnavailable:
+        await playwright.stop()
+        raise
     if binding:
         try:
             require_bound_handoff_url(session, page.url)

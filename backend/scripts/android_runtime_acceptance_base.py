@@ -14,6 +14,10 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.config import get_settings  # noqa: E402
+from app.services.application_browser_contract import (
+    application_browser_contract,
+    validate_native_identity,
+)
 from app.services.android_worker_canary import (  # noqa: E402
     WORKER_CANARY_RECEIPT_FILENAME,
     validate_worker_canary_receipt,
@@ -165,9 +169,15 @@ def run_acceptance() -> dict[str, Any]:
     ):
         raise RuntimeError("API runtime identity attestation failed")
 
-    cdp = _http_json("http://127.0.0.1:9222/json/version")
+    browser_contract = application_browser_contract(settings)
+    endpoint = browser_contract.endpoint
+    if not endpoint:
+        raise RuntimeError("Configured Android application browser endpoint is missing")
+    cdp = _http_json(f"{endpoint}/json/version")
+    if browser_contract.native:
+        validate_native_identity(cdp, endpoint)
     if not cdp.get("webSocketDebuggerUrl"):
-        raise RuntimeError("External Termux Chromium CDP is unavailable")
+        raise RuntimeError("Configured application browser CDP is unavailable")
 
     api_pid = _pid(directory / "api.pid")
     worker_pid = _pid(directory / "celery.pid")

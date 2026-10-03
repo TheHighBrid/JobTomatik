@@ -4,7 +4,7 @@ import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
@@ -16,13 +16,38 @@ from app.models.answer_policy import (
     AnswerPolicyProvenance,
     AnswerPolicyScope,
 )
-from app.services.answer_policy_catalog import QUESTION_CATALOG
+from app.services.answer_policy_catalog import QUESTION_CATALOG as BASE_QUESTION_CATALOG
+from app.services.answer_policy_catalog_phase_b import PHASE_B_QUESTION_CATALOG
+from app.services.answer_policy_catalog_v2 import V2_QUESTION_CATALOG
+from app.services.answer_policy_catalog_v2_overrides import V2_OVERRIDE_QUESTION_CATALOG
 
+
+def _merge_question_catalogs(*catalogs: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep the first authoritative definition for each canonical question key."""
+    merged: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for catalog in catalogs:
+        for item in catalog:
+            key = str(item.get("canonical_key") or "").strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+    return merged
+
+
+QUESTION_CATALOG = _merge_question_catalogs(
+    V2_OVERRIDE_QUESTION_CATALOG,
+    V2_QUESTION_CATALOG,
+    BASE_QUESTION_CATALOG,
+    PHASE_B_QUESTION_CATALOG,
+)
 _CATALOG_BY_KEY = {item["canonical_key"]: item for item in QUESTION_CATALOG}
 _SCOPE_PRIORITY = {
     AnswerPolicyScope.global_scope.value: 1,
     AnswerPolicyScope.platform.value: 2,
     AnswerPolicyScope.company.value: 3,
+    AnswerPolicyScope.application.value: 4,
 }
 MIN_AUTOFILL_CONFIDENCE = 0.80
 
@@ -31,21 +56,43 @@ def normalize_question_text(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", value or "").strip().lower()
 
 
+def normalize_application_url(value: Optional[str]) -> str:
+    """Canonicalize a job/application URL for exact position-scoped policy matching."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    parsed = urlparse(raw)
+    if not parsed.scheme or not parsed.hostname:
+        return raw.rstrip("/")
+    hostname = parsed.hostname.lower()
+    port = f":{parsed.port}" if parsed.port else ""
+    path = re.sub(r"/+", "/", parsed.path or "/").rstrip("/") or "/"
+    return urlunparse((parsed.scheme.lower(), hostname + port, path, "", "", ""))
+
+
 def get_catalog_item(canonical_key: str) -> Optional[Dict[str, Any]]:
     item = _CATALOG_BY_KEY.get(canonical_key)
     return dict(item) if item else None
 
 
 def classify_question(question_text: str) -> Dict[str, str]:
+    """Classify by the longest matched prompt fragment, then catalog precedence."""
     normalized = normalize_question_text(question_text)
-    for item in QUESTION_CATALOG:
-        if any(re.search(pattern, normalized, flags=re.IGNORECASE) for pattern in item["patterns"]):
-            return {
-                "canonical_key": item["canonical_key"],
-                "category": item["category"],
-                "sensitivity": item["sensitivity"],
-                "label": item["label"],
-            }
+    matches: List[tuple[int, int, Dict[str, Any]]] = []
+    for index, item in enumerate(QUESTION_CATALOG):
+        for pattern in item["patterns"]:
+            match = re.search(pattern, normalized, flags=re.IGNORECASE)
+            if match:
+                matches.append((len(match.group(0)), -index, item))
+
+    if matches:
+        _, _, item = max(matches, key=lambda value: (value[0], value[1]))
+        return {
+            "canonical_key": item["canonical_key"],
+            "category": item["category"],
+            "sensitivity": item["sensitivity"],
+            "label": item["label"],
+        }
     return {
         "canonical_key": "custom.unclassified",
         "category": "custom",
@@ -139,6 +186,11 @@ def policy_scope_matches(policy: ApplicantAnswerPolicy, target_url: str, company
     if scope == AnswerPolicyScope.company.value:
         normalized_company = normalize_question_text(company)
         return bool(scope_value and scope_value in normalized_company)
+    if scope == AnswerPolicyScope.application.value:
+        return bool(
+            scope_value
+            and normalize_application_url(policy.scope_value) == normalize_application_url(target_url)
+        )
     return False
 
 
@@ -293,6 +345,11 @@ def policy_autofill_blockers(policy: Dict[str, Any]) -> List[str]:
 
 
 def resolve_runtime_policy(question_text: str, policies: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    policies = list(policies)
+    if any((policy.get("source_metadata") or {}).get("question_match_mode") == "exact" for policy in policies):
+        from app.services.control_policy import resolve_control_policy
+
+        return resolve_control_policy(question_text, policies)
     classification = classify_question(question_text)
     normalized = normalize_question_text(question_text)
     candidates: List[Dict[str, Any]] = []
@@ -331,14 +388,13 @@ def resolve_runtime_policy(question_text: str, policies: Iterable[Dict[str, Any]
             "conflict_policy_ids": [item.get("id") for item in conflicts],
         }
 
-    policy = sorted(
+    policy = max(
         top_candidates,
         key=lambda item: (
             _sort_timestamp(item.get("updated_at") or item.get("created_at")),
             item.get("id") or 0,
         ),
-        reverse=True,
-    )[0]
+    )
     mode = policy.get("mode", AnswerPolicyMode.ask_each_time.value)
     answer_candidates = policy_answer_candidates(policy)
     answer = answer_candidates[0] if answer_candidates else None
@@ -357,7 +413,7 @@ def resolve_runtime_policy(question_text: str, policies: Iterable[Dict[str, Any]
         "policy_provenance_unknown": "The answer provenance is unknown.",
         "policy_confidence_low": "The answer confidence is below the automatic-use threshold.",
         "policy_not_confirmed": "The stored answer has not been confirmed by the user.",
-        "policy_consent_missing": "The stored consent record does not authorize automatic use.",
+        "policy_consent_missing": "The stored consent record does not authorize automatic use of this answer.",
         "policy_autofill_not_authorized": "The user has not authorized automatic use of this answer.",
         "policy_answer_missing": "The approved policy has no usable answer value.",
     }

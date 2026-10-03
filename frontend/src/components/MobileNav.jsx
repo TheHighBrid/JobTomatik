@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { ClipboardList, LayoutDashboard, ListTodo, Search, ShieldCheck } from 'lucide-react'
+import { ClipboardList, LayoutDashboard, ListTodo, Search, ShieldCheck, Target } from 'lucide-react'
 
 const TABS = [
   { to: '/', icon: LayoutDashboard, label: 'Home' },
   { to: '/search', icon: Search, label: 'Search' },
+  { to: '/current-lever', icon: Target, label: 'Lever' },
   { to: '/autonomy', icon: ShieldCheck, label: 'Control' },
   { to: '/queue', icon: ListTodo, label: 'Queue' },
   { to: '/applications', icon: ClipboardList, label: 'Apps' },

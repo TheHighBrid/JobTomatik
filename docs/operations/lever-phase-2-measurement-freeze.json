@@ -71,6 +71,7 @@
     "backend/evidence/lever-phase-b-dossiers/*.json"
   ],
   "execution_queue_issue": 161,
+  "freeze_source_commit": "8406a5a9bf638c180851fdd625a941f8adef8935",
   "generated_outputs": [
     "backend/evidence/lever-pilot-readiness.json",
     "backend/evidence/lever-pilot-readiness.md",

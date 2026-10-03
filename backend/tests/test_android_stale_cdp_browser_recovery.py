@@ -60,12 +60,24 @@ def _browser_env(*, runtime_dir: Path, profile: Path, port: int) -> dict[str, st
     return env
 
 
+def _spawn_term_ignoring_supervisor() -> subprocess.Popen:
+    return subprocess.Popen(
+        [
+            "bash",
+            "-c",
+            "trap '' TERM INT HUP; while :; do sleep 1; done",
+            str(BROWSER),
+            "supervise",
+        ]
+    )
+
+
 def test_android_wrapper_proves_real_playwright_before_proot_stack_start():
     source = WRAPPER.read_text(encoding="utf-8")
     activate = _function_body(source, "activate_stack")
 
     artifact_index = activate.index("ensure_static_frontend_artifact")
-    browser_index = activate.index('"$BROWSER_COMMAND" start')
+    browser_index = activate.index('ensure_application_browser_endpoint')
     playwright_index = activate.index("ensure_browser_playwright_ready")
     stack_index = activate.index("start_stack_detached")
     acceptance_index = activate.index("run_runtime_acceptance")
@@ -77,7 +89,8 @@ def test_android_browser_probe_uses_same_real_playwright_cdp_path_as_worker():
     probe = _function_body(source, "run_browser_playwright_probe")
 
     assert "probe_external_playwright_cdp" in probe
-    assert "http://127.0.0.1:9222" in probe
+    assert "get_settings().application_browser_cdp_endpoint" in probe
+    assert "connection_identity_verified" in probe
     assert "playwright_attach_ready" in probe
     assert "browser_owned_by_jobtomatik" in probe
 
@@ -89,10 +102,9 @@ def test_ordinary_restart_preserves_browser_and_fails_closed_when_playwright_is_
 
     assert '"$BROWSER_COMMAND" restart' not in source
     assert '"$BROWSER_COMMAND" recover' not in restart_case
-    assert 'local recovery_mode="${1:-preserve}"' in recovery
-    assert 'if [[ "$recovery_mode" != "recover_once" ]]; then' in recovery
+    assert "recovery_mode" not in recovery
     assert "ANDROID_BROWSER_PLAYWRIGHT_CDP_STALE action=preserve_browser_fail" in recovery
-    assert recovery.count('"$BROWSER_COMMAND" recover') == 1
+    assert '"$BROWSER_COMMAND" recover' not in source
 
 
 def test_launcher_installation_arms_one_use_deployment_recovery_marker():
@@ -105,17 +117,20 @@ def test_launcher_installation_arms_one_use_deployment_recovery_marker():
     )
 
 
-def test_restart_consumes_deployment_marker_before_allowing_single_recovery():
+def test_restart_consumes_deployment_marker_without_browser_recovery_authority():
     source = WRAPPER.read_text(encoding="utf-8")
-    consume = _function_body(source, "consume_deployment_browser_recovery_mode")
+    consume = _function_body(source, "consume_deployment_restart_marker")
     restart_case = source.split("  restart)\n", 1)[1].split("    ;;", 1)[0]
 
-    assert '[[ -f "$DEPLOYMENT_RESTART_MARKER" ]]' in consume
     assert 'rm -f "$DEPLOYMENT_RESTART_MARKER"' in consume
-    assert 'printf \'%s\\n\' "recover_once"' in consume
-    assert 'printf \'%s\\n\' "preserve"' in consume
-    assert 'browser_recovery_mode="$(consume_deployment_browser_recovery_mode)"' in restart_case
-    assert 'activate_stack restart "$browser_recovery_mode"' in restart_case
+    assert "recover_once" not in consume
+    assert "preserve" not in consume
+    assert "consume_deployment_restart_marker" in restart_case
+    assert restart_case.index("consume_deployment_restart_marker") < restart_case.index(
+        "activate_stack restart"
+    )
+    assert "browser_recovery_mode" not in restart_case
+    assert '"$BROWSER_COMMAND" recover' not in restart_case
 
 
 def test_native_browser_recovery_waits_only_on_verified_supervisor_identity():
@@ -130,6 +145,7 @@ def test_native_browser_recovery_waits_only_on_verified_supervisor_identity():
     assert "! is_healthy" in shutdown
     assert 'wait_for_shutdown "$supervisor_pid"' in stop_case
     assert "ANDROID_BROWSER_CDP_STOP_ESCALATING signal=KILL" in stop_case
+    assert 'signal_supervisor_if_managed KILL "$supervisor_pid"' in stop_case
     assert "ANDROID_BROWSER_CDP_STOP_TIMEOUT" in stop_case
     assert '"$SCRIPT_PATH" stop' in recovery_case
     assert 'exec "$SCRIPT_PATH" start "$START_URL"' in recovery_case
@@ -157,6 +173,42 @@ def test_supervisor_records_exact_browser_pid_and_waits_for_that_process():
     assert 'echo "$browser_pid" > "$BROWSER_PID_FILE"' in supervise_case
     assert 'wait "$browser_pid"' in supervise_case
     assert 'rm -f "$BROWSER_PID_FILE"' in supervise_case
+
+
+def test_stop_kill_escalation_actually_kills_term_ignoring_supervisor(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    profile = tmp_path / "profile"
+    runtime_dir.mkdir()
+    profile.mkdir()
+    port = 59320
+    supervisor = _spawn_term_ignoring_supervisor()
+    try:
+        time.sleep(0.1)
+        assert _alive(supervisor)
+        (runtime_dir / "chromium-supervisor.pid").write_text(
+            str(supervisor.pid),
+            encoding="utf-8",
+        )
+        environment = _browser_env(
+            runtime_dir=runtime_dir,
+            profile=profile,
+            port=port,
+        )
+        environment["JOBTOMATIK_ANDROID_SHUTDOWN_WAIT_ATTEMPTS"] = "2"
+        completed = subprocess.run(
+            ["bash", str(BROWSER), "stop"],
+            check=True,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert "ANDROID_BROWSER_CDP_STOP_ESCALATING signal=KILL" in completed.stderr
+        assert "ANDROID_BROWSER_CDP_STOPPED" in completed.stdout
+        supervisor.wait(timeout=3)
+        assert not _alive(supervisor)
+    finally:
+        _terminate(supervisor)
 
 
 def test_stop_terminates_owned_browser_even_when_executable_name_is_not_chromium_browser(
@@ -246,5 +298,5 @@ def test_already_running_start_never_enters_browser_recovery_path():
     assert "run_frontend_guard status" in start_case
     assert "run_runtime_acceptance" in start_case
     live_branch = start_case.split("else", 1)[0]
-    assert "consume_deployment_browser_recovery_mode" not in live_branch
+    assert "consume_deployment_restart_marker" not in live_branch
     assert '"$BROWSER_COMMAND" recover' not in live_branch

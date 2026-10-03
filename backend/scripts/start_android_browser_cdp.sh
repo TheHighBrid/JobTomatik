@@ -3,7 +3,9 @@ set -euo pipefail
 
 PROFILE_DIR="${JOBTOMATIK_ANDROID_BROWSER_PROFILE:-$HOME/.jobtomatik-chromium}"
 CDP_PORT="${JOBTOMATIK_ANDROID_BROWSER_PORT:-9222}"
-DISPLAY_VALUE="${DISPLAY:-:0}"
+CALLER_DISPLAY="${DISPLAY:-}"
+DISPLAY_VALUE=""
+DISPLAY_SOURCE=""
 BROWSER_BIN="${JOBTOMATIK_ANDROID_BROWSER_BIN:-$(command -v chromium-browser || true)}"
 RUNTIME_DIR="${JOBTOMATIK_ANDROID_RUNTIME_DIR:-$HOME/.jobtomatik-runtime}"
 SUPERVISOR_PID_FILE="$RUNTIME_DIR/chromium-supervisor.pid"
@@ -16,6 +18,8 @@ SCRIPT_PATH="$(cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")"
 SCRIPT_DIR="$(dirname -- "$SCRIPT_PATH")"
 PROCESS_IDENTITY_HELPER="${JOBTOMATIK_PROCESS_IDENTITY_HELPER:-$SCRIPT_DIR/jobtomatik_process_identity.sh}"
 MAX_LOG_BYTES="${JOBTOMATIK_ANDROID_MAX_LOG_BYTES:-5242880}"
+SHUTDOWN_WAIT_ATTEMPTS="${JOBTOMATIK_ANDROID_SHUTDOWN_WAIT_ATTEMPTS:-40}"
+GRAPHICS_MODE="${JOBTOMATIK_ANDROID_BROWSER_GRAPHICS_MODE:-verification}"
 
 if [[ ! -r "$PROCESS_IDENTITY_HELPER" ]]; then
   echo "JobTomatik Android process-identity helper is missing: $PROCESS_IDENTITY_HELPER" >&2
@@ -42,13 +46,135 @@ esac
 START_URL="${1:-$DEFAULT_URL}"
 
 mkdir -p "$PROFILE_DIR" "$RUNTIME_DIR"
-export DISPLAY="$DISPLAY_VALUE"
 
 if [[ -z "$BROWSER_BIN" ]]; then
   echo "chromium-browser was not found in native Termux." >&2
   echo "Install it with: pkg install x11-repo chromium" >&2
   exit 1
 fi
+
+x11_socket_dirs() {
+  local emitted="|"
+  local candidate
+  for candidate in \
+    "${TMPDIR:-}/.X11-unix" \
+    "${PREFIX:-/data/data/com.termux/files/usr}/tmp/.X11-unix" \
+    "/tmp/.X11-unix"; do
+    [[ "$candidate" != "/.X11-unix" ]] || continue
+    if [[ "$emitted" != *"|$candidate|"* ]]; then
+      printf '%s\n' "$candidate"
+      emitted+="$candidate|"
+    fi
+  done
+}
+
+display_number() {
+  local candidate="${1:-}"
+  candidate="${candidate#:}"
+  candidate="${candidate%%.*}"
+  [[ "$candidate" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+display_has_socket() {
+  local number
+  number="$(display_number "${1:-}")" || return 1
+  local directory
+  while IFS= read -r directory; do
+    [[ -n "$directory" ]] || continue
+    if [[ -e "$directory/X$number" ]]; then
+      return 0
+    fi
+  done < <(x11_socket_dirs)
+  return 1
+}
+
+process_display_value() {
+  local env_file="$1"
+  [[ -r "$env_file" ]] || return 1
+  tr '\0' '\n' < "$env_file" 2>/dev/null | sed -n 's/^DISPLAY=//p' | head -n 1
+}
+
+resolve_display() {
+  local candidate=""
+  local fallback_process_display=""
+  local env_file
+  local directory
+  local socket
+  local number
+
+  if [[ -n "${JOBTOMATIK_ANDROID_DISPLAY:-}" ]]; then
+    candidate="$JOBTOMATIK_ANDROID_DISPLAY"
+    if display_number "$candidate" >/dev/null; then
+      DISPLAY_VALUE="$candidate"
+      DISPLAY_SOURCE="explicit"
+      return 0
+    fi
+  fi
+
+  if [[ -n "$CALLER_DISPLAY" ]] && display_number "$CALLER_DISPLAY" >/dev/null; then
+    DISPLAY_VALUE="$CALLER_DISPLAY"
+    DISPLAY_SOURCE="caller"
+    return 0
+  fi
+
+  # Termux RUN_COMMAND executes in a clean background service context and normally
+  # does not inherit DISPLAY from the foreground XFCE/Termux:X11 session. Read the
+  # environment of same-UID processes and prefer only candidates backed by a live
+  # X11 socket. This avoids assuming :0 when the active Termux:X11 server is :1, :2,
+  # or another local display.
+  for env_file in /proc/[0-9]*/environ; do
+    [[ -r "$env_file" ]] || continue
+    candidate="$(process_display_value "$env_file" || true)"
+    [[ -n "$candidate" ]] || continue
+    if ! display_number "$candidate" >/dev/null; then
+      continue
+    fi
+    if display_has_socket "$candidate"; then
+      DISPLAY_VALUE="$candidate"
+      DISPLAY_SOURCE="process-env"
+      return 0
+    fi
+    if [[ -z "$fallback_process_display" ]]; then
+      fallback_process_display="$candidate"
+    fi
+  done
+
+  # If no readable foreground process exposes DISPLAY, derive it directly from the
+  # active local X11 socket. Termux:X11 publishes X<N> under the Termux tmp tree.
+  while IFS= read -r directory; do
+    [[ -d "$directory" ]] || continue
+    for socket in "$directory"/X[0-9]*; do
+      [[ -e "$socket" ]] || continue
+      number="${socket##*/X}"
+      [[ "$number" =~ ^[0-9]+$ ]] || continue
+      DISPLAY_VALUE=":$number"
+      DISPLAY_SOURCE="x11-socket"
+      return 0
+    done
+  done < <(x11_socket_dirs)
+
+  # Some Android/Termux:X11 combinations expose the display to child processes while
+  # using an abstract socket that is not visible as a normal filesystem entry. Keep a
+  # readable process DISPLAY as a final bounded fallback rather than inventing :0.
+  if [[ -n "$fallback_process_display" ]]; then
+    DISPLAY_VALUE="$fallback_process_display"
+    DISPLAY_SOURCE="process-env-fallback"
+    return 0
+  fi
+
+  return 1
+}
+
+ensure_display() {
+  if ! resolve_display; then
+    echo "ANDROID_BROWSER_DISPLAY_UNAVAILABLE" >&2
+    echo "No active local Termux/X11 DISPLAY could be discovered for Chromium." >&2
+    return 1
+  fi
+  export DISPLAY="$DISPLAY_VALUE"
+  echo "ANDROID_BROWSER_DISPLAY_RESOLVED source=$DISPLAY_SOURCE display=$DISPLAY_VALUE"
+}
 
 cdp_url() {
   printf 'http://127.0.0.1:%s/json/version' "$CDP_PORT"
@@ -71,11 +197,33 @@ rotate_log() {
 }
 
 browser_command() {
+  ensure_display
+
+  # CAPTCHA and other browser-verification providers depend on ordinary browser
+  # graphics/WebGL capability. Disabling Chromium's entire GPU stack made the
+  # managed Termux/X11 browser materially different from a normal interactive
+  # browser and can leave a visually completed verification token unusable.
+  #
+  # Keep Vulkan/WebGPU disabled for the Android/X11 stability contract, but leave
+  # GPU/WebGL available by default. The old conservative mode remains an explicit
+  # troubleshooting fallback and must never be selected silently.
+  local -a graphics_args=(--disable-features=Vulkan,WebGPU)
+  case "$GRAPHICS_MODE" in
+    verification)
+      ;;
+    safe)
+      graphics_args=(--disable-gpu --disable-features=Vulkan,WebGPU)
+      ;;
+    *)
+      echo "ANDROID_BROWSER_INVALID_GRAPHICS_MODE mode=$GRAPHICS_MODE expected=verification|safe" >&2
+      exit 2
+      ;;
+  esac
+
   exec "$BROWSER_BIN" \
     --no-sandbox \
     --disable-dev-shm-usage \
-    --disable-gpu \
-    --disable-features=Vulkan,WebGPU \
+    "${graphics_args[@]}" \
     --ozone-platform=x11 \
     --no-first-run \
     --no-default-browser-check \
@@ -131,6 +279,57 @@ managed_browser_pids() {
   done < <(pgrep -f "remote-debugging-port=${CDP_PORT}" 2>/dev/null || true)
 }
 
+process_has_exact_token() {
+  local pid="$1"
+  local expected="$2"
+  local token
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  while IFS= read -r token; do
+    if [[ "$token" == "$expected" ]]; then
+      return 0
+    fi
+  done < <(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null)
+  return 1
+}
+
+browser_graphics_contract_matches() {
+  local pid="$1"
+  browser_identity_matches "$pid" || return 1
+
+  case "$GRAPHICS_MODE" in
+    verification)
+      # Verification mode intentionally keeps normal GPU/WebGL capability.
+      ! process_has_exact_token "$pid" "--disable-gpu"
+      ;;
+    safe)
+      process_has_exact_token "$pid" "--disable-gpu"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+managed_browser_graphics_contract_ready() {
+  # Return 0 when every positively identified managed browser matches, 1 on a
+  # managed mismatch, and 2 when the healthy CDP endpoint is not owned by this
+  # launcher. The last case is preserved rather than signalled.
+  local pid
+  local found=false
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    found=true
+    if ! browser_graphics_contract_matches "$pid"; then
+      return 1
+    fi
+  done < <(managed_browser_pids)
+
+  if [[ "$found" != true ]]; then
+    return 2
+  fi
+  return 0
+}
+
 signal_browser_if_managed() {
   local signal_name="$1"
   local pid="$2"
@@ -160,7 +359,11 @@ stop_browser_processes() {
 wait_for_shutdown() {
   local supervisor_pid="${1:-}"
   local index
-  for ((index = 0; index < 40; index += 1)); do
+  local attempts="$SHUTDOWN_WAIT_ATTEMPTS"
+  if [[ ! "$attempts" =~ ^[0-9]+$ ]] || (( attempts < 1 )); then
+    attempts=40
+  fi
+  for ((index = 0; index < attempts; index += 1)); do
     local supervisor_gone=true
     if [[ -n "$supervisor_pid" ]] \
       && kill -0 "$supervisor_pid" 2>/dev/null \
@@ -176,15 +379,16 @@ wait_for_shutdown() {
 }
 
 signal_supervisor_if_managed() {
-  local pid="$1"
+  local signal_name="$1"
+  local pid="$2"
   if ! kill -0 "$pid" 2>/dev/null; then
     return 0
   fi
   if supervisor_identity_matches "$pid"; then
-    jobtomatik_signal_if_identity TERM "$pid" "$SCRIPT_PATH" "supervise" || true
+    jobtomatik_signal_if_identity "$signal_name" "$pid" "$SCRIPT_PATH" "supervise" || true
     return 0
   fi
-  echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$pid action=not_signaled" >&2
+  echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$pid action=not_signaled signal=$signal_name" >&2
 }
 
 supervisor_signal_handler() {
@@ -215,14 +419,14 @@ case "$ACTION" in
     # JobTomatik profile and CDP port, not to a brittle executable basename.
     stop_browser_processes TERM
     if [[ -n "$supervisor_pid" ]]; then
-      signal_supervisor_if_managed "$supervisor_pid"
+      signal_supervisor_if_managed TERM "$supervisor_pid"
     fi
 
     if ! wait_for_shutdown "$supervisor_pid"; then
       echo "ANDROID_BROWSER_CDP_STOP_ESCALATING signal=KILL" >&2
       stop_browser_processes KILL
       if [[ -n "$supervisor_pid" ]]; then
-        signal_supervisor_if_managed "$supervisor_pid"
+        signal_supervisor_if_managed KILL "$supervisor_pid"
       fi
       if ! wait_for_shutdown "$supervisor_pid"; then
         echo "ANDROID_BROWSER_CDP_STOP_TIMEOUT" >&2
@@ -273,8 +477,27 @@ case "$ACTION" in
 
   start)
     if is_healthy; then
-      echo "ANDROID_BROWSER_CDP_CONNECTED"
-      exit 0
+      contract_status=0
+      managed_browser_graphics_contract_ready || contract_status=$?
+      case "$contract_status" in
+        0)
+          echo "ANDROID_BROWSER_CDP_CONNECTED"
+          exit 0
+          ;;
+        2)
+          # Never signal a healthy Chromium process that is not positively bound
+          # to this JobTomatik profile/port identity.
+          echo "ANDROID_BROWSER_CDP_CONNECTED_UNMANAGED_PRESERVED"
+          exit 0
+          ;;
+        *)
+          echo "ANDROID_BROWSER_LAUNCH_CONTRACT_CHANGED action=recycle mode=$GRAPHICS_MODE"
+          # This is a bounded self-restart. The stop path signals only processes
+          # that match the exact managed profile and CDP port identity.
+          "$SCRIPT_PATH" stop
+          rm -f "$STOP_FILE"
+          ;;
+      esac
     fi
 
     if command -v termux-wake-lock >/dev/null 2>&1; then
@@ -290,7 +513,7 @@ case "$ACTION" in
             echo "ANDROID_BROWSER_CDP_CONNECTED"
             exit 0
           fi
-          signal_supervisor_if_managed "$old_pid"
+          signal_supervisor_if_managed TERM "$old_pid"
         else
           echo "ANDROID_BROWSER_STALE_SUPERVISOR_PID_REJECTED pid=$old_pid action=not_signaled" >&2
         fi

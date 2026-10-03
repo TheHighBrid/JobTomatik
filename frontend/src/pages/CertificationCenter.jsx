@@ -287,7 +287,7 @@ function AuthorizationPanel({ manifest }) {
       <Card>
         <div className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-violet-600" /><h2 className="text-sm font-bold text-gray-900">Owner authorization</h2></div>
         <p className="mt-2 text-xs leading-5 text-gray-500">Authorization is commit-bound, expiring, and revocable. It records the owner gate only. It does not enable real submission or autopilot.</p>
-        <label className="mt-4 block text-xs font-semibold text-gray-700">Track<select value={scope} onChange={(event) => { setScope(event.target.value); setAck('') }} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><option value="autonomous_pilot">Autonomous pilot</option><option value="v2_release">v2.00 release</option></select></label>
+        <label className="mt-4 block text-xs font-semibold text-gray-700">Track<select value={scope} onChange={(event) => { setScope(event.target.value); setAck('') }} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><option value="autonomous_pilot">Autonomous pilot</option><option value="v2_release">v2.1.0 release</option></select></label>
         <div className="mt-3 rounded-xl bg-gray-50 p-3 text-xs"><div className="flex justify-between gap-3"><span className="text-gray-500">Prerequisites</span><strong className={track?.prerequisites_ready ? 'text-emerald-700' : 'text-amber-700'}>{track?.prerequisites_ready ? 'Complete' : 'Blocked'}</strong></div><div className="mt-1 flex justify-between gap-3"><span className="text-gray-500">Candidate head</span><code>{shortSha(manifest.candidate_revision)}</code></div></div>
         {!authorization && (
           <>
@@ -320,7 +320,7 @@ export default function CertificationCenter() {
   const [tab, setTab] = useState('readiness')
   const manifestQuery = useQuery({
     queryKey: ['certification-manifest'],
-    queryFn: () => getCertificationManifest({ release_version: 'v2.00' }).then((response) => response.data),
+    queryFn: () => getCertificationManifest({ release_version: 'v2.1.0' }).then((response) => response.data),
   })
   const evidenceQuery = useQuery({
     queryKey: ['certification-evidence'],

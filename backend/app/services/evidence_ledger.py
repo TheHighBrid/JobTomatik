@@ -44,7 +44,9 @@ SECTION_KIND = {
 
 def normalize_statement(value: Any) -> str:
     text = str(value or "").replace("\x00", " ")
-    text = re.sub(r"\s+", " ", text).strip(" \t\r\n•·▪◦-–—")
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^(?:[•·▪◦]\s*|[-–—]\s+)", "", text)
+    text = text.rstrip(" \t\r\n•·▪◦-–—")
     return text[:5000]
 
 

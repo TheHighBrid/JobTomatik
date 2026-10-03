@@ -4,6 +4,9 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+from celery.exceptions import Retry
+
 from app.models.application import (
     Application,
     ApplicationAutomationState,
@@ -215,6 +218,33 @@ def test_worker_runtime_wrapper_blocks_pause_but_allows_drain_to_inherited_polic
     drained = unattended_tasks.evaluate_unattended_job_policy(db_session, user, job)
     assert drained.code != "operator_paused"
     assert drained.metadata.get("operator_mode") == MODE_DRAINING
+
+
+def test_paused_worker_task_retries_without_stranding_application(db_session, monkeypatch):
+    user = _user(db_session, email="paused-worker@example.test")
+    job = _job(db_session, suffix="paused-worker")
+    application = _application(db_session, user, job, suffix="paused-worker")
+    change_autonomy_mode(db_session, user, mode=MODE_PAUSED, reason="temporary hold")
+    application_id = application.id
+    monkeypatch.setattr(unattended_tasks, "SessionLocal", lambda: db_session)
+
+    with pytest.raises(Retry):
+        unattended_tasks.submit_unattended_application_task.run(
+            application_id,
+            dry_run=True,
+        )
+
+    db_session.expire_all()
+    persisted = db_session.query(Application).filter(Application.id == application_id).one()
+    assert persisted.status == ApplicationStatus.pending
+    assert persisted.automation_state == "preparing"
+    assert persisted.automation_log in (None, [])
+    assert (
+        db_session.query(ManualReviewTask)
+        .filter(ManualReviewTask.application_id == application_id)
+        .count()
+        == 0
+    )
 
 
 def test_scheduler_runtime_wrapper_admits_nothing_while_paused_or_draining(db_session):

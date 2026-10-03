@@ -20,7 +20,9 @@ from app.models.job import Job
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.answer_policy import load_runtime_policies
+from app.services.application_recovery import recover_stale_application_attempt
 from app.services.application_state import (
+    claim_application_attempt_result,
     create_manual_review_task,
     has_sufficient_submission_evidence,
     normalize_state,
@@ -32,6 +34,7 @@ from app.services.cover_letter import generate_cover_letter
 from app.services.form_filler import fill_and_submit_application
 from app.services.handoff_integration import _attach_handoff_session
 from app.services.handoff_session import HandoffSessionError
+from app.services.manual_review_shape import result_review_summary
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -104,7 +107,14 @@ def _manual_result(job: Job, dry_run: bool, reason: str, action: str = "manual_r
 
 def _sendgrid_email(to_email: str, subject: str, body: str, resume_path: str = "") -> Dict[str, Any]:
     from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Attachment, Disposition, FileContent, FileName, FileType, Mail
+    from sendgrid.helpers.mail import (
+        Attachment,
+        Disposition,
+        FileContent,
+        FileName,
+        FileType,
+        Mail,
+    )
 
     message = Mail(
         from_email=settings.from_email,
@@ -334,7 +344,7 @@ def _create_result_review_tasks(
                 db,
                 app,
                 reason_code,
-                f"{len(items)} application question(s) require an approved answer policy.",
+                result_review_summary(items, reason_code.value),
                 details={
                     "method": method,
                     "questions": items,
@@ -405,6 +415,7 @@ def generate_cover_letter_task(self, application_id: int):
 @celery_app.task(bind=True, name="app.tasks.applications.submit_application_task", queue="applications")
 def submit_application_task(self, application_id: int, dry_run: bool = True):
     db = SessionLocal()
+    attempt_number = None
     try:
         app = (
             db.query(Application)
@@ -487,17 +498,21 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
             db.commit()
             return result
 
+        checkpoint_attempt = (app.submission_attempt_count or 0) + 1
         transition_application_state(
             db,
             app,
             ApplicationAutomationState.applying,
             "application_attempt_started",
-            {"dry_run": dry_run, "attempt": app.submission_attempt_count + 1},
+            {"dry_run": dry_run, "attempt": checkpoint_attempt},
         )
         app.status = ApplicationStatus.applying
-        app.submission_attempt_count = (app.submission_attempt_count or 0) + 1
+        app.submission_attempt_count = checkpoint_attempt
         app.last_submission_attempt_at = datetime.utcnow()
         db.commit()
+        # This worker owns an attempt only after its checkpoint is durable. Keep
+        # the pre-commit value rather than re-reading an expired ORM attribute.
+        attempt_number = checkpoint_attempt
 
         raw = _ensure_application_method(job)
         method = raw.get("application_method", "manual")
@@ -626,6 +641,51 @@ def submit_application_task(self, application_id: int, dry_run: bool = True):
     except Exception as exc:
         logger.exception("submit_application_task failed")
         db.rollback()
+
+        recovery = None
+        try:
+            # Only this invocation's checkpoint may be recovered. An early database
+            # failure or a late response must not reset another worker's attempt.
+            interrupted = (
+                claim_application_attempt_result(db, application_id, attempt_number)
+                if attempt_number is not None else None
+            )
+            if interrupted is not None:
+                recovery = recover_stale_application_attempt(
+                    db,
+                    interrupted,
+                    force_interrupted=True,
+                    recover_dry_run_to_ready=True,
+                )
+                db.commit()
+            elif attempt_number is not None:
+                # claim_application_attempt_result records why this stale worker
+                # was rejected. Persist that audit event before retry closes the
+                # session, otherwise the evidence would be rolled back.
+                db.commit()
+        except Exception:
+            logger.exception(
+                "submit_application_task failed while recovering its interrupted checkpoint"
+            )
+            db.rollback()
+            raise self.retry(exc=exc, countdown=60, max_retries=2)
+
+        if isinstance(recovery, dict) and recovery.get("automatic_retry_allowed") is True:
+            raise self.retry(exc=exc, countdown=5, max_retries=2)
+
+        if isinstance(recovery, dict) and recovery.get("recovered") is True:
+            return {
+                "success": False,
+                "dry_run": dry_run,
+                "application_id": application_id,
+                "error": (
+                    "Application task was interrupted and recovered fail-closed. "
+                    "A live or unknown attempt requires review before any retry."
+                ),
+                "requires_manual_review": bool(recovery.get("review_id")),
+                "recovery": recovery,
+            }
+
         raise self.retry(exc=exc, countdown=60, max_retries=2)
     finally:
         db.close()

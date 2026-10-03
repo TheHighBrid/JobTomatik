@@ -504,6 +504,7 @@ start_api() {
   nohup env -i \
     PATH="$PATH" \
     HOME="${HOME:-/tmp}" \
+    JOBTOMATIK_RUNTIME_MODE=android_managed \
     JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
     JOBTOMATIK_RUNTIME_ROLE=api \
@@ -539,6 +540,7 @@ start_worker() {
   nohup env -i \
     PATH="$PATH" \
     HOME="${HOME:-/tmp}" \
+    JOBTOMATIK_RUNTIME_MODE=android_managed \
     JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
     JOBTOMATIK_RUNTIME_ROLE=worker \
@@ -578,6 +580,7 @@ start_beat() {
     PATH="$PATH" \
     HOME="${HOME:-/tmp}" \
     REDIS_URL="$ANDROID_REDIS_URL" \
+    JOBTOMATIK_RUNTIME_MODE=android_managed \
     JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION" \
     JOBTOMATIK_EXPECTED_REVISION="$EXPECTED_RUNTIME_REVISION" \
     JOBTOMATIK_RUNTIME_ROLE=beat \
@@ -700,7 +703,7 @@ status_stack() {
     failed=1
   fi
 
-  if curl -fsS --max-time 2 'http://127.0.0.1:9222/json/version' 2>/dev/null | grep -q webSocketDebuggerUrl; then
+  if (cd "$BACKEND_ROOT" && "$VENV/bin/python" -m scripts.application_browser_contract identity); then
     echo "ANDROID_BROWSER_CDP: READY"
   else
     echo "ANDROID_BROWSER_CDP: DOWN"
@@ -733,6 +736,18 @@ status_stack() {
   return "$failed"
 }
 
+configure_application_browser() {
+  local fields
+  fields="$(cd "$BACKEND_ROOT" && "$VENV/bin/python" -m scripts.application_browser_contract config)" || return 1
+  local -a contract
+  mapfile -t contract <<< "$fields"
+  [[ "${contract[0]:-}" == native_chrome && -n "${contract[1]:-}" ]] || return 1
+  set_env_value APPLICATION_BROWSER_PROVIDER "${contract[0]}"
+  set_env_value APPLICATION_BROWSER_CDP_ENDPOINT "${contract[1]}"
+  export APPLICATION_BROWSER_PROVIDER="${contract[0]}"
+  export APPLICATION_BROWSER_CDP_ENDPOINT="${contract[1]}"
+}
+
 prepare_stack() {
   cd "$BACKEND_ROOT"
 
@@ -742,13 +757,12 @@ prepare_stack() {
   fi
 
   set_env_value REDIS_URL "$ANDROID_REDIS_URL"
-  set_env_value APPLICATION_BROWSER_CDP_ENDPOINT 'http://127.0.0.1:9222'
+  configure_application_browser
   set_env_value APPLICATION_BROWSER_HEADLESS 'false'
   set_env_value APPLICATION_TARGET_HUMAN_WAIT_SECONDS '0'
   repair_database_configuration
 
   export REDIS_URL="$ANDROID_REDIS_URL"
-  export APPLICATION_BROWSER_CDP_ENDPOINT='http://127.0.0.1:9222'
   export APPLICATION_BROWSER_HEADLESS='false'
   export APPLICATION_TARGET_HUMAN_WAIT_SECONDS='0'
   export JOBTOMATIK_RUNTIME_REVISION="$RUNTIME_REVISION"
@@ -759,8 +773,8 @@ prepare_stack() {
 
   require_runtime_attestation cli
 
-  if ! "$VENV/bin/python" -c 'import jwt; assert jwt.__version__' >/dev/null 2>&1; then
-    "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.13.0'
+  if ! "$VENV/bin/python" -c 'import jwt, sys; sys.exit(0 if jwt.__version__ == "2.15.0" else 1)' >/dev/null 2>&1; then
+    "$VENV/bin/python" -m pip install --no-cache-dir 'PyJWT==2.15.0'
   fi
 
   if ! redis-cli ping 2>/dev/null | grep -q PONG; then
@@ -789,8 +803,10 @@ start_stack() {
   start_worker
   start_beat
   start_frontend
-  refresh_frontend_runtime
 
+  # Native Chrome is owned by the outer Termux launcher because only that layer can
+  # validate the selected ADB device, wake Chrome, and repair the exact ADB forward.
+  # Frontend tab refresh therefore runs after the outer launcher revalidates Chrome.
   cd "$BACKEND_ROOT"
   status_stack
   echo "JOBTOMATIK_ANDROID_STACK_READY"
@@ -803,6 +819,9 @@ restart_stack() {
 }
 
 case "$ACTION" in
+  configure-browser)
+    configure_application_browser
+    ;;
   start)
     start_stack
     ;;
@@ -815,8 +834,11 @@ case "$ACTION" in
   status)
     status_stack
     ;;
+  refresh-frontend)
+    refresh_frontend_runtime
+    ;;
   *)
-    echo "Usage: $0 [start|restart|stop|status]" >&2
+    echo "Usage: $0 [start|restart|stop|status|configure-browser|refresh-frontend]" >&2
     exit 2
     ;;
 esac

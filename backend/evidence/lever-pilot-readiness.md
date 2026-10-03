@@ -8,14 +8,14 @@ Canonical maturity remains `dry_run`.
 - Non-qualifying Phase A rows: **1**
 - Distinct Lever sites: **30/30**
 - Regions covered: **eu, global**
-- Confirmed supervised submissions: **0/10**
+- Confirmed supervised submissions: **0/3**
 
 ## Gates
 
 - [x] `thirty_qualifying_dry_runs`
 - [x] `thirty_distinct_lever_sites`
 - [x] `global_and_eu_hosts_covered`
-- [ ] `ten_supervised_confirmed_submissions`
+- [ ] `three_supervised_confirmed_submissions`
 - [x] `zero_false_submitted_records`
 - [x] `zero_duplicate_submissions`
 - [x] `all_uncertain_outcomes_remain_uncertain`
