@@ -2,6 +2,12 @@ name: Build JobTomatik Android production-signed release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/android/app/build.gradle"
+      - "frontend/android/release-version.properties"
 
 permissions:
   contents: read
@@ -38,8 +44,10 @@ jobs:
           SOURCE_COMMIT="$(git rev-parse HEAD)"
           test "$SOURCE_COMMIT" = "$(git rev-parse origin/main)"
 
-          VERSION_CODE="$(grep -E '^[[:space:]]*versionCode[[:space:]]+[0-9]+[[:space:]]*$' frontend/android/app/build.gradle | grep -oE '[0-9]+$' | head -n1)"
-          VERSION_NAME="$(grep -E '^[[:space:]]*versionName[[:space:]]+"[0-9]+\.[0-9]+\.[0-9]+"[[:space:]]*$' frontend/android/app/build.gradle | sed -E 's/.*versionName[[:space:]]+"([^"]+)".*/\1/' | head -n1)"
+          RELEASE_IDENTITY_FILE="frontend/android/release-version.properties"
+          test -s "$RELEASE_IDENTITY_FILE"
+          VERSION_CODE="$(sed -n 's/^VERSION_CODE=//p' "$RELEASE_IDENTITY_FILE" | head -n1 | tr -d '[:space:]')"
+          VERSION_NAME="$(sed -n 's/^VERSION_NAME=//p' "$RELEASE_IDENTITY_FILE" | head -n1 | tr -d '[:space:]')"
           [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]
           [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test "$VERSION_CODE" -gt 210
@@ -47,9 +55,16 @@ jobs:
           MAX_PREVIOUS_VERSION_CODE=0
           while IFS= read -r tag; do
             test -n "$tag" || continue
-            previous_gradle="$(git show "$tag:frontend/android/app/build.gradle" 2>/dev/null || true)"
-            test -n "$previous_gradle" || continue
-            previous_code="$(printf '%s\n' "$previous_gradle" | grep -E '^[[:space:]]*versionCode[[:space:]]+[0-9]+[[:space:]]*$' | grep -oE '[0-9]+$' | head -n1 || true)"
+            previous_code=""
+            previous_release_identity="$(git show "$tag:frontend/android/release-version.properties" 2>/dev/null || true)"
+            if test -n "$previous_release_identity"; then
+              previous_code="$(printf '%s\n' "$previous_release_identity" | sed -n 's/^VERSION_CODE=//p' | head -n1 | tr -d '[:space:]')"
+            else
+              previous_gradle="$(git show "$tag:frontend/android/app/build.gradle" 2>/dev/null || true)"
+              if test -n "$previous_gradle"; then
+                previous_code="$(printf '%s\n' "$previous_gradle" | grep -E '^[[:space:]]*versionCode[[:space:]]+[0-9]+[[:space:]]*$' | grep -oE '[0-9]+$' | head -n1 || true)"
+              fi
+            fi
             if [[ "$previous_code" =~ ^[0-9]+$ ]] && (( previous_code > MAX_PREVIOUS_VERSION_CODE )); then
               MAX_PREVIOUS_VERSION_CODE="$previous_code"
             fi
@@ -107,7 +122,6 @@ jobs:
         with:
           signing_bundle_base64: ${{ secrets.JOBTOMATIK_ANDROID_SIGNING_BUNDLE_BASE64 }}
 
-
       - name: Verify production APK identity and persistent certificate
         shell: bash
         env:
@@ -127,17 +141,20 @@ jobs:
           mkdir -p production-release
           cp "$APK" "production-release/JobTomatik-$VERSION_NAME.apk"
 
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging             "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-BADGING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging \
+            "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-BADGING.txt
           grep -q "package: name='ca.jobtomatik.app'" production-release/APK-BADGING.txt
           grep -q "versionCode='$VERSION_CODE'" production-release/APK-BADGING.txt
           grep -q "versionName='$VERSION_NAME'" production-release/APK-BADGING.txt
 
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs             "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-SIGNING.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs \
+            "production-release/JobTomatik-$VERSION_NAME.apk" | tee production-release/APK-SIGNING.txt
           SIGNING_CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' production-release/APK-SIGNING.txt | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
           [[ "$SIGNING_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]]
           test "$SIGNING_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
 
-          sha256sum "production-release/JobTomatik-$VERSION_NAME.apk" >             "production-release/JobTomatik-$VERSION_NAME.sha256"
+          sha256sum "production-release/JobTomatik-$VERSION_NAME.apk" > \
+            "production-release/JobTomatik-$VERSION_NAME.sha256"
           printf '%s\n' "$SOURCE_COMMIT" > production-release/SOURCE-COMMIT.txt
           cat > production-release/BUILD-INFO.txt <<EOF
           JobTomatik Android production-signed build
