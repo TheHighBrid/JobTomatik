@@ -5,15 +5,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import time
-import urllib.error
-import urllib.request
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.auth import create_access_token, hash_password
 from app.celery_app import celery_app
@@ -43,13 +43,34 @@ def _request_json(
     payload: bytes | None = None,
     timeout: float = 5.0,
 ) -> dict[str, Any]:
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError(f"Unsupported API URL: {url!r}")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Credential-bearing API URLs are forbidden")
+
+    connection_type = (
+        http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    )
+    connection = connection_type(parsed.hostname, parsed.port, timeout=timeout)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
     headers = {"Accept": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(url, data=payload, headers=headers, method=method)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    try:
+        connection.request(method, path, body=payload, headers=headers)
+        response = connection.getresponse()
         body = response.read().decode("utf-8")
+        if response.status >= 400:
+            raise RuntimeError(
+                f"API request failed with HTTP {response.status}: {body[:500]}"
+            )
         return json.loads(body) if body else {}
+    finally:
+        connection.close()
 
 
 def _wait_for_api(timeout_seconds: int = 90) -> None:
@@ -60,7 +81,7 @@ def _wait_for_api(timeout_seconds: int = 90) -> None:
             payload = _request_json(f"{API_URL}/api/system/ready", timeout=3)
             if payload:
                 return
-        except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError) as exc:
+        except (OSError, http.client.HTTPException, RuntimeError, ValueError) as exc:
             last_error = str(exc)
         time.sleep(1)
     raise RuntimeError(f"FastAPI did not become ready: {last_error}")
@@ -81,7 +102,7 @@ def _seed_run(index: int) -> tuple[int, str, str]:
         db.flush()
 
         job = Job(
-            external_id=f"phase0-{index:03d}",
+            external_id=f"phase0-job-{index:03d}",
             title="Synthetic Phase 0 Application",
             company="JobTomatik Fixture",
             location="Local fixture",
