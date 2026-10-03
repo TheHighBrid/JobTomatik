@@ -36,7 +36,7 @@ def test_access_token_round_trips_with_pinned_pyjwt() -> None:
         algorithms=[auth.settings.algorithm],
     )
 
-    assert jwt.__version__ == "2.13.0"
+    assert jwt.__version__ == "2.14.0"
     assert payload["sub"] == "42"
     assert isinstance(payload["exp"], int)
 
@@ -61,7 +61,7 @@ def test_expired_pyjwt_token_is_rejected_before_database_access() -> None:
 def test_all_supported_backend_profiles_use_pyjwt_not_python_jose() -> None:
     for path in REQUIREMENT_FILES:
         requirements = path.read_text(encoding="utf-8")
-        assert "PyJWT==2.13.0" in requirements
+        assert "PyJWT==2.14.0" in requirements
         assert "python-jose" not in requirements
 
 
