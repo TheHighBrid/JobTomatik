@@ -334,8 +334,9 @@ async def launch_retainable_browser(
     viewport: Optional[Dict[str, int]] = None,
     profile_dir: Optional[Path | str] = None,
     headless: bool = True,
+    executable_path: str = "",
 ) -> RetainableBrowserRuntime:
-    """Launch only the Chromium binary installed and owned by Playwright."""
+    """Launch Playwright-owned Chromium; legacy executable overrides are ignored."""
     session_id = str(uuid4())
     session_dir = handoff_storage_root() / session_id
     resolved_profile_dir = Path(profile_dir) if profile_dir else session_dir / "profile"
@@ -464,4 +465,5 @@ async def launch_application_browser(
         viewport=viewport,
         profile_dir=Path(settings.application_browser_profile_dir).expanduser(),
         headless=bool(settings.application_browser_headless),
+        executable_path=(settings.application_browser_executable or "").strip(),
     )
