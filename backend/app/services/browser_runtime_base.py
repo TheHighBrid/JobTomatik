@@ -336,13 +336,14 @@ async def launch_retainable_browser(
     headless: bool = True,
     executable_path: str = "",
 ) -> RetainableBrowserRuntime:
+    """Launch Playwright-owned Chromium; legacy executable overrides are ignored."""
     session_id = str(uuid4())
     session_dir = handoff_storage_root() / session_id
     resolved_profile_dir = Path(profile_dir) if profile_dir else session_dir / "profile"
     session_dir.mkdir(parents=True, exist_ok=True)
     resolved_profile_dir.mkdir(parents=True, exist_ok=True)
     port = _reserve_port()
-    executable = executable_path or playwright.chromium.executable_path
+    executable = playwright.chromium.executable_path
     log_path = session_dir / "chromium.log"
     log_handle = log_path.open("ab")
 
