@@ -165,6 +165,7 @@ git archive --format=tar "$JOBTOMATIK_RUNTIME_REVISION" backend docker-compose.o
 git ls-tree -r "$JOBTOMATIK_RUNTIME_REVISION" -- \
   backend/app/onehost_phase0_worker.py \
   backend/app/services/onehost_phase0_fixture_runtime.py \
+  backend/scripts/probe_onehost_phase0_redirect.py \
   backend/scripts/run_onehost_api_celery_gate.py \
   backend/tests/fixtures/onehost_http_form.html \
   docker-compose.onehost-api-celery.yml \
@@ -180,6 +181,7 @@ from pathlib import Path
 
 backend_root = Path(sys.argv[1])
 paths = sorted((backend_root / "app").rglob("*.py")) + [
+    backend_root / "scripts/probe_onehost_phase0_redirect.py",
     backend_root / "scripts/run_onehost_api_celery_gate.py",
     backend_root / "tests/fixtures/onehost_http_form.html",
 ]
@@ -201,19 +203,32 @@ started=true
 "${compose[@]}" up --abort-on-container-exit --exit-code-from proof proof \
   2>&1 | tee "$ONEHOST_EVIDENCE_DIR/proof.log"
 
+# Reuse the exact production proof guard in a hostile local redirect scenario.
+# The destination server runs inside this synthetic probe and must receive zero requests.
+"${compose[@]}" run --rm --no-deps -T proof \
+  python -m scripts.probe_onehost_phase0_redirect \
+  --output /evidence/redirect-negative-control.json \
+  2>&1 | tee "$ONEHOST_EVIDENCE_DIR/redirect-negative-control.log"
+
 restore_evidence_owner
 ownership_restored=true
 stamp_summary_provenance
 
-python - "$ONEHOST_EVIDENCE_DIR/proof/summary.json" "$JOBTOMATIK_RUNTIME_REVISION" "$source_sha256" <<'PY'
+python - \
+  "$ONEHOST_EVIDENCE_DIR/proof/summary.json" \
+  "$ONEHOST_EVIDENCE_DIR/redirect-negative-control.json" \
+  "$JOBTOMATIK_RUNTIME_REVISION" \
+  "$source_sha256" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 summary_path = Path(sys.argv[1])
-revision = sys.argv[2]
-source_sha256 = sys.argv[3]
+redirect_path = Path(sys.argv[2])
+revision = sys.argv[3]
+source_sha256 = sys.argv[4]
 summary = json.loads(summary_path.read_text(encoding='utf-8'))
+redirect = json.loads(redirect_path.read_text(encoding='utf-8'))
 assert summary['status'] == 'passed', summary
 assert summary['api_celery_dispatch_proven'] is True, summary
 assert summary['employer_certification'] is False, summary
@@ -223,7 +238,13 @@ assert len(summary['runs']) >= 3, summary
 assert len({item['application_id'] for item in summary['runs']}) == len(summary['runs']), summary
 assert len({item['task_id'] for item in summary['runs']}) == len(summary['runs']), summary
 assert all(item['status'] == 'passed' for item in summary['runs']), summary
+assert redirect['status'] == 'passed', redirect
+assert redirect['checks']['redirect_was_explicitly_blocked'] is True, redirect
+assert redirect['checks']['redirect_destination_was_never_requested'] is True, redirect
+assert redirect['checks']['browser_observed_no_escape'] is True, redirect
+assert redirect['redirect_destination_hits'] == 0, redirect
 print(json.dumps(summary, indent=2))
+print(json.dumps(redirect, indent=2))
 PY
 
 printf 'Phase 0 API/Celery proof and traces: %s\n' "$ONEHOST_EVIDENCE_DIR"
