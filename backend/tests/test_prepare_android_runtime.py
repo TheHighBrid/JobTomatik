@@ -1,4 +1,5 @@
 import os
+import secrets
 
 from sqlalchemy import create_engine, inspect as sa_inspect
 
@@ -26,6 +27,12 @@ def test_runtime_preflight_creates_critical_tables_and_recovers_interrupted_atte
     monkeypatch,
     capsys,
 ):
+    # Keep preflight's environment and backups isolated from other test stores.
+    monkeypatch.setattr(prepare_android_runtime, "BACKEND_ROOT", tmp_path)
+    (tmp_path / ".env").write_text(
+        "SECRET_KEY=" + secrets.token_urlsafe(48) + "\n",
+        encoding="utf-8",
+    )
     runtime_engine = create_engine(f"sqlite:///{tmp_path / 'runtime.db'}")
     monkeypatch.setattr(prepare_android_runtime, "engine", runtime_engine)
     monkeypatch.setattr(
