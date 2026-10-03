@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Exercise a real frozen-v1 runtime schema against the current candidate startup path.
+"""Exercise the frozen-v1 schema against the current candidate startup path.
 
-JobTomatik v1.00 did not ship Alembic revision files. Its real database bootstrap was
-``Base.metadata.create_all`` followed by ``_safe_migrate``. This drill reproduces that
-exact historical behavior in an isolated temporary SQLite database, inserts one synthetic
-user sentinel, runs the current candidate's real startup schema path against the same
-database, and verifies old-data preservation plus full current-ORM schema compatibility.
+The compatibility workflow owns a fixed workspace layout: this script lives inside the
+``candidate`` checkout, while the frozen source and both isolated virtual environments
+are sibling paths created by the workflow. Executable selection is therefore internal
+to the harness and cannot be supplied through command-line input.
 
 The live JobTomatik database is never opened, copied, or mutated.
 """
@@ -15,11 +14,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sqlite3
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from app.services.day41_previous_release_compatibility import (
     DAY41_FROZEN_PREVIOUS_RELEASE,
@@ -31,16 +31,37 @@ from app.services.day41_previous_release_compatibility import (
 SENTINEL = {
     "id": 987654321,
     "email": "day41-v1-compatibility@example.invalid",
-    "hashed_password": "synthetic-day41-compatibility-hash",
+    "hashed_password": secrets.token_hex(32),
     "full_name": "Day41 Compatibility Sentinel",
     "is_active": 1,
 }
 
+RuntimeName = Literal["previous", "candidate"]
 
-def _python_executable_path(raw: str) -> Path:
-    """Return an absolute executable path without dereferencing virtualenv symlinks."""
 
-    return Path(os.path.abspath(os.path.expanduser(raw)))
+def _candidate_checkout() -> Path:
+    """Return the candidate checkout containing this script."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _workspace_root() -> Path:
+    """Return the workflow workspace that owns both checkouts and virtualenvs."""
+    return _candidate_checkout().parent
+
+
+def _checkout(runtime: RuntimeName) -> Path:
+    if runtime == "candidate":
+        return _candidate_checkout()
+    return _workspace_root() / "previous"
+
+
+def _python_executable(runtime: RuntimeName) -> Path:
+    """Return the workflow-owned interpreter for a fixed runtime identity."""
+    venv_name = ".venv-current" if runtime == "candidate" else ".venv-v1"
+    executable = _workspace_root() / venv_name / "bin" / "python"
+    if not executable.is_file():
+        raise RuntimeError(f"Required {runtime} Python interpreter is missing")
+    return executable
 
 
 def _git_revision(checkout: Path) -> str:
@@ -61,14 +82,15 @@ def _alembic_revision_count(backend: Path) -> int:
 
 
 def _run_python(
-    python_executable: Path,
+    runtime: RuntimeName,
     *,
     cwd: Path,
     code: str,
     env: dict[str, str],
 ) -> Any:
+    """Run fixed probe code with the workflow-owned interpreter for ``runtime``."""
     completed = subprocess.run(
-        [str(python_executable), "-c", code],
+        [str(_python_executable(runtime)), "-c", code],
         cwd=cwd,
         env=env,
         text=True,
@@ -80,14 +102,14 @@ def _run_python(
         raise RuntimeError(
             f"Compatibility probe failed in {cwd}:\n{completed.stderr.strip()}"
         )
-    text = completed.stdout.strip().splitlines()
-    if not text:
+    output_lines = completed.stdout.strip().splitlines()
+    if not output_lines:
         raise RuntimeError(f"Compatibility probe produced no output in {cwd}")
-    return json.loads(text[-1])
+    return json.loads(output_lines[-1])
 
 
 def _runtime_schema_bootstrap(
-    python_executable: Path,
+    runtime: RuntimeName,
     backend: Path,
     *,
     database_url: str,
@@ -111,7 +133,7 @@ else:
     probe_env["PYTHONPATH"] = str(backend)
     probe_env["DATABASE_URL"] = database_url
     return _run_python(
-        python_executable,
+        runtime,
         cwd=backend,
         code=code,
         env=probe_env,
@@ -119,7 +141,6 @@ else:
 
 
 def _candidate_expected_schema(
-    python_executable: Path,
     backend: Path,
     *,
     database_url: str,
@@ -140,7 +161,7 @@ print(json.dumps(schema, sort_keys=True))
     probe_env["PYTHONPATH"] = str(backend)
     probe_env["DATABASE_URL"] = database_url
     result = _run_python(
-        python_executable,
+        "candidate",
         cwd=backend,
         code=code,
         env=probe_env,
@@ -227,7 +248,6 @@ def _post_upgrade_probe(
 
 
 def _orm_probe(
-    python_executable: Path,
     backend: Path,
     *,
     database_url: str,
@@ -235,6 +255,7 @@ def _orm_probe(
 ) -> bool:
     code = r'''
 import json
+import os
 from app.database import SessionLocal
 from app.models import User
 
@@ -245,7 +266,7 @@ try:
         passed = bool(
             row is not None
             and row.email == "day41-v1-compatibility@example.invalid"
-            and row.hashed_password == "synthetic-day41-compatibility-hash"
+            and row.hashed_password == os.environ["DAY41_SENTINEL_PASSWORD_HASH"]
             and row.full_name == "Day41 Compatibility Sentinel"
             and row.is_active is True
         )
@@ -259,7 +280,7 @@ print(json.dumps({"passed": passed}))
     probe_env["PYTHONPATH"] = str(backend)
     probe_env["DATABASE_URL"] = database_url
     result = _run_python(
-        python_executable,
+        "candidate",
         cwd=backend,
         code=code,
         env=probe_env,
@@ -269,22 +290,18 @@ print(json.dumps({"passed": passed}))
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--previous-checkout", required=True)
-    parser.add_argument("--candidate-checkout", required=True)
-    parser.add_argument("--previous-python", required=True)
-    parser.add_argument("--candidate-python", required=True)
     parser.add_argument(
         "--output",
         default="evidence/day41-previous-release-compatibility.json",
     )
     args = parser.parse_args()
 
-    previous_checkout = Path(args.previous_checkout).resolve()
-    candidate_checkout = Path(args.candidate_checkout).resolve()
-    previous_backend = previous_checkout / "backend"
+    candidate_checkout = _checkout("candidate")
+    previous_checkout = _checkout("previous")
     candidate_backend = candidate_checkout / "backend"
-    previous_python = _python_executable_path(args.previous_python)
-    candidate_python = _python_executable_path(args.candidate_python)
+    previous_backend = previous_checkout / "backend"
+    if not previous_backend.is_dir():
+        raise RuntimeError("Frozen previous checkout is missing from the canonical workspace")
 
     previous_revision = _git_revision(previous_checkout)
     candidate_revision = _git_revision(candidate_checkout)
@@ -303,7 +320,8 @@ def main() -> int:
     base_env = dict(os.environ)
     base_env.update(
         {
-            "SECRET_KEY": "day41-previous-release-compatibility-ci-only-secret-key",
+            "SECRET_KEY": secrets.token_urlsafe(48),
+            "DAY41_SENTINEL_PASSWORD_HASH": SENTINEL["hashed_password"],
             "REDIS_URL": "redis://localhost:6379/0",
             "AI_PROVIDER": "template",
             "DEV_MOCK_JOBS": "false",
@@ -318,20 +336,19 @@ def main() -> int:
         database_url = f"sqlite:///{database.as_posix()}"
 
         previous_bootstrap = _runtime_schema_bootstrap(
-            previous_python,
+            "previous",
             previous_backend,
             database_url=database_url,
             env=base_env,
         )
         previous_schema, sentinel_before = _seed_previous_release(database)
         candidate_expected_schema = _candidate_expected_schema(
-            candidate_python,
             candidate_backend,
             database_url=database_url,
             env=base_env,
         )
         candidate_upgrade = _runtime_schema_bootstrap(
-            candidate_python,
+            "candidate",
             candidate_backend,
             database_url=database_url,
             env=base_env,
@@ -340,7 +357,6 @@ def main() -> int:
             database
         )
         orm_probe_ok = _orm_probe(
-            candidate_python,
             candidate_backend,
             database_url=database_url,
             env=base_env,
