@@ -6,7 +6,7 @@ from app.services.day41_previous_release_compatibility import (
     DAY41_RUNTIME_SCHEMA_BOOTSTRAP,
     build_day41_previous_release_compatibility_report,
 )
-from scripts.run_day41_previous_release_compatibility import _python_executable_path
+from scripts import run_day41_previous_release_compatibility as runner
 
 
 CANDIDATE = "a" * 40
@@ -33,7 +33,7 @@ def _inputs():
     sentinel = {
         "id": 987654321,
         "email": "day41-v1-compatibility@example.invalid",
-        "hashed_password": "synthetic-day41-compatibility-hash",
+        "hashed_password": "synthetic-test-digest",
         "full_name": "Day41 Compatibility Sentinel",
         "is_active": 1,
     }
@@ -63,19 +63,19 @@ def _report(**overrides):
     return build_day41_previous_release_compatibility_report(**values)
 
 
-def test_python_executable_path_preserves_virtualenv_symlink(tmp_path: Path):
-    real_python = tmp_path / "base-python"
-    real_python.write_text("", encoding="utf-8")
-    venv_bin = tmp_path / ".venv-v1" / "bin"
-    venv_bin.mkdir(parents=True)
-    venv_python = venv_bin / "python"
-    venv_python.symlink_to(real_python)
+def test_python_executables_are_fixed_to_workflow_owned_virtualenvs(
+    tmp_path: Path, monkeypatch
+):
+    current_python = tmp_path / ".venv-current" / "bin" / "python"
+    previous_python = tmp_path / ".venv-v1" / "bin" / "python"
+    current_python.parent.mkdir(parents=True)
+    previous_python.parent.mkdir(parents=True)
+    current_python.write_text("", encoding="utf-8")
+    previous_python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(runner, "_workspace_root", lambda: tmp_path)
 
-    selected = _python_executable_path(str(venv_python))
-
-    assert selected == venv_python.absolute()
-    assert selected != real_python.resolve()
-    assert selected.is_symlink()
+    assert runner._python_executable("candidate") == current_python
+    assert runner._python_executable("previous") == previous_python
 
 
 def test_clean_frozen_v1_to_candidate_runtime_upgrade_passes():
