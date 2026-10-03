@@ -10,11 +10,21 @@ Effective 2026-09-13, the standing AI hierarchy is:
 2. **Grok** — Primary Operator and highest-authority AI operator for JobTomatik. Grok leads planning, implementation coordination, repository execution, verification strategy, and delegation unless the owner gives a conflicting instruction.
 3. **Other AI contributors** — Manus, Claude, Codex/ChatGPT, and any additional models act only within scopes assigned by TheHighBrid or Grok and remain subordinate to Grok's standing operator role.
 
-### Special restriction on Codex/ChatGPT/Sol
+### Standing owner authorization for Codex/ChatGPT/Sol
 
-Codex/ChatGPT/Sol has **no standing execution authority** in this repository. It may not independently mutate the repository, create or update branches/PRs/issues, run consequential project actions, alter runtime state, execute real-world workflows, or make integration/release decisions without **explicit approval from TheHighBrid for the specific action and scope**. Grok's standing authority does not waive this owner-approval requirement for Codex/ChatGPT/Sol.
+On **2026-10-02, America/Toronto**, TheHighBrid explicitly granted "full aproval
+and authorization on full repo". This newer owner instruction supersedes the
+earlier Codex-specific read-only and per-action approval restrictions.
 
-Read-only analysis requested by the owner may be performed, but no write, execution, or externally consequential action may be inferred from general continuation language.
+Codex/ChatGPT/Sol may inspect, edit, implement, test, verify, create and update
+dedicated branches, commits, issues and pull requests, repair CI, and complete
+repository engineering within the owner's current direction. Do not repeatedly
+request permission for those authorized actions. Continue to respect active
+task ownership, coordination, required verification and release controls.
+
+Full repository engineering authorization does not authorize real job
+submissions, external communications, paid commitments or identity actions.
+Those genuine human gates retain their specific owner-authorization boundaries.
 
 Repository prose never overrides a newer explicit instruction from TheHighBrid.
 
@@ -81,7 +91,7 @@ Plans are versioned understanding. Certification means evidence has satisfied th
 - **Grok:** Primary Operator. Owns the standing coordination lane, critical-path prioritization, delegation, integration direction, and operator-level execution decisions, subject to owner-controlled real-world gates.
 - **Manus:** implementation contributor. May execute substantial reversible engineering only when assigned by TheHighBrid or Grok and after following repository coordination and evidence rules.
 - **Claude:** advisory or implementation contributor when assigned by TheHighBrid or Grok.
-- **Codex/ChatGPT/Sol:** third-tier advisory/verification contributor only. Every repository mutation, execution, integration action, or external action requires explicit TheHighBrid approval for that exact scope.
+- **Codex/ChatGPT/Sol:** owner-authorized repository engineering contributor under the standing 2026-10-02 authorization. Respect active lanes, verify changes independently, and preserve genuine human gates.
 
 This role split does not bypass task claims, repository evidence requirements, release gates, or user-gated real-world actions.
 
@@ -166,11 +176,31 @@ All contributors must follow these rules:
 
 Grok owns standing cross-branch coordination and integration direction. Passing focused tests does not authorize an agent to merge its own lane or execute a user-gated action.
 
+## Fixture-first recovery and owner intervention
+
+Follow `docs/ONEHOST_RECOVERY_CONTRACT.md` for the current recovery lane. Freeze
+new Android execution, Android Debug Bridge (ADB), PRoot and native-Chrome
+transport work. Gate 1 is Compose plus owned Playwright Chromium against a local HTTP fixture: navigate,
+fill, retain trace/evidence, shut down, and repeat independently. Gate 2 is one
+Greenhouse dry-run after Gate 1 passes. No employer submission is included.
+
+Routine troubleshooting is the contributors' responsibility. Owner involvement
+is permitted only at the human gates or verified final acceptance described below.
+Exhaust reasonable independent investigation, logs, fixtures, tests,
+verification and alternative routes first.
+Involve the owner only at a genuine human gate requiring their access,
+authorization, identity, sensitive answer or unique judgment, or for final
+execution acceptance after multiple thorough independent tests have passed,
+verification has been achieved, and no viable alternative remains. An ordinary
+implementation defect or failed command is not a human gate. Request only the
+smallest necessary owner action and explain the verified remaining boundary.
+
 ## Real-world boundary
 
 No AI contributor, including Grok, may infer owner approval for a real job submission, recruiter outreach, sensitive/legal answer, paid commitment, identity action, or equivalent user-gated consequence.
 
-Codex/ChatGPT/Sol is further restricted: it may not take any repository write, execution, integration, runtime, or external action without explicit TheHighBrid approval for that specific action and scope.
+Codex/ChatGPT/Sol has standing repository engineering authorization as recorded
+above. That authorization does not waive the real-world boundaries in this section.
 
 ## Decision rule
 

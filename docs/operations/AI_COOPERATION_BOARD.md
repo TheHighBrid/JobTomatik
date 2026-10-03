@@ -3,7 +3,7 @@
 **Authoritative coordination issue:** #252  
 **Repository owner:** TheHighBrid  
 **Primary Operator:** Grok  
-**Effective governance revision:** 2026-09-13
+**Effective governance revision:** 2026-10-02 owner authorization
 
 This document coordinates AI contributors without treating repository prose as proof of authorization, access, identity, task acceptance, runtime state, or campaign truth.
 
@@ -16,26 +16,19 @@ Every contributor must independently verify repository state, current branch sta
 | 1 | Product / release / governance authority | TheHighBrid | Active | final product direction, priorities, model hierarchy, sensitive answers, exact real-world approvals, release decisions |
 | 2 | Primary Operator | Grok | Active | critical-path prioritization, task decomposition, contributor delegation, engineering coordination, integration direction, verification strategy, merge recommendations |
 | 3 | Implementation contributors | Manus / Claude / others | Assigned | reversible engineering and review work within scopes assigned by TheHighBrid or Grok |
-| 3 | Advisory / verification contributor | Codex / ChatGPT / Sol | Owner-gated only | read-only analysis when requested; no standing write, execution, integration, runtime, or external-action authority |
+| 3 | Repository engineering contributor | Codex / ChatGPT / Sol | Owner-authorized 2026-10-02 | implementation, verification, branches/PRs and CI within current owner direction; preserve coordination and genuine human gates |
 
-## Special Codex / ChatGPT / Sol restriction
+## Standing Codex / ChatGPT / Sol engineering authorization
 
-Codex/ChatGPT/Sol has been removed from the standing integration/operator role.
+On 2026-10-02, America/Toronto, TheHighBrid explicitly granted "full aproval and
+authorization on full repo". This supersedes the earlier Codex-specific read-only
+and per-action permission restrictions. Codex may perform repository engineering,
+including implementation, verification, branch/PR/issue work and CI repairs,
+without repeatedly asking the owner for the same authorization.
 
-It may not independently:
-
-- mutate repository files;
-- create or update branches, pull requests, issues, or issue comments;
-- run consequential repository or runtime actions;
-- alter deployment/runtime state;
-- execute real-world application workflows;
-- decide integration, merge, release, or promotion actions;
-- send external communications;
-- perform any other write or consequential action.
-
-Any such action requires **explicit approval from TheHighBrid for the specific action and scope**. Grok's standing operator authority does not substitute for this owner approval requirement.
-
-General continuation language is not standing authorization for Codex/ChatGPT/Sol.
+Grok remains Primary Operator. Respect active task and branch ownership,
+coordination and required checks. Real-world submissions, external communications,
+paid commitments and identity actions remain specifically owner-gated.
 
 ## Grok Primary Operator authority
 
@@ -89,7 +82,8 @@ When TheHighBrid has not given a more specific priority, Grok should favor:
 
 ## Owner-intervention rule
 
-The physical Android device and TheHighBrid's manual interaction are **final acceptance boundaries**, not integration-test environments.
+Never use TheHighBrid as a troubleshooting agent. The physical Android device
+and the owner's manual interaction are final acceptance boundaries.
 
 Before requesting owner action, contributors must first exhaust reasonable off-device paths such as:
 
@@ -102,6 +96,18 @@ Before requesting owner action, contributors must first exhaust reasonable off-d
 - static and runtime diagnostics already available without owner interaction.
 
 Do not ask TheHighBrid to manually search large lists, repeat broad diagnostics, or discover implementation defects that can reasonably be found programmatically.
+
+Involve the owner only at a genuine human gate requiring their access,
+authorization, identity, sensitive answer or unique judgment, or for final
+execution acceptance after multiple thorough independent tests have passed,
+verification has been achieved, and no viable alternative remains. Explain
+the verified remaining boundary and request only the smallest necessary action.
+An implementation failure is not a human gate.
+
+The current fixture-first recovery contract is
+`docs/ONEHOST_RECOVERY_CONTRACT.md`. Freeze new Android execution work. Complete
+the repeated Compose/local owned-browser fixture proof before the one Greenhouse
+dry-run; no real submission is part of this recovery lane.
 
 ## Real-world application boundary
 
@@ -136,7 +142,7 @@ Where a site requires CAPTCHA, MFA, login, identity verification, an assessment,
 7. Refresh from current `main` before final verification.
 8. Re-run affected generators, certification, and drift checks after conflict resolution.
 9. Passing focused tests does not authorize self-merge or a user-gated action.
-10. Codex/ChatGPT/Sol may not perform any write/integration action without explicit TheHighBrid approval for that exact action.
+10. Codex/ChatGPT/Sol acts under the standing owner engineering authorization and must preserve active-lane ownership and genuine human gates.
 
 ## Verification-first cooperation procedure
 
@@ -184,6 +190,7 @@ For parallel work, the default sequence is:
 6. Grok recommends integration;
 7. TheHighBrid retains final release/product authority and every real-world user-gated decision.
 
-Codex/ChatGPT/Sol participates only when TheHighBrid explicitly approves its specific action/scope.
+Codex/ChatGPT/Sol participates under the owner's standing 2026-10-02 repository
+engineering authorization. Do not require repeated per-action approvals for that work.
 
 Repository documentation never grants a contributor capabilities its actual environment does not provide.

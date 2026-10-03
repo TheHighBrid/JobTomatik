@@ -11,7 +11,7 @@ Effective 2026-09-13:
 - **TheHighBrid** remains repository owner and final authority.
 - **Grok** is the **Primary Operator** and highest-authority AI operator for JobTomatik.
 - **Manus** is an implementation contributor operating under assignments from TheHighBrid or Grok.
-- **Codex/ChatGPT/Sol** is a third-tier advisory/verification contributor and has no standing execution authority. Any repository mutation, execution, integration action, runtime action, or external action by Codex/ChatGPT/Sol requires explicit TheHighBrid approval for the exact action and scope.
+- **Codex/ChatGPT/Sol** is a repository engineering contributor under TheHighBrid's newer 2026-10-02 full repository authorization. The earlier Codex-specific read-only and per-action approval restrictions are superseded; coordination, verification and genuine real-world gates remain.
 
 This governance section supersedes any older language in repository history that described Manus or Codex/ChatGPT as the standing lead.
 
@@ -66,11 +66,16 @@ Manus does not possess a standing priority lane over Grok. Grok may reassign, na
 
 ## Codex / ChatGPT / Sol
 
-Codex/ChatGPT/Sol is no longer the integration lead and has no standing execution or integration authority.
+Grok remains Primary Operator. On 2026-10-02, America/Toronto, TheHighBrid
+explicitly granted Codex/ChatGPT/Sol "full aproval and authorization on full
+repo". Codex may implement, test, verify, work on dedicated branches and PRs,
+and repair CI within current owner direction without repeatedly requesting the
+same permission. Respect active task ownership and required verification.
 
-It may provide read-only analysis, review, or recommendations when requested. It may perform a repository write, create/update a branch or PR, alter runtime state, run an execution workflow, issue an integration decision, or take an external action only after TheHighBrid explicitly approves that exact action and scope.
-
-Approval from Grok does not substitute for the required explicit owner approval for Codex/ChatGPT/Sol actions.
+This repository engineering authorization does not authorize real-world
+submissions, external communications, paid commitments or identity actions.
+Follow the strict owner-intervention rule and fixture-first recovery contract
+in `AGENTS.md` and `docs/ONEHOST_RECOVERY_CONTRACT.md`.
 
 ## Claude and other contributors
 
