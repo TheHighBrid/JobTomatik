@@ -1,4 +1,5 @@
 import os
+import secrets
 import sys
 from functools import lru_cache
 from typing import List, Literal
@@ -9,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.services.operator_assisted_context import operator_final_action_active
 
 
-DEFAULT_SECRET_KEY = "supersecretkey-change-in-production"
+DEFAULT_SECRET_KEY = secrets.token_urlsafe(48)
 PLACEHOLDER_SECRET_MARKERS = (
     "change-me",
     "replace-with",
@@ -236,7 +237,7 @@ class Settings(BaseSettings):
         normalized = self.secret_key.strip().lower()
         return (
             len(self.secret_key.encode("utf-8")) < 32
-            or normalized == DEFAULT_SECRET_KEY
+            or self.secret_key == DEFAULT_SECRET_KEY
             or any(marker in normalized for marker in PLACEHOLDER_SECRET_MARKERS)
         )
 

@@ -49,9 +49,10 @@ def _read_env_value(env_file: Path, key: str) -> str | None:
 def _secret_is_unsafe(value: str) -> bool:
     normalized = str(value or "").strip().lower()
     encoded = str(value or "").encode("utf-8")
+    default_secret = str(DEFAULT_SECRET_KEY or "").strip().lower()
     return bool(
         len(encoded) < MIN_SECRET_BYTES
-        or normalized == DEFAULT_SECRET_KEY
+        or normalized == default_secret
         or any(marker in normalized for marker in PLACEHOLDER_SECRET_MARKERS)
     )
 
@@ -159,12 +160,15 @@ def repair_android_runtime_secret(
     updates = {"SECRET_KEY": generated_secret}
     vault_key_preserved = bool(current_vault_key)
     if not current_vault_key:
-        # Answer Policy Vault and retained handoff encryption both fall back to
-        # SECRET_KEY. Freeze the old effective value into ANSWER_VAULT_KEY before
-        # rotating authentication/runtime signing so existing ciphertext remains
-        # decryptable after the restart.
-        updates["ANSWER_VAULT_KEY"] = effective_secret
-        vault_key_preserved = True
+        # An explicitly configured legacy placeholder may already have encrypted
+        # vault/handoff data behind it, so preserve that exact value before rotating.
+        # When SECRET_KEY was never configured, DEFAULT_SECRET_KEY is process-ephemeral
+        # and cannot be a durable encryption root. Seed both durable keys from the new
+        # generated secret instead of persisting the transient process fallback.
+        updates["ANSWER_VAULT_KEY"] = (
+            effective_secret if configured_secret else generated_secret
+        )
+        vault_key_preserved = bool(configured_secret)
 
     backup_path = _backup_env(env_file, runtime_dir)
     _atomic_set_env_values(env_file, updates)

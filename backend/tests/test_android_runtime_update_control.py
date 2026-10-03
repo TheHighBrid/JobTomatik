@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import secrets
 import subprocess
 from types import SimpleNamespace
 
@@ -20,7 +21,7 @@ from app.services import lever_pilot_control_request as pilot_control
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REVISION = "b" * 40
-SECRET = "u" * 48
+SECRET = secrets.token_urlsafe(48)
 TEST_NOW = 2_000_000_000
 
 
