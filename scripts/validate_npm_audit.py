@@ -35,6 +35,8 @@ REVIEWED_FIXED_PACKAGE_ADVISORIES = {
         "https://github.com/advisories/GHSA-r4gj-5m52-g5wh",
         "https://github.com/advisories/GHSA-44g4-m2mj-wpvx",
         "https://github.com/advisories/GHSA-m8m8-qj5v-23w3",
+        "https://github.com/advisories/GHSA-4hqw-qxg8-jxx2",
+        "https://github.com/advisories/GHSA-j8rh-479h-cp32",
     }
 }
 
@@ -93,15 +95,17 @@ def main() -> int:
 
     installed_versions = _installed_package_versions()
     unapproved: list[str] = []
+    rejected_urls: dict[str, set[str]] = {}
     observed_urls: set[str] = set()
     for package, finding in vulnerabilities.items():
+        package_name = str(package)
         if not isinstance(finding, dict):
-            unapproved.append(str(package))
+            unapproved.append(package_name)
             continue
 
         via = finding.get("via")
         if not isinstance(via, list) or not via:
-            unapproved.append(str(package))
+            unapproved.append(package_name)
             continue
 
         finding_is_approved = True
@@ -113,8 +117,9 @@ def main() -> int:
                     continue
                 observed_urls.add(url)
                 if not _advisory_is_reviewed_for_installed_package(
-                    str(package), url, installed_versions
+                    package_name, url, installed_versions
                 ):
+                    rejected_urls.setdefault(package_name, set()).add(url)
                     finding_is_approved = False
             elif isinstance(item, str):
                 if not item or item not in vulnerabilities:
@@ -123,12 +128,15 @@ def main() -> int:
                 finding_is_approved = False
 
         if not finding_is_approved:
-            unapproved.append(str(package))
+            unapproved.append(package_name)
 
     if unapproved:
+        details = []
+        for package in sorted(set(unapproved)):
+            urls = sorted(rejected_urls.get(package, set()))
+            details.append(f"{package}=[{', '.join(urls)}]" if urls else package)
         print(
-            "Unapproved production npm vulnerabilities: "
-            + ", ".join(sorted(unapproved)),
+            "Unapproved production npm vulnerabilities: " + "; ".join(details),
             file=sys.stderr,
         )
         return 1
