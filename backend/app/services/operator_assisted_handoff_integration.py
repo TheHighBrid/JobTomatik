@@ -76,9 +76,10 @@ def _log_target_ref(url: str) -> str:
         try:
             port = parsed.port
         except ValueError:
-            port = None
-        authority = f"{display_host}:{port}" if port is not None else display_host
-        origin = f"{parsed.scheme}://{authority}" if parsed.scheme else "unknown-origin"
+            origin = "unknown-origin"
+        else:
+            authority = f"{display_host}:{port}" if port is not None else display_host
+            origin = f"{parsed.scheme}://{authority}" if parsed.scheme else "unknown-origin"
     else:
         origin = "unknown-origin"
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12] if raw else "empty"
