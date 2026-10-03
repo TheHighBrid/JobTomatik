@@ -102,7 +102,7 @@ def _seed_run(index: int) -> tuple[int, str, str]:
         db.flush()
 
         job = Job(
-            external_id=f"phase0-job-{index:03d}",
+            external_id=f"phase0-{index:03d}",
             title="Synthetic Phase 0 Application",
             company="JobTomatik Fixture",
             location="Local fixture",
