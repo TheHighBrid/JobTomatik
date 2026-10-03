@@ -35,6 +35,8 @@ REVIEWED_FIXED_PACKAGE_ADVISORIES = {
         "https://github.com/advisories/GHSA-r4gj-5m52-g5wh",
         "https://github.com/advisories/GHSA-44g4-m2mj-wpvx",
         "https://github.com/advisories/GHSA-m8m8-qj5v-23w3",
+        "https://github.com/advisories/GHSA-4hqw-qxg8-jxx2",
+        "https://github.com/advisories/GHSA-j8rh-479h-cp32",
     }
 }
 
