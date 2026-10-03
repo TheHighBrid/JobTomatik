@@ -18,6 +18,7 @@ from app.services.scheduler_policy import (
     scheduler_policy_is_current,
     scheduler_settings,
 )
+from app.services.user_settings_serialization import acquire_user_settings_write_lock
 
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -252,17 +253,9 @@ async def update_settings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Serialize JSON replacements with operator pause/drain/resume writes.  The
-    # authentication dependency may have loaded this row before either request
-    # acquired its lock, so populate the identity-map instance from the locked row
-    # before taking the settings snapshot.
-    current_user = (
-        db.query(User)
-        .filter(User.id == current_user.id)
-        .with_for_update()
-        .populate_existing()
-        .one()
-    )
+    # Acquire a write lock before reading the JSON snapshot. This uses an UPDATE
+    # rather than FOR UPDATE so SQLite deployments receive real serialization.
+    current_user = acquire_user_settings_write_lock(db, current_user.id)
     current = dict(current_user.automation_settings or {})
     updates = data.model_dump(exclude_none=True)
     scheduler_fields_changed = bool(

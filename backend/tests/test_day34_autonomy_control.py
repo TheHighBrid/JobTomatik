@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from threading import Event, Thread
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from celery.exceptions import Retry
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from app.models.application import (
     Application,
@@ -34,6 +37,7 @@ from app.services.operator_autonomy_control import (
 from app.services.operator_autonomy_control_integration import install_operator_autonomy_control
 from app.tasks import scraping as scraping_tasks
 from app.tasks import unattended as unattended_tasks
+from app.services.user_settings_serialization import acquire_user_settings_write_lock
 
 
 def _user(db_session, email="day34@example.test"):
@@ -77,6 +81,70 @@ def _application(db_session, user, job, *, suffix="one", state="preparing", atte
     db_session.add(application)
     db_session.flush()
     return application
+
+
+def test_sqlite_settings_writes_are_serialized_before_snapshot(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'settings-lock.db'}",
+        connect_args={"check_same_thread": False, "timeout": 5},
+    )
+    User.__table__.create(engine)
+    sessions = sessionmaker(bind=engine)
+    seed = sessions()
+    user = User(
+        email="serialized@example.test",
+        hashed_password="test-hash",
+        automation_settings={"existing": True},
+    )
+    seed.add(user)
+    seed.commit()
+    user_id = user.id
+    seed.close()
+
+    first_locked = Event()
+    release_first = Event()
+    second_locked = Event()
+
+    def pause_writer():
+        db = sessions()
+        locked = acquire_user_settings_write_lock(db, user_id)
+        settings = dict(locked.automation_settings)
+        settings[AUTONOMY_CONTROL_KEY] = {"mode": MODE_PAUSED}
+        locked.automation_settings = settings
+        first_locked.set()
+        assert release_first.wait(5)
+        db.commit()
+        db.close()
+
+    def settings_writer():
+        assert first_locked.wait(5)
+        db = sessions()
+        locked = acquire_user_settings_write_lock(db, user_id)
+        second_locked.set()
+        settings = dict(locked.automation_settings)
+        settings["auto_followup"] = False
+        locked.automation_settings = settings
+        db.commit()
+        db.close()
+
+    first = Thread(target=pause_writer)
+    second = Thread(target=settings_writer)
+    first.start()
+    second.start()
+    assert first_locked.wait(5)
+    assert second_locked.wait(0.2) is False
+    release_first.set()
+    first.join(5)
+    second.join(5)
+    assert not first.is_alive()
+    assert not second.is_alive()
+
+    verify = sessions()
+    persisted = verify.get(User, user_id)
+    assert persisted.automation_settings[AUTONOMY_CONTROL_KEY]["mode"] == MODE_PAUSED
+    assert persisted.automation_settings["auto_followup"] is False
+    verify.close()
+    engine.dispose()
 
 
 def test_operator_control_defaults_running_without_submission_authority(db_session):
