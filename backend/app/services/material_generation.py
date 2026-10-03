@@ -406,8 +406,6 @@ def _cover_letter_content(
                 supporting_units = _units_supporting_terms(detail_units, terms)
                 employment_alignment_unit_ids.update(unit.id for unit in supporting_units)
                 paragraphs.append(sentence)
-                supporting_units = _units_supporting_terms(detail_units, terms)
-                employment_alignment_ids.update(unit.id for unit in supporting_units)
                 claims.append(
                     _claim(
                         sentence,
