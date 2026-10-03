@@ -12,6 +12,9 @@ Run `bash scripts/verify-onehost-fixture.sh` on a Docker-capable Linux runner.
 It reuses `backend/Dockerfile`; there is no new browser image, provider or viewer.
 The browser and a loopback HTTP fixture are owned and stopped by one process.
 The fixture container has no external network and publishes no host ports.
+The command rejects staged, unstaged and untracked changes before stamping the
+revision or starting Docker. It builds a snapshot of that commit, excluding
+ignored local inputs, and retains the Git object manifest for the executed files.
 
 Required evidence:
 
@@ -23,13 +26,19 @@ Required evidence:
 4. A valid Playwright trace and JSON evidence retained outside the container for
    every attempt, including failed attempts after browser startup.
 5. Browser/driver child-process exit and fixture-server shutdown after each run.
-6. Negative controls proving fill failures, unexpected network requests and even
-   a synthetic submit click fail the proof while retaining diagnostic traces.
+6. Negative controls proving ordinary unexpected fill failures, HTTP/WebSocket
+   attempts and even a synthetic submit click fail the proof while retaining
+   diagnostic traces. Process-control exceptions propagate after cleanup.
 7. The exact checked-out commit and source digest in the retained summary.
 
+WebSocket routes are registered before page creation and close every attempted
+connection without opening an upstream socket. A failed network handshake alone
+does not prove that the fixture boundary was respected.
+
 The dedicated GitHub Actions job runs the actual Compose command and retains
-the proof, traces, build log, test output and rendered configuration. Local
-non-Docker browser tests are supporting evidence, not a substitute for Compose.
+the proof, traces, committed-input manifest, build log, test output and rendered
+configuration. Local non-Docker browser tests are supporting evidence, not a
+substitute for Compose.
 
 All evidence is synthetic. Gate 1 does not certify employer submission, adapter
 maturity, API/Celery job dispatch, retained handoffs, or an APK deployment.

@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import sys
 import threading
@@ -24,6 +25,7 @@ FIXTURE_PATH = BACKEND_ROOT / "tests/fixtures/onehost_http_form.html"
 PROFILE = {"full_name": "Fixture Candidate", "email": "fixture@example.test"}
 EXPECTED_VALUES = {"first": "Fixture", "last": "Candidate", "email": PROFILE["email"]}
 LAUNCH_ARGS = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+LOGGER = logging.getLogger(__name__)
 
 
 class FixtureServer:
@@ -143,7 +145,12 @@ async def _fill_and_observe(context, fixture: FixtureServer, record: dict) -> No
             record["blocked_requests"].append({"url": request.url, "method": request.method})
             await route.abort("blockedbyclient")
 
+    async def block_websocket(route):
+        record["blocked_requests"].append({"url": route.url, "method": "WEBSOCKET"})
+        await route.close(code=1008, reason="Only the HTTP fixture is permitted")
+
     await context.route("**/*", guard)
+    await context.route_web_socket("**/*", block_websocket)
     page = await context.new_page()
     response = await page.goto(fixture.url, wait_until="domcontentloaded", timeout=15000)
     record["navigation_status"] = response.status if response else None
@@ -242,7 +249,6 @@ def _resource_checks(record: dict) -> dict:
 
 async def run_once(output_dir: Path, index: int) -> dict:
     """Observe one fresh browser run and persist its outcome after cleanup."""
-    from playwright.async_api import Error as PlaywrightError
     from playwright.async_api import async_playwright
 
     run_dir = output_dir / f"run-{index:03d}"
@@ -260,7 +266,8 @@ async def run_once(output_dir: Path, index: int) -> dict:
             record["fixture_url"] = fixture.url
             async with async_playwright() as playwright:
                 await _exercise_browser(playwright, fixture, record, trace, processes)
-    except (PlaywrightError, OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:
+        LOGGER.exception("Fixture browser attempt failed; retaining diagnostics")
         record["errors"].append(f"{type(exc).__name__}: {str(exc)[:500]}")
     await _record_shutdown(record, processes["tracked"], fixture)
     _record_trace(record, trace)

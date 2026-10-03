@@ -1,10 +1,18 @@
 """Actual browser proof and negative controls for the fixture-only boundary."""
 
+import asyncio
 import json
+import threading
+import zipfile
 from pathlib import Path
 
 import pytest
-from scripts.run_onehost_fixture_gate import request_allowed, run_gate, run_once
+from scripts.run_onehost_fixture_gate import (
+    _child_processes,
+    request_allowed,
+    run_gate,
+    run_once,
+)
 
 
 @pytest.mark.parametrize("url,method", [
@@ -36,11 +44,12 @@ async def test_three_fresh_launches_navigate_fill_retain_traces_and_stop(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_fill_failure_retains_trace_and_shuts_down(monkeypatch, tmp_path):
+@pytest.mark.parametrize("exception_type", [RuntimeError, AttributeError, TypeError])
+async def test_fill_failure_retains_trace_and_shuts_down(monkeypatch, tmp_path, exception_type):
     from app.services import form_filler_v3
 
     async def fail_fill(*_args, **_kwargs):
-        raise RuntimeError("Injected fixture fill failure")
+        raise exception_type("Injected fixture fill failure")
 
     monkeypatch.setattr(form_filler_v3, "_fill_step_fields", fail_fill)
     record = await run_once(tmp_path, 1)
@@ -49,6 +58,25 @@ async def test_fill_failure_retains_trace_and_shuts_down(monkeypatch, tmp_path):
     assert record["checks"]["browser_shutdown"]
     assert record["checks"]["server_shutdown"]
     assert record["checks"]["trace_retained"]
+    assert json.loads((tmp_path / "run-001/evidence.json").read_text()) == record
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exception_type", [asyncio.CancelledError, KeyboardInterrupt, SystemExit])
+async def test_process_control_exception_propagates_after_cleanup(monkeypatch, tmp_path, exception_type):
+    from app.services import form_filler_v3
+
+    async def interrupt_fill(*_args, **_kwargs):
+        raise exception_type("Injected process-control interruption")
+
+    monkeypatch.setattr(form_filler_v3, "_fill_step_fields", interrupt_fill)
+    baseline = _child_processes()
+    with pytest.raises(exception_type):
+        await run_once(tmp_path, 1)
+    assert not set(_child_processes().items()) - set(baseline.items())
+    assert not any(thread.name == "onehost-fixture-server" for thread in threading.enumerate())
+    with zipfile.ZipFile(tmp_path / "run-001/trace.zip") as archive:
+        assert archive.testzip() is None
 
 
 @pytest.mark.asyncio
@@ -95,3 +123,36 @@ async def test_unexpected_network_request_is_blocked_and_fails_proof(monkeypatch
     assert not record["checks"]["no_nonfixture_requests"]
     assert record["checks"]["trace_retained"]
     assert record["checks"]["browser_shutdown"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scheme", ["ws", "wss"])
+async def test_websocket_attempt_is_closed_before_upstream_and_fails_proof(monkeypatch, tmp_path, scheme):
+    from app.services import form_filler_v3
+
+    fill = form_filler_v3._fill_step_fields
+    url = f"{scheme}://employer.invalid/fixture"
+    close_codes = []
+
+    async def fill_then_attempt_websocket(surface, **kwargs):
+        outcome = await fill(
+            surface, profile=kwargs["profile"], cover_letter=kwargs["cover_letter"],
+            resume_path=kwargs["resume_path"], log=kwargs["log"], step_number=kwargs["step_number"],
+        )
+        close_codes.append(await surface.evaluate("""url => new Promise(resolve => {
+            const socket = new WebSocket(url);
+            socket.onclose = event => resolve(event.code);
+            socket.onerror = () => resolve('network_error');
+            setTimeout(() => resolve('timeout'), 1500);
+        })""", url))
+        return outcome
+
+    monkeypatch.setattr(form_filler_v3, "_fill_step_fields", fill_then_attempt_websocket)
+    record = await run_once(tmp_path, 1)
+    assert close_codes == [1008]
+    assert record["status"] == "failed" and record["errors"] == []
+    assert record["blocked_requests"] == [{"url": url, "method": "WEBSOCKET"}]
+    assert not record["checks"]["no_nonfixture_requests"]
+    assert record["checks"]["current_flow_ready"]
+    assert record["http_requests"] == [{"method": "GET", "path": "/fixture"}]
+    assert all(record["checks"][key] for key in ["trace_retained", "browser_shutdown", "server_shutdown"])
