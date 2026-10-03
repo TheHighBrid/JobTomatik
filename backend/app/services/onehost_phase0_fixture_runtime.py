@@ -72,6 +72,14 @@ def _child_processes() -> dict[int, str]:
     return {pid: identities[pid][1] for pid in descendants if pid != os.getpid()}
 
 
+def _capture_new_children(baseline: dict[int, str], tracked: dict[int, str]) -> None:
+    """Track descendants by PID plus start identity before they can be reparented."""
+
+    for pid, started in _child_processes().items():
+        if baseline.get(pid) != started:
+            tracked[pid] = started
+
+
 def _still_running(tracked: dict[int, str]) -> list[int]:
     return [
         pid
@@ -93,6 +101,81 @@ def _exact_get_allowed(url: str, method: str, expected_url: str) -> bool:
         and target.username is None
         and target.password is None
     )
+
+
+def _observe_request(record: dict[str, Any], request) -> None:
+    record["observed_requests"].append({"url": request.url, "method": request.method})
+
+
+def _unexpected_observed_requests(record: dict[str, Any], expected_url: str) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in record.get("observed_requests", [])
+        if not _exact_get_allowed(item.get("url", ""), item.get("method", ""), expected_url)
+    ]
+
+
+async def _guard_fixture_route(route, expected_url: str, record: dict[str, Any]) -> None:
+    """Permit exactly one 200 GET response from the configured fixture, with no redirects."""
+
+    request = route.request
+    request_shape = {"url": request.url, "method": request.method}
+    if not _exact_get_allowed(request.url, request.method, expected_url):
+        record["blocked_requests"].append({**request_shape, "reason": "outside_fixture_boundary"})
+        await route.abort("blockedbyclient")
+        return
+
+    try:
+        upstream = await route.fetch(max_redirects=0)
+    except Exception as exc:
+        record["blocked_requests"].append({
+            **request_shape,
+            "reason": "fixture_fetch_failed",
+            "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+        })
+        await route.abort("blockedbyclient")
+        return
+
+    location = upstream.headers.get("location")
+    if 300 <= upstream.status < 400:
+        record["blocked_requests"].append({
+            **request_shape,
+            "reason": "fixture_redirect_refused",
+            "status": upstream.status,
+            "location": location,
+        })
+        await route.abort("blockedbyclient")
+        return
+    if upstream.status != 200:
+        record["blocked_requests"].append({
+            **request_shape,
+            "reason": "fixture_status_refused",
+            "status": upstream.status,
+        })
+        await route.abort("blockedbyclient")
+        return
+
+    await route.fulfill(response=upstream)
+
+
+async def _install_fixture_network_guard(context, expected_url: str, record: dict[str, Any]) -> None:
+    """Install independent request observation plus fail-closed HTTP/WebSocket routing."""
+
+    context.on("request", lambda request: _observe_request(record, request))
+
+    async def guard(route):
+        await _guard_fixture_route(route, expected_url, record)
+
+    async def block_websocket(route):
+        record["blocked_requests"].append({
+            "url": route.url,
+            "method": "WEBSOCKET",
+            "reason": "websocket_refused",
+        })
+        await route.close(code=1008, reason="Phase 0 permits only the configured fixture")
+
+    await context.route("**/*", guard)
+    await context.route_web_socket("**/*", block_websocket)
 
 
 def _verify_trace(trace_path: Path) -> dict[str, Any]:
@@ -128,33 +211,22 @@ async def _exercise_browser(
         browser = None
         context = None
         tracing_started = False
+        _capture_new_children(baseline, tracked)
         try:
             browser = await playwright.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+            _capture_new_children(baseline, tracked)
             record["browser"] = {
                 "type": browser.browser_type.name,
                 "version": browser.version,
             }
             context = await browser.new_context(service_workers="block")
-
-            async def guard(route):
-                request = route.request
-                record["observed_requests"].append({"url": request.url, "method": request.method})
-                if _exact_get_allowed(request.url, request.method, expected_url):
-                    await route.continue_()
-                else:
-                    record["blocked_requests"].append({"url": request.url, "method": request.method})
-                    await route.abort("blockedbyclient")
-
-            async def block_websocket(route):
-                record["blocked_requests"].append({"url": route.url, "method": "WEBSOCKET"})
-                await route.close(code=1008, reason="Phase 0 permits only the configured fixture")
-
-            await context.route("**/*", guard)
-            await context.route_web_socket("**/*", block_websocket)
+            _capture_new_children(baseline, tracked)
+            await _install_fixture_network_guard(context, expected_url, record)
             await context.tracing.start(screenshots=True, snapshots=True, sources=True)
             tracing_started = True
 
             page = await context.new_page()
+            _capture_new_children(baseline, tracked)
             response = await page.goto(expected_url, wait_until="domcontentloaded", timeout=15000)
             record["navigation_status"] = response.status if response else None
             log: list[dict[str, Any]] = []
@@ -181,6 +253,8 @@ async def _exercise_browser(
                 for field in expected_values
             }
             submit_observations = await page.evaluate("window.fixtureObservations")
+            unexpected_requests = _unexpected_observed_requests(record, expected_url)
+            record["unexpected_observed_requests"] = unexpected_requests
             record["values"] = values
             record["submit_observations"] = submit_observations
             record["flow"] = flow.as_dict()
@@ -196,7 +270,8 @@ async def _exercise_browser(
                 "values_verified": values == expected_values,
                 "submit_not_clicked": submit_observations
                 == {"submitClicks": 0, "submitEvents": 0},
-                "no_nonfixture_requests": not record["blocked_requests"],
+                "no_blocked_requests": not record["blocked_requests"],
+                "no_unexpected_observed_requests": not unexpected_requests,
                 "flow_ready": bool(flow.success and flow.ready_to_submit),
             }
             if not all(record["checks"].values()):
@@ -205,12 +280,7 @@ async def _exercise_browser(
                 result["requires_manual_review"] = True
                 result["error"] = "Phase 0 owned-browser fixture checks failed"
         finally:
-            # Capture browser/driver descendants while Playwright still owns them.
-            tracked.update({
-                pid: started
-                for pid, started in _child_processes().items()
-                if pid not in baseline
-            })
+            _capture_new_children(baseline, tracked)
             if tracing_started and context is not None:
                 try:
                     await context.tracing.stop(path=str(trace_path))
