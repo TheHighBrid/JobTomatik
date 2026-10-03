@@ -1,9 +1,7 @@
-"""
-Repeat the owned-browser proof on an HTTP fixture, retaining synthetic evidence.
+"""Repeat the owned-browser HTTP fixture proof with retained synthetic evidence."""
 
-This exercises the current v3 filler and ATS flow, not API/Celery dispatch or
-retained handoffs. It cannot certify an employer application or adapter maturity.
-"""
+# Scope: current v3 filler and ATS flow, without API/Celery dispatch or retained
+# handoffs. This cannot certify an employer application or adapter maturity.
 
 from __future__ import annotations
 
