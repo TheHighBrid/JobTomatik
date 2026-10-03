@@ -1,0 +1,48 @@
+name: PR 621 Checkov diagnostic
+
+on:
+  push:
+    branches:
+      - codex/fix-high-priority-bugs-from-codex-review-470fio
+    paths:
+      - .github/workflows/pr621-codacy-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/fix-high-priority-bugs-from-codex-review-470fio
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Checkov
+        run: python -m pip install checkov==3.3.8
+      - name: Analyze changed Day 35 workflow
+        shell: bash
+        run: |
+          checkov -f .github/workflows/day35-operations-rehearsal-gate.yml --framework github_actions -o json --compact 2>&1 | tee /tmp/checkov.json || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          text=Path('/tmp/checkov.json').read_text(encoding='utf-8')
+          start=text.find('{')
+          if start < 0:
+              print(text)
+              raise SystemExit(0)
+          data=json.loads(text[start:])
+          for item in data.get('results', {}).get('failed_checks', []):
+              print(json.dumps({
+                  'check_id': item.get('check_id'),
+                  'check_name': item.get('check_name'),
+                  'file_path': item.get('file_path'),
+                  'file_line_range': item.get('file_line_range'),
+                  'resource': item.get('resource'),
+                  'guideline': item.get('guideline'),
+              }, indent=2))
+          PY
