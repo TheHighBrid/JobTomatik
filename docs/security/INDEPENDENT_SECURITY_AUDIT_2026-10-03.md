@@ -11,6 +11,7 @@ Read AGENTS.md, ONEHOST_RECOVERY_CONTRACT.md, cooperation board and latest issue
 
 - HIGH SECURITY: main Compose still substituted a public historical signing key. #638 requires an explicit shared SECRET_KEY in API, worker and beat; all sensitive flags remain off by default.
 - HIGH CORRECTNESS: process-ephemeral signing fallback cannot be a durable encryption/HMAC root. Two independent interpreters reproduced all three decrypt/hash failures. #638 blocks durable vault encryption, handoff encryption and hashes under the fallback; explicitly configured existing keys retain compatibility.
+- HIGH SECURITY: a strong signing key did not prevent a configured historical/short vault root from encrypting new sensitive-mode data. New vault/handoff encryption and HMAC operations now validate their actual root in all five sensitive modes. Explicit legacy ciphertext remains readable for migration; generated strong separate keys still round-trip.
 - HIGH CORRECTNESS: missing keys do not prove a fresh database. Repair now refuses existing/remote/ambiguous stores before backup or key writes. Explicit legacy key preservation remains unchanged.
 - MEDIUM SECURITY: npm advisory exception used only the root installed version. #638 validates every reported lockfile node, rejects unknown paths/versions and cyclic/missing advisory provenance, and constrains the React Router exception to its reviewed package.
 
@@ -18,7 +19,7 @@ Reviewed default/development auth, settings cache identity, true separate-proces
 
 ## Focused Task B corrections and limits
 
-Root frontend runtime is hardened to node USER with owned writable files and maintained Node 24. Node 20 is EOL per the official release schedule: https://github.com/nodejs/Release/blob/main/README.md and https://nodejs.org/en/about/eol. Workflow Node 20 pins overlap other claims and remain reported for coordination. Container readiness is checked in dedicated CI with network disabled; local Docker is unavailable.
+Root frontend runtime is hardened to node USER with owned writable files and maintained Node 24. Node 20 is EOL per the official release schedule: <https://github.com/nodejs/Release/blob/main/README.md> and <https://nodejs.org/en/about/eol>. Workflow Node 20 pins overlap other claims and remain reported for coordination. Container readiness is checked in dedicated CI with network disabled; local Docker is unavailable.
 
 Inherited __proto__/constructor values were accepted as supervised platforms and could become non-string labels. Own-property validation fixes those lookups without changing backend authorization. Failed visibility/enabled inspection was accepted as actionable; the shared primitive now returns False on either error.
 
@@ -34,9 +35,11 @@ Reviewed #628 exact dcbf862c9a869f270052a5a328ef5c4b9b3b5687, run 37148739373, a
 
 Architecture: real FastAPI endpoint, Redis broker, Celery application task and current _fill_step_fields/run_ats_application_flow; synthetic worker swaps the final browser operation. Playwright owns Chromium; internal Docker network and no exposed ports. Generic fixture adapter does not certify production Greenhouse adapter, target resolution or production browser selection. Frozen architecture is not traversed by this proof.
 
-HIGH SECURITY: dcb route.continue_() permits unobserved redirect-chain escape because Playwright intercepts the chain's first request only. Reported at #628 comment 5972947780 and issue #252. Official semantics: https://playwright.dev/docs/next/network#redirects. Internal Docker network narrows impact but does not enforce the exact fixture boundary. Verdict for that head: BLOCKED BY SECURITY DEFECT despite valid benign traces.
+HIGH SECURITY: dcb route.continue_() permits unobserved redirect-chain escape because Playwright intercepts the chain's first request only. Reported at #628 comment 5972947780 and issue #252. Official semantics: <https://playwright.dev/docs/next/network#redirects>. Internal Docker network narrows impact but does not enforce the exact fixture boundary. Verdict for that head: BLOCKED BY SECURITY DEFECT despite valid benign traces.
 
-Successor 2d0a7ba0ae64cb1198f083b3efefdb51655de2a0 uses route.fetch(max_redirects=0), rejects redirects/non-200, independently observes requests, checks PID+starttime baselines and adds destination-server redirect negative control. Source-level correction is materially appropriate; exact-head runtime artifacts remain required before changing the verdict.
+Successor 2d0a7ba0ae64cb1198f083b3efefdb51655de2a0 uses route.fetch(max_redirects=0), rejects redirects/non-200, independently observes requests, checks PID+starttime baselines and adds destination-server redirect negative control. The first runtime artifact exposed a runner/browser contract mismatch: network_is_fixture_only read the removed no_nonfixture_requests key. Reported before correction; failed-attempt trace and cleanup evidence were retained.
+
+Corrected head 9c0bc5d9e365a5715f51e7c84ef3a7073290b04e, run 37150743582, artifact 11283478348: independently verified archive SHA256 0cd7b3ddeb81e4ec57b462ccdb06c4e25a6e46803fcdfff02bb7d45ee3db7eff and source digest d95984b4bfa28cd694edaffe584b7df133c7dba5df2aeded527f78fdc77d8bf2 over 289 exact-commit paths. Three valid traces show three fills each, zero click/press/type/dispatchEvent, only controlled fixture GETs and no POST. Redirect negative control records source hit 1, destination hit 0 and the expected blocked 302. Browser evidence reports no unexpected requests or remaining children; Compose evidence shows fixture stopped and no remaining project containers. Scoped verdict: PASS WITH NON-BLOCKING FINDINGS. Review posted at #628 comment 5973148566. This supersedes the earlier security block and runner mismatch; it certifies the synthetic Phase 0 fixture path only.
 
 Remaining evidence limits: child discovery samples can still miss a child orphaned between samples; failures before tracing starts cannot retain a browser trace; shared DB/Redis/worker survive the three fresh-ID iterations, so they are independent application attempts, not three freshly provisioned environments. Autosubmit/Enter/WebSocket, post-browser exceptions and DNS negative controls are not established by benign traces. Do not extend this proof into general employer/isolation certification.
 
@@ -46,15 +49,15 @@ Gate 2 verdict: INSUFFICIENT EVIDENCE. No merged-main Greenhouse dry-run impleme
 
 ## Tests and artifacts
 
-- Final focused backend suite: 81 passed, 2 warnings, 9.60 seconds.
-- Crypto/handoff/API consumer suite: 68 passed, 149 existing warnings, 22.61 seconds.
+- Final focused backend suite: 111 passed, 2 existing warnings, 12.01 seconds.
+- Final crypto/handoff/API consumer suite including sensitive-root regressions: 118 passed, 143 existing warnings, 27.47 seconds. Earlier additional API consumer suite: 68 passed, 149 existing warnings, 22.61 seconds.
 - Actionability/filler consumers: 10 passed, 4 skipped because local Chromium is unavailable, 13 warnings, 5.14 seconds. Actual browser regression CI remains necessary.
 - Frontend Node tests: 143 passed, 0 failed. Vite build succeeded on Node v24.19.0.
 - Actual standalone Compose missing-key interpolation rejected; generated configured key shared by API/worker/beat, sensitive switches false.
 - pip-audit pinned backend requirements: no known vulnerabilities. npm production lockfile audit: no vulnerabilities; tightened validator passed the actual report.
 - Python compile and git diff --check passed; added workflow YAML and bash syntax validated. Local browser download returned truncated/invalid archives, so no local Chromium pass is claimed.
 - CI intermediate 5d3ea132: CodeQL and corrected exact-head-acceptance succeeded; final-head suite/results belong in issue #252 handoff.
-- Artifacts inspected: exact dcb archive, three traces/browser evidence, API/Celery/fixture logs, application rows/events, committed manifest, source digest, Compose config, teardown. No external target or owner device was used.
+- Artifacts inspected: exact dcb, failed 2d0 and successful 9c0 archives, three final traces/browser evidence, API/Celery/fixture logs, application rows/events, committed manifest, source digest, Compose config, teardown. No external target or owner device was used.
 
 ## Security invariants and integration
 
@@ -62,7 +65,7 @@ OWASP scoped check: A01 backend authorization unchanged; A02 explicit durable cr
 
 Recommended integration: Grok reviews #638 exact final checks and compatibility, sequences it with #628 and separately reconciles action-pin ownership. Do not self-merge or globally suppress Codacy. Dependencies: no JS/Python package change; frontend runtime base changes Node 20 to 24; explicit secret becomes mandatory for Compose and durable operations. Existing legacy vault decrypt/migration compatibility is retained. Recovery, database/Alembic, employer adapters, Android/ADB/PRoot/CDP and #636 settings files intentionally unchanged, except the claimed shared control admission predicate.
 
-Known blockers: seven owned action-pin corrections; two frozen-filesystem corrections needing assignment; full CodeQL inventory connector limitation; exact #628 successor evidence; merged-main Gate 2 implementation/evidence. Next highest-value task: verify the redirect negative control and remaining recovery failure/cleanup invariants, then reconcile existing action-pin branch. Owner action required: NO. These are engineering/coordination dependencies, not owner debugging gates.
+Known blockers: seven owned action-pin corrections; two frozen-filesystem corrections needing assignment; full CodeQL inventory connector limitation; merged-main Gate 2 implementation/evidence. Next highest-value task: reconcile the existing action-pin branch and assign the frozen-filesystem corrections; continue recovery failure/cleanup negative controls and Gate 2 review when its exact head is available. Owner action required: NO. These are engineering/coordination dependencies, not owner debugging gates.
 
 ## Current-main scanner inventory
 

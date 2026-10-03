@@ -68,6 +68,48 @@ def test_ephemeral_key_cannot_create_durable_crypto(isolated_config, operation):
         operation("synthetic-value")
 
 
+@pytest.mark.parametrize("mode", SENSITIVE_MODES)
+@pytest.mark.parametrize("marker", (*PLACEHOLDER_SECRET_MARKERS, ""))
+def test_sensitive_writes_reject_weak_separate_roots_but_legacy_decryption_survives(
+    isolated_config, monkeypatch, mode, marker,
+):
+    weak_root = marker + secrets.token_urlsafe(48) if marker else secrets.token_urlsafe(8)
+    settings = Settings(
+        _env_file=None,
+        secret_key=secrets.token_urlsafe(48),
+        answer_vault_key=weak_root,
+        **mode,
+    )
+    monkeypatch.setattr(answer_policy, "get_settings", lambda: settings)
+    monkeypatch.setattr(handoff_session, "get_settings", lambda: settings)
+    # Create historical ciphertext directly, without authorizing a new write.
+    vault_cipher = answer_policy._fernet().encrypt(b"synthetic-legacy-value").decode()
+    handoff_cipher = handoff_session._fernet().encrypt(b"synthetic-legacy-token").decode()
+    assert answer_policy.decrypt_policy_value(vault_cipher) == "synthetic-legacy-value"
+    assert handoff_session.decrypt_handoff_secret(handoff_cipher) == "synthetic-legacy-token"
+    for operation in (answer_policy.encrypt_policy_value, handoff_session.encrypt_handoff_secret):
+        with pytest.raises(ValueError, match="non-placeholder"):
+            operation("synthetic-new-value")
+    hash_settings = settings.model_copy(update={"handoff_hash_key": weak_root})
+    monkeypatch.setattr(handoff_session, "get_settings", lambda: hash_settings)
+    with pytest.raises(ValueError, match="non-placeholder"):
+        handoff_session._secret_hash("synthetic-new-token")
+
+
+@pytest.mark.parametrize("mode", SENSITIVE_MODES)
+def test_sensitive_mode_accepts_strong_separate_roots(isolated_config, monkeypatch, mode):
+    settings = Settings(
+        _env_file=None,
+        secret_key=secrets.token_urlsafe(48),
+        answer_vault_key=secrets.token_urlsafe(48),
+        **mode,
+    )
+    monkeypatch.setattr(answer_policy, "get_settings", lambda: settings)
+    monkeypatch.setattr(handoff_session, "get_settings", lambda: settings)
+    assert answer_policy.decrypt_policy_value(answer_policy.encrypt_policy_value("synthetic")) == "synthetic"
+    assert handoff_session.decrypt_handoff_secret(handoff_session.encrypt_handoff_secret("synthetic")) == "synthetic"
+
+
 def test_explicit_vault_key_does_not_authorize_ephemeral_handoff_hash(isolated_config, monkeypatch):
     monkeypatch.setenv("ANSWER_VAULT_KEY", secrets.token_urlsafe(48))
     encrypted = answer_policy.encrypt_policy_value("synthetic-answer")

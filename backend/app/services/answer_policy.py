@@ -101,11 +101,12 @@ def classify_question(question_text: str) -> Dict[str, str]:
     }
 
 
-def _fernet() -> Fernet:
+def _fernet(*, for_write: bool = False) -> Fernet:
     settings = get_settings()
     secret = require_persistent_secret(
         settings.answer_vault_key or settings.secret_key,
         "persisting Answer Policy Vault data (ANSWER_VAULT_KEY or SECRET_KEY)",
+        sensitive_write=for_write and settings.sensitive_runtime,
     )
     digest = hashlib.sha256(secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
@@ -114,7 +115,7 @@ def _fernet() -> Fernet:
 def encrypt_policy_value(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
-    return _fernet().encrypt(value.encode("utf-8")).decode("utf-8")
+    return _fernet(for_write=True).encrypt(value.encode("utf-8")).decode("utf-8")
 
 
 def decrypt_policy_value(value: Optional[str]) -> Optional[str]:
