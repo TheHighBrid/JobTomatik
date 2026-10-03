@@ -1,0 +1,43 @@
+name: OneHost FastAPI Celery Phase 0 gate
+
+on:
+  pull_request:
+    paths:
+      - backend/**
+      - docker-compose.onehost-api-celery.yml
+      - scripts/verify-onehost-api-celery.sh
+      - .github/workflows/onehost-api-celery-gate.yml
+  push:
+    branches: [main]
+    paths:
+      - backend/**
+      - docker-compose.onehost-api-celery.yml
+      - scripts/verify-onehost-api-celery.sh
+      - .github/workflows/onehost-api-celery-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: onehost-api-celery-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  phase0-fastapi-celery-proof:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Prove FastAPI to Celery to owned Chromium repeatedly
+        run: bash scripts/verify-onehost-api-celery.sh
+      - name: Retain synthetic Phase 0 proof, traces and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: onehost-api-celery-${{ github.event.pull_request.head.sha || github.sha }}
+          path: verification-artifacts/onehost-api-celery.*/
+          if-no-files-found: error
+          retention-days: 7
