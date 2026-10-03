@@ -10,6 +10,43 @@ from sqlalchemy.engine import Connection, Engine
 
 FOLLOWUP_SCHEMA_LOCK_NAME = "jobtomatik-supervised-followup-schema-v1"
 
+FOLLOWUP_COLUMN_ADDITIONS = {
+    "recruiter_contact_id": text(
+        "ALTER TABLE followups ADD COLUMN recruiter_contact_id INTEGER"
+    ),
+    "payload_hash": text("ALTER TABLE followups ADD COLUMN payload_hash VARCHAR(128)"),
+    "approval_reference": text(
+        "ALTER TABLE followups ADD COLUMN approval_reference VARCHAR(255)"
+    ),
+    "approval_status": text(
+        "ALTER TABLE followups ADD COLUMN approval_status "
+        "VARCHAR(40) DEFAULT 'unapproved' NOT NULL"
+    ),
+    "approval_payload_hash": text(
+        "ALTER TABLE followups ADD COLUMN approval_payload_hash VARCHAR(128)"
+    ),
+    "approved_at": text("ALTER TABLE followups ADD COLUMN approved_at TIMESTAMP"),
+    "approval_expires_at": text(
+        "ALTER TABLE followups ADD COLUMN approval_expires_at TIMESTAMP"
+    ),
+    "approved_by_user_id": text(
+        "ALTER TABLE followups ADD COLUMN approved_by_user_id INTEGER"
+    ),
+    "send_idempotency_key": text(
+        "ALTER TABLE followups ADD COLUMN send_idempotency_key VARCHAR(255)"
+    ),
+    "send_attempt_count": text(
+        "ALTER TABLE followups ADD COLUMN send_attempt_count INTEGER DEFAULT 0 NOT NULL"
+    ),
+    "last_send_attempt_at": text(
+        "ALTER TABLE followups ADD COLUMN last_send_attempt_at TIMESTAMP"
+    ),
+    "delivery_metadata": text(
+        "ALTER TABLE followups ADD COLUMN delivery_metadata JSON"
+    ),
+    "updated_at": text("ALTER TABLE followups ADD COLUMN updated_at TIMESTAMP"),
+}
+
 
 def _upgrade_followup_schema(conn: Connection) -> None:
     inspector = sa_inspect(conn)
@@ -17,26 +54,9 @@ def _upgrade_followup_schema(conn: Connection) -> None:
         return
 
     columns = {item["name"] for item in inspector.get_columns("followups")}
-    additions = {
-        "recruiter_contact_id": "INTEGER",
-        "payload_hash": "VARCHAR(128)",
-        "approval_reference": "VARCHAR(255)",
-        "approval_status": "VARCHAR(40) DEFAULT 'unapproved' NOT NULL",
-        "approval_payload_hash": "VARCHAR(128)",
-        "approved_at": "TIMESTAMP",
-        "approval_expires_at": "TIMESTAMP",
-        "approved_by_user_id": "INTEGER",
-        "send_idempotency_key": "VARCHAR(255)",
-        "send_attempt_count": "INTEGER DEFAULT 0 NOT NULL",
-        "last_send_attempt_at": "TIMESTAMP",
-        "delivery_metadata": "JSON",
-        "updated_at": "TIMESTAMP",
-    }
-    for column_name, definition in additions.items():
+    for column_name, statement in FOLLOWUP_COLUMN_ADDITIONS.items():
         if column_name not in columns:
-            conn.execute(
-                text(f"ALTER TABLE followups ADD COLUMN {column_name} {definition}")
-            )
+            conn.execute(statement)
 
     conn.execute(
         text(

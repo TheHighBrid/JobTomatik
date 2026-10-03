@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
-import xml.etree.ElementTree as ET
+
+from lxml import etree
 
 
 DOSSIER_SCHEMA_VERSION = "1.0"
@@ -30,7 +31,13 @@ def _load_json(path: Path) -> Dict[str, Any]:
 
 
 def _junit_summary(path: Path) -> Dict[str, Any]:
-    root = ET.parse(path).getroot()
+    parser = etree.XMLParser(
+        resolve_entities=False,
+        no_network=True,
+        load_dtd=False,
+        huge_tree=False,
+    )
+    root = etree.parse(str(path), parser=parser).getroot()
     suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
     tests = sum(int(suite.attrib.get("tests", 0)) for suite in suites)
     failures = sum(int(suite.attrib.get("failures", 0)) for suite in suites)

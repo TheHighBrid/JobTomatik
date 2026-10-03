@@ -73,6 +73,68 @@ install_supervised_submission_task_gate()
 # Keep this outermost so closed applications stop before approval consumption.
 install_closed_application_task_gate()
 
+JOB_SOURCE_ENUM_ADDITIONS = (
+    text("ALTER TYPE jobsource ADD VALUE IF NOT EXISTS 'greenhouse'"),
+    text("ALTER TYPE jobsource ADD VALUE IF NOT EXISTS 'lever'"),
+    text("ALTER TYPE jobsource ADD VALUE IF NOT EXISTS 'ashby'"),
+)
+
+ANSWER_POLICY_COLUMN_ADDITIONS = {
+    "encrypted_fallbacks": text(
+        "ALTER TABLE applicant_answer_policies ADD COLUMN encrypted_fallbacks TEXT"
+    ),
+    "provenance": text(
+        "ALTER TABLE applicant_answer_policies ADD COLUMN provenance "
+        "VARCHAR(40) DEFAULT 'user_provided' NOT NULL"
+    ),
+    "confidence": text(
+        "ALTER TABLE applicant_answer_policies ADD COLUMN confidence "
+        "FLOAT DEFAULT 1.0 NOT NULL"
+    ),
+    "consent_metadata": text(
+        "ALTER TABLE applicant_answer_policies ADD COLUMN consent_metadata JSON"
+    ),
+    "source_metadata": text(
+        "ALTER TABLE applicant_answer_policies ADD COLUMN source_metadata JSON"
+    ),
+    "expires_at": text(
+        "ALTER TABLE applicant_answer_policies ADD COLUMN expires_at TIMESTAMP"
+    ),
+}
+
+APPLICATION_COLUMN_ADDITIONS = {
+    "automation_state": text(
+        "ALTER TABLE applications ADD COLUMN automation_state "
+        "VARCHAR(50) DEFAULT 'preparing' NOT NULL"
+    ),
+    "source_listing_url": text(
+        "ALTER TABLE applications ADD COLUMN source_listing_url VARCHAR(1000)"
+    ),
+    "application_target_url": text(
+        "ALTER TABLE applications ADD COLUMN application_target_url VARCHAR(1000)"
+    ),
+    "application_target_status": text(
+        "ALTER TABLE applications ADD COLUMN application_target_status "
+        "VARCHAR(50) DEFAULT 'unresolved' NOT NULL"
+    ),
+    "application_target_resolved_at": text(
+        "ALTER TABLE applications ADD COLUMN application_target_resolved_at TIMESTAMP"
+    ),
+    "application_target_metadata": text(
+        "ALTER TABLE applications ADD COLUMN application_target_metadata JSON"
+    ),
+    "submission_idempotency_key": text(
+        "ALTER TABLE applications ADD COLUMN submission_idempotency_key VARCHAR(255)"
+    ),
+    "submission_attempt_count": text(
+        "ALTER TABLE applications ADD COLUMN submission_attempt_count "
+        "INTEGER DEFAULT 0 NOT NULL"
+    ),
+    "last_submission_attempt_at": text(
+        "ALTER TABLE applications ADD COLUMN last_submission_attempt_at TIMESTAMP"
+    ),
+}
+
 
 def _safe_migrate(eng):
     """Add backward-compatible columns and enum values for existing databases.
@@ -91,10 +153,8 @@ def _safe_migrate(eng):
                     text("SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'jobsource')")
                 ).scalar()
                 if enum_exists:
-                    for enum_value in ("greenhouse", "lever", "ashby"):
-                        enum_conn.execute(
-                            text(f"ALTER TYPE jobsource ADD VALUE IF NOT EXISTS '{enum_value}'")
-                        )
+                    for statement in JOB_SOURCE_ENUM_ADDITIONS:
+                        enum_conn.execute(statement)
         except Exception as exc:
             logger.exception("Failed additive migration for jobs.source enum")
             failures.append(("jobs.source_enum", exc))
@@ -114,22 +174,9 @@ def _safe_migrate(eng):
             policy_cols = {
                 c["name"] for c in sa_inspect(eng).get_columns("applicant_answer_policies")
             }
-            policy_additions = {
-                "encrypted_fallbacks": "TEXT",
-                "provenance": "VARCHAR(40) DEFAULT 'user_provided' NOT NULL",
-                "confidence": "FLOAT DEFAULT 1.0 NOT NULL",
-                "consent_metadata": "JSON",
-                "source_metadata": "JSON",
-                "expires_at": "TIMESTAMP",
-            }
-            for column_name, definition in policy_additions.items():
+            for column_name, statement in ANSWER_POLICY_COLUMN_ADDITIONS.items():
                 if column_name not in policy_cols:
-                    conn.execute(
-                        text(
-                            "ALTER TABLE applicant_answer_policies "
-                            f"ADD COLUMN {column_name} {definition}"
-                        )
-                    )
+                    conn.execute(statement)
                     conn.commit()
             conn.execute(
                 text(
@@ -151,24 +198,9 @@ def _safe_migrate(eng):
 
         try:
             app_cols = {c["name"] for c in sa_inspect(eng).get_columns("applications")}
-            additions = {
-                "automation_state": "VARCHAR(50) DEFAULT 'preparing' NOT NULL",
-                "source_listing_url": "VARCHAR(1000)",
-                "application_target_url": "VARCHAR(1000)",
-                "application_target_status": "VARCHAR(50) DEFAULT 'unresolved' NOT NULL",
-                "application_target_resolved_at": "TIMESTAMP",
-                "application_target_metadata": "JSON",
-                "submission_idempotency_key": "VARCHAR(255)",
-                "submission_attempt_count": "INTEGER DEFAULT 0 NOT NULL",
-                "last_submission_attempt_at": "TIMESTAMP",
-            }
-            for column_name, definition in additions.items():
+            for column_name, statement in APPLICATION_COLUMN_ADDITIONS.items():
                 if column_name not in app_cols:
-                    conn.execute(
-                        text(
-                            f"ALTER TABLE applications ADD COLUMN {column_name} {definition}"
-                        )
-                    )
+                    conn.execute(statement)
                     conn.commit()
             conn.execute(
                 text(

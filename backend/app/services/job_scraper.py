@@ -11,7 +11,7 @@ import asyncio
 import hashlib
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus
 
@@ -69,9 +69,14 @@ def _headers() -> Dict[str, str]:
     }
 
 
+def _utc_now_naive() -> datetime:
+    """Return UTC using an explicit timezone while preserving legacy naive storage."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def _uid(source: str, company: str, title: str, url: str = "") -> str:
-    raw = f"{source}-{company}-{title}-{url or datetime.utcnow().date()}"
-    return hashlib.md5(raw.encode()).hexdigest()[:16]
+    raw = f"{source}-{company}-{title}-{url or _utc_now_naive().date()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def _mock_salary(salary_min: Optional[int], salary_max: Optional[int]):
@@ -106,7 +111,7 @@ def _build_mock_jobs(keywords: str, location: Optional[str], salary_min: Optiona
             "requirements": f"Experience with {keywords}, fraud review, KYC, AML, banking compliance, case documentation",
             "url": url,
             "source": source if source in {"linkedin", "indeed", "glassdoor", "jobbank", "manual"} else "manual",
-            "posted_at": (datetime.utcnow() - timedelta(days=random.randint(0, 14))).isoformat(),
+            "posted_at": (_utc_now_naive() - timedelta(days=random.randint(0, 14))).isoformat(),
             "raw_data": {"application_method": "manual", "reason": "mock job"},
         })
     return jobs
@@ -226,7 +231,7 @@ async def scrape_jobbank(keywords: str, location: Optional[str], salary_min: Opt
                     "requirements": "",
                     "url": selected_url,
                     "source": "jobbank",
-                    "posted_at": datetime.utcnow().isoformat(),
+                    "posted_at": _utc_now_naive().isoformat(),
                     "application_method": method,
                     "raw_data": {**apply_info, "jobbank_original_url": jobbank_listing_url, "search_url": search_url},
                 })
