@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
+import secrets
 import subprocess
 import threading
 import time
@@ -18,7 +19,7 @@ from app.services import lever_pilot_control_request as control
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REVISION = "a" * 40
-SECRET = "s" * 48
+SECRET = secrets.token_urlsafe(48)
 
 
 def _paths(tmp_path: Path):

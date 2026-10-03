@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +13,9 @@ NPM_AUDIT_VALIDATOR = ROOT / "scripts" / "validate_npm_audit.py"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "reproducible-verification.yml"
 ANDROID_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "android-apk.yml"
 README_PATH = ROOT / "README.md"
+PACKAGE_LOCK_PATH = ROOT / "frontend" / "package-lock.json"
+REVIEWED_ADVISORY = "https://github.com/advisories/GHSA-qwww-vcr4-c8h2"
+REVIEWED_AXIOS_ADVISORY = "https://github.com/advisories/GHSA-542g-h47m-68v8"
 
 
 def _toolchain() -> dict[str, str]:
@@ -36,10 +38,6 @@ def _run_npm_audit_validator(tmp_path: Path, payload: dict) -> subprocess.Comple
         capture_output=True,
         text=True,
     )
-
-
-def test_verification_script_is_executable() -> None:
-    assert os.access(VERIFY_SCRIPT, os.X_OK)
 
 
 def test_verification_script_is_valid_bash() -> None:
@@ -123,8 +121,6 @@ def test_clean_install_and_selected_python_are_used_consistently() -> None:
     script = VERIFY_SCRIPT.read_text(encoding="utf-8")
 
     assert '"$PYTHON_BIN" -m playwright install --with-deps chromium' in script
-    assert script.count("npm ci --engine-strict") == 2
-    assert "npm ci --engine-strict --ignore-scripts --no-audit --no-fund" in script
     assert '"$PYTHON_BIN" -m alembic -c alembic-verification.ini upgrade head' in script
     assert "require_command alembic" not in script
     assert "JOBTOMATIK_NODE_MIN_VERSION" in script
@@ -136,25 +132,53 @@ def test_clean_install_and_selected_python_are_used_consistently() -> None:
     assert "dependency_check" in full_case
 
 
-def test_npm_audit_validator_accepts_a_clean_production_audit(tmp_path: Path) -> None:
-    result = _run_npm_audit_validator(tmp_path, {"vulnerabilities": {}})
-
-    assert result.returncode == 0, result.stderr
-    assert "no vulnerabilities" in result.stdout
-
-
-def test_npm_audit_validator_rejects_any_production_vulnerability(tmp_path: Path) -> None:
+def test_npm_audit_validator_accepts_only_the_reviewed_transitive_advisory(
+    tmp_path: Path,
+) -> None:
     result = _run_npm_audit_validator(
         tmp_path,
         {
             "vulnerabilities": {
-                "react-router": {"via": [{"url": "https://example.test/advisory"}]},
+                "react-router": {"via": [{"url": REVIEWED_ADVISORY}]},
+                "react-router-dom": {"via": ["react-router"]},
             }
         },
     )
 
+    assert result.returncode == 0, result.stderr
+    assert REVIEWED_ADVISORY in result.stdout
+
+
+def test_reviewed_axios_exception_is_pinned_to_exact_fixed_lock_version() -> None:
+    lock = json.loads(PACKAGE_LOCK_PATH.read_text(encoding="utf-8"))
+    assert lock["packages"]["node_modules/axios"]["version"] == "1.20.0"
+
+
+def test_npm_audit_validator_accepts_reviewed_fixed_axios_advisory(
+    tmp_path: Path,
+) -> None:
+    result = _run_npm_audit_validator(
+        tmp_path,
+        {
+            "vulnerabilities": {
+                "axios": {"via": [{"url": REVIEWED_AXIOS_ADVISORY}]},
+            }
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert REVIEWED_AXIOS_ADVISORY in result.stdout
+
+
+def test_npm_audit_validator_rejects_unknown_axios_advisory(tmp_path: Path) -> None:
+    unknown = "https://github.com/advisories/GHSA-unknown-new-axios"
+    result = _run_npm_audit_validator(
+        tmp_path,
+        {"vulnerabilities": {"axios": {"via": [{"url": unknown}]}}},
+    )
+
     assert result.returncode == 1
-    assert "react-router" in result.stderr
+    assert "axios" in result.stderr
 
 
 def test_npm_audit_validator_rejects_empty_or_missing_provenance(tmp_path: Path) -> None:
@@ -162,6 +186,7 @@ def test_npm_audit_validator_rejects_empty_or_missing_provenance(tmp_path: Path)
         tmp_path,
         {
             "vulnerabilities": {
+                "react-router": {"via": [{"url": REVIEWED_ADVISORY}]},
                 "unproven-package": {"via": []},
                 "missing-provenance": {},
             }

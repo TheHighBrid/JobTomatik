@@ -88,7 +88,7 @@ def test_existing_answer_vault_key_is_never_replaced(tmp_path):
     assert "ANSWER_VAULT_KEY=keep-this-existing-vault-key" in content
 
 
-def test_missing_env_preserves_the_historical_default_as_effective_vault_key(tmp_path):
+def test_missing_env_seeds_one_new_durable_secret_for_auth_and_vault(tmp_path):
     env_file = tmp_path / ".env"
     runtime_dir = tmp_path / ".runtime"
 
@@ -100,8 +100,11 @@ def test_missing_env_preserves_the_historical_default_as_effective_vault_key(tmp
 
     content = env_file.read_text(encoding="utf-8")
     assert result["changed"] is True
+    assert result["backup_path"] is None
+    assert result["vault_key_preserved"] is False
     assert "SECRET_KEY=" + ("q" * 64) in content
-    assert f"ANSWER_VAULT_KEY={DEFAULT_SECRET_KEY}" in content
+    assert "ANSWER_VAULT_KEY=" + ("q" * 64) in content
+    assert DEFAULT_SECRET_KEY not in content
     assert _mode(env_file) == 0o600
 
 
