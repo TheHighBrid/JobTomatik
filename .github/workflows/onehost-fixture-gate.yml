@@ -8,7 +8,7 @@ on:
       - scripts/verify-onehost-fixture.sh
       - .github/workflows/onehost-fixture-gate.yml
   push:
-    branches: [main, codex/onehost-fixture-proof]
+    branches: [main]
     paths:
       - backend/**
       - docker-compose.onehost-fixture.yml

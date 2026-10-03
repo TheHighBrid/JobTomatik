@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from scripts.run_onehost_fixture_gate import request_allowed, run_gate, run_once
 
 

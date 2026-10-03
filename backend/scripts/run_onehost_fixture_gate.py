@@ -129,10 +129,11 @@ async def run_once(output_dir: Path, index: int) -> dict:
     # Import the production functions, without monkeypatching URL, policy or
     # browser-provider guards to pretend this is an employer application.
     sys.path.insert(0, str(BACKEND_ROOT))
-    from playwright.async_api import async_playwright
     from app.services.ats_base import ATSAdapter
     from app.services.ats_flow import run_ats_application_flow
     from app.services.form_filler_v3 import _fill_step_fields
+    from playwright.async_api import Error as PlaywrightError
+    from playwright.async_api import async_playwright
 
     run_dir = output_dir / f"run-{index:03d}"
     run_dir.mkdir(parents=True, exist_ok=False)
@@ -200,7 +201,7 @@ async def run_once(output_dir: Path, index: int) -> dict:
                         if browser is not None:
                             await browser.close()
                             record["browser_closed"] = not browser.is_connected()
-    except Exception as exc:
+    except (PlaywrightError, OSError, RuntimeError, ValueError) as exc:
         record["errors"].append(f"{type(exc).__name__}: {str(exc)[:500]}")
 
     # The Playwright driver has also exited by this point. Check tracked Linux
