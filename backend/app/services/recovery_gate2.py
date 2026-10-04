@@ -360,6 +360,7 @@ def _unreconciled_mutations(events, aborted, *, trace=False) -> list:
 
 _INTERACTIVE_CAPTCHA = (
     'iframe[src*="recaptcha/"][src*="/bframe"], iframe[src*="hcaptcha.com"], '
+    'iframe[src*="challenges.cloudflare.com" i], '
     'iframe[src*="recaptcha/"][src*="/anchor"]:not([src*="size=invisible"]), '
     '.h-captcha, div.g-recaptcha:not(.grecaptcha-badge), '
     ':is([class*="captcha" i],[id*="captcha" i],[data-sitekey])'
@@ -367,6 +368,17 @@ _INTERACTIVE_CAPTCHA = (
     ':not([name="g-recaptcha-response"]):not([name="h-captcha-response"])'
 )
 _PASSIVE_CAPTCHA = '.grecaptcha-badge, iframe[title="reCAPTCHA"][src*="size=invisible"]'
+
+
+
+def _captcha_evidence_is_passive(challenge: dict) -> bool:
+    """Clear only evidence that is itself the known passive invisible reCAPTCHA widget."""
+    details = challenge.get("details") or {}
+    selector = str(details.get("selector") or "").lower()
+    source = str(details.get("source") or "").lower()
+    passive_source = "size=invisible" in source and "recaptcha" in source
+    passive_selector = selector in {".grecaptcha-badge", "iframe[title='recaptcha']"}
+    return passive_source or passive_selector
 
 
 async def _passive_invisible_captcha(page) -> bool:
@@ -401,7 +413,8 @@ async def _boundary(page, record):
             "reason_code": "passive_invisible_recaptcha",
             "summary": "passive invisible widget observed; no interaction",
         })
-        if challenge and challenge.get("reason_code") == "captcha_detected":
+        # A badge does not prove another captcha_detected result is passive.
+        if challenge and challenge.get("reason_code") == "captcha_detected" and _captcha_evidence_is_passive(challenge):
             challenge = None
     elif not challenge and await page.locator(_PASSIVE_CAPTCHA).count():
         challenge = {"reason_code": "captcha_detected", "summary": "Widget without usable application form"}

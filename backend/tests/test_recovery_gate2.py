@@ -417,9 +417,27 @@ async def test_browser_negative_controls(monkeypatch, tmp_path, script):
     '<div class="grecaptcha-badge"></div>Complete the CAPTCHA',
     '<div class="grecaptcha-badge"></div><div class="captcha-challenge">Choose an image</div>',
     '<div class="grecaptcha-badge"></div><iframe src="https://hcaptcha.com/captcha"></iframe>',
+    '<div class="grecaptcha-badge"></div><iframe title="Cloudflare" src="https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv/0/x/0/u/0/rch/0"></iframe>',
     '<div class="grecaptcha-badge"></div>Multi-factor authentication',
     '<div class="grecaptcha-badge"></div><input type="password">',
 ])
+async def test_passive_badge_plus_cloudflare_challenge_stops_without_interaction(monkeypatch, tmp_path):
+    html = HTML.replace(
+        "<body>",
+        "<body><div class="grecaptcha-badge"></div>"
+        "<iframe title=\"Cloudflare\" src=\"https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv/0/x/0/u/0/rch/0\"></iframe>"
+        "<script>window.__widgetCalls={execute:0,reset:0,render:0};"
+        "window.grecaptcha={execute(){window.__widgetCalls.execute++},reset(){window.__widgetCalls.reset++},render(){window.__widgetCalls.render++}};</script>",
+    )
+    result = await synthetic_run(monkeypatch, tmp_path, html)
+    assert result["verdict"] == "NOT_PROVEN", result
+    assert result["boundary"]["stopped"]
+    assert result.get("filler", {}).get("calls", 0) == 0
+    assert result["dom"]["snapshot"]["clicks"] == []
+    assert result["dom"]["snapshot"]["submits"] == 0
+    assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
+
+
 async def test_security_boundary_stops_without_filling(monkeypatch, tmp_path, boundary):
     result = await synthetic_run(monkeypatch, tmp_path, HTML.replace("<body>", "<body>" + boundary))
     assert result["verdict"] == "NOT_PROVEN"

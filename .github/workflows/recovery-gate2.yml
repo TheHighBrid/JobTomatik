@@ -46,6 +46,7 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - name: Run real Chromium synthetic negative controls on exact HEAD
         run: |
+          set -o pipefail
           git rev-parse HEAD > gate2-head.txt
           python -m pytest -q --tb=short -ra tests/test_recovery_gate2.py \
             --basetemp=gate2-synthetic-artifacts | tee gate2-tests.txt
