@@ -79,7 +79,7 @@ jobs:
 
             const checks = await github.paginate(github.rest.checks.listForRef,
               {owner, repo, ref: sha, per_page: 100});
-            const required = ["synthetic-controls", "exact-head-acceptance", "pytest",
+            const required = ["synthetic-controls", "proof-v2-controls", "exact-head-acceptance", "pytest",
               "owned-browser-compose-proof", "phase0-fastapi-celery-proof",
               "backend-browser-migration", "integrated-backend", "fast-gate",
               "dependency-audit", "Analyze python", "Analyze javascript-typescript"];
