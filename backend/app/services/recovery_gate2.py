@@ -297,49 +297,67 @@ def _blocked_failure(event: dict) -> bool:
     }
 
 
+def _unique_requests(events) -> dict:
+    """Index only unambiguous object-bound request IDs."""
+    counts = Counter(e.get("request_id") for e in events)
+    return {e["request_id"]: e for e in events
+            if isinstance(e.get("request_id"), str) and counts[e["request_id"]] == 1}
+
+
+def _abort_matches(event, stages, completed_ids) -> bool:
+    """Require every lifecycle witness, including an independent blocked failure."""
+    request_id, key = event["request_id"], _request_key(event)
+    return all((
+        key is not None, _is_telemetry(event), event.get("abort_succeeded") is True,
+        request_id not in completed_ids,
+        all(_request_key(stages[stage].get(request_id, {})) == key
+            for stage in ("requests", "sent", "failed")),
+        _blocked_failure(stages["failed"].get(request_id, {})),
+    ))
+
+
 def _proven_aborted_telemetry(network: dict) -> list:
-    """Require successful route.abort AND independent requestfailed on the same request.
+    """
+    Require successful route.abort AND independent requestfailed on the same request.
 
     Object-bound IDs reconcile lifecycle callbacks, never URL membership alone.
     Ambiguous/duplicate IDs and incomplete older evidence fail closed.
     """
-    stages = {}
-    for stage in ("requests", "sent", "blocked", "failed"):
-        events = network.get(stage) or []
-        counts = Counter(e.get("request_id") for e in events)
-        stages[stage] = {e["request_id"]: e for e in events
-                         if isinstance(e.get("request_id"), str) and counts[e["request_id"]] == 1}
+    stages = {stage: _unique_requests(network.get(stage) or [])
+              for stage in ("requests", "sent", "blocked", "failed")}
     completed_ids = {e.get("request_id") for e in network.get("finished") or []}
-    proven = []
-    for request_id, event in stages["blocked"].items():
-        key = _request_key(event)
-        if (key is not None and _is_telemetry(event) and event.get("abort_succeeded") is True
-                and request_id not in completed_ids
-                and all(request_id in stages[stage]
-                        and _request_key(stages[stage][request_id]) == key
-                        for stage in ("requests", "sent", "failed"))
-                and _blocked_failure(stages["failed"][request_id])):
-            proven.append(event)
-    return proven
+    return [event for event in stages["blocked"].values()
+            if _abort_matches(event, stages, completed_ids)]
+
+
+def _mutation_identity(event, trace):
+    """Use object IDs for callbacks and an exact payload tuple for trace snapshots."""
+    key = _request_key(event)
+    return key if trace else (event.get("request_id"), key)
+
+
+def _trace_aborted(event) -> bool:
+    """Require the trace's own terminal abort with no response."""
+    return all((event.get("aborted") is True, event.get("response_status") == -1,
+                _blocked_failure(event)))
 
 
 def _unreconciled_mutations(events, aborted, *, trace=False) -> list:
-    """Each aborted request can explain at most one entry in each evidence stream.
+    """
+    Each aborted request can explain at most one entry in each evidence stream.
 
     Trace reconciliation also requires the trace's own abort/failure/no-response
     evidence. Same-URL completions or extra attempts cannot borrow an exemption.
     """
-    available = Counter(_request_key(e) if trace else (e["request_id"], _request_key(e))
-                        for e in aborted)
+    available = Counter(_mutation_identity(e, trace) for e in aborted)
     unsafe = []
     for event in events or []:
         if not _mutating(event):
             continue
         key = _request_key(event)
-        identity = key if trace else (event.get("request_id"), key)
+        identity = _mutation_identity(event, trace)
         if (key is None or not _is_telemetry(event) or available[identity] <= 0
-                or (trace and not (event.get("aborted") is True
-                        and event.get("response_status") == -1 and _blocked_failure(event)))):
+                or (trace and not _trace_aborted(event))):
             unsafe.append(event)
         else:
             available[identity] -= 1

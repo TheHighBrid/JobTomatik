@@ -134,39 +134,37 @@ def test_application_post_still_fails_when_telemetry_is_also_blocked(evidence):
 def test_telemetry_requires_independent_abort_lifecycle(evidence, case):
     record, directory = evidence
     event = add_aborted_telemetry(record)
-    options = {}
-    if case.startswith("finished"):
-        record["network"]["finished"].append({**event,
-            "request_id": "other" if case == "finished_other_id" else event["request_id"]})
-    elif case in {"no_blocked", "no_failed"}:
-        record["network"][case.removeprefix("no_")].clear()
-    elif case == "abort_failed":
-        record["network"]["blocked"][0]["abort_succeeded"] = False
-    elif case == "failed_connection":
-        record["network"]["failed"][0]["failure"] = "net::ERR_CONNECTION_RESET"
-    elif case in {"different_id", "different_url", "different_body"}:
-        key = {"different_id": "request_id", "different_url": "url",
-               "different_body": "body_sha256"}[case]
-        record["network"]["failed"][0][key] = "b" * 64
-    elif case in {"duplicate_id", "extra_sent"}:
-        record["network"]["sent"].append({**event,
-            "request_id": "other" if case == "extra_sent" else event["request_id"]})
-    elif case == "trace_only":
+    network = record["network"]
+
+    def clear_lifecycle():
         for stage in ("requests", "sent", "blocked", "failed"):
-            record["network"][stage].clear()
-    elif case == "trace_completed":
-        options = {"aborted": False, "status": 200, "failure": None}
-    elif case == "trace_response":
-        options = {"status": 200}
-    elif case == "trace_not_blocked":
-        options = {"failure": "net::ERR_CONNECTION_RESET"}
-    elif case == "trace_other_body":
-        options = {"body": b"different"}
-    elif case == "trace_duplicate":
-        options = {"copies": 2}
-    elif case == "missing_hash":
-        record["network"]["blocked"][0].pop("body_sha256")
-    add_trace_mutation(record, directory, event, **options)
+            network[stage].clear()
+
+    mutations = {
+        "finished": lambda: network["finished"].append(dict(event)),
+        "finished_other_id": lambda: network["finished"].append({**event, "request_id": "other"}),
+        "no_blocked": lambda: network["blocked"].clear(),
+        "no_failed": lambda: network["failed"].clear(),
+        "abort_failed": lambda: network["blocked"][0].update(abort_succeeded=False),
+        "failed_connection": lambda: network["failed"][0].update(failure="net::ERR_CONNECTION_RESET"),
+        "different_id": lambda: network["failed"][0].update(request_id="other"),
+        "different_url": lambda: network["failed"][0].update(url=URL),
+        "different_body": lambda: network["failed"][0].update(body_sha256="b" * 64),
+        "duplicate_id": lambda: network["sent"].append(dict(event)),
+        "extra_sent": lambda: network["sent"].append({**event, "request_id": "other"}),
+        "trace_only": clear_lifecycle,
+        "missing_hash": lambda: network["blocked"][0].pop("body_sha256"),
+    }
+    trace_options = {
+        "trace_completed": {"aborted": False, "status": 200, "failure": None},
+        "trace_response": {"status": 200},
+        "trace_not_blocked": {"failure": "net::ERR_CONNECTION_RESET"},
+        "trace_other_body": {"body": b"different"},
+        "trace_duplicate": {"copies": 2},
+    }
+    if case in mutations:
+        mutations[case]()
+    add_trace_mutation(record, directory, event, **trace_options.get(case, {}))
     assert gate.evaluate(record, directory), case
     if case.startswith("finished"):
         assert "completed application mutation" in gate.evaluate(record, directory)
