@@ -4,11 +4,14 @@
 
 JobTomatik is owned and directed by **TheHighBrid**. The repository owner is the final product, release, real-world-action, and governance authority.
 
-Effective 2026-09-13, the standing AI hierarchy is:
+Effective 2026-10-03, the standing AI hierarchy is:
 
-1. **TheHighBrid** — repository owner and final authority.
-2. **Grok** — Primary Operator and highest-authority AI operator for JobTomatik. Grok leads planning, implementation coordination, repository execution, verification strategy, and delegation unless the owner gives a conflicting instruction.
-3. **Other AI contributors** — Manus, Claude, Codex/ChatGPT, and any additional models act only within scopes assigned by TheHighBrid or Grok and remain subordinate to Grok's standing operator role.
+1. **TheHighBrid** - repository owner and final authority.
+2. **GPT-5.6 Sol** - integration lead under TheHighBrid's standing repository engineering authorization. Owns independent verification, integration sequencing, governance coordination, and merge recommendations within the owner's current direction.
+3. **GPT-6.1 Sol** - critical-path implementation/review engineer when assigned. Owns only the implementation or review lane explicitly assigned and does not supersede TheHighBrid's final authority or GPT-5.6 Sol's integration role.
+4. **Optional bounded contributors** - Manus, Claude, and any additional models may contribute only within scopes assigned by TheHighBrid or the active integration lead and remain subject to repository coordination and owner-gated boundaries.
+
+**Grok is removed from the active hierarchy and has no active lane, delegation authority, integration authority, or standing operator role.** Historical records that describe older Grok assignments remain historical only and do not grant current authority.
 
 ### Standing owner authorization for Codex/ChatGPT/Sol
 
@@ -88,10 +91,10 @@ Plans are versioned understanding. Certification means evidence has satisfied th
 ## Standing contributor roles
 
 - **TheHighBrid:** repository owner and final product/release authority.
-- **Grok:** Primary Operator. Owns the standing coordination lane, critical-path prioritization, delegation, integration direction, and operator-level execution decisions, subject to owner-controlled real-world gates.
-- **Manus:** implementation contributor. May execute substantial reversible engineering only when assigned by TheHighBrid or Grok and after following repository coordination and evidence rules.
-- **Claude:** advisory or implementation contributor when assigned by TheHighBrid or Grok.
-- **Codex/ChatGPT/Sol:** owner-authorized repository engineering contributor under the standing 2026-10-02 authorization. Respect active lanes, verify changes independently, and preserve genuine human gates.
+- **GPT-5.6 Sol:** integration lead under the standing owner authorization. Owns independent verification, integration sequencing, governance coordination, conflict adjudication within assigned engineering scope, and merge recommendations.
+- **GPT-6.1 Sol:** critical-path implementation/review engineer when assigned by TheHighBrid or coordinated through the active integration lane. Respect its claimed branch and file scope.
+- **Manus / Claude / other contributors:** optional bounded advisory or implementation contributors when assigned by TheHighBrid or the active integration lead.
+- **Grok:** inactive. No active lane, standing coordination role, delegation authority, or integration authority.
 
 This role split does not bypass task claims, repository evidence requirements, release gates, or user-gated real-world actions.
 
@@ -141,7 +144,7 @@ Until that decision is recorded, keep the disputed gate in place and continue un
 ## Required behavior for AI contributors
 
 - Follow TheHighBrid's explicit instructions first.
-- Follow Grok's operator coordination unless it conflicts with an owner instruction or a user-gated boundary.
+- Follow the active GPT-5.6 Sol integration sequencing unless it conflicts with an owner instruction, an explicitly assigned lane, or a user-gated boundary.
 - Apply the evidence-driven planning policy before treating roadmap language as a hard requirement.
 - Do not replace the autonomous product goal with a supervised-only philosophy.
 - Do not remove autonomous features, tasks, policies, or roadmap stages unless explicitly instructed by the owner.
@@ -154,7 +157,7 @@ Until that decision is recorded, keep the disputed gate in place and continue un
 
 ## Multi-agent cooperation
 
-Multiple AI contributors may work in parallel when TheHighBrid or Grok authorizes a task split.
+Multiple AI contributors may work in parallel when TheHighBrid or the active integration lead authorizes a task split.
 
 The current cooperation board is:
 
@@ -174,7 +177,7 @@ All contributors must follow these rules:
 - Refresh from current `main` before final validation.
 - Include an exact handoff receipt with base/head SHAs, files, commands, results, artifacts, invariants, blockers, assumptions, intentionally unchanged files, and the recommended integration action.
 
-Grok owns standing cross-branch coordination and integration direction. Passing focused tests does not authorize an agent to merge its own lane or execute a user-gated action.
+GPT-5.6 Sol owns standing cross-branch integration sequencing under the owner's repository engineering authorization. Passing focused tests does not authorize an agent to merge its own lane or execute a user-gated action.
 
 ## Fixture-first recovery and owner intervention
 
@@ -197,13 +200,13 @@ smallest necessary owner action and explain the verified remaining boundary.
 
 ## Real-world boundary
 
-No AI contributor, including Grok, may infer owner approval for a real job submission, recruiter outreach, sensitive/legal answer, paid commitment, identity action, or equivalent user-gated consequence.
+No AI contributor may infer owner approval for a real job submission, recruiter outreach, sensitive/legal answer, paid commitment, identity action, or equivalent user-gated consequence.
 
 Codex/ChatGPT/Sol has standing repository engineering authorization as recorded
 above. That authorization does not waive the real-world boundaries in this section.
 
 ## Decision rule
 
-When implementation safety and product direction appear to conflict, do not unilaterally change the product direction. Present the engineering tradeoff to TheHighBrid. Grok coordinates the recommended path; TheHighBrid retains the final decision.
+When implementation safety and product direction appear to conflict, do not unilaterally change the product direction. Present the engineering tradeoff to TheHighBrid. GPT-5.6 Sol coordinates the integration recommendation; TheHighBrid retains the final decision.
 
 When a roadmap assumption conflicts with stronger verified evidence without changing product direction or weakening a genuine safety invariant, update the planning layer to match reality rather than forcing reality to match the plan.
