@@ -139,7 +139,10 @@ def test_npm_audit_validator_accepts_only_the_reviewed_transitive_advisory(
         tmp_path,
         {
             "vulnerabilities": {
-                "react-router": {"via": [{"url": REVIEWED_ADVISORY}]},
+                "react-router": {
+                    "via": [{"url": REVIEWED_ADVISORY}],
+                    "nodes": ["node_modules/react-router"],
+                },
                 "react-router-dom": {"via": ["react-router"]},
             }
         },
@@ -161,7 +164,10 @@ def test_npm_audit_validator_accepts_reviewed_fixed_axios_advisory(
         tmp_path,
         {
             "vulnerabilities": {
-                "axios": {"via": [{"url": REVIEWED_AXIOS_ADVISORY}]},
+                "axios": {
+                    "via": [{"url": REVIEWED_AXIOS_ADVISORY}],
+                    "nodes": ["node_modules/axios"],
+                },
             }
         },
     )

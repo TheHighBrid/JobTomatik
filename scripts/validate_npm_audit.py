@@ -60,21 +60,63 @@ def _installed_package_versions() -> dict[str, str]:
         version = value.get("version")
         if not isinstance(version, str) or not version:
             continue
-        versions[key.removeprefix("node_modules/")] = version
+        versions[key] = version
     return versions
 
 
 def _advisory_is_reviewed_for_installed_package(
     package: str,
     url: str,
+    nodes: object,
     installed_versions: dict[str, str],
 ) -> bool:
-    if url in ALLOWED_ADVISORY_URLS:
-        return True
-    version = installed_versions.get(package)
-    if not version:
+    if not isinstance(nodes, list) or not nodes:
         return False
-    return url in REVIEWED_FIXED_PACKAGE_ADVISORIES.get((package, version), set())
+    for node in nodes:
+        if not isinstance(node, str):
+            return False
+        if node != f"node_modules/{package}" and not node.endswith(f"/node_modules/{package}"):
+            return False
+        version = installed_versions.get(node)
+        if not version:
+            return False
+        if package == "react-router" and url in ALLOWED_ADVISORY_URLS:
+            continue
+        if url not in REVIEWED_FIXED_PACKAGE_ADVISORIES.get((package, version), set()):
+            return False
+    return True
+
+
+def _finding_is_reviewed(
+    package: str,
+    vulnerabilities: dict,
+    installed_versions: dict[str, str],
+    visiting: frozenset[str] = frozenset(),
+) -> bool:
+    """Resolve transitive findings to approved advisories, rejecting cycles."""
+    if package in visiting:
+        return False
+    finding = vulnerabilities.get(package)
+    if not isinstance(finding, dict):
+        return False
+    via = finding.get("via")
+    if not isinstance(via, list) or not via:
+        return False
+    for item in via:
+        if isinstance(item, dict):
+            url = item.get("url")
+            if not isinstance(url, str) or not _advisory_is_reviewed_for_installed_package(
+                package, url, finding.get("nodes"), installed_versions
+            ):
+                return False
+        elif isinstance(item, str):
+            if not _finding_is_reviewed(
+                item, vulnerabilities, installed_versions, visiting | {package}
+            ):
+                return False
+        else:
+            return False
+    return True
 
 
 def main() -> int:
@@ -108,7 +150,9 @@ def main() -> int:
             unapproved.append(package_name)
             continue
 
-        finding_is_approved = True
+        finding_is_approved = _finding_is_reviewed(
+            package_name, vulnerabilities, installed_versions
+        )
         for item in via:
             if isinstance(item, dict):
                 url = item.get("url")
@@ -117,7 +161,7 @@ def main() -> int:
                     continue
                 observed_urls.add(url)
                 if not _advisory_is_reviewed_for_installed_package(
-                    package_name, url, installed_versions
+                    package_name, url, finding.get("nodes"), installed_versions
                 ):
                     rejected_urls.setdefault(package_name, set()).add(url)
                     finding_is_approved = False

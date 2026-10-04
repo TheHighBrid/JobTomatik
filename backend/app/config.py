@@ -20,6 +20,31 @@ PLACEHOLDER_SECRET_MARKERS = (
 SUPERVISED_SUBMISSION_SERVICE_MODULE = "app.services.supervised_submission"
 
 
+def _is_placeholder_secret(secret: str) -> bool:
+    normalized = secret.strip().lower()
+    return (
+        len(secret.encode("utf-8")) < 32
+        or secret == DEFAULT_SECRET_KEY
+        or any(marker in normalized for marker in PLACEHOLDER_SECRET_MARKERS)
+    )
+
+
+def require_persistent_secret(
+    secret: str, purpose: str, *, sensitive_write: bool = False,
+) -> str:
+    """
+    Reject ephemeral roots and unsafe sensitive-mode writes.
+
+    Explicit legacy keys remain readable for migration. New sensitive-mode
+    encryption and HMAC operations require a strong, non-placeholder root.
+    """
+    if not secret.strip() or secret == DEFAULT_SECRET_KEY:
+        raise ValueError(f"Configure a stable secret before {purpose}")
+    if sensitive_write and _is_placeholder_secret(secret):
+        raise ValueError(f"Configure a non-placeholder secret of at least 32 UTF-8 bytes before {purpose}")
+    return secret
+
+
 def _supervised_submission_service_on_stack() -> bool:
     """Return true only while the exact supervised submission service is executing."""
 
@@ -234,12 +259,17 @@ class Settings(BaseSettings):
 
     @property
     def uses_placeholder_secret(self) -> bool:
-        normalized = self.secret_key.strip().lower()
-        return (
-            len(self.secret_key.encode("utf-8")) < 32
-            or self.secret_key == DEFAULT_SECRET_KEY
-            or any(marker in normalized for marker in PLACEHOLDER_SECRET_MARKERS)
-        )
+        return _is_placeholder_secret(self.secret_key)
+
+    @property
+    def sensitive_runtime(self) -> bool:
+        return any((
+            self.is_production,
+            self.allow_real_application_submit,
+            self.allow_real_followup_send,
+            self.greenhouse_supervised_pilot_enabled,
+            self.lever_supervised_pilot_enabled,
+        ))
 
     @model_validator(mode="after")
     def validate_runtime_security(self) -> "Settings":
@@ -252,16 +282,7 @@ class Settings(BaseSettings):
                 "SUPERVISED_APPROVAL_MAX_TTL_MINUTES"
             )
 
-        sensitive_runtime = any(
-            (
-                self.is_production,
-                self.allow_real_application_submit,
-                self.allow_real_followup_send,
-                self.greenhouse_supervised_pilot_enabled,
-                self.lever_supervised_pilot_enabled,
-            )
-        )
-        if sensitive_runtime and self.uses_placeholder_secret:
+        if self.sensitive_runtime and self.uses_placeholder_secret:
             raise ValueError(
                 "SECRET_KEY must be a non-placeholder value of at least 32 UTF-8 bytes "
                 "for production, real-submission, or outbound-communication operation"

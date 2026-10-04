@@ -3,6 +3,8 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
+import pytest
+
 from app.config import DEFAULT_SECRET_KEY
 from scripts import repair_android_runtime_secret as repair
 
@@ -106,6 +108,31 @@ def test_missing_env_seeds_one_new_durable_secret_for_auth_and_vault(tmp_path):
     assert "ANSWER_VAULT_KEY=" + ("q" * 64) in content
     assert DEFAULT_SECRET_KEY not in content
     assert _mode(env_file) == 0o600
+
+
+@pytest.mark.parametrize("database_url", [
+    "sqlite:///./jobtomatik.db",
+    "postgresql://localhost/existing",
+    "not-a-database-url",
+    "sqlite:///file:existing.db?uri=true",
+])
+def test_missing_keys_cannot_rotate_an_ambiguous_existing_store(tmp_path, database_url):
+    env_file = tmp_path / ".env"
+    original = "DATABASE_URL=" + database_url + "\n"
+    env_file.write_text(original)
+    (tmp_path / "jobtomatik.db").write_bytes(b"synthetic-existing-database")
+    with pytest.raises(RuntimeError, match="KEY_RECOVERY_REQUIRED"):
+        repair.repair_android_runtime_secret(env_file, tmp_path / ".runtime")
+    assert env_file.read_text() == original
+    assert not (tmp_path / ".runtime").exists()
+
+
+def test_missing_env_with_existing_default_database_is_not_a_fresh_install(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    (tmp_path / "jobtomatik.db").write_bytes(b"synthetic-existing-database")
+    with pytest.raises(RuntimeError, match="KEY_RECOVERY_REQUIRED"):
+        repair.repair_android_runtime_secret(tmp_path / ".env", tmp_path / ".runtime")
+    assert not (tmp_path / ".env").exists()
 
 
 def test_migration_is_idempotent_after_first_rotation(tmp_path):

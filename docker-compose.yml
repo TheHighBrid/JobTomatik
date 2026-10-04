@@ -42,7 +42,7 @@ services:
       - JOBTOMATIK_RUNTIME_ROLE=api
       - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
+      - SECRET_KEY=${SECRET_KEY:?Configure a stable random shared SECRET_KEY}
       - ANSWER_VAULT_KEY=${ANSWER_VAULT_KEY:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,https://localhost,http://localhost,capacitor://localhost}
       - AI_PROVIDER=${AI_PROVIDER:-template}
@@ -91,7 +91,7 @@ services:
       - JOBTOMATIK_RUNTIME_ROLE=worker
       - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
+      - SECRET_KEY=${SECRET_KEY:?Configure a stable random shared SECRET_KEY}
       - ANSWER_VAULT_KEY=${ANSWER_VAULT_KEY:-}
       - AI_PROVIDER=${AI_PROVIDER:-template}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -133,7 +133,7 @@ services:
       - JOBTOMATIK_RUNTIME_ROLE=beat
       - DATABASE_URL=postgresql://jobtomatik:${POSTGRES_PASSWORD:-jobtomatik_pass}@db:5432/jobtomatik
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:-supersecretkey-change-in-production}
+      - SECRET_KEY=${SECRET_KEY:?Configure a stable random shared SECRET_KEY}
       - ALLOW_REAL_APPLICATION_SUBMIT=${ALLOW_REAL_APPLICATION_SUBMIT:-false}
       - ALLOW_REAL_FOLLOWUP_SEND=${ALLOW_REAL_FOLLOWUP_SEND:-false}
       - AUTOMATION_GLOBAL_KILL_SWITCH=${AUTOMATION_GLOBAL_KILL_SWITCH:-false}

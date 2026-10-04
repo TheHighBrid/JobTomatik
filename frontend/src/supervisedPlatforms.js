@@ -35,7 +35,7 @@ const PLATFORM_BLOCKER_LABELS = Object.freeze({
 
 export function normalizeSupervisedPlatform(value) {
   const platform = String(value || '').trim().toLowerCase()
-  return PLATFORM_CONFIG[platform] ? platform : null
+  return Object.hasOwn(PLATFORM_CONFIG, platform) ? platform : null
 }
 
 export function getSupervisedPlatformConfig(value) {
@@ -67,8 +67,8 @@ export function supervisedBlockerLabel(blocker, platformValue) {
   const blockerKey = String(blocker || '').trim()
   const platform = getSupervisedPlatformConfig(platformValue)
 
-  if (COMMON_BLOCKER_LABELS[blockerKey]) return COMMON_BLOCKER_LABELS[blockerKey]
-  if (PLATFORM_BLOCKER_LABELS[blockerKey]) return PLATFORM_BLOCKER_LABELS[blockerKey]
+  if (Object.hasOwn(COMMON_BLOCKER_LABELS, blockerKey)) return COMMON_BLOCKER_LABELS[blockerKey]
+  if (Object.hasOwn(PLATFORM_BLOCKER_LABELS, blockerKey)) return PLATFORM_BLOCKER_LABELS[blockerKey]
   if (blockerKey === 'unsupported_platform') {
     return platform
       ? `This application is not a supported ${platform.displayName} target.`

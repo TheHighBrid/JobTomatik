@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
+from app.config import get_settings, require_persistent_secret
 from app.models.application import Application, ManualReviewReason, ManualReviewStatus, ManualReviewTask
 from app.models.handoff import (
     ACTIVE_HANDOFF_STATUSES,
@@ -67,12 +67,14 @@ def _setting(name: str, default: Any) -> Any:
     return getattr(get_settings(), name, default)
 
 
-def _fernet() -> Fernet:
+def _fernet(*, for_write: bool = False) -> Fernet:
     settings = get_settings()
-    secret = (
+    secret = require_persistent_secret(
         getattr(settings, "handoff_encryption_key", "")
         or settings.answer_vault_key
-        or settings.secret_key
+        or settings.secret_key,
+        "persisting handoff ciphertext (ANSWER_VAULT_KEY or SECRET_KEY)",
+        sensitive_write=for_write and settings.sensitive_runtime,
     )
     digest = hashlib.sha256(secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
@@ -81,7 +83,7 @@ def _fernet() -> Fernet:
 def encrypt_handoff_secret(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
-    return _fernet().encrypt(value.encode("utf-8")).decode("utf-8")
+    return _fernet(for_write=True).encrypt(value.encode("utf-8")).decode("utf-8")
 
 
 def decrypt_handoff_secret(value: Optional[str]) -> Optional[str]:
@@ -96,7 +98,11 @@ def decrypt_handoff_secret(value: Optional[str]) -> Optional[str]:
 def _secret_hash(value: str) -> str:
     settings = get_settings()
     configured_key = getattr(settings, "handoff_hash_key", "")
-    key = (configured_key or settings.secret_key).encode("utf-8")
+    key = require_persistent_secret(
+        configured_key or settings.secret_key,
+        "verifying persisted handoff tokens (SECRET_KEY)",
+        sensitive_write=settings.sensitive_runtime,
+    ).encode("utf-8")
     return hmac.new(key, value.encode("utf-8"), hashlib.sha256).hexdigest()
 
 

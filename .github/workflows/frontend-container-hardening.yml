@@ -1,0 +1,40 @@
+name: Frontend container hardening
+
+on:
+  pull_request:
+    paths:
+      - frontend/Dockerfile
+      - frontend/package.json
+      - frontend/package-lock.json
+      - .github/workflows/frontend-container-hardening.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nonroot-container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build and verify isolated non-root frontend
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build --tag jobtomatik-frontend-security frontend
+          container_id=""
+          trap 'if [[ -n "$container_id" ]]; then docker logs "$container_id" || true; docker rm -f "$container_id"; fi' EXIT
+          docker run --rm --network none --entrypoint sh jobtomatik-frontend-security \
+            -c 'test "$(id -u)" -ne 0 && node -e "process.exit(process.versions.node.startsWith(\"24.\") ? 0 : 1)"'
+          container_id="$(docker run --detach --network none jobtomatik-frontend-security)"
+          for attempt in {1..20}; do
+            if docker exec "$container_id" node -e \
+              'fetch("http://127.0.0.1:3000").then(r => process.exit(r.status === 200 ? 0 : 1)).catch(() => process.exit(1))'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1

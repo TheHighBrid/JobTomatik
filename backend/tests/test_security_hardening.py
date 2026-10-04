@@ -1,5 +1,7 @@
 """Regression coverage for security-sensitive configuration and account inputs."""
 
+import secrets
+
 import pytest
 from pydantic import ValidationError
 
@@ -29,7 +31,7 @@ def test_production_accepts_a_non_placeholder_secret():
     settings = Settings(
         _env_file=None,
         app_environment="production",
-        secret_key="b1f8a9d2047e49f0b7a6dce98aa42187",
+        secret_key=secrets.token_urlsafe(48),
     )
 
     assert settings.is_production is True
