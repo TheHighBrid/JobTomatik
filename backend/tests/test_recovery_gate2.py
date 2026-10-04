@@ -435,6 +435,14 @@ async def test_security_boundary_stops_without_filling(monkeypatch, tmp_path, bo
     '<form><input name="first_name" disabled></form>',
     '<form hidden><input name="first_name"></form>',
 ])
+async def test_passive_badge_without_usable_form_fails(monkeypatch, tmp_path, form):
+    html = '<html><body><div class="grecaptcha-badge"></div>' + form + '</body></html>'
+    result = await synthetic_run(monkeypatch, tmp_path, html)
+    assert result["verdict"] == "NOT_PROVEN"
+    assert not result["boundary"].get("passive_widgets")
+    assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
+
+
 @pytest.mark.asyncio
 async def test_passive_badge_plus_cloudflare_challenge_stops_without_interaction(monkeypatch, tmp_path):
     widget = (
@@ -450,16 +458,6 @@ async def test_passive_badge_plus_cloudflare_challenge_stops_without_interaction
     assert result.get("filler", {}).get("calls", 0) == 0
     assert result["dom"]["snapshot"]["clicks"] == []
     assert result["dom"]["snapshot"]["submits"] == 0
-    assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
-
-
-
-
-async def test_passive_badge_without_usable_form_fails(monkeypatch, tmp_path, form):
-    html = '<html><body><div class="grecaptcha-badge"></div>' + form + '</body></html>'
-    result = await synthetic_run(monkeypatch, tmp_path, html)
-    assert result["verdict"] == "NOT_PROVEN"
-    assert not result["boundary"].get("passive_widgets")
     assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
 
 
