@@ -421,14 +421,15 @@ async def test_browser_negative_controls(monkeypatch, tmp_path, script):
     '<div class="grecaptcha-badge"></div>Multi-factor authentication',
     '<div class="grecaptcha-badge"></div><input type="password">',
 ])
+@pytest.mark.asyncio
 async def test_passive_badge_plus_cloudflare_challenge_stops_without_interaction(monkeypatch, tmp_path):
-    html = HTML.replace(
-        "<body>",
-        "<body><div class="grecaptcha-badge"></div>"
-        "<iframe title=\"Cloudflare\" src=\"https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv/0/x/0/u/0/rch/0\"></iframe>"
-        "<script>window.__widgetCalls={execute:0,reset:0,render:0};"
-        "window.grecaptcha={execute(){window.__widgetCalls.execute++},reset(){window.__widgetCalls.reset++},render(){window.__widgetCalls.render++}};</script>",
+    widget = (
+        '<div class="grecaptcha-badge"></div>'
+        '<iframe title="Cloudflare" src="https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv/0/x/0/u/0/rch/0"></iframe>'
+        '<script>window.__widgetCalls={execute:0,reset:0,render:0};'
+        'window.grecaptcha={execute(){window.__widgetCalls.execute++},reset(){window.__widgetCalls.reset++},render(){window.__widgetCalls.render++}};</script>'
     )
+    html = HTML.replace("<body>", "<body>" + widget)
     result = await synthetic_run(monkeypatch, tmp_path, html)
     assert result["verdict"] == "NOT_PROVEN", result
     assert result["boundary"]["stopped"]
