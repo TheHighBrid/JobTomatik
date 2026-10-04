@@ -2,9 +2,10 @@
 import argparse
 import asyncio
 import json
+import subprocess
 from pathlib import Path
 
-from app.services.recovery_gate2 import evaluate, run_gate
+from app.services.recovery_gate2 import ROOT, digest, evaluate, run_gate
 
 
 def main():
@@ -24,6 +25,15 @@ def main():
         errors = record["violations"]
     if record.get("evidence_kind") != "public_greenhouse":
         errors.append("Synthetic runner verification cannot prove the public Gate 2")
+    if not errors:
+        for path, expected in record["source"]["inputs"].items():
+            try:
+                payload = subprocess.check_output(
+                    ["git", "-C", str(ROOT), "show", f'{record["source"]["git_sha"]}:{path}'])
+                if digest(payload) != expected:
+                    errors.append(f"Executed source differs from recorded Git revision: {path}")
+            except subprocess.CalledProcessError:
+                errors.append(f"Recorded Git source is unavailable: {path}")
     print(json.dumps({"gate": 2, "verdict": "NOT_PROVEN" if errors else "PASS", "violations": errors}))
     raise SystemExit(1 if errors else 0)
 

@@ -2,6 +2,7 @@
 import json
 import os
 import sqlite3
+import subprocess
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
@@ -28,6 +29,7 @@ def source():
 
 @pytest.fixture
 def evidence(tmp_path):
+    reservation = gate.claim_attempt(tmp_path / "ledger.sqlite", gate.identity(URL))
     with zipfile.ZipFile(tmp_path / "trace.zip", "w") as archive:
         archive.writestr("0.trace", '{"type":"context-options","browserName":"chromium"}\n')
     record = {
@@ -40,7 +42,7 @@ def evidence(tmp_path):
         "dom": {"guard_installed": True, "observations": [],
                 "snapshot": {"submits": 0, "programmatic": 0, "clicks": []}},
         "network": {"guard_installed": True, "requests": [], "sent": [], "blocked": [], "websockets": []},
-        "duplicate": {"reserved": True, "duplicate_rejected": True, "rows": 1, "key": "test"},
+        "duplicate": reservation,
         "teardown": {"browser_closed": True, "driver_stopped": True, "tracked_count": 2, "remaining": []},
         "trace": gate.trace_evidence(tmp_path / "trace.zip"),
         "boundary": {"checks": 3, "bypassed": False, "detected": None},
@@ -83,6 +85,20 @@ def test_evaluator_fails_closed(evidence, case):
     elif case == "readback":
         record["verified_fields"] = 0
     assert gate.evaluate(record, directory), case
+
+
+def test_retained_duplicate_database_is_required(evidence):
+    record, directory = evidence
+    (directory / "ledger.sqlite").unlink()
+    assert "retained duplicate ledger missing or invalid" in gate.evaluate(record, directory)
+
+
+def test_trace_network_overrides_false_clean_json(evidence):
+    record, directory = evidence
+    with zipfile.ZipFile(directory / "trace.zip", "a") as archive:
+        archive.writestr("0.network", json.dumps({"snapshot": {"request": {"method": "POST", "url": URL}}}))
+    record["trace"] = gate.trace_evidence(directory / "trace.zip")
+    assert "trace contains application POST or other mutation" in gate.evaluate(record, directory)
 
 
 @pytest.mark.parametrize("key", [
@@ -141,6 +157,8 @@ async def synthetic_run(monkeypatch, tmp_path, html=HTML, inject=None):
     monkeypatch.setattr(gate, "_exercise", fixture)
     def actual_source():
         result = source()
+        result["git_sha"] = subprocess.check_output(
+            ["git", "-C", str(gate.ROOT), "rev-parse", "HEAD"]).decode().strip()
         for path in result["inputs"]:
             result["inputs"][path] = gate.digest((gate.ROOT / path).read_bytes())
         result["source_sha256"] = gate.digest(json.dumps(result["inputs"], sort_keys=True).encode())
@@ -207,3 +225,35 @@ async def test_failure_after_startup_retains_trace_and_cleanup(monkeypatch, tmp_
     assert result["verdict"] == "NOT_PROVEN"
     assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
     assert "synthetic fill failure" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_browser_shutdown_failure_invalidates_proof(monkeypatch, tmp_path):
+    from playwright.async_api import Browser
+    original = Browser.close
+
+    async def close_and_fail(browser, *args, **kwargs):
+        await original(browser, *args, **kwargs)
+        raise RuntimeError("synthetic teardown failure")
+
+    monkeypatch.setattr(Browser, "close", close_and_fail)
+    result = await synthetic_run(monkeypatch, tmp_path)
+    assert result["verdict"] == "NOT_PROVEN" and result["trace"]["valid"]
+    assert any("synthetic teardown failure" in item for item in result["cleanup_errors"])
+
+
+@pytest.mark.asyncio
+async def test_trace_loss_after_startup_invalidates_proof(monkeypatch, tmp_path):
+    from pathlib import Path
+    from playwright.async_api import Tracing
+    original = Tracing.stop
+
+    async def stop_and_lose_trace(tracing, *args, **kwargs):
+        await original(tracing, *args, **kwargs)
+        Path(kwargs["path"]).unlink()
+
+    monkeypatch.setattr(Tracing, "stop", stop_and_lose_trace)
+    result = await synthetic_run(monkeypatch, tmp_path)
+    assert result["verdict"] == "NOT_PROVEN" and result["browser_started"]
+    assert "trace missing or invalid" in result["violations"]
+    assert result["teardown"]["remaining"] == []

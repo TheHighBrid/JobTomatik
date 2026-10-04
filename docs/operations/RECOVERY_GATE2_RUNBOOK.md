@@ -61,3 +61,21 @@ inspect the trace, and cross-check request/DOM observations. A synthetic fixture
 PASS is runner verification only. Gate 2 is PASS only with the single public run
 and independently retained evidence. Missing evidence means NOT PROVEN. The owner
 is not a troubleshooting resource; involve them only at a genuine human boundary.
+
+## One-use off-device execution
+
+The `Recovery Gate 2 single public proof` workflow runs only on creation of the
+exact branch `sol61/gate2-public-proof`. Create that ref at the independently
+verified implementation SHA only after all synthetic and canonical checks pass.
+Its preflight rechecks those named checks on that exact SHA. It refuses workflow
+reruns and any second execution history on the same ref. The target is the public
+GitLab Greenhouse form `https://job-boards.greenhouse.io/gitlab/jobs/8860302002`,
+whose public schema was inspected without browser actions. Creating this ref is
+an explicit execution action, not part of routine PR verification.
+
+The public workflow stores evidence outside the checkout, so diagnostics cannot
+contaminate source attestation. It retains the source-bound CI prerequisite
+receipt, trace, summaries, HTML diagnostics and both the durable reservation and
+its independently reviewable ledger snapshot for 90 days. Review also compares
+every retained source hash with the recorded Git revision, parses trace network
+records for mutations, and checks the retained SQLite reservation directly.

@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sqlite3
+import shutil
 import subprocess
 import sys
 import time
@@ -28,6 +29,8 @@ from app.services import form_filler as _production_compat  # Install production
 from app.services.form_filler_v3 import _fill_step_fields
 from app.services.operational_safety import require_browser_entry_allowed
 from app.config import get_settings
+
+_production_compat.install_text_control_evidence()
 
 ROOT = Path(__file__).resolve().parents[3]
 PROFILE = {
@@ -88,8 +91,12 @@ def identity(url: str) -> dict:
 
 def provenance() -> dict:
     """Bind executed inputs to the clean HEAD, not an environment SHA assertion."""
+    git_executable = shutil.which("git")
+    if not git_executable:
+        raise RuntimeError("Git executable is required for source attestation")
+
     def git(*args):
-        return subprocess.check_output(["git", "-C", str(ROOT), *args])
+        return subprocess.check_output([git_executable, "-C", str(ROOT), *args])
     if git("status", "--porcelain", "--untracked-files=all").strip():
         raise RuntimeError("Gate 2 requires a clean committed checkout")
     sha = git("rev-parse", "HEAD").decode().strip()
@@ -154,6 +161,7 @@ def trace_evidence(path: Path) -> dict:
 def evaluate(record: dict, directory: Path) -> list[str]:
     """Fail closed on missing, conflicting or independently unverifiable evidence."""
     errors = []
+
     def require(condition, message):
         if not condition:
             errors.append(message)
@@ -162,6 +170,10 @@ def evaluate(record: dict, directory: Path) -> list[str]:
     inputs = source.get("inputs") or {}
     require(bool(inputs) and source.get("source_sha256") == digest(
         json.dumps(inputs, sort_keys=True).encode()), "source digest missing or inconsistent")
+    require({"backend/app/services/ats_greenhouse.py", "backend/app/services/form_filler_v3.py",
+             "backend/app/services/recovery_gate2.py"}.issubset(inputs)
+            and all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+                    for value in inputs.values()), "required executed input hashes missing")
     require(record.get("dry_run") is True, "dry_run must be true")
     require(record.get("flow_invocation", {}).get("dry_run") is True,
             "production flow dry_run evidence missing")
@@ -201,6 +213,13 @@ def evaluate(record: dict, directory: Path) -> list[str]:
     duplicate = record.get("duplicate") or {}
     require(duplicate.get("reserved") is True and duplicate.get("duplicate_rejected") is True
             and duplicate.get("rows") == 1 and bool(duplicate.get("key")), "duplicate protection failed")
+    expected_key = digest(json.dumps({"target": expected, "profile": PROFILE}, sort_keys=True).encode())
+    try:
+        with sqlite3.connect(f"file:{directory / 'ledger.sqlite'}?mode=ro", uri=True) as ledger:
+            count = ledger.execute("SELECT COUNT(*) FROM attempts WHERE key = ?", (expected_key,)).fetchone()[0]
+        require(duplicate.get("key") == expected_key and count == 1, "retained duplicate ledger mismatch")
+    except sqlite3.Error:
+        errors.append("retained duplicate ledger missing or invalid")
     teardown = record.get("teardown") or {}
     require(teardown.get("browser_closed") is True and teardown.get("driver_stopped") is True
             and teardown.get("tracked_count", 0) > 0
