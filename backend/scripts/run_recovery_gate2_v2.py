@@ -20,6 +20,7 @@ AUTHORIZED_TARGET_URL = "https://job-boards.greenhouse.io/gitlab/jobs/8860302002
 WORKFLOW_PATH = ".github/workflows/recovery-gate2-public-v2.yml"
 REQUIRED_CHECKS = (
     "synthetic-controls",
+    "proof-v2-controls",
     "exact-head-acceptance",
     "pytest",
     "owned-browser-compose-proof",
