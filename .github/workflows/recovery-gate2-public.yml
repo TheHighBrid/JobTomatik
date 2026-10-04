@@ -1,0 +1,102 @@
+name: Recovery Gate 2 single public proof
+
+# Creating this exact, one-use execution ref is the deliberate execution trigger.
+# Ordinary PR/push events never run the employer form.
+on:
+  create:
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: recovery-gate2-single-public-proof
+  cancel-in-progress: false
+
+jobs:
+  public-proof:
+    if: >-
+      github.event.ref_type == 'branch' &&
+      github.event.ref == 'sol61/gate2-public-proof' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./gate2-public.db
+      SECRET_KEY: gate2-public-synthetic-only-secret
+      AI_PROVIDER: template
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      AUTOPILOT_ENABLED: "false"
+      GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+      LEVER_SUPERVISED_PILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+      TARGET_URL: https://job-boards.greenhouse.io/gitlab/jobs/8860302002
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Require successful canonical exact-head verification and no prior public run
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const sha = context.sha;
+            const checks = await github.paginate(github.rest.checks.listForRef,
+              {owner, repo, ref: sha, per_page: 100});
+            const required = ["synthetic-controls", "exact-head-acceptance", "pytest",
+              "owned-browser-compose-proof", "phase0-fastapi-celery-proof",
+              "backend-browser-migration", "integrated-backend", "fast-gate",
+              "dependency-audit", "Analyze python", "Analyze javascript-typescript"];
+            const receipts = required.map(name => {
+              const candidates = checks.filter(check => check.name === name && check.head_sha === sha)
+                .sort((a,b) => b.id-a.id);
+              const check = candidates[0];
+              if (!check || check.status !== "completed" || check.conclusion !== "success")
+                throw new Error(`Unproven exact-head prerequisite: ${name}`);
+              return {name, id: check.id, head_sha: check.head_sha, url: check.details_url};
+            });
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns,
+              {owner, repo, workflow_id: "recovery-gate2-public.yml",
+               branch: "sol61/gate2-public-proof", per_page: 100});
+            if (runs.some(run => run.id !== context.runId))
+              throw new Error("Public proof execution ref has already been used");
+            const fs = require('fs');
+            fs.writeFileSync(process.env.RUNNER_TEMP + '/gate2-ci-prerequisites.json',
+              JSON.stringify({sha, receipts}, null, 2));
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -q -r requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - name: Exactly one synthetic-identity public Greenhouse no-submit dry-run
+        run: |
+          python scripts/run_recovery_gate2.py --url "$TARGET_URL" \
+            --evidence "$RUNNER_TEMP/gate2-public-evidence" \
+            --ledger "$RUNNER_TEMP/gate2-public-ledger.sqlite"
+      - name: Independently recompute machine-readable public verdict
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/gate2-public-evidence/summary.json"; then
+            python scripts/run_recovery_gate2.py \
+              --evidence "$RUNNER_TEMP/gate2-public-evidence" --review
+          else
+            echo "GATE 2: NOT PROVEN; runner did not execute"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: recovery-gate2-public-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/gate2-public-evidence
+            ${{ runner.temp }}/gate2-public-ledger.sqlite
+            ${{ runner.temp }}/gate2-ci-prerequisites.json
+          if-no-files-found: error
+          retention-days: 90
