@@ -48,15 +48,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git rev-parse HEAD > gate2-proof-v2-head.txt
+          git rev-parse HEAD > "$RUNNER_TEMP/gate2-proof-v2-head.txt"
           python -m pytest -q --tb=short -ra tests/test_recovery_gate2_public_v2.py \
-            | tee gate2-proof-v2-tests.txt
+            | tee "$RUNNER_TEMP/gate2-proof-v2-tests.txt"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: recovery-gate2-proof-v2-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            backend/gate2-proof-v2-head.txt
-            backend/gate2-proof-v2-tests.txt
+            ${{ runner.temp }}/gate2-proof-v2-head.txt
+            ${{ runner.temp }}/gate2-proof-v2-tests.txt
           if-no-files-found: error
           retention-days: 30
