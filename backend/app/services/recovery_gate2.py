@@ -317,12 +317,9 @@ def _abort_matches(event, stages, completed_ids) -> bool:
 
 
 def _proven_aborted_telemetry(network: dict) -> list:
-    """
-    Require successful route.abort AND independent requestfailed on the same request.
-
-    Object-bound IDs reconcile lifecycle callbacks, never URL membership alone.
-    Ambiguous/duplicate IDs and incomplete older evidence fail closed.
-    """
+    """Require independent requestfailed evidence for each successful route abort."""
+    # Object-bound IDs reconcile callbacks, never URL membership alone.
+    # Ambiguous/duplicate IDs and incomplete older evidence fail closed.
     stages = {stage: _unique_requests(network.get(stage) or [])
               for stage in ("requests", "sent", "blocked", "failed")}
     completed_ids = {e.get("request_id") for e in network.get("finished") or []}
@@ -343,12 +340,9 @@ def _trace_aborted(event) -> bool:
 
 
 def _unreconciled_mutations(events, aborted, *, trace=False) -> list:
-    """
-    Each aborted request can explain at most one entry in each evidence stream.
-
-    Trace reconciliation also requires the trace's own abort/failure/no-response
-    evidence. Same-URL completions or extra attempts cannot borrow an exemption.
-    """
+    """Reconcile each aborted request to at most one mutation per stream."""
+    # Trace also requires its own abort/failure/no-response evidence.
+    # Same-URL completions or extra attempts cannot borrow an exemption.
     available = Counter(_mutation_identity(e, trace) for e in aborted)
     unsafe = []
     for event in events or []:

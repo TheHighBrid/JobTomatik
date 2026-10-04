@@ -143,8 +143,8 @@ def test_telemetry_requires_independent_abort_lifecycle(evidence, case):
     mutations = {
         "finished": lambda: network["finished"].append(dict(event)),
         "finished_other_id": lambda: network["finished"].append({**event, "request_id": "other"}),
-        "no_blocked": lambda: network["blocked"].clear(),
-        "no_failed": lambda: network["failed"].clear(),
+        "no_blocked": network["blocked"].clear,
+        "no_failed": network["failed"].clear,
         "abort_failed": lambda: network["blocked"][0].update(abort_succeeded=False),
         "failed_connection": lambda: network["failed"][0].update(failure="net::ERR_CONNECTION_RESET"),
         "different_id": lambda: network["failed"][0].update(request_id="other"),
