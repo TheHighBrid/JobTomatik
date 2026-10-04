@@ -421,6 +421,20 @@ async def test_browser_negative_controls(monkeypatch, tmp_path, script):
     '<div class="grecaptcha-badge"></div>Multi-factor authentication',
     '<div class="grecaptcha-badge"></div><input type="password">',
 ])
+async def test_security_boundary_stops_without_filling(monkeypatch, tmp_path, boundary):
+    result = await synthetic_run(monkeypatch, tmp_path, HTML.replace("<body>", "<body>" + boundary))
+    assert result["verdict"] == "NOT_PROVEN"
+    assert result["boundary"]["stopped"]
+    assert result.get("filler", {}).get("calls", 0) == 0
+    assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("form", [
+    "", '<form><input type="hidden" name="first_name"><button type="submit">Submit</button></form>',
+    '<form><input name="first_name" disabled></form>',
+    '<form hidden><input name="first_name"></form>',
+])
 @pytest.mark.asyncio
 async def test_passive_badge_plus_cloudflare_challenge_stops_without_interaction(monkeypatch, tmp_path):
     widget = (
@@ -439,20 +453,8 @@ async def test_passive_badge_plus_cloudflare_challenge_stops_without_interaction
     assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
 
 
-async def test_security_boundary_stops_without_filling(monkeypatch, tmp_path, boundary):
-    result = await synthetic_run(monkeypatch, tmp_path, HTML.replace("<body>", "<body>" + boundary))
-    assert result["verdict"] == "NOT_PROVEN"
-    assert result["boundary"]["stopped"]
-    assert result.get("filler", {}).get("calls", 0) == 0
-    assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("form", [
-    "", '<form><input type="hidden" name="first_name"><button type="submit">Submit</button></form>',
-    '<form><input name="first_name" disabled></form>',
-    '<form hidden><input name="first_name"></form>',
-])
 async def test_passive_badge_without_usable_form_fails(monkeypatch, tmp_path, form):
     html = '<html><body><div class="grecaptcha-badge"></div>' + form + '</body></html>'
     result = await synthetic_run(monkeypatch, tmp_path, html)
