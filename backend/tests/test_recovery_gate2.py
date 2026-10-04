@@ -559,3 +559,52 @@ async def test_passive_widget_never_erases_independent_boundary(monkeypatch, tmp
         assert observed[0]["reason_code"] == "captcha_detected"
         assert observed[0]["details"]["selector"] == 'iframe[src*="challenges.cloudflare.com" i]'
         assert observed[0]["details"]["visible"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("details", [
+    {},
+    {"selector": ".grecaptcha-badge"},
+    {"selector": "iframe[src*=recaptcha]", "source": "https://www.google.com/recaptcha/api2/anchor?size=invisible"},
+])
+async def test_passive_widget_cannot_clear_positive_detector_evidence(monkeypatch, tmp_path, details):
+    challenge = {"reason_code": "captcha_detected", "summary": "Independent detector stop", "details": details}
+
+    async def detected(_page):
+        return challenge
+
+    monkeypatch.setattr(gate, "detect_blocking_challenge", detected)
+    html = HTML.replace('<body>', '<body>' + PASSIVE_WIDGETS + WIDGET_AUDIT)
+    result = await synthetic_run(monkeypatch, tmp_path, html)
+    assert result["verdict"] == "NOT_PROVEN", result
+    assert result["boundary"]["stopped"] and result["boundary"]["detected"] == challenge
+    assert result.get("filler", {}).get("calls", 0) == 0
+    assert result["dom"]["snapshot"] == {"clicks": [], "submits": 0, "programmatic": 0}
+    assert result["widget_audit"] == {
+        "calls": {"execute": 0, "reset": 0, "render": 0}, "clicks": 0, "mutations": 0}
+    assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
+
+
+@pytest.mark.asyncio
+async def test_passive_only_production_detection_is_observation_only(monkeypatch, tmp_path):
+    detector = gate.detect_blocking_challenge
+    observed = []
+
+    async def capture_detection(page):
+        challenge = await detector(page)
+        observed.append(challenge)
+        return challenge
+
+    monkeypatch.setattr(gate, "detect_blocking_challenge", capture_detection)
+    html = HTML.replace('<body>', '<body>' + PASSIVE_WIDGETS + WIDGET_AUDIT)
+    result = await synthetic_run(monkeypatch, tmp_path, html)
+    assert result["verdict"] == "PASS", result
+    assert observed and all(challenge is None for challenge in observed)
+    assert result["boundary"].get("passive_widgets")
+    assert result["filler"]["calls"] > 0 and result["verified_fields"] >= 3
+    assert result["dom"]["snapshot"] == {"clicks": [], "submits": 0, "programmatic": 0}
+    assert result["widget_audit"] == {
+        "calls": {"execute": 0, "reset": 0, "render": 0}, "clicks": 0, "mutations": 0}
+    assert result["trace"]["valid"]
+    assert result["teardown"]["browser_closed"] and result["teardown"]["driver_stopped"]
+    assert result["teardown"]["remaining"] == [] and result["cleanup_errors"] == []

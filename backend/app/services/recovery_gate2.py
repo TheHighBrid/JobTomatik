@@ -360,6 +360,7 @@ def _unreconciled_mutations(events, aborted, *, trace=False) -> list:
 
 _INTERACTIVE_CAPTCHA = (
     'iframe[src*="recaptcha/"][src*="/bframe"], iframe[src*="hcaptcha.com"], '
+    'iframe[src*="challenges.cloudflare.com" i], '
     'iframe[src*="recaptcha/"][src*="/anchor"]:not([src*="size=invisible"]), '
     '.h-captcha, div.g-recaptcha:not(.grecaptcha-badge), '
     ':is([class*="captcha" i],[id*="captcha" i],[data-sitekey])'
@@ -394,15 +395,14 @@ async def _boundary(page, record):
     challenge = await detect_blocking_challenge(page)
     if await page.locator(_INTERACTIVE_CAPTCHA).count():
         challenge = {"reason_code": "captcha_detected", "summary": "Interactive CAPTCHA present"}
-    # A passive Greenhouse invisible badge is not an active challenge and is never
-    # clicked, solved, or hidden. Interactive CAPTCHA, MFA, and login still stop.
+    # Production already filters invisible reCAPTCHA sources and badge elements.
+    # Observing a passive widget never overrides a positive detector result:
+    # its evidence may describe an independent challenge or be incomplete.
     if await _passive_invisible_captcha(page):
         boundary.setdefault("passive_widgets", []).append({
             "reason_code": "passive_invisible_recaptcha",
             "summary": "passive invisible widget observed; no interaction",
         })
-        if challenge and challenge.get("reason_code") == "captcha_detected":
-            challenge = None
     elif not challenge and await page.locator(_PASSIVE_CAPTCHA).count():
         challenge = {"reason_code": "captcha_detected", "summary": "Widget without usable application form"}
     # Production heuristics intentionally ignore some challenge phrases when a
