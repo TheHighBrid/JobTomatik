@@ -349,8 +349,10 @@ async def synthetic_run(monkeypatch, tmp_path, html=HTML, inject=None):
         await context.route("**/*", serve)
         if inject:
             await inject(context)
-        await original(context, url, record)
-        record["widget_audit"] = await record["page"].evaluate("window.__widgetAudit || null")
+        try:
+            await original(context, url, record)
+        finally:
+            record["widget_audit"] = await record["page"].evaluate("window.__widgetAudit || null")
     monkeypatch.setattr(gate, "_exercise", fixture)
     def actual_source():
         result = source()
@@ -486,3 +488,74 @@ async def test_trace_loss_after_startup_invalidates_proof(monkeypatch, tmp_path)
     assert result["verdict"] == "NOT_PROVEN" and result["browser_started"]
     assert "trace missing or invalid" in result["violations"]
     assert result["teardown"]["remaining"] == []
+
+
+PASSIVE_WIDGETS = '''<div class="grecaptcha-badge" data-security-widget="badge"></div>
+<iframe title="reCAPTCHA" data-security-widget="passive"
+src="https://www.google.com/recaptcha/api2/anchor?size=invisible"></iframe>'''
+WIDGET_AUDIT = '''<script>
+window.__widgetAudit={calls:{execute:0,reset:0,render:0},clicks:0,mutations:0};
+window.grecaptcha=Object.fromEntries(['execute','reset','render'].map(name=>
+  [name,()=>{window.__widgetAudit.calls[name]++}]));
+const widgets=[...document.querySelectorAll('[data-security-widget]')];
+addEventListener('click',event=>{
+  if(widgets.some(widget=>widget.contains(event.target)))window.__widgetAudit.clicks++;
+},true);
+new MutationObserver(events=>{for(const event of events){
+  if(widgets.some(widget=>widget.contains(event.target) ||
+    [...event.removedNodes].some(node=>node===widget || node.contains?.(widget))))
+    window.__widgetAudit.mutations++;
+}}).observe(document.body,{attributes:true,childList:true,subtree:true});
+</script>'''
+MIXED_BOUNDARIES = [
+    pytest.param('<iframe data-security-widget="challenge" title="Cloudflare" '
+                 'src="https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile" '
+                 'width="300" height="150"></iframe>', id="cloudflare"),
+    pytest.param('<iframe data-security-widget="challenge" '
+                 'src="https://www.google.com/recaptcha/api2/bframe"></iframe>', id="recaptcha"),
+    pytest.param('<iframe data-security-widget="challenge" '
+                 'src="https://hcaptcha.com/captcha"></iframe>', id="hcaptcha"),
+    pytest.param('<div data-security-widget="challenge" data-sitekey="synthetic" '
+                 'style="width:200px;height:100px">Choose an image</div>', id="sitekey"),
+    pytest.param('<input data-security-widget="challenge" type="password">', id="login"),
+    pytest.param('<div data-security-widget="challenge">Enter your verification code</div>', id="otp"),
+    pytest.param('<div data-security-widget="challenge">Identity verification required</div>', id="identity"),
+    pytest.param('<div data-security-widget="challenge">Checking your browser. '
+                 'Security verification required</div>', id="anti-bot"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("challenge_html", MIXED_BOUNDARIES)
+async def test_passive_widget_never_erases_independent_boundary(monkeypatch, tmp_path, challenge_html):
+    from bs4 import BeautifulSoup
+
+    html = HTML.replace('<body>', '<body>' + PASSIVE_WIDGETS + challenge_html + WIDGET_AUDIT)
+    detector = gate.detect_blocking_challenge
+    observed = []
+
+    async def capture_detection(page):
+        challenge = await detector(page)
+        observed.append(challenge)
+        return challenge
+
+    monkeypatch.setattr(gate, "detect_blocking_challenge", capture_detection)
+    result = await synthetic_run(monkeypatch, tmp_path, html)
+    assert result["verdict"] == "NOT_PROVEN", result
+    assert result["boundary"]["stopped"]
+    assert result.get("filler", {}).get("calls", 0) == 0
+    assert result["dom"]["snapshot"] == {"clicks": [], "submits": 0, "programmatic": 0}
+    assert result["widget_audit"] == {
+        "calls": {"execute": 0, "reset": 0, "render": 0}, "clicks": 0, "mutations": 0}
+    assert result["trace"]["valid"]
+    assert result["teardown"]["browser_closed"] and result["teardown"]["driver_stopped"]
+    assert result["teardown"]["remaining"] == [] and result["cleanup_errors"] == []
+    retained = BeautifulSoup((tmp_path / "run/failure-or-final.html").read_text(), "html.parser")
+    original = BeautifulSoup(html, "html.parser")
+    assert [str(node) for node in retained.select('[data-security-widget]')] == [
+        str(node) for node in original.select('[data-security-widget]')]
+    assert all(not retained.select_one('#' + key).get('value') for key in ('first', 'last', 'email'))
+    if 'challenges.cloudflare.com' in challenge_html:
+        assert observed[0]["reason_code"] == "captcha_detected"
+        assert observed[0]["details"]["selector"] == 'iframe[src*="challenges.cloudflare.com" i]'
+        assert observed[0]["details"]["visible"] is True
