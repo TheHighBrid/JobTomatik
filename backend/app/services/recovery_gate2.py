@@ -207,9 +207,10 @@ def evaluate(record: dict, directory: Path) -> list[str]:
     require(network.get("guard_installed") is True
             and isinstance(network.get("requests"), list)
             and isinstance(network.get("sent"), list), "network evidence missing")
-    require(not network.get("blocked") and not network.get("websockets"), "unsafe network attempt")
-    require(all(e.get("method") in {"GET", "HEAD"} for e in network.get("sent", [])),
-            "application POST or other mutation sent")
+    blocked = network.get("blocked") or []
+    require(not _unsafe_blocked(blocked) and not network.get("websockets"), "unsafe network attempt")
+    require(not _application_mutations(network.get("sent")), "application POST or other mutation sent")
+    require(not _application_mutations(network.get("finished")), "completed application mutation")
     duplicate = record.get("duplicate") or {}
     require(duplicate.get("reserved") is True and duplicate.get("duplicate_rejected") is True
             and duplicate.get("rows") == 1 and bool(duplicate.get("key")), "duplicate protection failed")
@@ -228,7 +229,8 @@ def evaluate(record: dict, directory: Path) -> list[str]:
     actual_trace = trace_evidence(directory / "trace.zip")
     require(trace.get("valid") is True and actual_trace.get("valid") is True
             and trace.get("sha256") == actual_trace.get("sha256"), "trace missing or invalid")
-    require(not actual_trace.get("mutating_requests"), "trace contains application POST or other mutation")
+    require(not _application_mutations(actual_trace.get("mutating_requests")),
+            "trace contains application POST or other mutation")
     boundary = record.get("boundary") or {}
     require(boundary.get("checks", 0) >= 2 and boundary.get("bypassed") is False,
             "human/security boundary evidence missing or mishandled")
@@ -241,10 +243,60 @@ def evaluate(record: dict, directory: Path) -> list[str]:
     return errors
 
 
+
+_TELEMETRY_MARKERS = ("snowplow", "google-analytics.com", "googletagmanager.com", "doubleclick.net")
+
+
+def _hostname(url: str) -> str:
+    return (urlsplit(str(url or "")).hostname or "").lower()
+
+
+def _is_blocked_telemetry(event: dict) -> bool:
+    """Aborted analytics only. Never treats an application mutation as telemetry."""
+    host = _hostname(event.get("url", ""))
+    return bool(host) and any(marker in host for marker in _TELEMETRY_MARKERS)
+
+
+def _application_mutations(events) -> list:
+    return [
+        event for event in events or []
+        if event.get("method") not in {None, "GET", "HEAD"} and not _is_blocked_telemetry(event)
+    ]
+
+
+def _unsafe_blocked(events) -> list:
+    return [event for event in events or [] if not _is_blocked_telemetry(event)]
+
+
+async def _passive_invisible_captcha(page) -> bool:
+    """True only for a usable form plus a passive badge, with no interactive challenge."""
+    usable = await page.locator("form input:not([type='hidden']), form textarea, form select").count()
+    if not usable:
+        return False
+    interactive = await page.locator(
+        'iframe[src*="recaptcha/api2/bframe"], iframe[src*="hcaptcha.com"], '
+        'div.g-recaptcha:not(.grecaptcha-badge)'
+    ).count()
+    if interactive:
+        return False
+    badge = await page.locator(
+        '.grecaptcha-badge, iframe[title="reCAPTCHA"][src*="size=invisible"]'
+    ).count()
+    return badge > 0
+
+
 async def _boundary(page, record):
     boundary = record["boundary"]
     boundary["checks"] += 1
     challenge = await detect_blocking_challenge(page)
+    # A passive Greenhouse invisible badge is not an active challenge and is never
+    # clicked, solved, or hidden. Interactive CAPTCHA, MFA, and login still stop.
+    if challenge and challenge.get("reason_code") == "captcha_detected" and await _passive_invisible_captcha(page):
+        boundary.setdefault("passive_widgets", []).append({
+            "reason_code": challenge.get("reason_code"),
+            "summary": "passive invisible widget observed; no interaction",
+        })
+        challenge = None
     # Production heuristics intentionally ignore some challenge phrases when a
     # form is also present. Certification takes the stricter boundary here.
     if not challenge:

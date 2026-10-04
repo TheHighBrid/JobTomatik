@@ -87,6 +87,42 @@ def test_evaluator_fails_closed(evidence, case):
     assert gate.evaluate(record, directory), case
 
 
+
+def test_aborted_snowplow_telemetry_is_not_an_application_mutation(evidence):
+    record, directory = evidence
+    record["network"]["blocked"].append({
+        "method": "POST",
+        "url": "https://com-gitlab-prod1.collector.snowplow.io/com.snowplowanalytics.snowplow/tp2",
+    })
+    record["network"]["sent"].append(record["network"]["blocked"][-1])
+    assert gate.evaluate(record, directory) == []
+
+
+def test_application_post_still_fails_when_telemetry_is_also_blocked(evidence):
+    record, directory = evidence
+    record["network"]["blocked"].append({
+        "method": "POST",
+        "url": "https://collector.snowplow.io/tp2",
+    })
+    record["network"]["sent"].append({"method": "POST", "url": URL})
+    assert "application POST or other mutation sent" in gate.evaluate(record, directory)
+
+
+@pytest.mark.asyncio
+async def test_passive_invisible_badge_does_not_stop_or_get_clicked(monkeypatch, tmp_path):
+    html = HTML.replace(
+        "<body>",
+        '<body><div class="grecaptcha-badge"></div>'
+        '<iframe title="reCAPTCHA" src="https://www.google.com/recaptcha/api2/anchor?size=invisible"></iframe>',
+    )
+    result = await synthetic_run(monkeypatch, tmp_path, html)
+    assert result["verdict"] == "PASS", result
+    assert result["boundary"].get("stopped") is not True
+    assert result["filler"]["calls"] > 0
+    assert result["boundary"].get("passive_widgets")
+    assert result["dom"]["snapshot"]["clicks"] == []
+
+
 def test_retained_duplicate_database_is_required(evidence):
     record, directory = evidence
     (directory / "ledger.sqlite").unlink()
