@@ -8,11 +8,10 @@ import os
 import re
 import shutil
 import sqlite3
-import subprocess
 import time
 from pathlib import Path
 
-from app.services.recovery_gate2 import ROOT, digest, evaluate, identity, run_gate
+from app.services.recovery_gate2 import digest, evaluate, identity, provenance, run_gate
 
 PROOF_SCHEMA = "jobtomatik.recovery.gate2.public-proof.v2"
 AUTHORIZED_PROOF_ID = "gate2-public-proof-v2-20261004"
@@ -37,6 +36,11 @@ REQUIRED_CHECKS = (
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise RuntimeError(message)
+
+
+def _append_error(errors: list[str], condition: bool, message: str) -> None:
+    if not condition:
+        errors.append(message)
 
 
 def validate_authorized_inputs(proof_id: str, target_url: str) -> None:
@@ -83,13 +87,14 @@ def workflow_context(execution_sha: str) -> dict:
         workflow_ref.endswith(f"/{WORKFLOW_PATH}@refs/heads/main"),
         "Unexpected Gate 2 proof-v2 workflow ref",
     )
-    actual = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"]).decode().strip()
-    _require(actual == execution_sha, "Checked-out source differs from approved execution SHA")
+    source = provenance()
+    _require(source.get("git_sha") == execution_sha, "Checked-out source differs from approved execution SHA")
     return {
         "run_id": int(run_id),
         "run_attempt": 1,
         "workflow_ref": workflow_ref,
         "execution_sha": execution_sha,
+        "source_sha256": source.get("source_sha256"),
     }
 
 
@@ -115,67 +120,100 @@ def load_ci_receipts(path: Path, execution_sha: str, proof_id: str, target_url: 
     return data
 
 
-def proof_metadata_errors(record: dict, directory: Path) -> list[str]:
-    """Independently validate retained proof-v2 identity, workflow and prerequisite evidence."""
+def _proof_identity_errors(record: dict) -> list[str]:
     errors: list[str] = []
-
-    def require(condition: bool, message: str) -> None:
-        if not condition:
-            errors.append(message)
-
     proof = record.get("proof_v2") or {}
     source = record.get("source") or {}
-    require(proof.get("schema") == PROOF_SCHEMA, "proof-v2 schema missing")
-    require(proof.get("proof_id") == AUTHORIZED_PROOF_ID, "proof-v2 identity mismatch")
-    require(proof.get("target_url") == AUTHORIZED_TARGET_URL, "proof-v2 target mismatch")
-    require(proof.get("target_key") == proof_target_key(AUTHORIZED_PROOF_ID, AUTHORIZED_TARGET_URL),
-            "proof-v2 target key mismatch")
+    _append_error(errors, proof.get("schema") == PROOF_SCHEMA, "proof-v2 schema missing")
+    _append_error(errors, proof.get("proof_id") == AUTHORIZED_PROOF_ID, "proof-v2 identity mismatch")
+    _append_error(errors, proof.get("target_url") == AUTHORIZED_TARGET_URL, "proof-v2 target mismatch")
+    _append_error(
+        errors,
+        proof.get("target_key") == proof_target_key(AUTHORIZED_PROOF_ID, AUTHORIZED_TARGET_URL),
+        "proof-v2 target key mismatch",
+    )
     execution_sha = proof.get("execution_sha", "")
-    require(bool(re.fullmatch(r"[0-9a-f]{40}", execution_sha)), "proof-v2 execution SHA missing")
-    require(execution_sha == source.get("git_sha"), "proof-v2 execution/source SHA mismatch")
-    require(isinstance(proof.get("github_run_id"), int) and proof["github_run_id"] > 0,
-            "proof-v2 GitHub run ID missing")
-    require(proof.get("github_run_attempt") == 1, "proof-v2 rerun evidence is invalid")
+    _append_error(errors, bool(re.fullmatch(r"[0-9a-f]{40}", execution_sha)), "proof-v2 execution SHA missing")
+    _append_error(errors, execution_sha == source.get("git_sha"), "proof-v2 execution/source SHA mismatch")
+    _append_error(
+        errors,
+        isinstance(proof.get("github_run_id"), int) and proof["github_run_id"] > 0,
+        "proof-v2 GitHub run ID missing",
+    )
+    _append_error(errors, proof.get("github_run_attempt") == 1, "proof-v2 rerun evidence is invalid")
     workflow_ref = str(proof.get("github_workflow_ref") or "")
-    require(workflow_ref.endswith(f"/{WORKFLOW_PATH}@refs/heads/main"),
-            "proof-v2 workflow ref mismatch")
+    _append_error(
+        errors,
+        workflow_ref.endswith(f"/{WORKFLOW_PATH}@refs/heads/main"),
+        "proof-v2 workflow ref mismatch",
+    )
+    return errors
 
-    receipts_path = directory / "ci-prerequisites.json"
+
+def _receipt_errors(record: dict, directory: Path) -> list[str]:
+    errors: list[str] = []
+    proof = record.get("proof_v2") or {}
+    execution_sha = proof.get("execution_sha", "")
     try:
-        payload = receipts_path.read_bytes()
-        require(proof.get("ci_receipts_sha256") == digest(payload), "CI receipt digest mismatch")
+        payload = (directory / "ci-prerequisites.json").read_bytes()
         receipts = json.loads(payload)
-        require(receipts.get("schema") == PROOF_SCHEMA, "retained CI receipt schema mismatch")
-        require(receipts.get("sha") == execution_sha, "retained CI receipt SHA mismatch")
-        require(receipts.get("proof_id") == AUTHORIZED_PROOF_ID, "retained CI proof identity mismatch")
-        require(receipts.get("target_url") == AUTHORIZED_TARGET_URL, "retained CI target mismatch")
-        require(receipts.get("run_id") == proof.get("github_run_id"), "retained CI run ID mismatch")
-        items = receipts.get("receipts") or []
-        by_name = {item.get("name"): item for item in items if isinstance(item, dict)}
-        require(len(by_name) == len(items), "retained CI receipt names are duplicate or missing")
-        require(set(by_name) == set(REQUIRED_CHECKS), "retained canonical CI receipt set incomplete")
-        for name in REQUIRED_CHECKS:
-            item = by_name.get(name) or {}
-            require(item.get("head_sha") == execution_sha, f"retained wrong-head receipt: {name}")
-            require(item.get("status") == "completed" and item.get("conclusion") == "success",
-                    f"retained unsuccessful receipt: {name}")
     except (OSError, json.JSONDecodeError):
-        errors.append("retained CI prerequisites missing or invalid")
+        return ["retained CI prerequisites missing or invalid"]
+    _append_error(errors, proof.get("ci_receipts_sha256") == digest(payload), "CI receipt digest mismatch")
+    _append_error(errors, receipts.get("schema") == PROOF_SCHEMA, "retained CI receipt schema mismatch")
+    _append_error(errors, receipts.get("sha") == execution_sha, "retained CI receipt SHA mismatch")
+    _append_error(errors, receipts.get("proof_id") == AUTHORIZED_PROOF_ID, "retained CI proof identity mismatch")
+    _append_error(errors, receipts.get("target_url") == AUTHORIZED_TARGET_URL, "retained CI target mismatch")
+    _append_error(errors, receipts.get("run_id") == proof.get("github_run_id"), "retained CI run ID mismatch")
+    items = receipts.get("receipts") or []
+    by_name = {item.get("name"): item for item in items if isinstance(item, dict)}
+    _append_error(errors, len(by_name) == len(items), "retained CI receipt names are duplicate or missing")
+    _append_error(errors, set(by_name) == set(REQUIRED_CHECKS), "retained canonical CI receipt set incomplete")
+    for name in REQUIRED_CHECKS:
+        item = by_name.get(name) or {}
+        _append_error(errors, item.get("head_sha") == execution_sha, f"retained wrong-head receipt: {name}")
+        _append_error(
+            errors,
+            item.get("status") == "completed" and item.get("conclusion") == "success",
+            f"retained unsuccessful receipt: {name}",
+        )
+    return errors
 
+
+def _reservation_errors(directory: Path) -> list[str]:
     try:
         with sqlite3.connect(f"file:{directory / 'ledger.sqlite'}?mode=ro", uri=True) as database:
             rows = database.execute(
                 "SELECT target_key FROM proof_runs WHERE proof_id = ?", (AUTHORIZED_PROOF_ID,)
             ).fetchall()
-        require(rows == [(proof_target_key(AUTHORIZED_PROOF_ID, AUTHORIZED_TARGET_URL),)],
-                "retained proof-v2 reservation missing or ambiguous")
     except sqlite3.Error:
-        errors.append("retained proof-v2 reservation missing or invalid")
-    return errors
+        return ["retained proof-v2 reservation missing or invalid"]
+    expected = proof_target_key(AUTHORIZED_PROOF_ID, AUTHORIZED_TARGET_URL)
+    return [] if rows == [(expected,)] else ["retained proof-v2 reservation missing or ambiguous"]
+
+
+def proof_metadata_errors(record: dict, directory: Path) -> list[str]:
+    """Independently validate retained proof-v2 identity, workflow and prerequisite evidence."""
+    return _proof_identity_errors(record) + _receipt_errors(record, directory) + _reservation_errors(directory)
+
+
+def _current_source_errors(record: dict) -> list[str]:
+    try:
+        current = provenance()
+    except RuntimeError as exc:
+        return [f"Current source attestation failed: {exc}"]
+    recorded = record.get("source") or {}
+    if (
+        current.get("git_sha") == recorded.get("git_sha")
+        and current.get("source_sha256") == recorded.get("source_sha256")
+        and current.get("inputs") == recorded.get("inputs")
+    ):
+        return []
+    return ["Executed source differs from the reviewed Git checkout"]
 
 
 def review_v2(record: dict, directory: Path) -> list[str]:
-    return evaluate(record, directory) + proof_metadata_errors(record, directory)
+    return evaluate(record, directory) + proof_metadata_errors(record, directory) + _current_source_errors(record)
 
 
 def execute(args: argparse.Namespace) -> tuple[dict, list[str]]:
@@ -226,16 +264,6 @@ def main() -> None:
         record, errors = execute(args)
     if record.get("evidence_kind") != "public_greenhouse":
         errors.append("Synthetic runner verification cannot prove the public Gate 2")
-    if not errors:
-        for path, expected in record["source"]["inputs"].items():
-            try:
-                payload = subprocess.check_output(
-                    ["git", "-C", str(ROOT), "show", f'{record["source"]["git_sha"]}:{path}']
-                )
-                if digest(payload) != expected:
-                    errors.append(f"Executed source differs from recorded Git revision: {path}")
-            except subprocess.CalledProcessError:
-                errors.append(f"Recorded Git source is unavailable: {path}")
     print(json.dumps({"gate": 2, "proof": "v2", "verdict": "NOT_PROVEN" if errors else "PASS",
                       "violations": errors}))
     raise SystemExit(1 if errors else 0)
