@@ -41,6 +41,9 @@ jobs:
       ENABLE_RESUMABLE_HANDOFFS: "false"
       AUTHORIZED_PROOF_ID: gate2-public-proof-v2-20261004
       AUTHORIZED_TARGET_URL: https://job-boards.greenhouse.io/gitlab/jobs/8860302002
+      DISPATCH_EXECUTION_SHA: ${{ inputs.execution_sha }}
+      DISPATCH_PROOF_ID: ${{ inputs.proof_id }}
+      DISPATCH_TARGET_URL: ${{ inputs.target_url }}
     defaults:
       run:
         working-directory: backend
@@ -117,9 +120,9 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/run_recovery_gate2_v2.py \
-            --url "${{ inputs.target_url }}" \
-            --proof-id "${{ inputs.proof_id }}" \
-            --execution-sha "${{ inputs.execution_sha }}" \
+            --url "$DISPATCH_TARGET_URL" \
+            --proof-id "$DISPATCH_PROOF_ID" \
+            --execution-sha "$DISPATCH_EXECUTION_SHA" \
             --ci-receipts "$RUNNER_TEMP/gate2-ci-prerequisites-v2.json" \
             --evidence "$RUNNER_TEMP/gate2-public-v2-evidence" \
             --ledger "$RUNNER_TEMP/gate2-public-v2-ledger.sqlite"
