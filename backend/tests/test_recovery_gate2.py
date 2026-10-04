@@ -245,15 +245,18 @@ async def test_browser_shutdown_failure_invalidates_proof(monkeypatch, tmp_path)
 @pytest.mark.asyncio
 async def test_trace_loss_after_startup_invalidates_proof(monkeypatch, tmp_path):
     from pathlib import Path
-    from playwright.async_api import Tracing
-    original = Tracing.stop
 
-    async def stop_and_lose_trace(tracing, *args, **kwargs):
-        await original(tracing, *args, **kwargs)
-        Path(kwargs["path"]).unlink()
+    async def inject(context):
+        tracing_class = type(context.tracing)
+        original = tracing_class.stop
 
-    monkeypatch.setattr(Tracing, "stop", stop_and_lose_trace)
-    result = await synthetic_run(monkeypatch, tmp_path)
+        async def stop_and_lose_trace(tracing, *args, **kwargs):
+            await original(tracing, *args, **kwargs)
+            Path(kwargs["path"]).unlink()
+
+        monkeypatch.setattr(tracing_class, "stop", stop_and_lose_trace)
+
+    result = await synthetic_run(monkeypatch, tmp_path, inject=inject)
     assert result["verdict"] == "NOT_PROVEN" and result["browser_started"]
     assert "trace missing or invalid" in result["violations"]
     assert result["teardown"]["remaining"] == []
