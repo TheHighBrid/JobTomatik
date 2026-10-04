@@ -1,8 +1,6 @@
 """Synthetic-only tests for the separately authorized Gate 2 public proof-v2 contract."""
 import json
-import os
 import sqlite3
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -50,7 +48,7 @@ def test_proof_v2_reservation_is_one_use_and_separate_from_v1_attempt(tmp_path):
 
 
 def test_workflow_context_requires_first_attempt_main_and_exact_head(monkeypatch):
-    head = subprocess.check_output(["git", "-C", str(gate.ROOT), "rev-parse", "HEAD"]).decode().strip()
+    head = gate.provenance()["git_sha"]
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_SHA", head)
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
@@ -62,6 +60,7 @@ def test_workflow_context_requires_first_attempt_main_and_exact_head(monkeypatch
     )
     context = v2.workflow_context(head)
     assert context["run_id"] == 12345 and context["run_attempt"] == 1
+    assert context["source_sha256"]
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
     with pytest.raises(RuntimeError, match="reruns"):
         v2.workflow_context(head)
