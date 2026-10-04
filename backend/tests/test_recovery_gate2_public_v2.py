@@ -109,6 +109,16 @@ def test_proof_metadata_requires_retained_ci_and_proof_reservation(tmp_path):
     assert "proof-v2 rerun evidence is invalid" in v2.proof_metadata_errors(record, tmp_path)
 
 
+def test_current_source_attestation_fails_closed(monkeypatch):
+    recorded = {"git_sha": "a" * 40, "source_sha256": "1" * 64, "inputs": {"x.py": "2" * 64}}
+    monkeypatch.setattr(v2, "provenance", lambda: dict(recorded))
+    assert v2._current_source_errors({"source": recorded}) == []
+    monkeypatch.setattr(v2, "provenance", lambda: {**recorded, "git_sha": "b" * 40})
+    assert v2._current_source_errors({"source": recorded}) == [
+        "Executed source differs from the reviewed Git checkout"
+    ]
+
+
 def test_v2_workflow_is_separate_from_consumed_v1_and_requires_codeql():
     root = Path(gate.ROOT)
     v1 = (root / ".github/workflows/recovery-gate2-public.yml").read_text()
@@ -139,6 +149,34 @@ def test_dispatch_inputs_are_not_interpolated_inside_shell_commands():
     assert '--url "$DISPATCH_TARGET_URL"' in workflow
     assert '--proof-id "$DISPATCH_PROOF_ID"' in workflow
     assert '--execution-sha "$DISPATCH_EXECUTION_SHA"' in workflow
+
+
+def test_every_required_receipt_has_a_main_push_producer():
+    root = Path(gate.ROOT)
+    producers = {
+        ".github/workflows/recovery-gate2.yml": ("synthetic-controls",),
+        ".github/workflows/recovery-gate2-proof-v2.yml": ("proof-v2-controls",),
+        ".github/workflows/current-head-final-acceptance.yml": ("exact-head-acceptance",),
+        ".github/workflows/backend-tests.yml": ("pytest",),
+        ".github/workflows/onehost-fixture-gate.yml": ("owned-browser-compose-proof",),
+        ".github/workflows/onehost-api-celery-gate.yml": ("phase0-fastapi-celery-proof",),
+        ".github/workflows/reproducible-verification.yml": (
+            "backend-browser-migration", "fast-gate", "dependency-audit",
+        ),
+        ".github/workflows/post-merge-stabilization.yml": ("integrated-backend",),
+    }
+    produced = set()
+    for path, checks in producers.items():
+        workflow = (root / path).read_text()
+        assert "push:" in workflow and "main" in workflow, path
+        for check in checks:
+            assert f"{check}:" in workflow, f"{check} missing from {path}"
+            produced.add(check)
+    codeql = (root / ".github/workflows/codeql.yml").read_text()
+    assert "push:" in codeql and "main" in codeql
+    assert "python" in codeql and "javascript-typescript" in codeql
+    produced.update({"Analyze python", "Analyze javascript-typescript"})
+    assert produced == set(v2.REQUIRED_CHECKS)
 
 
 def test_v1_runner_and_public_workflow_remain_unchanged_in_role():
