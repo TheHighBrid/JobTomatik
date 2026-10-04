@@ -1,0 +1,165 @@
+# Phase 0 closure proof: real FastAPI dispatch and real Celery application task,
+# with a proof-only owned-Chromium fixture runtime. No host ports, Android, ADB,
+# PRoot, external Chrome, CDP endpoint, retained-browser lease, or employer site.
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: jobtomatik
+      POSTGRES_PASSWORD: phase0-proof-db
+      POSTGRES_DB: jobtomatik
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobtomatik -d jobtomatik"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks: [phase0]
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks: [phase0]
+
+  fixture:
+    build: ./backend
+    init: true
+    command:
+      - python
+      - -m
+      - http.server
+      - "8000"
+      - --bind
+      - 0.0.0.0
+      - --directory
+      - /app/tests/fixtures
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/onehost_http_form.html', timeout=2)"
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks: [phase0]
+
+  backend:
+    build: ./backend
+    init: true
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
+    environment:
+      APP_ENV: test
+      ENABLE_API_DOCS: "false"
+      DATABASE_URL: postgresql://jobtomatik:phase0-proof-db@db:5432/jobtomatik
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: phase0-proof-secret-key-that-is-never-used-outside-synthetic-ci
+      AI_PROVIDER: template
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ALLOW_REAL_FOLLOWUP_SEND: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+      APPLICATION_BROWSER_PROVIDER: local
+      APPLICATION_BROWSER_CDP_ENDPOINT: ""
+      JOBTOMATIK_RUNTIME_REVISION: ${JOBTOMATIK_RUNTIME_REVISION:?run scripts/verify-onehost-api-celery.sh}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/system/ready', timeout=3)"
+      interval: 2s
+      timeout: 4s
+      retries: 30
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [phase0]
+
+  celery_worker:
+    build: ./backend
+    init: true
+    command:
+      - celery
+      - -A
+      - app.onehost_phase0_worker:celery_app
+      - worker
+      - --loglevel=info
+      - --pool=solo
+      - --concurrency=1
+      - -Q
+      - applications
+    environment:
+      APP_ENV: test
+      DATABASE_URL: postgresql://jobtomatik:phase0-proof-db@db:5432/jobtomatik
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: phase0-proof-secret-key-that-is-never-used-outside-synthetic-ci
+      AI_PROVIDER: template
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ALLOW_REAL_FOLLOWUP_SEND: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+      APPLICATION_BROWSER_PROVIDER: local
+      APPLICATION_BROWSER_CDP_ENDPOINT: ""
+      JOBTOMATIK_ONEHOST_PHASE0_PROOF: "1"
+      JOBTOMATIK_ONEHOST_FIXTURE_URL: http://fixture:8000/onehost_http_form.html
+      JOBTOMATIK_ONEHOST_PHASE0_EVIDENCE_DIR: /evidence/proof/browser
+      JOBTOMATIK_RUNTIME_REVISION: ${JOBTOMATIK_RUNTIME_REVISION:?run scripts/verify-onehost-api-celery.sh}
+    volumes:
+      - type: bind
+        source: ${ONEHOST_EVIDENCE_DIR:?run scripts/verify-onehost-api-celery.sh}
+        target: /evidence
+    depends_on:
+      backend:
+        condition: service_healthy
+      fixture:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [phase0]
+
+  proof:
+    build: ./backend
+    init: true
+    command:
+      - python
+      - -m
+      - scripts.run_onehost_api_celery_gate
+      - --output-dir
+      - /evidence/proof
+      - --repeats
+      - "3"
+    environment:
+      APP_ENV: test
+      DATABASE_URL: postgresql://jobtomatik:phase0-proof-db@db:5432/jobtomatik
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: phase0-proof-secret-key-that-is-never-used-outside-synthetic-ci
+      AI_PROVIDER: template
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      ALLOW_REAL_FOLLOWUP_SEND: "false"
+      AUTOPILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+      JOBTOMATIK_ONEHOST_API_URL: http://backend:8000
+      JOBTOMATIK_ONEHOST_FIXTURE_URL: http://fixture:8000/onehost_http_form.html
+      JOBTOMATIK_RUNTIME_REVISION: ${JOBTOMATIK_RUNTIME_REVISION:?run scripts/verify-onehost-api-celery.sh}
+    volumes:
+      - type: bind
+        source: ${ONEHOST_EVIDENCE_DIR:?run scripts/verify-onehost-api-celery.sh}
+        target: /evidence
+    depends_on:
+      backend:
+        condition: service_healthy
+      celery_worker:
+        condition: service_started
+      fixture:
+        condition: service_healthy
+    networks: [phase0]
+
+networks:
+  phase0:
+    internal: true
