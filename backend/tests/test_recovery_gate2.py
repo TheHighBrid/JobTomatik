@@ -11,6 +11,7 @@ import pytest
 from app.services import recovery_gate2 as gate
 
 URL = "https://job-boards.greenhouse.io/gate2fixture/jobs/1234567"
+TELEMETRY = "https://c.spl.greenhouse.io/com.snowplowanalytics.snowplow/tp2"
 HTML = """<!doctype html><html><body><form id="application_form">
 <label for="first">First Name</label><input id="first" name="first_name">
 <label for="last">Last Name</label><input id="last" name="last_name">
@@ -41,7 +42,8 @@ def evidence(tmp_path):
         "browser": {"owner": "playwright", "type": "chromium"},
         "dom": {"guard_installed": True, "observations": [],
                 "snapshot": {"submits": 0, "programmatic": 0, "clicks": []}},
-        "network": {"guard_installed": True, "requests": [], "sent": [], "blocked": [], "websockets": []},
+        "network": {"guard_installed": True, "requests": [], "sent": [], "blocked": [],
+                    "failed": [], "finished": [], "websockets": []},
         "duplicate": reservation,
         "teardown": {"browser_closed": True, "driver_stopped": True, "tracked_count": 2, "remaining": []},
         "trace": gate.trace_evidence(tmp_path / "trace.zip"),
@@ -88,24 +90,128 @@ def test_evaluator_fails_closed(evidence, case):
 
 
 
+def add_aborted_telemetry(record):
+    event = {"request_id": "request-1", "method": "POST", "url": TELEMETRY,
+             "body_sha256": gate.digest(b"synthetic")}
+    for stage in ("requests", "sent"):
+        record["network"][stage].append(dict(event))
+    record["network"]["blocked"].append({**event, "abort_succeeded": True})
+    record["network"]["failed"].append({**event, "failure": "net::ERR_BLOCKED_BY_CLIENT"})
+    return event
+
+
+def add_trace_mutation(record, directory, event, *, aborted=True, status=-1,
+                       failure="net::ERR_BLOCKED_BY_CLIENT.Inspector", body=b"synthetic", copies=1):
+    with zipfile.ZipFile(directory / "trace.zip", "a") as archive:
+        archive.writestr("0.network", "\n".join(json.dumps({"snapshot": {
+            "request": {"method": event["method"], "url": event["url"],
+                        "postData": {"text": body.decode()}},
+            "_wasAborted": aborted, "response": {"status": status, "_failureText": failure},
+        }}) for _ in range(copies)))
+    record["trace"] = gate.trace_evidence(directory / "trace.zip")
+
+
 def test_aborted_snowplow_telemetry_is_not_an_application_mutation(evidence):
     record, directory = evidence
-    record["network"]["blocked"].append({
-        "method": "POST",
-        "url": "https://com-gitlab-prod1.collector.snowplow.io/com.snowplowanalytics.snowplow/tp2",
-    })
-    record["network"]["sent"].append(record["network"]["blocked"][-1])
+    event = add_aborted_telemetry(record)
+    add_trace_mutation(record, directory, event)
     assert gate.evaluate(record, directory) == []
 
 
 def test_application_post_still_fails_when_telemetry_is_also_blocked(evidence):
     record, directory = evidence
-    record["network"]["blocked"].append({
-        "method": "POST",
-        "url": "https://collector.snowplow.io/tp2",
-    })
+    add_aborted_telemetry(record)
     record["network"]["sent"].append({"method": "POST", "url": URL})
     assert "application POST or other mutation sent" in gate.evaluate(record, directory)
+
+
+@pytest.mark.parametrize("case", [
+    "finished", "finished_other_id", "no_blocked", "no_failed", "abort_failed",
+    "failed_connection", "different_id", "different_url", "different_body",
+    "duplicate_id", "extra_sent", "trace_only", "trace_completed", "trace_response",
+    "trace_not_blocked", "trace_other_body", "trace_duplicate", "missing_hash",
+])
+def test_telemetry_requires_independent_abort_lifecycle(evidence, case):
+    record, directory = evidence
+    event = add_aborted_telemetry(record)
+    options = {}
+    if case.startswith("finished"):
+        record["network"]["finished"].append({**event,
+            "request_id": "other" if case == "finished_other_id" else event["request_id"]})
+    elif case in {"no_blocked", "no_failed"}:
+        record["network"][case.removeprefix("no_")].clear()
+    elif case == "abort_failed":
+        record["network"]["blocked"][0]["abort_succeeded"] = False
+    elif case == "failed_connection":
+        record["network"]["failed"][0]["failure"] = "net::ERR_CONNECTION_RESET"
+    elif case in {"different_id", "different_url", "different_body"}:
+        key = {"different_id": "request_id", "different_url": "url",
+               "different_body": "body_sha256"}[case]
+        record["network"]["failed"][0][key] = "b" * 64
+    elif case in {"duplicate_id", "extra_sent"}:
+        record["network"]["sent"].append({**event,
+            "request_id": "other" if case == "extra_sent" else event["request_id"]})
+    elif case == "trace_only":
+        for stage in ("requests", "sent", "blocked", "failed"):
+            record["network"][stage].clear()
+    elif case == "trace_completed":
+        options = {"aborted": False, "status": 200, "failure": None}
+    elif case == "trace_response":
+        options = {"status": 200}
+    elif case == "trace_not_blocked":
+        options = {"failure": "net::ERR_CONNECTION_RESET"}
+    elif case == "trace_other_body":
+        options = {"body": b"different"}
+    elif case == "trace_duplicate":
+        options = {"copies": 2}
+    elif case == "missing_hash":
+        record["network"]["blocked"][0].pop("body_sha256")
+    add_trace_mutation(record, directory, event, **options)
+    assert gate.evaluate(record, directory), case
+    if case.startswith("finished"):
+        assert "completed application mutation" in gate.evaluate(record, directory)
+
+
+@pytest.mark.parametrize("url", [
+    "https://c.spl.greenhouse.io.attacker.test/com.snowplowanalytics.snowplow/tp2",
+    "https://fake-snowplow-example.test/tp2", "https://snowplow.example.invalid/tp2",
+    "https://evil-google-analytics.com/tp2", "https://collector.snowplow.io/tp2",
+    "https://sub.c.spl.greenhouse.io/com.snowplowanalytics.snowplow/tp2",
+    "https://c.spl.greenhouse.io/applications", TELEMETRY + "?application=1",
+    TELEMETRY + "#fragment", TELEMETRY.replace("https:", "http:"),
+    TELEMETRY.replace(".io/", ".io:444/"), TELEMETRY.replace("https://", "https://user@"),
+])
+def test_telemetry_lookalikes_and_unapproved_endpoints_fail(evidence, url):
+    record, directory = evidence
+    event = add_aborted_telemetry(record)
+    for stage in ("requests", "sent", "blocked", "failed"):
+        record["network"][stage][0]["url"] = url
+    add_trace_mutation(record, directory, {**event, "url": url})
+    assert "unsafe network attempt" in gate.evaluate(record, directory)
+
+
+@pytest.mark.parametrize("method", ["PUT", "PATCH", "DELETE", "OPTIONS", "CONNECT", "UNKNOWN", None])
+def test_other_methods_unsafe_even_at_telemetry_endpoint(evidence, method):
+    record, directory = evidence
+    add_aborted_telemetry(record)
+    for stage in ("requests", "sent", "blocked", "failed"):
+        record["network"][stage][0]["method"] = method
+    assert gate.evaluate(record, directory)
+
+
+@pytest.mark.parametrize("stage", ["requests", "sent", "blocked", "failed", "finished"])
+def test_missing_lifecycle_stream_fails_closed(evidence, stage):
+    record, directory = evidence
+    record["network"].pop(stage)
+    assert "network evidence missing" in gate.evaluate(record, directory)
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+def test_read_only_methods_remain_non_mutating(evidence, method):
+    record, directory = evidence
+    record["network"]["sent"].append({"method": method, "url": URL})
+    record["network"]["finished"].append({"method": method, "url": URL})
+    assert gate.evaluate(record, directory) == []
 
 
 @pytest.mark.asyncio
@@ -113,7 +219,13 @@ async def test_passive_invisible_badge_does_not_stop_or_get_clicked(monkeypatch,
     html = HTML.replace(
         "<body>",
         '<body><div class="grecaptcha-badge"></div>'
-        '<iframe title="reCAPTCHA" src="https://www.google.com/recaptcha/api2/anchor?size=invisible"></iframe>',
+        '<iframe title="reCAPTCHA" src="https://www.google.com/recaptcha/api2/anchor?size=invisible"></iframe>'
+        '<script>window.__widgetAudit={calls:0,mutations:0};'
+        'window.grecaptcha={execute:()=>{window.__widgetAudit.calls++},'
+        'reset:()=>{window.__widgetAudit.calls++},render:()=>{window.__widgetAudit.calls++}};'
+        'new MutationObserver(events=>{for(const event of events){'
+        'if(event.target.matches?.(".grecaptcha-badge,iframe[title=reCAPTCHA]"))'
+        'window.__widgetAudit.mutations++}}).observe(document.body,{attributes:true,subtree:true});</script>',
     )
     result = await synthetic_run(monkeypatch, tmp_path, html)
     assert result["verdict"] == "PASS", result
@@ -121,6 +233,56 @@ async def test_passive_invisible_badge_does_not_stop_or_get_clicked(monkeypatch,
     assert result["filler"]["calls"] > 0
     assert result["boundary"].get("passive_widgets")
     assert result["dom"]["snapshot"]["clicks"] == []
+    assert result["widget_audit"] == {"calls": 0, "mutations": 0}
+    from bs4 import BeautifulSoup
+    retained = BeautifulSoup((tmp_path / "run/form.html").read_text(), "html.parser")
+    assert retained.select_one(".grecaptcha-badge").attrs == {"class": ["grecaptcha-badge"]}
+    assert retained.select_one('iframe[title="reCAPTCHA"]').attrs == {
+        "title": "reCAPTCHA", "src": "https://www.google.com/recaptcha/api2/anchor?size=invisible"}
+
+
+@pytest.mark.asyncio
+async def test_real_browser_aborted_snowplow_lifecycle(monkeypatch, tmp_path):
+    script = f"fetch('{TELEMETRY}', {{method:'POST',body:'synthetic'}}).catch(()=>{{}})"
+    html = HTML.replace('<input id="first" name="first_name">',
+        '<input id="first" name="first_name" onchange="' + script.replace('"', '&quot;') + '">')
+    result = await synthetic_run(monkeypatch, tmp_path, html)
+    assert result["verdict"] == "PASS", result
+    network = result["network"]
+    aborted = gate._proven_aborted_telemetry(network)
+    assert len(aborted) == 1
+    request_id = aborted[0]["request_id"]
+    assert all(any(e["request_id"] == request_id for e in network[stage])
+               for stage in ("requests", "sent", "failed"))
+    assert not any(e["method"] == "POST" for e in network["finished"])
+    assert len(result["trace"]["mutating_requests"]) == 1
+    assert result["trace"]["mutating_requests"][0]["aborted"] is True
+    assert result["teardown"]["remaining"] == []
+
+
+@pytest.mark.asyncio
+async def test_real_browser_completed_telemetry_fails_despite_route_abort_claim(monkeypatch, tmp_path):
+    # Synthetic corrupted guard, fulfilled entirely in memory. Independent terminal
+    # and trace signals must defeat the claimed route abort without any upstream POST.
+    from playwright.async_api import Route
+    original = Route.abort
+
+    async def incorrect_abort(route, *args, **kwargs):
+        if route.request.url == TELEMETRY:
+            await route.fulfill(status=200, body="synthetic", headers={"Access-Control-Allow-Origin": "*"})
+        else:
+            await original(route, *args, **kwargs)
+
+    monkeypatch.setattr(Route, "abort", incorrect_abort)
+    script = f"fetch('{TELEMETRY}', {{method:'POST',body:'synthetic'}}).catch(()=>{{}})"
+    html = HTML.replace('<input id="first" name="first_name">',
+        '<input id="first" name="first_name" onchange="' + script.replace('"', '&quot;') + '">')
+    result = await synthetic_run(monkeypatch, tmp_path, html)
+    assert result["verdict"] == "NOT_PROVEN", result
+    assert "completed application mutation" in result["violations"]
+    assert "trace contains application POST or other mutation" in result["violations"]
+    assert any(e["method"] == "POST" for e in result["network"]["finished"])
+    assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
 
 
 def test_retained_duplicate_database_is_required(evidence):
@@ -190,6 +352,7 @@ async def synthetic_run(monkeypatch, tmp_path, html=HTML, inject=None):
         if inject:
             await inject(context)
         await original(context, url, record)
+        record["widget_audit"] = await record["page"].evaluate("window.__widgetAudit || null")
     monkeypatch.setattr(gate, "_exercise", fixture)
     def actual_source():
         result = source()
@@ -225,7 +388,11 @@ async def test_production_adapter_filler_owned_browser_and_independent_review(mo
     "document.querySelector('#submit_app').click()",
     "document.querySelector('form').submit()",
     "document.querySelector('form').requestSubmit()",
+    "document.querySelector('form').dispatchEvent(new Event('submit', {bubbles:true,cancelable:true}))",
     "fetch(location.href, {method:'POST',body:'synthetic'}).catch(()=>{})",
+    "fetch(location.href, {method:'PUT',body:'synthetic'}).catch(()=>{})",
+    "fetch(location.href, {method:'PATCH',body:'synthetic'}).catch(()=>{})",
+    "fetch(location.href, {method:'DELETE'}).catch(()=>{})",
     "location.href='https://job-boards.greenhouse.io/gate2fixture/jobs/7654321'",
     "new WebSocket('wss://job-boards.greenhouse.io/socket')",
 ])
@@ -242,13 +409,38 @@ async def test_browser_negative_controls(monkeypatch, tmp_path, script):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("boundary", [
     "Verify you are human", "Enter your verification code", "Checking your browser",
+    "Multi-factor authentication", "Identity verification required",
     '<input type="password" aria-label="Password">',
+    '<iframe src="https://www.google.com/recaptcha/api2/bframe"></iframe>',
+    '<iframe src="https://www.recaptcha.net/recaptcha/enterprise/bframe"></iframe>',
+    '<iframe src="https://hcaptcha.com/captcha"></iframe>',
+    '<div class="grecaptcha-badge"></div><iframe src="https://www.google.com/recaptcha/api2/bframe"></iframe>',
+    '<div class="grecaptcha-badge"></div><iframe src="https://www.google.com/recaptcha/api2/anchor?size=normal"></iframe>',
+    '<div class="grecaptcha-badge"></div>Complete the CAPTCHA',
+    '<div class="grecaptcha-badge"></div><div class="captcha-challenge">Choose an image</div>',
+    '<div class="grecaptcha-badge"></div><iframe src="https://hcaptcha.com/captcha"></iframe>',
+    '<div class="grecaptcha-badge"></div>Multi-factor authentication',
+    '<div class="grecaptcha-badge"></div><input type="password">',
 ])
 async def test_security_boundary_stops_without_filling(monkeypatch, tmp_path, boundary):
     result = await synthetic_run(monkeypatch, tmp_path, HTML.replace("<body>", "<body>" + boundary))
     assert result["verdict"] == "NOT_PROVEN"
     assert result["boundary"]["stopped"]
     assert result.get("filler", {}).get("calls", 0) == 0
+    assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("form", [
+    "", '<form><input type="hidden" name="first_name"><button type="submit">Submit</button></form>',
+    '<form><input name="first_name" disabled></form>',
+    '<form hidden><input name="first_name"></form>',
+])
+async def test_passive_badge_without_usable_form_fails(monkeypatch, tmp_path, form):
+    html = '<html><body><div class="grecaptcha-badge"></div>' + form + '</body></html>'
+    result = await synthetic_run(monkeypatch, tmp_path, html)
+    assert result["verdict"] == "NOT_PROVEN"
+    assert not result["boundary"].get("passive_widgets")
     assert result["trace"]["valid"] and result["teardown"]["remaining"] == []
 
 

@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import zipfile
+from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -150,8 +151,19 @@ def trace_evidence(path: Path) -> dict:
             valid = archive.testzip() is None and any(
                 item.get("type") == "context-options" and item.get("browserName") == "chromium"
                 for item in records)
-            mutations = [item["snapshot"]["request"] for item in network
-                         if item.get("snapshot", {}).get("request", {}).get("method") not in {None, "GET", "HEAD"}]
+            mutations = []
+            for item in network:
+                snapshot = item.get("snapshot", {})
+                request = snapshot.get("request", {})
+                if request and _mutating(request):
+                    post = request.get("postData") or {}
+                    body = (archive.read("resources/" + post["_sha1"])
+                            if post.get("_sha1") else post.get("text", "").encode())
+                    response = snapshot.get("response") or {}
+                    mutations.append({**request, "body_sha256": digest(body),
+                        "aborted": snapshot.get("_wasAborted") is True,
+                        "response_status": response.get("status"),
+                        "failure": response.get("_failureText")})
         return {"path": path.name, "sha256": digest(path.read_bytes()), "valid": valid,
                 "mutating_requests": mutations}
     except (OSError, zipfile.BadZipFile, UnicodeError, ValueError, KeyError):
@@ -205,12 +217,21 @@ def evaluate(record: dict, directory: Path) -> list[str]:
             "DOM submit observation failed")
     network = record.get("network") or {}
     require(network.get("guard_installed") is True
-            and isinstance(network.get("requests"), list)
-            and isinstance(network.get("sent"), list), "network evidence missing")
-    blocked = network.get("blocked") or []
-    require(not _unsafe_blocked(blocked) and not network.get("websockets"), "unsafe network attempt")
-    require(not _application_mutations(network.get("sent")), "application POST or other mutation sent")
-    require(not _application_mutations(network.get("finished")), "completed application mutation")
+            and all(isinstance(network.get(stage), list) for stage in
+                    ("requests", "sent", "blocked", "failed", "finished", "websockets")),
+            "network evidence missing")
+    aborted = _proven_aborted_telemetry(network)
+    require(not _unreconciled_mutations(network.get("blocked"), aborted)
+            and not any(not _is_telemetry(e) for e in network.get("blocked") or [])
+            and not network.get("websockets"), "unsafe network attempt")
+    require(not _unreconciled_mutations(network.get("sent"), aborted),
+            "application POST or other mutation sent")
+    require(not _unreconciled_mutations(network.get("requests"), aborted)
+            and not _unreconciled_mutations(network.get("failed"), aborted),
+            "unreconciled mutation lifecycle")
+    # Completion is always unsafe, regardless of domain or other aborted requests.
+    require(not any(_mutating(e) for e in network.get("finished") or []),
+            "completed application mutation")
     duplicate = record.get("duplicate") or {}
     require(duplicate.get("reserved") is True and duplicate.get("duplicate_rejected") is True
             and duplicate.get("rows") == 1 and bool(duplicate.get("key")), "duplicate protection failed")
@@ -229,7 +250,7 @@ def evaluate(record: dict, directory: Path) -> list[str]:
     actual_trace = trace_evidence(directory / "trace.zip")
     require(trace.get("valid") is True and actual_trace.get("valid") is True
             and trace.get("sha256") == actual_trace.get("sha256"), "trace missing or invalid")
-    require(not _application_mutations(actual_trace.get("mutating_requests")),
+    require(not _unreconciled_mutations(actual_trace.get("mutating_requests"), aborted, trace=True),
             "trace contains application POST or other mutation")
     boundary = record.get("boundary") or {}
     require(boundary.get("checks", 0) >= 2 and boundary.get("bypassed") is False,
@@ -244,44 +265,114 @@ def evaluate(record: dict, directory: Path) -> list[str]:
 
 
 
-_TELEMETRY_MARKERS = ("snowplow", "google-analytics.com", "googletagmanager.com", "doubleclick.net")
+def _mutating(event: dict) -> bool:
+    # Missing/unknown methods cannot establish a read-only request.
+    return event.get("method") not in {"GET", "HEAD"}
 
 
-def _hostname(url: str) -> str:
-    return (urlsplit(str(url or "")).hostname or "").lower()
+def _is_telemetry(event: dict) -> bool:
+    """Classification only, not an exemption. Exact endpoint from failed run 37173569727."""
+    try:
+        parsed = urlsplit(event.get("url", ""))
+        return (event.get("method") == "POST" and parsed.scheme == "https"
+                and parsed.hostname == "c.spl.greenhouse.io"
+                and parsed.port in {None, 443} and not parsed.username and not parsed.password
+                and parsed.path == "/com.snowplowanalytics.snowplow/tp2"
+                and not parsed.query and not parsed.fragment)
+    except (TypeError, ValueError):
+        return False
 
 
-def _is_blocked_telemetry(event: dict) -> bool:
-    """Aborted analytics only. Never treats an application mutation as telemetry."""
-    host = _hostname(event.get("url", ""))
-    return bool(host) and any(marker in host for marker in _TELEMETRY_MARKERS)
+def _request_key(event: dict) -> tuple | None:
+    """Trace has no public request ID. Keep URL exact and bind method plus body hash."""
+    body = event.get("body_sha256")
+    if not isinstance(body, str) or not re.fullmatch(r"[0-9a-f]{64}", body):
+        return None
+    return event.get("method"), event.get("url"), body
 
 
-def _application_mutations(events) -> list:
-    return [
-        event for event in events or []
-        if event.get("method") not in {None, "GET", "HEAD"} and not _is_blocked_telemetry(event)
-    ]
+def _blocked_failure(event: dict) -> bool:
+    return event.get("failure") in {
+        "net::ERR_BLOCKED_BY_CLIENT", "net::ERR_BLOCKED_BY_CLIENT.Inspector",
+    }
 
 
-def _unsafe_blocked(events) -> list:
-    return [event for event in events or [] if not _is_blocked_telemetry(event)]
+def _proven_aborted_telemetry(network: dict) -> list:
+    """Require successful route.abort AND independent requestfailed on the same request.
+
+    Object-bound IDs reconcile lifecycle callbacks, never URL membership alone.
+    Ambiguous/duplicate IDs and incomplete older evidence fail closed.
+    """
+    stages = {}
+    for stage in ("requests", "sent", "blocked", "failed"):
+        events = network.get(stage) or []
+        counts = Counter(e.get("request_id") for e in events)
+        stages[stage] = {e["request_id"]: e for e in events
+                         if isinstance(e.get("request_id"), str) and counts[e["request_id"]] == 1}
+    completed_ids = {e.get("request_id") for e in network.get("finished") or []}
+    proven = []
+    for request_id, event in stages["blocked"].items():
+        key = _request_key(event)
+        if (key is not None and _is_telemetry(event) and event.get("abort_succeeded") is True
+                and request_id not in completed_ids
+                and all(request_id in stages[stage]
+                        and _request_key(stages[stage][request_id]) == key
+                        for stage in ("requests", "sent", "failed"))
+                and _blocked_failure(stages["failed"][request_id])):
+            proven.append(event)
+    return proven
+
+
+def _unreconciled_mutations(events, aborted, *, trace=False) -> list:
+    """Each aborted request can explain at most one entry in each evidence stream.
+
+    Trace reconciliation also requires the trace's own abort/failure/no-response
+    evidence. Same-URL completions or extra attempts cannot borrow an exemption.
+    """
+    available = Counter(_request_key(e) if trace else (e["request_id"], _request_key(e))
+                        for e in aborted)
+    unsafe = []
+    for event in events or []:
+        if not _mutating(event):
+            continue
+        key = _request_key(event)
+        identity = key if trace else (event.get("request_id"), key)
+        if (key is None or not _is_telemetry(event) or available[identity] <= 0
+                or (trace and not (event.get("aborted") is True
+                        and event.get("response_status") == -1 and _blocked_failure(event)))):
+            unsafe.append(event)
+        else:
+            available[identity] -= 1
+    return unsafe
+
+
+_INTERACTIVE_CAPTCHA = (
+    'iframe[src*="recaptcha/"][src*="/bframe"], iframe[src*="hcaptcha.com"], '
+    'iframe[src*="recaptcha/"][src*="/anchor"]:not([src*="size=invisible"]), '
+    '.h-captcha, div.g-recaptcha:not(.grecaptcha-badge), '
+    ':is([class*="captcha" i],[id*="captcha" i],[data-sitekey])'
+    ':not(.grecaptcha-badge):not(.grecaptcha-badge *)'
+    ':not([name="g-recaptcha-response"]):not([name="h-captcha-response"])'
+)
+_PASSIVE_CAPTCHA = '.grecaptcha-badge, iframe[title="reCAPTCHA"][src*="size=invisible"]'
 
 
 async def _passive_invisible_captcha(page) -> bool:
     """True only for a usable form plus a passive badge, with no interactive challenge."""
-    usable = await page.locator("form input:not([type='hidden']), form textarea, form select").count()
+    controls = page.locator("form input:not([type='hidden']):not([type='submit'])"
+                            ":not([type='button']):not([type='password']), form textarea, form select")
+    usable = False
+    for index in range(await controls.count()):
+        control = controls.nth(index)
+        if await control.is_visible() and await control.is_enabled():
+            usable = True
+            break
     if not usable:
         return False
-    interactive = await page.locator(
-        'iframe[src*="recaptcha/api2/bframe"], iframe[src*="hcaptcha.com"], '
-        'div.g-recaptcha:not(.grecaptcha-badge)'
-    ).count()
+    interactive = await page.locator(_INTERACTIVE_CAPTCHA).count()
     if interactive:
         return False
-    badge = await page.locator(
-        '.grecaptcha-badge, iframe[title="reCAPTCHA"][src*="size=invisible"]'
-    ).count()
+    badge = await page.locator(_PASSIVE_CAPTCHA).count()
     return badge > 0
 
 
@@ -289,14 +380,19 @@ async def _boundary(page, record):
     boundary = record["boundary"]
     boundary["checks"] += 1
     challenge = await detect_blocking_challenge(page)
+    if await page.locator(_INTERACTIVE_CAPTCHA).count():
+        challenge = {"reason_code": "captcha_detected", "summary": "Interactive CAPTCHA present"}
     # A passive Greenhouse invisible badge is not an active challenge and is never
     # clicked, solved, or hidden. Interactive CAPTCHA, MFA, and login still stop.
-    if challenge and challenge.get("reason_code") == "captcha_detected" and await _passive_invisible_captcha(page):
+    if await _passive_invisible_captcha(page):
         boundary.setdefault("passive_widgets", []).append({
-            "reason_code": challenge.get("reason_code"),
+            "reason_code": "passive_invisible_recaptcha",
             "summary": "passive invisible widget observed; no interaction",
         })
-        challenge = None
+        if challenge and challenge.get("reason_code") == "captcha_detected":
+            challenge = None
+    elif not challenge and await page.locator(_PASSIVE_CAPTCHA).count():
+        challenge = {"reason_code": "captcha_detected", "summary": "Widget without usable application form"}
     # Production heuristics intentionally ignore some challenge phrases when a
     # form is also present. Certification takes the stricter boundary here.
     if not challenge:
@@ -304,6 +400,9 @@ async def _boundary(page, record):
         match = re.search(
             r"verify you are human|confirm you are human|prove you are human|"
             r"checking your browser|unusual traffic|security verification|"
+            r"identity verification|verify (?:your|the) identity|"
+            r"(?:complete|solve)\s+(?:the\s+)?(?:captcha|recaptcha|hcaptcha)|"
+            r"(?:captcha|recaptcha|hcaptcha)\s+(?:is\s+)?(?:required|failed|expired|invalid)|"
             r"enter (?:the|your|a) verification code|two.factor authentication|"
             r"multi.factor authentication|one.time (?:passcode|code)", text, re.I)
         if match:
@@ -323,9 +422,18 @@ async def _exercise(context, url, record):
     await context.add_init_script(DOM_GUARD)
     record["dom"]["guard_installed"] = True
 
+    request_ids = {}
+
+    def request_event(request):
+        # Retain Request objects so callback IDs cannot be reused during this run.
+        if request not in request_ids:
+            request_ids[request] = f"request-{len(request_ids) + 1}"
+        return {"request_id": request_ids[request], "url": request.url,
+                "method": request.method, "body_sha256": digest(request.post_data_buffer or b"")}
+
     async def guard(route):
         request = route.request
-        event = {"url": request.url, "method": request.method,
+        event = {**request_event(request),
                  "resource_type": request.resource_type}
         record["network"]["requests"].append(event)
         allowed = request.method in {"GET", "HEAD"} and urlsplit(request.url).scheme == "https"
@@ -337,19 +445,20 @@ async def _exercise(context, url, record):
         if allowed:
             await route.fallback()
         else:
-            record["network"]["blocked"].append(event)
             await route.abort("blockedbyclient")
+            record["network"]["blocked"].append({**event, "abort_succeeded": True})
 
     async def websocket(route):
         record["network"]["websockets"].append(route.url)
         await route.close(code=1008, reason="Recovery proof disallows WebSockets")
 
-    context.on("request", lambda request: record["network"]["sent"].append({
-        "url": request.url, "method": request.method}))
-    # 'request' includes blocked attempts. A requestfinished event is separate
-    # evidence of completion; all mutation attempts invalidate the proof either way.
-    context.on("requestfinished", lambda request: record["network"]["finished"].append({
-        "url": request.url, "method": request.method}))
+    # 'sent' is the historical label for request initiation, including routed
+    # attempts. It is not proof bytes reached a server. Keep terminal signals separate.
+    context.on("request", lambda request: record["network"]["sent"].append(request_event(request)))
+    context.on("requestfailed", lambda request: record["network"]["failed"].append({
+        **request_event(request), "failure": request.failure}))
+    context.on("requestfinished", lambda request:
+               record["network"]["finished"].append(request_event(request)))
     await context.route("**/*", guard)
     await context.route_web_socket("**/*", websocket)
     record["network"]["guard_installed"] = True
@@ -421,7 +530,8 @@ async def run_gate(url: str, directory: Path, ledger: Path) -> dict:
               "evidence_kind": "public_greenhouse",
               "directory": str(directory), "dry_run": True, "synthetic_profile": dict(PROFILE),
               "dom": {"observations": []},
-              "network": {"requests": [], "sent": [], "finished": [], "blocked": [], "websockets": []},
+              "network": {"requests": [], "sent": [], "finished": [], "failed": [],
+                          "blocked": [], "websockets": []},
               "boundary": {"checks": 0, "detected": None, "bypassed": False},
               "cleanup_errors": [], "browser_started": False}
     manager = browser = context = None
