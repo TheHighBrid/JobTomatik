@@ -1,5 +1,4 @@
 """Synthetic negative controls. No public employer network requests."""
-import copy
 import json
 import os
 import sqlite3
@@ -20,7 +19,9 @@ HTML = """<!doctype html><html><body><form id="application_form">
 
 
 def source():
-    inputs = {"backend/app/services/recovery_gate2.py": "0" * 64}
+    inputs = {"backend/app/services/recovery_gate2.py": "0" * 64,
+              "backend/app/services/ats_greenhouse.py": "1" * 64,
+              "backend/app/services/form_filler_v3.py": "2" * 64}
     return {"git_sha": "a" * 40, "inputs": inputs,
             "source_sha256": gate.digest(json.dumps(inputs, sort_keys=True).encode())}
 
@@ -28,12 +29,13 @@ def source():
 @pytest.fixture
 def evidence(tmp_path):
     with zipfile.ZipFile(tmp_path / "trace.zip", "w") as archive:
-        archive.writestr("0.trace", '{"type":"context-options"}\n')
+        archive.writestr("0.trace", '{"type":"context-options","browserName":"chromium"}\n')
     record = {
         "source": source(), "target_url": URL, "detected_identity": gate.identity(URL),
         "dry_run": True, "synthetic_profile": dict(gate.PROFILE),
-        "adapter": {"callable": gate.ADAPTER, "name": "greenhouse"},
-        "filler": {"callable": gate.FILLER, "calls": 1},
+        "adapter": {"callable": gate.ADAPTER, "name": "greenhouse", "source_sha256": "1" * 64},
+        "filler": {"callable": gate.FILLER, "calls": 1, "source_sha256": "2" * 64},
+        "flow_invocation": {"dry_run": True},
         "browser": {"owner": "playwright", "type": "chromium"},
         "dom": {"guard_installed": True, "observations": [],
                 "snapshot": {"submits": 0, "programmatic": 0, "clicks": []}},
@@ -42,7 +44,7 @@ def evidence(tmp_path):
         "teardown": {"browser_closed": True, "driver_stopped": True, "tracked_count": 2, "remaining": []},
         "trace": gate.trace_evidence(tmp_path / "trace.zip"),
         "boundary": {"checks": 3, "bypassed": False, "detected": None},
-        "verified_fields": 3,
+        "verified_fields": 1, "field_readbacks": [{"matched": True, "expected_sha256": "x", "observed_sha256": "x"}],
     }
     assert gate.evaluate(record, tmp_path) == []
     return record, tmp_path
@@ -86,7 +88,7 @@ def test_evaluator_fails_closed(evidence, case):
 @pytest.mark.parametrize("key", [
     "source", "target_url", "detected_identity", "dry_run", "synthetic_profile",
     "adapter", "filler", "browser", "dom", "network", "duplicate", "teardown",
-    "trace", "boundary", "verified_fields",
+    "trace", "boundary", "verified_fields", "field_readbacks", "flow_invocation",
 ])
 def test_missing_required_evidence_fails_closed(evidence, key):
     record, directory = evidence
@@ -137,7 +139,13 @@ async def synthetic_run(monkeypatch, tmp_path, html=HTML, inject=None):
             await inject(context)
         await original(context, url, record)
     monkeypatch.setattr(gate, "_exercise", fixture)
-    monkeypatch.setattr(gate, "provenance", source)
+    def actual_source():
+        result = source()
+        for path in result["inputs"]:
+            result["inputs"][path] = gate.digest((gate.ROOT / path).read_bytes())
+        result["source_sha256"] = gate.digest(json.dumps(result["inputs"], sort_keys=True).encode())
+        return result
+    monkeypatch.setattr(gate, "provenance", actual_source)
     result = await gate.run_gate(URL, tmp_path / "run", tmp_path / "ledger.sqlite")
     if not result["browser_started"] and "Executable doesn't exist" in result.get("error", ""):
         if os.getenv("REQUIRE_BROWSER_TESTS") == "1":

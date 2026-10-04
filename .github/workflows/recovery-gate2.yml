@@ -48,7 +48,7 @@ jobs:
         run: |
           git rev-parse HEAD > gate2-head.txt
           python -m pytest -q --tb=short -ra tests/test_recovery_gate2.py \
-            --basetemp=gate2-synthetic-artifacts > gate2-tests.txt 2>&1
+            --basetemp=gate2-synthetic-artifacts | tee gate2-tests.txt
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -8,11 +8,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import inspect
+import importlib.metadata
 import json
 import os
 import re
 import sqlite3
 import subprocess
+import sys
 import time
 import zipfile
 from pathlib import Path
@@ -25,6 +27,7 @@ from app.services.browser_navigation import detect_blocking_challenge
 from app.services import form_filler as _production_compat  # Install production control compatibility.
 from app.services.form_filler_v3 import _fill_step_fields
 from app.services.operational_safety import require_browser_entry_allowed
+from app.config import get_settings
 
 ROOT = Path(__file__).resolve().parents[3]
 PROFILE = {
@@ -42,7 +45,7 @@ DOM_GUARD = r"""(() => {
   Object.defineProperty(window, '__gate2', {value: state});
   const report = event => { window.gate2Observe(event); };
   const final = el => el && (
-    el.matches('input[type=submit],button[type=submit],#submit_app') ||
+    el.matches('input[type=submit],button[type=submit],#submit_app,[data-gate2-final]') ||
     (el.tagName === 'BUTTON' && el.form && !el.hasAttribute('type')) ||
     /submit|send application|finish application|complete application/i.test(
       [el.textContent, el.value, el.id, el.getAttribute('aria-label'),
@@ -91,6 +94,10 @@ def provenance() -> dict:
         raise RuntimeError("Gate 2 requires a clean committed checkout")
     sha = git("rev-parse", "HEAD").decode().strip()
     manifest = {}
+    tracked = {raw.decode() for raw in git("ls-files", "-z").split(b"\0") if raw}
+    for directory in (ROOT / "backend/app", ROOT / "backend/scripts"):
+        if any(str(path.relative_to(ROOT)) not in tracked for path in directory.rglob("*.py")):
+            raise RuntimeError("Uncommitted Python input, including ignored inputs, is present")
     for raw in git("ls-files", "-z").split(b"\0"):
         if not raw:
             continue
@@ -102,7 +109,8 @@ def provenance() -> dict:
             if payload != git("show", f"HEAD:{path}"):
                 raise RuntimeError(f"Executed input differs from HEAD: {path}")
             manifest[path] = digest(payload)
-    return {"git_sha": sha, "inputs": manifest,
+    return {"git_sha": sha, "inputs": manifest, "python": sys.version,
+            "playwright": importlib.metadata.version("playwright"),
             "source_sha256": digest(json.dumps(manifest, sort_keys=True).encode())}
 
 
@@ -119,17 +127,27 @@ def claim_attempt(path: Path, target: dict) -> dict:
             db.execute("INSERT INTO attempts VALUES (?, ?)", (key, time.time()))
     except sqlite3.IntegrityError:
         duplicate_rejected = True
+    with sqlite3.connect(path) as db:
+        rows = db.execute("SELECT COUNT(*) FROM attempts WHERE key = ?", (key,)).fetchone()[0]
     return {"key": key, "reserved": True, "duplicate_rejected": duplicate_rejected,
-            "ledger": str(path), "rows": 1}
+            "ledger": str(path), "rows": rows}
 
 
 def trace_evidence(path: Path) -> dict:
     try:
         with zipfile.ZipFile(path) as archive:
+            records = [json.loads(line) for name in archive.namelist() if name.endswith(".trace")
+                       for line in archive.read(name).decode().splitlines() if line]
+            network = [json.loads(line) for name in archive.namelist() if name.endswith(".network")
+                       for line in archive.read(name).decode().splitlines() if line]
             valid = archive.testzip() is None and any(
-                name.endswith(".trace") for name in archive.namelist())
-        return {"path": path.name, "sha256": digest(path.read_bytes()), "valid": valid}
-    except (OSError, zipfile.BadZipFile):
+                item.get("type") == "context-options" and item.get("browserName") == "chromium"
+                for item in records)
+            mutations = [item["snapshot"]["request"] for item in network
+                         if item.get("snapshot", {}).get("request", {}).get("method") not in {None, "GET", "HEAD"}]
+        return {"path": path.name, "sha256": digest(path.read_bytes()), "valid": valid,
+                "mutating_requests": mutations}
+    except (OSError, zipfile.BadZipFile, UnicodeError, ValueError, KeyError):
         return {"path": path.name, "valid": False}
 
 
@@ -145,6 +163,8 @@ def evaluate(record: dict, directory: Path) -> list[str]:
     require(bool(inputs) and source.get("source_sha256") == digest(
         json.dumps(inputs, sort_keys=True).encode()), "source digest missing or inconsistent")
     require(record.get("dry_run") is True, "dry_run must be true")
+    require(record.get("flow_invocation", {}).get("dry_run") is True,
+            "production flow dry_run evidence missing")
     require(record.get("synthetic_profile") == PROFILE, "synthetic input identity changed")
     try:
         expected = identity(record.get("target_url", ""))
@@ -156,6 +176,9 @@ def evaluate(record: dict, directory: Path) -> list[str]:
             and record.get("adapter", {}).get("name") == "greenhouse", "production Greenhouse adapter missing")
     require(record.get("filler", {}).get("callable") == FILLER
             and record.get("filler", {}).get("calls", 0) > 0, "production filler missing")
+    require(record.get("adapter", {}).get("source_sha256") == inputs.get("backend/app/services/ats_greenhouse.py")
+            and record.get("filler", {}).get("source_sha256") == inputs.get("backend/app/services/form_filler_v3.py"),
+            "executed adapter/filler source digest mismatch")
     require(record.get("browser", {}).get("owner") == "playwright"
             and record.get("browser", {}).get("type") == "chromium", "owned Chromium missing")
     dom = record.get("dom") or {}
@@ -186,11 +209,15 @@ def evaluate(record: dict, directory: Path) -> list[str]:
     actual_trace = trace_evidence(directory / "trace.zip")
     require(trace.get("valid") is True and actual_trace.get("valid") is True
             and trace.get("sha256") == actual_trace.get("sha256"), "trace missing or invalid")
+    require(not actual_trace.get("mutating_requests"), "trace contains application POST or other mutation")
     boundary = record.get("boundary") or {}
     require(boundary.get("checks", 0) >= 2 and boundary.get("bypassed") is False,
             "human/security boundary evidence missing or mishandled")
     require(not boundary.get("detected"), "human/security boundary reached")
-    require(record.get("verified_fields", 0) > 0, "field readback evidence missing")
+    readbacks = record.get("field_readbacks") or []
+    require(bool(readbacks) and all(item.get("matched") is True
+            and item.get("expected_sha256") == item.get("observed_sha256") for item in readbacks)
+            and record.get("verified_fields", 0) == len(readbacks), "field readback evidence missing")
     require(not record.get("error") and not record.get("cleanup_errors"), "execution failed")
     return errors
 
@@ -199,6 +226,17 @@ async def _boundary(page, record):
     boundary = record["boundary"]
     boundary["checks"] += 1
     challenge = await detect_blocking_challenge(page)
+    # Production heuristics intentionally ignore some challenge phrases when a
+    # form is also present. Certification takes the stricter boundary here.
+    if not challenge:
+        text = await page.locator("body").inner_text()
+        match = re.search(
+            r"verify you are human|confirm you are human|prove you are human|"
+            r"checking your browser|unusual traffic|security verification|"
+            r"enter (?:the|your|a) verification code|two.factor authentication|"
+            r"multi.factor authentication|one.time (?:passcode|code)", text, re.I)
+        if match:
+            challenge = {"reason_code": "security_boundary", "summary": match.group(0)}
     # Login must also be detected when a site's text does not match a phrase.
     if not challenge and await page.locator('input[type="password"]').count():
         challenge = {"reason_code": "login_required", "summary": "Login required"}
@@ -269,19 +307,34 @@ async def _exercise(context, url, record):
         if identity(page.url) != identity(url):
             raise RuntimeError("Greenhouse identity changed before fill")
         record["filler"]["calls"] += 1
+        submit = await adapter.find_submit_button(surface)
+        if submit:
+            await submit.evaluate("el => el.setAttribute('data-gate2-final', 'true')")
         # No fabricated answer policies, demographic/legal/consent values or upload
         # writes. Unknown required fields return production review items untouched.
         return await _fill_step_fields(surface, profile=dict(PROFILE), cover_letter="",
                                        resume_path="", log=log, step_number=step)
 
+    record["flow_invocation"] = {"callable": "app.services.ats_flow.run_ats_application_flow", "dry_run": True}
     flow = await run_ats_application_flow(page, adapter, fill_step=fill, dry_run=True, log=log)
     record["flow"] = flow.as_dict()
     await _boundary(page, record)
     record["detected_identity"] = identity(page.url)
-    record["verified_fields"] = sum(
-        1 for event in flow.control_evidence
-        if event.get("verification_method") == "browser_input_value_readback"
-        and event.get("verification") == "passed")
+    surface = await adapter.resolve_surface(page)
+    record["field_readbacks"] = []
+    for event in flow.control_evidence:
+        key = str(event.get("canonical_key", "")).removeprefix("profile.")
+        if event.get("source") != "profile" or key not in PROFILE or key == "answer_policies":
+            continue
+        control_id = event.get("control_id", "")
+        if not re.fullmatch(r"jt-text-\d+", control_id):
+            continue
+        observed = await surface.locator(f'[data-jt-text-control-id="{control_id}"]').input_value()
+        expected = str(PROFILE[key])
+        record["field_readbacks"].append({"control_id": control_id, "canonical_key": event["canonical_key"],
+            "expected_sha256": digest(expected.encode()), "observed_sha256": digest(observed.encode()),
+            "matched": observed == expected})
+    record["verified_fields"] = len(record["field_readbacks"])
     record["dom"]["snapshot"] = await page.evaluate("window.__gate2")
     await page.screenshot(path=str(Path(record["directory"]) / "form.png"), full_page=True)
     (Path(record["directory"]) / "form.html").write_text(await page.content())
@@ -312,9 +365,15 @@ async def run_gate(url: str, directory: Path, ledger: Path) -> dict:
                      "GREENHOUSE_SUPERVISED_PILOT_ENABLED", "LEVER_SUPERVISED_PILOT_ENABLED"):
             if os.getenv(flag, "false").lower() not in {"false", "0", ""}:
                 raise RuntimeError(f"Unsafe runtime flag: {flag}")
+        for flag in ("allow_real_application_submit", "greenhouse_supervised_pilot_enabled",
+                     "lever_supervised_pilot_enabled"):
+            if getattr(get_settings(), flag):
+                raise RuntimeError(f"Unsafe resolved configuration: {flag}")
         record["duplicate"] = claim_attempt(ledger, target)
         if not record["duplicate"]["duplicate_rejected"]:
             raise RuntimeError("Duplicate reservation self-check failed")
+        with sqlite3.connect(ledger) as database, sqlite3.connect(directory / "ledger.sqlite") as backup:
+            database.backup(backup)
         manager = await async_playwright().start()
         browser = await manager.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         record["browser_started"] = True
