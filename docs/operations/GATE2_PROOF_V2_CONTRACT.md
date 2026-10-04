@@ -37,6 +37,7 @@ The workflow must not be dispatched until integration review explicitly releases
 Before browser execution, the workflow requires successful check receipts on the exact execution SHA for:
 
 - `synthetic-controls`
+- `proof-v2-controls`
 - `exact-head-acceptance`
 - `pytest`
 - `owned-browser-compose-proof`
@@ -48,7 +49,7 @@ Before browser execution, the workflow requires successful check receipts on the
 - `Analyze python`
 - `Analyze javascript-typescript`
 
-The receipt set is retained in the evidence artifact and independently revalidated by the proof-v2 reviewer.
+The receipt set is retained in the evidence artifact and independently revalidated by the proof-v2 reviewer. `proof-v2-controls` is produced by `.github/workflows/recovery-gate2-proof-v2.yml` and exercises the replacement execution contract directly.
 
 ## Duplicate and one-use scope
 
