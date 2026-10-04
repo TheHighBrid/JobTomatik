@@ -122,10 +122,24 @@ def test_v2_workflow_is_separate_from_consumed_v1_and_requires_codeql():
     assert v2.AUTHORIZED_TARGET_URL in v2_text
     assert "GITHUB_RUN_ATTEMPT" in v2_text
     assert "recovery-gate2-public-v2.yml" in v2_text
+    assert "proof-v2-controls" in v2_text
     assert "Analyze python" in v2_text
     assert "Analyze javascript-typescript" in v2_text
     assert "--proof-id" in v2_text
     assert "--execution-sha" in v2_text
+
+
+def test_dispatch_inputs_are_not_interpolated_inside_shell_commands():
+    workflow = (Path(gate.ROOT) / v2.WORKFLOW_PATH).read_text()
+    assert 'DISPATCH_EXECUTION_SHA: ${{ inputs.execution_sha }}' in workflow
+    assert 'DISPATCH_PROOF_ID: ${{ inputs.proof_id }}' in workflow
+    assert 'DISPATCH_TARGET_URL: ${{ inputs.target_url }}' in workflow
+    assert '--url "${{ inputs.target_url }}"' not in workflow
+    assert '--proof-id "${{ inputs.proof_id }}"' not in workflow
+    assert '--execution-sha "${{ inputs.execution_sha }}"' not in workflow
+    assert '--url "$DISPATCH_TARGET_URL"' in workflow
+    assert '--proof-id "$DISPATCH_PROOF_ID"' in workflow
+    assert '--execution-sha "$DISPATCH_EXECUTION_SHA"' in workflow
 
 
 def test_v1_runner_and_public_workflow_remain_unchanged_in_role():
