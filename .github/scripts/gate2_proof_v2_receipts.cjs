@@ -51,19 +51,33 @@ function producerRun(check, sha, path, suites) {
   return isCanonicalMainRun(run, sha, path) ? run : null;
 }
 
+// Validate complete, stable API listings before using absence or selecting success.
+// A changed count, duplicate page or server-side result cap cannot prove completeness.
+async function completeListing(github, method, params) {
+  const first = await method(params);
+  const total = first && first.data ? first.data.total_count : undefined;
+  if (!Number.isInteger(total) || total < 0) throw new Error('API listing total_count is unreadable');
+  const items = await github.paginate(method, params);
+  const ids = items.map(item => item && item.id);
+  if (items.length !== total || new Set(ids).size !== total)
+    throw new Error('API listing pagination is incomplete or inconsistent');
+  if (ids.some(id => !Number.isInteger(id) || id <= 0)) throw new Error('API listing identity is unreadable');
+  return items;
+}
+
 // Select, for every required check, the newest check run produced on the exact
 // SHA by its canonical main workflow. The newest attempt must itself be a
 // completed success: a newer queued, in-progress, failed or cancelled attempt
 // (including a rerun or a later dispatch) is never masked by an older success.
 async function collectReceipts({github, owner, repo, sha}) {
   requireSha(sha);
-  const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo,
+  const runs = await completeListing(github, github.rest.actions.listWorkflowRunsForRepo,
     {owner, repo, head_sha: sha, per_page: 100});
   const suites = new Map();
   for (const run of runs) {
     if (run && run.head_sha === sha && Number.isInteger(run.check_suite_id)) suites.set(run.check_suite_id, run);
   }
-  const checks = await github.paginate(github.rest.checks.listForRef,
+  const checks = await completeListing(github, github.rest.checks.listForRef,
     {owner, repo, ref: sha, filter: 'all', per_page: 100});
   const receipts = [];
   const missing = [];
@@ -110,7 +124,7 @@ async function proofWorkflowHistory({github, owner, repo}) {
   if (!Number.isInteger(totalCount) || totalCount < 0) throw new Error('Gate 2 proof-v2 workflow history is unreadable');
   const runs = await github.paginate(github.rest.actions.listWorkflowRuns,
     {owner, repo, workflow_id: PROOF_WORKFLOW, per_page: 100});
-  if (runs.length < totalCount) throw new Error('Gate 2 proof-v2 workflow history pagination is incomplete');
+  if (runs.length !== totalCount) throw new Error('Gate 2 proof-v2 workflow history pagination is incomplete');
   return {total_count: totalCount,
     runs: runs.map(run => ({id: run.id, run_attempt: run.run_attempt, status: run.status,
       conclusion: run.conclusion, event: run.event, head_branch: run.head_branch, head_sha: run.head_sha}))};

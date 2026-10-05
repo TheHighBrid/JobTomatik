@@ -668,10 +668,10 @@ function pager(name, key, items, totalOverride) {
 const github = {
   rest: {
     actions: {
-      listWorkflowRunsForRepo: pager('listWorkflowRunsForRepo', 'workflow_runs', scenario.workflow_runs || []),
+      listWorkflowRunsForRepo: pager('listWorkflowRunsForRepo', 'workflow_runs', scenario.workflow_runs || [], scenario.workflow_total_count),
       listWorkflowRuns: pager('listWorkflowRuns', 'workflow_runs', scenario.proof_runs || [], scenario.proof_total_count),
     },
-    checks: {listForRef: pager('listForRef', 'check_runs', scenario.check_runs || [])},
+    checks: {listForRef: pager('listForRef', 'check_runs', scenario.check_runs || [], scenario.check_total_count)},
   },
   async paginate(method, params) {
     const out = [];
@@ -788,8 +788,8 @@ def test_receipt_helper_paginates_across_many_pages(tmp_path):
                               for index in range(205)] + world["workflow_runs"]
     output = _node(tmp_path, _scenario(world))
     assert output["ok"] and output["result"]["missing"] == [], output
-    pages = [call["params"]["page"] for call in output["calls"] if call["name"] == "listForRef"]
-    assert pages == [1, 2, 3]
+    pages = [call["params"].get("page", 1) for call in output["calls"] if call["name"] == "listForRef"]
+    assert pages == [1, 1, 2, 3]
 
 
 @pytest.mark.parametrize(("api", "page"), [
@@ -947,3 +947,18 @@ def test_proof_history_requires_a_valid_current_run_id(tmp_path, run_id):
     output = _node(tmp_path, {"fn": "requireProofWorkflowUnused", "args": {"runId": run_id}})
     assert output["ok"] is False and output["error"] == "GitHub run ID missing"
     assert output["calls"] == []
+
+
+@pytest.mark.parametrize("key", ["workflow_total_count", "check_total_count"])
+@pytest.mark.parametrize("count", [9999, "unknown", -1, 0])
+def test_receipts_reject_incomplete_or_inconsistent_pagination(tmp_path, key, count):
+    world = _receipt_world()
+    world[key] = count
+    output = _node(tmp_path, {**_scenario(world), "fn": "requireReceipts"})
+    assert not output["ok"], output
+
+
+def test_history_rejects_count_change_during_read(tmp_path):
+    output = _node(tmp_path, {"fn": "proofWorkflowHistory", "args": {},
+                              "proof_runs": [_proof_run(1)], "proof_total_count": 0})
+    assert not output["ok"], output
