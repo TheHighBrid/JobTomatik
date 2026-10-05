@@ -359,20 +359,32 @@ def _is_checkout(step: dict) -> bool:
     return str(step.get("uses", "")).startswith("actions/checkout@")
 
 
+def _precheckout_step_violation(job_id: str, index: int, step: dict, default) -> str | None:
+    if str(step.get("uses", "")).startswith("./"):
+        return f"{job_id}[{index}] uses a local action before checkout"
+    if "run" not in step or step.get("continue-on-error") is True:
+        return None
+    directory = step.get("working-directory", default)
+    if directory is None or directory == WORKSPACE_EXPRESSION:
+        return None
+    return f"{job_id}[{index}] {step.get('name')!r} starts in {directory!r} before checkout"
+
+
+def _precheckout_steps(job: dict):
+    for index, step in enumerate(job.get("steps") or []):
+        if _is_checkout(step):
+            return
+        yield index, step
+
+
 def _precheckout_violations(workflow: dict) -> list[str]:
     violations = []
     for job_id, job in (workflow.get("jobs") or {}).items():
         default = _default_working_directory(workflow, job)
-        for index, step in enumerate(job.get("steps") or []):
-            if _is_checkout(step):
-                break
-            if str(step.get("uses", "")).startswith("./"):
-                violations.append(f"{job_id}[{index}] uses a local action before checkout")
-            if "run" not in step or step.get("continue-on-error") is True:
-                continue
-            directory = step.get("working-directory", default)
-            if directory is not None and directory != WORKSPACE_EXPRESSION:
-                violations.append(f"{job_id}[{index}] {step.get('name')!r} starts in {directory!r} before checkout")
+        for index, step in _precheckout_steps(job):
+            violation = _precheckout_step_violation(job_id, index, step, default)
+            if violation:
+                violations.append(violation)
     return violations
 
 
@@ -544,31 +556,39 @@ def test_required_check_lists_are_identical_everywhere():
     assert tuple(re.findall(r"^- `([^`]+)`", section, re.M)) == v2.REQUIRED_CHECKS
 
 
-def test_every_required_check_has_one_dispatchable_unconditional_main_producer():
-    """Fails on 5b71fc2: synthetic-controls, proof-v2-controls and pytest had no workflow_dispatch."""
-    root = Path(gate.ROOT)
-    producers = _helper_producers()
+def _required_check_producer_jobs(producers: dict) -> dict:
     produced = {}
-    for path in sorted((root / ".github/workflows").glob("*.y*ml")):
+    for path in sorted((Path(gate.ROOT) / ".github/workflows").glob("*.y*ml")):
         workflow = yaml.safe_load(path.read_text())
         for job_id, job in (workflow.get("jobs") or {}).items():
-            for name in _job_check_names(job_id, job):
-                if name in producers:
-                    produced.setdefault(name, []).append((f".github/workflows/{path.name}", job_id, job))
-    missing_dispatch = []
-    for name, expected in producers.items():
-        assert [entry[0] for entry in produced.get(name, [])] == [expected], name
-        _, job_id, job = produced[name][0]
-        triggers = _triggers(_workflow(expected))
-        push = triggers.get("push") or {}
-        assert push.get("branches") == ["main"], expected
-        assert "branches-ignore" not in push and "tags" not in push, expected
-        if "workflow_dispatch" not in triggers:
-            missing_dispatch.append(expected)
-        assert (triggers.get("workflow_dispatch") or {}).get("inputs") is None, expected
-        assert "if" not in job, f"{job_id} must not be skippable on push/dispatch"
-        assert "needs" not in job, f"{job_id} must not depend on another job"
-    assert missing_dispatch == []
+            for name in set(_job_check_names(job_id, job)) & set(producers):
+                produced.setdefault(name, []).append((f".github/workflows/{path.name}", job_id, job))
+    return produced
+
+
+def _main_producer_errors(path: str, job_id: str, job: dict) -> list[str]:
+    triggers = _triggers(_workflow(path))
+    push = triggers.get("push") or {}
+    checks = {
+        "push to main": push.get("branches") == ["main"],
+        "no push branch/tag exclusions": not ({"branches-ignore", "tags"} & set(push)),
+        "workflow_dispatch": "workflow_dispatch" in triggers,
+        "no required dispatch inputs": (triggers.get("workflow_dispatch") or {}).get("inputs") is None,
+        "no job if": "if" not in job,
+        "no job needs": "needs" not in job,
+    }
+    return [f"{path}:{job_id}: {rule}" for rule, ok in checks.items() if not ok]
+
+
+def test_every_required_check_has_one_dispatchable_unconditional_main_producer():
+    """Fails on 5b71fc2: synthetic-controls, proof-v2-controls and pytest had no workflow_dispatch."""
+    producers = _helper_producers()
+    produced = _required_check_producer_jobs(producers)
+    assert {name: [entry[0] for entry in produced.get(name, [])] for name in producers} == {
+        name: [path] for name, path in producers.items()
+    }
+    errors = [error for name in producers for error in _main_producer_errors(*produced[name][0])]
+    assert errors == []
 
 
 def test_workflow_dispatch_producers_check_out_the_dispatched_main_sha():
@@ -788,53 +808,52 @@ def test_receipt_helper_api_failures_fail_closed(tmp_path, api, page):
         assert output["ok"] is False and "HTTP 502" in output["error"], output
 
 
+MUTATED_CHECK = "pytest"
+
+
+def _without(world: dict, name: str = MUTATED_CHECK) -> dict:
+    world["check_runs"] = [check for check in world["check_runs"] if check["name"] != name]
+    return world
+
+
+def _replace_with_conclusion(conclusion: str):
+    return lambda world, path: _add_check(_without(world), MUTATED_CHECK, 900, conclusion=conclusion)
+
+
+def _only_via_run(suite: int, run_path=None, **run_fields):
+    def mutate(world: dict, path: str) -> None:
+        _add_run(_without(world), suite, run_path or path, **run_fields)
+        _add_check(world, MUTATED_CHECK, 900, suite=suite)
+    return mutate
+
+
+RECEIPT_MUTATIONS = {
+    "queued": lambda world, path: _add_check(world, MUTATED_CHECK, 900, status="queued", conclusion=None),
+    "in_progress": lambda world, path: _add_check(world, MUTATED_CHECK, 900, status="in_progress", conclusion=None),
+    **{kind: _replace_with_conclusion(kind)
+       for kind in ("failure", "cancelled", "timed_out", "skipped", "neutral", "action_required")},
+    "failed_rerun_after_success": lambda world, path: _add_check(world, MUTATED_CHECK, 900, conclusion="failure"),
+    "newer_dispatch_in_progress": lambda world, path: (
+        _add_run(world, 777, path, event="workflow_dispatch"),
+        _add_check(world, MUTATED_CHECK, 900, status="in_progress", conclusion=None, suite=777)),
+    "stale_sha_only": lambda world, path: _add_check(_without(world), MUTATED_CHECK, 900, sha=OTHER_SHA),
+    "pull_request_event_only": _only_via_run(778, event="pull_request"),
+    "wrong_workflow_only": _only_via_run(779, ".github/workflows/day30-policy-queue-gate.yml"),
+    "non_main_branch_only": _only_via_run(780, event="workflow_dispatch",
+                                          head_branch="sol56/gate2-proof-v2-consolidation"),
+    "foreign_app_only": lambda world, path: _add_check(_without(world), MUTATED_CHECK, 900, app="third-party-ci"),
+    "unknown_suite_only": lambda world, path: _add_check(_without(world), MUTATED_CHECK, 900, suite=424242),
+    "missing": lambda world, path: _without(world),
+}
+
+
 def _mutated(kind: str) -> tuple[dict, str]:
     world = _receipt_world()
-    name = "pytest"
-    path = _helper_producers()[name]
-    if kind in {"queued", "in_progress"}:
-        _add_check(world, name, 900, status=kind, conclusion=None)
-    elif kind in {"failure", "cancelled", "timed_out", "skipped", "neutral", "action_required"}:
-        world["check_runs"] = [c for c in world["check_runs"] if c["name"] != name]
-        _add_check(world, name, 900, conclusion=kind)
-    elif kind == "failed_rerun_after_success":
-        _add_check(world, name, 900, conclusion="failure")
-    elif kind == "newer_dispatch_in_progress":
-        _add_run(world, 777, path, event="workflow_dispatch")
-        _add_check(world, name, 900, status="in_progress", conclusion=None, suite=777)
-    elif kind == "stale_sha_only":
-        world["check_runs"] = [c for c in world["check_runs"] if c["name"] != name]
-        _add_check(world, name, 900, sha=OTHER_SHA)
-    elif kind == "pull_request_event_only":
-        world["check_runs"] = [c for c in world["check_runs"] if c["name"] != name]
-        _add_run(world, 778, path, event="pull_request")
-        _add_check(world, name, 900, suite=778)
-    elif kind == "wrong_workflow_only":
-        world["check_runs"] = [c for c in world["check_runs"] if c["name"] != name]
-        _add_run(world, 779, ".github/workflows/day30-policy-queue-gate.yml")
-        _add_check(world, name, 900, suite=779)
-    elif kind == "non_main_branch_only":
-        world["check_runs"] = [c for c in world["check_runs"] if c["name"] != name]
-        _add_run(world, 780, path, event="workflow_dispatch", head_branch="sol56/gate2-proof-v2-consolidation")
-        _add_check(world, name, 900, suite=780)
-    elif kind == "foreign_app_only":
-        world["check_runs"] = [c for c in world["check_runs"] if c["name"] != name]
-        _add_check(world, name, 900, app="third-party-ci")
-    elif kind == "unknown_suite_only":
-        world["check_runs"] = [c for c in world["check_runs"] if c["name"] != name]
-        _add_check(world, name, 900, suite=424242)
-    elif kind == "missing":
-        world["check_runs"] = [c for c in world["check_runs"] if c["name"] != name]
-    else:  # pragma: no cover - parametrization guard
-        raise AssertionError(kind)
-    return world, name
+    RECEIPT_MUTATIONS[kind](world, _helper_producers()[MUTATED_CHECK])
+    return world, MUTATED_CHECK
 
 
-@pytest.mark.parametrize("kind", [
-    "queued", "in_progress", "failure", "cancelled", "timed_out", "skipped", "neutral", "action_required",
-    "failed_rerun_after_success", "newer_dispatch_in_progress", "stale_sha_only", "pull_request_event_only",
-    "wrong_workflow_only", "non_main_branch_only", "foreign_app_only", "unknown_suite_only", "missing",
-])
+@pytest.mark.parametrize("kind", sorted(RECEIPT_MUTATIONS))
 def test_receipt_helper_rejects_unproven_or_stale_receipts(tmp_path, kind):
     world, name = _mutated(kind)
     collected = _node(tmp_path, _scenario(world))

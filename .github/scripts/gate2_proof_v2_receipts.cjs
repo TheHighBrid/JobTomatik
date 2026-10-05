@@ -36,14 +36,19 @@ function requireSha(sha) {
   return sha;
 }
 
+function isActionsCheckOnSha(check, sha) {
+  return Boolean(check && check.head_sha === sha && check.app && check.app.slug === RECEIPT_APP);
+}
+
+function isCanonicalMainRun(run, sha, path) {
+  return Boolean(run && run.head_sha === sha && run.path === path
+    && run.head_branch === RECEIPT_BRANCH && RECEIPT_EVENTS.includes(run.event));
+}
+
 function producerRun(check, sha, path, suites) {
-  if (!check || check.head_sha !== sha) return null;
-  if (!check.app || check.app.slug !== RECEIPT_APP) return null;
-  const suiteId = check.check_suite && check.check_suite.id;
-  const run = suites.get(suiteId);
-  if (!run || run.head_sha !== sha || run.path !== path) return null;
-  if (run.head_branch !== RECEIPT_BRANCH || !RECEIPT_EVENTS.includes(run.event)) return null;
-  return run;
+  if (!isActionsCheckOnSha(check, sha)) return null;
+  const run = suites.get(check.check_suite && check.check_suite.id);
+  return isCanonicalMainRun(run, sha, path) ? run : null;
 }
 
 // Select, for every required check, the newest check run produced on the exact
