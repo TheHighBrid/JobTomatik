@@ -12,6 +12,9 @@ on:
       - "backend/scripts/run_recovery_gate2.py"
       - "backend/tests/test_recovery_gate2.py"
       - ".github/workflows/recovery-gate2.yml"
+  # Path-independent producer for the exact-head `synthetic-controls` receipt on
+  # any later main SHA (Gate 2 proof-v2 W2). Dispatch with `--ref main`.
+  workflow_dispatch:
 
 permissions:
   contents: read

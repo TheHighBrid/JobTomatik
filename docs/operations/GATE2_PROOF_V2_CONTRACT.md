@@ -30,6 +30,21 @@ The original workflow `.github/workflows/recovery-gate2-public.yml`, its consume
 
 The workflow accepts only a first-attempt dispatch from `main`. It rejects any previous distinct run of the proof-v2 workflow. Reruns are rejected.
 
+### Fresh-runner pre-checkout guard
+
+A GitHub-hosted runner starts with an empty workspace, so `backend/` does not exist until `actions/checkout` runs. The first guard step therefore runs from `${{ github.workspace }}` instead of inheriting the job's `backend` default working directory, which would fail before any check could run.
+
+Before checkout, the guard rejects:
+
+- a run attempt other than `1`;
+- a ref other than `refs/heads/main`;
+- an execution SHA that is malformed or differs from `GITHUB_SHA`;
+- a proof identity or target that differs from the code-reviewed values.
+
+Only after that does the job check out the validated SHA. The authorization step then confirms that the checked-out `HEAD` equals the execution SHA, and loads the shared helper `.github/scripts/gate2_proof_v2_receipts.cjs` from that same commit.
+
+A structural regression covers every workflow: no `run` step may start in a repository-relative directory before checkout. A non-consuming rehearsal job in `recovery-gate2-proof-v2.yml` exercises the same topology on a real fresh runner.
+
 The workflow must not be dispatched until integration review explicitly releases the public proof.
 
 ## Exact-head prerequisites
@@ -50,6 +65,27 @@ Before browser execution, the workflow requires successful check receipts on the
 - `Analyze javascript-typescript`
 
 The receipt set is retained in the evidence artifact and independently revalidated by the proof-v2 reviewer. `proof-v2-controls` is produced by `.github/workflows/recovery-gate2-proof-v2.yml` and exercises the replacement execution contract directly.
+
+### Receipt selection
+
+The shared helper defines the canonical producer workflow for each required name. That map must equal `REQUIRED_CHECKS` in `backend/scripts/run_recovery_gate2_v2.py`. A check run is eligible as a receipt only if all of the following hold:
+
+- its `head_sha` equals the execution SHA;
+- it comes from the `github-actions` app;
+- its check suite belongs to the canonical producer workflow;
+- that workflow run is on `main` and was started by a `push`, `workflow_dispatch` or `schedule` event.
+
+`pull_request` runs are never receipts, even when their head SHA equals the main SHA.
+
+The newest eligible check run must itself be a completed success. A newer queued, in-progress, failed or cancelled attempt is never masked by an older success. GitHub API and pagination errors propagate and fail closed.
+
+The one-use history check counts every proof-v2 run in any state. It cross-checks the paginated run list against the independently returned `total_count`, so a truncated page cannot hide a prior run.
+
+### Receipt liveness on any main SHA
+
+Every required producer runs on push to `main` and also exposes `workflow_dispatch`. Push path filters therefore cannot strand a receipt: a missing receipt on the current main SHA can always be produced by dispatching its producer with `--ref main`.
+
+Before any proof-v2 dispatch, run the read-only `.github/workflows/recovery-gate2-proof-v2-preflight.yml` on `main`. It uses the identical helper to report every missing receipt, which producer to dispatch, and whether proof-v2 history is already non-empty. It is a separate workflow identity, so it never consumes proof-v2 history, and it never dispatches, reruns or contacts an ATS.
 
 ## Duplicate and one-use scope
 

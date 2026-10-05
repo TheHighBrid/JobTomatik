@@ -5,17 +5,24 @@ on:
     paths:
       - "backend/scripts/run_recovery_gate2_v2.py"
       - "backend/tests/test_recovery_gate2_public_v2.py"
+      - ".github/scripts/gate2_proof_v2_receipts.cjs"
       - ".github/workflows/recovery-gate2-public-v2.yml"
       - ".github/workflows/recovery-gate2-proof-v2.yml"
+      - ".github/workflows/recovery-gate2-proof-v2-preflight.yml"
       - "docs/operations/GATE2_PROOF_V2_CONTRACT.md"
   push:
     branches: [main]
     paths:
       - "backend/scripts/run_recovery_gate2_v2.py"
       - "backend/tests/test_recovery_gate2_public_v2.py"
+      - ".github/scripts/gate2_proof_v2_receipts.cjs"
       - ".github/workflows/recovery-gate2-public-v2.yml"
       - ".github/workflows/recovery-gate2-proof-v2.yml"
+      - ".github/workflows/recovery-gate2-proof-v2-preflight.yml"
       - "docs/operations/GATE2_PROOF_V2_CONTRACT.md"
+  # Path-independent producer for the exact-head `proof-v2-controls` receipt on
+  # any later main SHA (Gate 2 proof-v2 W2). Dispatch with `--ref main`.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,6 +38,9 @@ jobs:
       AI_PROVIDER: template
       ALLOW_REAL_APPLICATION_SUBMIT: "false"
       AUTOPILOT_ENABLED: "false"
+      # The receipt/history helper tests execute the shared workflow script with
+      # node; this receipt must never pass with them skipped.
+      REQUIRE_NODE_WORKFLOW_TESTS: "1"
     defaults:
       run:
         working-directory: backend
@@ -48,6 +58,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --version
           git rev-parse HEAD > "$RUNNER_TEMP/gate2-proof-v2-head.txt"
           python -m pytest -q --tb=short -ra tests/test_recovery_gate2_public_v2.py \
             | tee "$RUNNER_TEMP/gate2-proof-v2-tests.txt"
@@ -60,3 +71,57 @@ jobs:
             ${{ runner.temp }}/gate2-proof-v2-tests.txt
           if-no-files-found: error
           retention-days: 30
+
+  # Synthetic, non-consuming rehearsal of the proof-v2 pre-checkout topology on a
+  # genuinely fresh runner: same job default (`backend`), guard step pinned to
+  # the workspace, and a negative control proving the inherited default cannot
+  # start before checkout. Never contacts Greenhouse or the proof-v2 workflow.
+  proof-v2-fresh-runner-rehearsal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
+      actions: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Negative control - inherited backend default before checkout
+        id: inherited-default
+        continue-on-error: true
+        shell: bash
+        run: echo "unexpected - backend directory existed before checkout"
+      - name: Pre-checkout guard pattern runs from the empty workspace
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          INHERITED_OUTCOME: ${{ steps.inherited-default.outcome }}
+        run: |
+          set -euo pipefail
+          test "$PWD" = "$GITHUB_WORKSPACE"
+          test ! -e backend
+          test "$INHERITED_OUTCOME" = "failure"
+          echo "fresh-runner pre-checkout guard pattern verified"
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Job default is usable after checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PWD" = "$GITHUB_WORKSPACE/backend"
+          test -f scripts/run_recovery_gate2_v2.py
+      - name: Shared receipt helper loads in github-script and excludes non-main receipts
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const gate2 = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/gate2_proof_v2_receipts.cjs`);
+            if (gate2.REQUIRED_CHECKS.length !== 12) throw new Error('unexpected REQUIRED_CHECKS');
+            const {owner, repo} = context.repo;
+            const sha = context.payload.pull_request ? context.payload.pull_request.head.sha : context.sha;
+            const {receipts, missing} = await gate2.collectReceipts({github, owner, repo, sha});
+            core.info(`receipts=${receipts.length} missing=${missing.length} event=${context.eventName} ref=${context.ref}`);
+            // Live negative control: pull_request runs and non-main dispatches are never receipts.
+            if (context.ref !== 'refs/heads/main' && receipts.length !== 0)
+              throw new Error(`non-main receipts accepted for ${sha}`);
