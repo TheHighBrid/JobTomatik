@@ -991,6 +991,10 @@ def _badge_with(nested):
 
 
 H2_BLOCKING = [
+    pytest.param(REAL_GREENHOUSE_BADGE.replace('class="grecaptcha-logo"',
+                 'class="grecaptcha-logo" data-sitekey="synthetic"'), id="logo-sitekey"),
+    pytest.param(REAL_GREENHOUSE_BADGE.replace('class="grecaptcha-error"',
+                 'class="grecaptcha-error" data-sitekey="synthetic"'), id="error-sitekey"),
     pytest.param(REAL_GREENHOUSE_BADGE.replace("size=invisible", "size=normal"), id="badge-anchor-normal"),
     pytest.param(REAL_GREENHOUSE_BADGE.replace("size=invisible", "size=compact"), id="badge-anchor-compact"),
     pytest.param(REAL_GREENHOUSE_BADGE.replace("enterprise/anchor", "enterprise/bframe"), id="badge-bframe"),
@@ -1109,7 +1113,7 @@ async def test_real_greenhouse_passive_badge_reaches_filler_without_interaction(
 
 H2_GATE_BLOCKING = [
     *[param for param in H2_BLOCKING if param.id in {
-        "badge-anchor-normal", "nested-challenge", "nested-sitekey", "nested-bframe",
+        "badge-anchor-normal", "nested-challenge", "nested-sitekey", "nested-bframe", "logo-sitekey", "error-sitekey",
         "enterprise-bframe", "g-recaptcha-checkbox", "hcaptcha", "turnstile"}],
     pytest.param(REAL_GREENHOUSE_BADGE + '<input type="password" aria-label="Password">', id="login"),
     pytest.param(REAL_GREENHOUSE_BADGE + "<p>Enter your verification code</p>", id="otp"),

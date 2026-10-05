@@ -420,6 +420,7 @@ _PASSIVE_RECAPTCHA_BADGE_CHROME = r"""(el) => {
   };
   let anchors = 0;
   for (const node of badge.querySelectorAll('*')) {
+    if (node.hasAttribute('data-sitekey')) return false;
     if (node.tagName === 'DIV' && node.parentElement === badge
         && (only(node, 'grecaptcha-logo') || only(node, 'grecaptcha-error'))) continue;
     if (node.tagName === 'TEXTAREA' && node.parentElement === badge

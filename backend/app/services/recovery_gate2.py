@@ -445,7 +445,7 @@ _INTERACTIVE_CAPTCHA = (
     'iframe[src*="recaptcha/"][src*="/bframe"], iframe[src*="hcaptcha.com"], '
     'iframe[src*="challenges.cloudflare.com" i], '
     'iframe[src*="recaptcha/"][src*="/anchor"]:not([src*="size=invisible"]), '
-    '.h-captcha, div.g-recaptcha:not(.grecaptcha-badge), '
+    '[data-sitekey], .h-captcha, div.g-recaptcha:not(.grecaptcha-badge), '
     ':is([class*="captcha" i],[id*="captcha" i],[data-sitekey])'
     ':not(.grecaptcha-badge):not(.grecaptcha-badge > .grecaptcha-logo)'
     ':not(.grecaptcha-badge > .grecaptcha-error)'
