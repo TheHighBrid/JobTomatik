@@ -25,10 +25,12 @@ from urllib.parse import urlsplit
 from app.services.ats_flow import run_ats_application_flow
 from app.services.ats_greenhouse import GreenhouseAdapter, parse_greenhouse_job_url
 from app.services.ats_registry import detect_ats_adapter
-from app.services.browser_navigation import detect_blocking_challenge
+from app.services import browser_navigation as _navigation
 from app.services import form_filler as _production_compat  # Install production control compatibility.
 from app.services.form_filler_v3 import _fill_step_fields
 from app.services.operational_safety import require_browser_entry_allowed
+from app.services.smartrecruiters_challenge import detect_smartrecruiters_datadome
+from app.services.workday_challenge import detect_workday_login_or_account_boundary
 from app.config import get_settings
 
 _production_compat.install_text_control_evidence()
@@ -42,12 +44,35 @@ PROFILE = {
 FILLER = "app.services.form_filler_v3._fill_step_fields"
 ADAPTER = "app.services.ats_greenhouse.GreenhouseAdapter"
 
+# Chromium launch arguments. SharedWorker network traffic bypasses context
+# routes and request events, so the engine must not expose the constructor at all,
+# in any frame or initial about:blank document.
+SHARED_WORKER_DISABLED_ARG = "--disable-blink-features=SharedWorker"
+BROWSER_ARGS = ("--no-sandbox", "--disable-dev-shm-usage", SHARED_WORKER_DISABLED_ARG)
+# Independent CDP witness: every browser target must be routed by the context.
+# Shared/service workers (and unknown target types) are outside that evidence.
+ROUTED_TARGET_TYPES = frozenset({"page", "iframe", "worker", "tab"})
+
+# SharedWorker is replaced (redundantly with the engine flag) by a stub that
+# reports the attempt as unsafe evidence and never constructs a worker.
+SHARED_WORKER_GUARD = r"""
+  const blockedSharedWorker = function SharedWorker(url) {
+    state.shared_workers++;
+    report({kind:'shared_worker', url:String(url).slice(0, 300)});
+    throw new DOMException('Recovery proof disallows SharedWorker', 'SecurityError');
+  };
+  Object.defineProperty(window, 'SharedWorker', {
+    value: blockedSharedWorker, configurable: false, writable: false, enumerable: false});
+"""
 # Installed in every document before site scripts. Report attempts independently
 # of the filler log and stop native/JavaScript form submissions before dispatch.
 DOM_GUARD = r"""(() => {
-  const state = {clicks: [], submits: 0, programmatic: 0};
+  const state = {clicks: [], submits: 0, programmatic: 0, shared_workers: 0};
   Object.defineProperty(window, '__gate2', {value: state});
-  const report = event => { window.gate2Observe(event); };
+  const observe = window.gate2Observe;
+  const report = event => {
+    (typeof observe === 'function' ? observe : window.gate2Observe)(event);
+  };""" + SHARED_WORKER_GUARD + r"""
   const final = el => el && (
     el.matches('input[type=submit],button[type=submit],#submit_app,[data-gate2-final]') ||
     (el.tagName === 'BUTTON' && el.form && !el.hasAttribute('type')) ||
@@ -215,6 +240,14 @@ def evaluate(record: dict, directory: Path) -> list[str]:
             and snapshot.get("programmatic") == 0
             and not any(e.get("final") for e in snapshot.get("clicks", [])),
             "DOM submit observation failed")
+    # SharedWorker traffic is invisible to every network stream below.
+    require(snapshot.get("shared_workers") == 0
+            and not any(e.get("kind") == "shared_worker" for e in dom.get("observations") or []),
+            "SharedWorker attempted outside recorded network evidence")
+    require(SHARED_WORKER_DISABLED_ARG in (record.get("browser") or {}).get("args", []),
+            "SharedWorker engine block missing")
+    require(not _worker_witness_errors(record.get("worker_witness")),
+            "independent browser target witness missing or observed unrouted worker")
     network = record.get("network") or {}
     require(network.get("guard_installed") is True
             and all(isinstance(network.get(stage), list) for stage in
@@ -263,6 +296,61 @@ def evaluate(record: dict, directory: Path) -> list[str]:
     require(not record.get("error") and not record.get("cleanup_errors"), "execution failed")
     return errors
 
+
+
+def _witness_target_type(item):
+    """Return no target type for malformed CDP evidence."""
+    return item.get("type") if isinstance(item, dict) else None
+
+
+def _witness_complete(witness) -> bool:
+    """Require both CDP lifecycle markers in structured witness evidence."""
+    return (isinstance(witness, dict) and witness.get("installed") is True
+            and witness.get("completed") is True)
+
+
+def _worker_witness_errors(witness) -> list:
+    """Fail closed unless the CDP witness ran for the whole run and saw only routed targets."""
+    if not _witness_complete(witness):
+        return ["witness missing or incomplete"]
+    targets, final = witness.get("targets"), witness.get("final_targets")
+    if not isinstance(targets, list) or not isinstance(final, list) or witness.get("errors"):
+        return ["witness evidence missing"]
+    errors = [f"unrouted target: {item}" for item in targets + final
+              if _witness_target_type(item) not in ROUTED_TARGET_TYPES]
+    if not any(_witness_target_type(item) == "page" for item in targets):
+        errors.append("witness never observed the proof page")
+    return errors
+
+
+async def _install_worker_witness(browser, record) -> object:
+    """Independent of Playwright context routing: CDP browser target discovery."""
+    witness = record["worker_witness"] = {"installed": False, "completed": False,
+                                          "targets": [], "final_targets": [], "errors": []}
+
+    def target(event):
+        info = event.get("targetInfo") or {}
+        witness["targets"].append({"type": info.get("type"), "url": str(info.get("url", ""))[:300],
+                                   "target_id": info.get("targetId")})
+
+    session = await browser.new_browser_cdp_session()
+    session.on("Target.targetCreated", target)
+    await session.send("Target.setDiscoverTargets", {"discover": True})
+    witness["installed"] = True
+    return session
+
+
+async def _complete_worker_witness(session, record) -> None:
+    witness = record["worker_witness"]
+    try:
+        infos = (await session.send("Target.getTargets")).get("targetInfos") or []
+        witness["final_targets"] = [{"type": info.get("type"), "url": str(info.get("url", ""))[:300],
+                                     "target_id": info.get("targetId")} for info in infos]
+        await session.send("Target.setDiscoverTargets", {"discover": False})
+        await session.detach()
+        witness["completed"] = True
+    except Exception as exc:
+        witness["errors"].append(f"{type(exc).__name__}: {exc}")
 
 
 def _mutating(event: dict) -> bool:
@@ -362,12 +450,25 @@ _INTERACTIVE_CAPTCHA = (
     'iframe[src*="recaptcha/"][src*="/bframe"], iframe[src*="hcaptcha.com"], '
     'iframe[src*="challenges.cloudflare.com" i], '
     'iframe[src*="recaptcha/"][src*="/anchor"]:not([src*="size=invisible"]), '
-    '.h-captcha, div.g-recaptcha:not(.grecaptcha-badge), '
+    '[data-sitekey], .h-captcha, div.g-recaptcha:not(.grecaptcha-badge), '
     ':is([class*="captcha" i],[id*="captcha" i],[data-sitekey])'
-    ':not(.grecaptcha-badge):not(.grecaptcha-badge *)'
+    ':not(.grecaptcha-badge):not(.grecaptcha-badge > .grecaptcha-logo)'
+    ':not(.grecaptcha-badge > .grecaptcha-error)'
     ':not([name="g-recaptcha-response"]):not([name="h-captcha-response"])'
 )
 _PASSIVE_CAPTCHA = '.grecaptcha-badge, iframe[title="reCAPTCHA"][src*="size=invisible"]'
+
+
+async def detect_blocking_challenge(page):
+    """Run the core, DataDome and Workday detectors independently of import order."""
+    # Compatibility layers rebind browser_navigation.detect_blocking_challenge.
+    # Use the stable core alias so pytest and the public runner agree.
+    for detector in (_navigation.core_detect_blocking_challenge,
+                     detect_smartrecruiters_datadome, detect_workday_login_or_account_boundary):
+        challenge = await detector(page)
+        if challenge:
+            return challenge
+    return None
 
 
 async def _passive_invisible_captcha(page) -> bool:
@@ -395,7 +496,8 @@ async def _boundary(page, record):
     challenge = await detect_blocking_challenge(page)
     if await page.locator(_INTERACTIVE_CAPTCHA).count():
         challenge = {"reason_code": "captcha_detected", "summary": "Interactive CAPTCHA present"}
-    # Production already filters invisible reCAPTCHA sources and badge elements.
+    # Production filters invisible anchors, the badge and its passive chrome
+    # (e.g. nested .grecaptcha-logo) only when the badge holds nothing else.
     # Observing a passive widget never overrides a positive detector result:
     # its evidence may describe an independent challenge or be incomplete.
     if await _passive_invisible_captcha(page):
@@ -546,7 +648,7 @@ async def run_gate(url: str, directory: Path, ledger: Path) -> dict:
                           "blocked": [], "websockets": []},
               "boundary": {"checks": 0, "detected": None, "bypassed": False},
               "cleanup_errors": [], "browser_started": False}
-    manager = browser = context = None
+    manager = browser = context = witness = None
     tracing = False
     baseline = _child_processes()
     tracked = {}
@@ -568,9 +670,11 @@ async def run_gate(url: str, directory: Path, ledger: Path) -> dict:
         with sqlite3.connect(ledger) as database, sqlite3.connect(directory / "ledger.sqlite") as backup:
             database.backup(backup)
         manager = await async_playwright().start()
-        browser = await manager.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        browser = await manager.chromium.launch(headless=True, args=list(BROWSER_ARGS))
         record["browser_started"] = True
-        record["browser"] = {"owner": "playwright", "type": browser.browser_type.name, "version": browser.version}
+        record["browser"] = {"owner": "playwright", "type": browser.browser_type.name, "version": browser.version,
+                             "args": list(BROWSER_ARGS)}
+        witness = await _install_worker_witness(browser, record)
         context = await browser.new_context(service_workers="block")
         await context.tracing.start(screenshots=True, snapshots=True, sources=True)
         tracing = True
@@ -591,6 +695,8 @@ async def run_gate(url: str, directory: Path, ledger: Path) -> dict:
                 await context.tracing.stop(path=str(directory / "trace.zip"))
             except Exception as exc:
                 record["cleanup_errors"].append(f"Trace retention: {exc}")
+        if witness is not None:
+            await _complete_worker_witness(witness, record)
         teardown = record["teardown"] = {}
         if browser is not None:
             try:
