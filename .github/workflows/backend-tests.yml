@@ -15,6 +15,9 @@ on:
       - ".jobtomatik-toolchain.env"
       - ".github/dependabot.yml"
       - ".github/workflows/backend-tests.yml"
+  # Path-independent producer for the exact-head `pytest` receipt on any later
+  # main SHA (Gate 2 proof-v2 W2). Dispatch with `--ref main`.
+  workflow_dispatch:
 
 permissions:
   contents: read

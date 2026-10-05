@@ -48,12 +48,20 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - name: Reject reruns and non-main dispatches
+      # A fresh runner has an empty workspace until checkout, so this guard must
+      # not inherit the job's repo-relative default working directory.
+      - name: Reject reruns, non-main dispatches and unapproved inputs before checkout
         shell: bash
+        working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          test "$GITHUB_RUN_ATTEMPT" = "1"
-          test "$GITHUB_REF" = "refs/heads/main"
+          fail() { echo "::error::$1"; exit 1; }
+          [[ "$GITHUB_RUN_ATTEMPT" == "1" ]] || fail "Gate 2 proof-v2 reruns are prohibited"
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || fail "Gate 2 proof-v2 must dispatch from main"
+          [[ "$DISPATCH_EXECUTION_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "Invalid execution SHA"
+          [[ "$DISPATCH_EXECUTION_SHA" == "$GITHUB_SHA" ]] || fail "Approved execution SHA differs from dispatched main SHA"
+          [[ "$DISPATCH_PROOF_ID" == "$AUTHORIZED_PROOF_ID" ]] || fail "Unapproved Gate 2 proof identity"
+          [[ "$DISPATCH_TARGET_URL" == "$AUTHORIZED_TARGET_URL" ]] || fail "Unapproved Gate 2 target"
 
       - uses: actions/checkout@v7
         with:
@@ -79,32 +87,19 @@ jobs:
               throw new Error("Unapproved Gate 2 proof identity");
             if (targetUrl !== process.env.AUTHORIZED_TARGET_URL)
               throw new Error("Unapproved Gate 2 target");
+            const workspace = process.env.GITHUB_WORKSPACE;
+            const head = require('child_process')
+              .execFileSync('git', ['-C', workspace, 'rev-parse', 'HEAD']).toString().trim();
+            if (head !== sha) throw new Error("Checked-out source differs from approved execution SHA");
 
-            const checks = await github.paginate(github.rest.checks.listForRef,
-              {owner, repo, ref: sha, per_page: 100});
-            const required = ["synthetic-controls", "proof-v2-controls", "exact-head-acceptance", "pytest",
-              "owned-browser-compose-proof", "phase0-fastapi-celery-proof",
-              "backend-browser-migration", "integrated-backend", "fast-gate",
-              "dependency-audit", "Analyze python", "Analyze javascript-typescript"];
-            const receipts = required.map(name => {
-              const candidates = checks.filter(check => check.name === name && check.head_sha === sha)
-                .sort((a,b) => b.id-a.id);
-              const check = candidates[0];
-              if (!check || check.status !== "completed" || check.conclusion !== "success")
-                throw new Error(`Unproven exact-head prerequisite: ${name}`);
-              return {name, id: check.id, head_sha: check.head_sha, status: check.status,
-                conclusion: check.conclusion, url: check.details_url};
-            });
-
-            const runs = await github.paginate(github.rest.actions.listWorkflowRuns,
-              {owner, repo, workflow_id: "recovery-gate2-public-v2.yml", per_page: 100});
-            if (runs.some(run => run.id !== context.runId))
-              throw new Error("Gate 2 proof-v2 workflow has already been used");
+            const gate2 = require(`${workspace}/.github/scripts/gate2_proof_v2_receipts.cjs`);
+            const {receipts} = await gate2.requireReceipts({github, owner, repo, sha});
+            const history = await gate2.requireProofWorkflowUnused({github, owner, repo, runId: context.runId});
 
             const fs = require('fs');
             fs.writeFileSync(process.env.RUNNER_TEMP + '/gate2-ci-prerequisites-v2.json',
-              JSON.stringify({schema: "jobtomatik.recovery.gate2.public-proof.v2",
-                proof_id: proofId, target_url: targetUrl, sha, run_id: context.runId, receipts}, null, 2));
+              JSON.stringify({schema: gate2.PROOF_SCHEMA, proof_id: proofId, target_url: targetUrl, sha,
+                run_id: context.runId, receipts, proof_workflow_history: history}, null, 2));
 
       - uses: actions/setup-python@v7
         with:

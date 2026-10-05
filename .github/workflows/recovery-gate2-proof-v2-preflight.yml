@@ -1,0 +1,67 @@
+name: Recovery Gate 2 proof-v2 receipt preflight
+
+# Read-only, non-consuming preflight. It runs the exact receipt-selection and
+# one-use history logic used by recovery-gate2-public-v2.yml against the current
+# main SHA, so missing exact-head receipts are found before the one-use proof-v2
+# workflow is dispatched. It is a different workflow identity, so its runs never
+# count toward proof-v2 history. It never dispatches, reruns or contacts any ATS.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: recovery-gate2-proof-v2-preflight
+  cancel-in-progress: false
+
+jobs:
+  proof-v2-receipt-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require main
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::proof-v2 receipt preflight must run on main"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Report exact-head receipts and proof-v2 history
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const sha = context.sha;
+            const gate2 = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/gate2_proof_v2_receipts.cjs`);
+            const {receipts, missing} = await gate2.collectReceipts({github, owner, repo, sha});
+            const history = await gate2.proofWorkflowHistory({github, owner, repo});
+            const rows = [
+              ...receipts.map(r => [r.name, 'success', String(r.id), r.event, r.workflow_path]),
+              ...missing.map(m => [m.name, 'MISSING', m.reason, '', m.workflow_path]),
+            ];
+            await core.summary
+              .addHeading(`Gate 2 proof-v2 receipt preflight for ${sha}`)
+              .addTable([[{data: 'check', header: true}, {data: 'state', header: true},
+                {data: 'id / reason', header: true}, {data: 'event', header: true},
+                {data: 'producer', header: true}], ...rows])
+              .addRaw(`proof-v2 workflow runs observed: ${history.total_count}\n`)
+              .write();
+            for (const workflow of new Set(missing.map(m => m.workflow_path)))
+              core.notice(`Produce on main: gh workflow run ${workflow.split('/').pop()} --ref main`);
+            if (history.total_count > 0)
+              core.setFailed('Gate 2 proof-v2 workflow has already been used; a dispatch would be rejected');
+            if (missing.length)
+              core.setFailed(`Missing exact-head receipts on ${sha}: ${missing.map(m => m.name).join(', ')}`);
+            else
+              core.info(`All ${receipts.length} exact-head receipts present on ${sha}. GATE 2 remains NOT PROVEN.`);
