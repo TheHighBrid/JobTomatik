@@ -719,7 +719,14 @@ class _LoopbackSink:
                 self.send_response(200)
                 self.end_headers()
 
-            do_PUT = do_PATCH = do_DELETE = do_POST
+            def do_PUT(self):
+                self.do_POST()
+
+            def do_PATCH(self):
+                self.do_POST()
+
+            def do_DELETE(self):
+                self.do_POST()
 
             def log_message(self, *args):
                 pass
@@ -749,7 +756,10 @@ const blank = document.createElement('iframe');
 document.documentElement.appendChild(blank);
 attempt('about_blank', () => new blank.contentWindow.SharedWorker('/worker.js?blank'));
 </script></head><body>
-<iframe id="srcdoc" srcdoc="<script>try{new SharedWorker('/worker.js?srcdoc');parent.__attempts.srcdoc='created'}catch(e){parent.__attempts.srcdoc=String(e.name||e)}</script>"></iframe>
+<iframe id="srcdoc" srcdoc="<script>
+try{new SharedWorker('/worker.js?srcdoc');parent.__attempts.srcdoc='created'}
+catch(e){parent.__attempts.srcdoc=String(e.name||e)}
+</script>"></iframe>
 <iframe id="child" src="/frame"></iframe>
 </body></html>"""
 SHARED_WORKER_FRAME = ("<script>try{new SharedWorker('/worker.js?iframe');parent.__attempts.iframe='created'}"

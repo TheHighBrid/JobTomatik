@@ -298,6 +298,11 @@ def evaluate(record: dict, directory: Path) -> list[str]:
 
 
 
+def _witness_target_type(item):
+    """Return no target type for malformed CDP evidence."""
+    return item.get("type") if isinstance(item, dict) else None
+
+
 def _worker_witness_errors(witness) -> list:
     """Fail closed unless the CDP witness ran for the whole run and saw only routed targets."""
     if not isinstance(witness, dict) or witness.get("installed") is not True \
@@ -307,8 +312,8 @@ def _worker_witness_errors(witness) -> list:
     if not isinstance(targets, list) or not isinstance(final, list) or witness.get("errors"):
         return ["witness evidence missing"]
     errors = [f"unrouted target: {item}" for item in targets + final
-              if not isinstance(item, dict) or item.get("type") not in ROUTED_TARGET_TYPES]
-    if not any(isinstance(item, dict) and item.get("type") == "page" for item in targets):
+              if _witness_target_type(item) not in ROUTED_TARGET_TYPES]
+    if not any(_witness_target_type(item) == "page" for item in targets):
         errors.append("witness never observed the proof page")
     return errors
 
@@ -450,7 +455,8 @@ _PASSIVE_CAPTCHA = '.grecaptcha-badge, iframe[title="reCAPTCHA"][src*="size=invi
 
 
 async def detect_blocking_challenge(page):
-    """The production runner's detector chain, bound independently of import order.
+    """
+    The production runner's detector chain, bound independently of import order.
 
     ``browser_navigation.detect_blocking_challenge`` is rebound by compatibility
     layers depending on which modules load first (pytest loads app.main first and
