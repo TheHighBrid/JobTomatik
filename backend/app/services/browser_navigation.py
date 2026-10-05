@@ -394,6 +394,57 @@ async def captcha_response_state(page: Any) -> Dict[str, Any]:
     }
 
 
+# Passive invisible reCAPTCHA badge chrome, e.g. the visible nested
+# ``.grecaptcha-logo`` retained from Gate 2 run 37173569727. An element is skipped
+# only when its badge subtree consists solely of Google's passive chrome around
+# an invisible anchor frame. Any other descendant (checkbox anchor, bframe,
+# hCaptcha, Turnstile, sitekey, password field, unknown challenge markup) makes
+# the badge non-genuine, so every match inside it is reported as before.
+_PASSIVE_RECAPTCHA_BADGE_CHROME = r"""(el) => {
+  const badge = el.parentElement && el.parentElement.closest('.grecaptcha-badge');
+  if (!badge || el.parentElement !== badge) return false;
+  const style = (badge.getAttribute('data-style') || '').toLowerCase();
+  if (!['bottomright', 'bottomleft', 'inline', 'none'].includes(style)) return false;
+  const only = (node, name) => node.classList.length === 1 && node.classList.contains(name);
+  const invisibleAnchor = (frame) => {
+    try {
+      const url = new URL(frame.getAttribute('src') || '', document.baseURI);
+      return url.protocol === 'https:' && !url.username && !url.password && !url.port
+        && ['www.google.com', 'www.recaptcha.net', 'recaptcha.google.com'].includes(url.hostname)
+        && /^\/recaptcha\/(?:api2|enterprise)\/anchor$/.test(url.pathname)
+        && url.searchParams.getAll('size').length === 1
+        && url.searchParams.get('size') === 'invisible';
+    } catch (error) {
+      return false;
+    }
+  };
+  let anchors = 0;
+  for (const node of badge.querySelectorAll('*')) {
+    if (node.tagName === 'DIV' && node.parentElement === badge
+        && (only(node, 'grecaptcha-logo') || only(node, 'grecaptcha-error'))) continue;
+    if (node.tagName === 'TEXTAREA' && node.parentElement === badge
+        && node.getAttribute('name') === 'g-recaptcha-response') continue;
+    if (node.tagName === 'IFRAME' && invisibleAnchor(node)
+        && node.parentElement && only(node.parentElement, 'grecaptcha-logo')
+        && node.parentElement.parentElement === badge) {
+      anchors += 1;
+      continue;
+    }
+    return false;
+  }
+  if (anchors !== 1) return false;
+  return el.tagName === 'DIV' && (only(el, 'grecaptcha-logo') || only(el, 'grecaptcha-error'));
+}"""
+
+
+async def _passive_recaptcha_badge_chrome(element: Any) -> bool:
+    """Observation-only passive badge chrome. Errors fail closed (not passive)."""
+    try:
+        return await element.evaluate(_PASSIVE_RECAPTCHA_BADGE_CHROME) is True
+    except Exception:
+        return False
+
+
 async def _visible_challenge_element(page: Any, selector: str) -> Optional[Dict[str, Any]]:
     try:
         elements = await page.query_selector_all(selector)
@@ -408,7 +459,9 @@ async def _visible_challenge_element(page: Any, selector: str) -> Optional[Dict[
             aria_hidden = str(await element.get_attribute("aria-hidden") or "").lower()
             if aria_hidden == "true" or "grecaptcha-badge" in class_name:
                 continue
-            if "size=invisible" in source or "invisible=true" in source:
+            if ("size=invisible" in source or "invisible=true" in source) and "/bframe" not in source:
+                continue
+            if await _passive_recaptcha_badge_chrome(element):
                 continue
             box = await element.bounding_box()
             if not box:
@@ -551,6 +604,12 @@ async def detect_blocking_challenge(page) -> Optional[Dict[str, Any]]:
     if challenge and challenge.get("reason_code") == "captcha_detected" and captcha_completed:
         return None
     return challenge
+
+
+# Stable reference to this module's detector. Runtime compatibility layers rebind
+# ``detect_blocking_challenge`` at import time, so callers that must execute an
+# exact, import-order-independent detector (the Gate 2 proof) use this name.
+core_detect_blocking_challenge = detect_blocking_challenge
 
 
 async def find_submit_button(page):
