@@ -299,7 +299,7 @@ def test_gate3_real_chromium_authenticated_handoff_resumes_same_target_and_recon
 
         bad_claim = auth_client.post(
             f"/api/handoffs/{public_id}/claim",
-            json={"resume_token": "wrong-resume-token"},
+            json={"resume_token": "wrong-resume-token-000000000000"},
         )
         assert bad_claim.status_code == 403
 
@@ -318,7 +318,7 @@ def test_gate3_real_chromium_authenticated_handoff_resumes_same_target_and_recon
 
         bad_frame = auth_client.post(
             f"/api/handoffs/{public_id}/frame",
-            json={"lease_token": "wrong-lease-token"},
+            json={"lease_token": "wrong-lease-token-000000000000"},
         )
         assert bad_frame.status_code == 403
 
