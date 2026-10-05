@@ -25,7 +25,6 @@ from app.services.application_state import (
 from app.services.browser_handoff import (
     BrowserHandoffUnavailable,
     resume_handoff_application,
-    terminate_retained_browser,
 )
 from app.services.handoff_integration import install_handoff_task_integration
 from app.services.handoff_session import (
@@ -34,6 +33,7 @@ from app.services.handoff_session import (
     complete_handoff_resume,
     fail_handoff_resume,
 )
+from app.services.retained_browser_lifecycle import terminate_retained_browser
 from app.tasks.applications import _profile_dict, _record_result_evidence
 
 logger = logging.getLogger(__name__)
