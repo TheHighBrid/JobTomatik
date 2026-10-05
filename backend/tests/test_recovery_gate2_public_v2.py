@@ -1,12 +1,51 @@
 """Synthetic-only tests for the separately authorized Gate 2 public proof-v2 contract."""
 import json
+import shutil
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from app.services import recovery_gate2 as gate
 from scripts import run_recovery_gate2_v2 as v2
+
+
+# Deterministic synthetic execution identity. Workflow-context tests must never
+# depend on the live checkout: production provenance() intentionally rejects a
+# dirty tree, and the full suite may legitimately leave temporary files behind.
+SYNTHETIC_EXECUTION_SHA = "0123456789abcdef0123456789abcdef01234567"
+SYNTHETIC_SOURCE_SHA256 = "5" * 64
+SYNTHETIC_WORKFLOW_REF = f"TheHighBrid/JobTomatik/{v2.WORKFLOW_PATH}@refs/heads/main"
+
+
+def _stub_provenance(monkeypatch, git_sha: str = SYNTHETIC_EXECUTION_SHA, error: Exception | None = None):
+    """Replace the v2 module's provenance binding with a deterministic attestation."""
+    calls = []
+
+    def synthetic_provenance() -> dict:
+        calls.append(True)
+        if error is not None:
+            raise error
+        return {
+            "git_sha": git_sha,
+            "inputs": {"backend/app/services/recovery_gate2.py": "6" * 64},
+            "python": "synthetic",
+            "playwright": "synthetic",
+            "source_sha256": SYNTHETIC_SOURCE_SHA256,
+        }
+
+    monkeypatch.setattr(v2, "provenance", synthetic_provenance)
+    return calls
+
+
+def _workflow_env(monkeypatch, sha: str = SYNTHETIC_EXECUTION_SHA) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_SHA", sha)
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_RUN_ID", "12345")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("GITHUB_WORKFLOW_REF", SYNTHETIC_WORKFLOW_REF)
 
 
 def _receipts(sha: str, run_id: int) -> dict:
@@ -48,22 +87,110 @@ def test_proof_v2_reservation_is_one_use_and_separate_from_v1_attempt(tmp_path):
 
 
 def test_workflow_context_requires_first_attempt_main_and_exact_head(monkeypatch):
-    head = gate.provenance()["git_sha"]
-    monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    monkeypatch.setenv("GITHUB_SHA", head)
-    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
-    monkeypatch.setenv("GITHUB_RUN_ID", "12345")
-    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
-    monkeypatch.setenv(
-        "GITHUB_WORKFLOW_REF",
-        f"TheHighBrid/JobTomatik/{v2.WORKFLOW_PATH}@refs/heads/main",
-    )
+    head = SYNTHETIC_EXECUTION_SHA
+    calls = _stub_provenance(monkeypatch, head)
+    _workflow_env(monkeypatch, head)
     context = v2.workflow_context(head)
-    assert context["run_id"] == 12345 and context["run_attempt"] == 1
-    assert context["source_sha256"]
+    assert context == {
+        "run_id": 12345,
+        "run_attempt": 1,
+        "workflow_ref": SYNTHETIC_WORKFLOW_REF,
+        "execution_sha": head,
+        "source_sha256": SYNTHETIC_SOURCE_SHA256,
+    }
+    assert len(calls) == 1
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
     with pytest.raises(RuntimeError, match="reruns"):
         v2.workflow_context(head)
+    assert len(calls) == 1, "rerun must be rejected before source attestation"
+
+
+@pytest.mark.parametrize(("variable", "value", "message"), [
+    ("GITHUB_ACTIONS", None, "must run in GitHub Actions"),
+    ("GITHUB_ACTIONS", "false", "must run in GitHub Actions"),
+    ("GITHUB_SHA", "f" * 40, "Workflow SHA differs"),
+    ("GITHUB_SHA", None, "Workflow SHA differs"),
+    ("GITHUB_REF", "refs/heads/sol56/gate2-proof-v2-consolidation", "must dispatch from main"),
+    ("GITHUB_REF", "refs/pull/645/merge", "must dispatch from main"),
+    ("GITHUB_RUN_ID", None, "run ID missing"),
+    ("GITHUB_RUN_ID", "0", "run ID missing"),
+    ("GITHUB_RUN_ID", "abc", "run ID missing"),
+    ("GITHUB_RUN_ATTEMPT", None, "reruns are prohibited"),
+    ("GITHUB_RUN_ATTEMPT", "3", "reruns are prohibited"),
+    ("GITHUB_WORKFLOW_REF", None, "Unexpected Gate 2 proof-v2 workflow ref"),
+    ("GITHUB_WORKFLOW_REF",
+     f"TheHighBrid/JobTomatik/{v2.WORKFLOW_PATH}@refs/heads/sol56/gate2-proof-v2-consolidation",
+     "Unexpected Gate 2 proof-v2 workflow ref"),
+    ("GITHUB_WORKFLOW_REF",
+     "TheHighBrid/JobTomatik/.github/workflows/recovery-gate2-public.yml@refs/heads/main",
+     "Unexpected Gate 2 proof-v2 workflow ref"),
+])
+def test_workflow_context_rejects_each_invalid_environment_before_attestation(
+    monkeypatch, variable, value, message,
+):
+    calls = _stub_provenance(monkeypatch)
+    _workflow_env(monkeypatch)
+    if value is None:
+        monkeypatch.delenv(variable)
+    else:
+        monkeypatch.setenv(variable, value)
+    with pytest.raises(RuntimeError, match=message):
+        v2.workflow_context(SYNTHETIC_EXECUTION_SHA)
+    assert calls == []
+
+
+@pytest.mark.parametrize("execution_sha", ["", "abc", "0123456789ABCDEF0123456789ABCDEF01234567", "0" * 39, "0" * 41])
+def test_workflow_context_rejects_malformed_execution_sha(monkeypatch, execution_sha):
+    calls = _stub_provenance(monkeypatch)
+    _workflow_env(monkeypatch, execution_sha)
+    with pytest.raises(RuntimeError, match="Invalid execution SHA"):
+        v2.workflow_context(execution_sha)
+    assert calls == []
+
+
+def test_workflow_context_rejects_checkout_that_differs_from_execution_sha(monkeypatch):
+    calls = _stub_provenance(monkeypatch, git_sha="f" * 40)
+    _workflow_env(monkeypatch)
+    with pytest.raises(RuntimeError, match="Checked-out source differs"):
+        v2.workflow_context(SYNTHETIC_EXECUTION_SHA)
+    assert len(calls) == 1
+
+
+def test_workflow_context_propagates_source_attestation_failure(monkeypatch):
+    _stub_provenance(monkeypatch, error=RuntimeError("Gate 2 requires a clean committed checkout"))
+    _workflow_env(monkeypatch)
+    with pytest.raises(RuntimeError, match="clean committed checkout"):
+        v2.workflow_context(SYNTHETIC_EXECUTION_SHA)
+
+
+def test_production_provenance_still_rejects_dirty_checkout(monkeypatch, tmp_path):
+    """Exercise the real attestation against an isolated repository, never the live checkout."""
+    git = shutil.which("git")
+    if not git:
+        pytest.skip("git executable unavailable")
+    repo = tmp_path / "repo"
+    (repo / "backend/app").mkdir(parents=True)
+    (repo / "backend/scripts").mkdir(parents=True)
+    (repo / "backend/app/module.py").write_text("VALUE = 1\n")
+
+    def run(*args):
+        return subprocess.check_output([git, "-C", str(repo), *args])
+
+    run("init", "-q")
+    run("add", "-A")
+    run("-c", "user.name=synthetic", "-c", "user.email=synthetic@example.invalid",
+        "-c", "commit.gpgsign=false", "commit", "-q", "-m", "synthetic")
+    monkeypatch.setattr(gate, "ROOT", repo)
+    clean = gate.provenance()
+    assert clean["git_sha"] == run("rev-parse", "HEAD").decode().strip()
+    assert set(clean["inputs"]) == {"backend/app/module.py"}
+    (repo / "untracked.txt").write_text("dirty\n")
+    with pytest.raises(RuntimeError, match="clean committed checkout"):
+        gate.provenance()
+    (repo / "untracked.txt").unlink()
+    (repo / "backend/app/module.py").write_text("VALUE = 2\n")
+    with pytest.raises(RuntimeError, match="clean committed checkout"):
+        gate.provenance()
 
 
 def test_ci_receipts_require_complete_exact_head_set(tmp_path):

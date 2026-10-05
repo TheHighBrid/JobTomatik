@@ -5,6 +5,7 @@ import sqlite3
 import subprocess
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -525,6 +526,41 @@ MIXED_BOUNDARIES = [
 ]
 
 
+CLOUDFLARE_CHALLENGE_HOST = "challenges.cloudflare.com"
+
+
+def _is_cloudflare_challenge_iframe(fragment: str) -> bool:
+    """Identify the Cloudflare case by parsed iframe URL host, never substring membership."""
+    from bs4 import BeautifulSoup
+
+    iframe = BeautifulSoup(fragment, "html.parser").find("iframe")
+    if iframe is None:
+        return False
+    parsed = urlsplit(str(iframe.get("src") or ""))
+    return parsed.scheme == "https" and parsed.hostname == CLOUDFLARE_CHALLENGE_HOST
+
+
+@pytest.mark.parametrize(("fragment", "expected"), [
+    ('<iframe src="https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile"></iframe>', True),
+    ('<iframe src="HTTPS://Challenges.Cloudflare.com/turnstile"></iframe>', True),
+    ('<iframe src="http://challenges.cloudflare.com/turnstile"></iframe>', False),
+    ('<iframe src="https://challenges.cloudflare.com.attacker.test/turnstile"></iframe>', False),
+    ('<iframe src="https://attacker.test/?next=https://challenges.cloudflare.com/"></iframe>', False),
+    ('<iframe src="https://attacker.test/challenges.cloudflare.com"></iframe>', False),
+    ('<iframe src="https://challenges.cloudflare.com@attacker.test/"></iframe>', False),
+    ('<iframe src="https://notchallenges.cloudflare.com/"></iframe>', False),
+    ('<div data-src="https://challenges.cloudflare.com/turnstile"></div>', False),
+    ('<iframe title="challenges.cloudflare.com"></iframe>', False),
+])
+def test_cloudflare_case_is_identified_by_exact_parsed_host(fragment, expected):
+    assert _is_cloudflare_challenge_iframe(fragment) is expected
+
+
+def test_exactly_one_mixed_boundary_is_the_cloudflare_iframe():
+    matches = [param.id for param in MIXED_BOUNDARIES if _is_cloudflare_challenge_iframe(param.values[0])]
+    assert matches == ["cloudflare"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("challenge_html", MIXED_BOUNDARIES)
 async def test_passive_widget_never_erases_independent_boundary(monkeypatch, tmp_path, challenge_html):
@@ -555,7 +591,7 @@ async def test_passive_widget_never_erases_independent_boundary(monkeypatch, tmp
     assert [str(node) for node in retained.select('[data-security-widget]')] == [
         str(node) for node in original.select('[data-security-widget]')]
     assert all(not retained.select_one('#' + key).get('value') for key in ('first', 'last', 'email'))
-    if 'challenges.cloudflare.com' in challenge_html:
+    if _is_cloudflare_challenge_iframe(challenge_html):
         assert observed[0]["reason_code"] == "captcha_detected"
         assert observed[0]["details"]["selector"] == 'iframe[src*="challenges.cloudflare.com" i]'
         assert observed[0]["details"]["visible"] is True
