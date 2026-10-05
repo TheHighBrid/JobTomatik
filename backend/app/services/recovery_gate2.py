@@ -455,14 +455,9 @@ _PASSIVE_CAPTCHA = '.grecaptcha-badge, iframe[title="reCAPTCHA"][src*="size=invi
 
 
 async def detect_blocking_challenge(page):
-    """
-    The production runner's detector chain, bound independently of import order.
-
-    ``browser_navigation.detect_blocking_challenge`` is rebound by compatibility
-    layers depending on which modules load first (pytest loads app.main first and
-    received a different, badge-suppressing detector than the public runner).
-    Execute the same core -> DataDome -> Workday chain in every process.
-    """
+    """Run the core, DataDome and Workday detectors independently of import order."""
+    # Compatibility layers rebind browser_navigation.detect_blocking_challenge.
+    # Use the stable core alias so pytest and the public runner agree.
     for detector in (_navigation.core_detect_blocking_challenge,
                      detect_smartrecruiters_datadome, detect_workday_login_or_account_boundary):
         challenge = await detector(page)
