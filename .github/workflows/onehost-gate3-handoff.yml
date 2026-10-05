@@ -53,12 +53,16 @@ jobs:
       LEVER_SUPERVISED_PILOT_ENABLED: "false"
       ENABLE_RESUMABLE_HANDOFFS: "false"
       JOBTOMATIK_RUNTIME_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
-      JOBTOMATIK_GATE3_EVIDENCE_DIR: ${{ runner.temp }}/gate3-evidence
-      HANDOFF_STORAGE_DIR: ${{ runner.temp }}/gate3-handoffs
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Bind runner-local Gate 3 evidence paths
+        shell: bash
+        run: |
+          echo "JOBTOMATIK_GATE3_EVIDENCE_DIR=$RUNNER_TEMP/gate3-evidence" >> "$GITHUB_ENV"
+          echo "HANDOFF_STORAGE_DIR=$RUNNER_TEMP/gate3-handoffs" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v7
         with:
