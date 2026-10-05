@@ -9,6 +9,7 @@ on:
       - backend/app/services/browser_runtime_base.py
       - backend/app/services/handoff_session.py
       - backend/app/services/handoff_integration.py
+      - backend/app/services/retained_browser_lifecycle.py
       - backend/app/tasks/handoffs.py
       - backend/tests/test_onehost_gate3_handoff.py
       - backend/tests/test_handoff_submission_confirmation.py
@@ -25,6 +26,7 @@ on:
       - backend/app/services/browser_runtime_base.py
       - backend/app/services/handoff_session.py
       - backend/app/services/handoff_integration.py
+      - backend/app/services/retained_browser_lifecycle.py
       - backend/app/tasks/handoffs.py
       - backend/tests/test_onehost_gate3_handoff.py
       - backend/tests/test_handoff_submission_confirmation.py
