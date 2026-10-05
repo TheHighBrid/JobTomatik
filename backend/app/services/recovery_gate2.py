@@ -303,10 +303,15 @@ def _witness_target_type(item):
     return item.get("type") if isinstance(item, dict) else None
 
 
+def _witness_complete(witness) -> bool:
+    """Require both CDP lifecycle markers in structured witness evidence."""
+    return (isinstance(witness, dict) and witness.get("installed") is True
+            and witness.get("completed") is True)
+
+
 def _worker_witness_errors(witness) -> list:
     """Fail closed unless the CDP witness ran for the whole run and saw only routed targets."""
-    if not isinstance(witness, dict) or witness.get("installed") is not True \
-            or witness.get("completed") is not True:
+    if not _witness_complete(witness):
         return ["witness missing or incomplete"]
     targets, final = witness.get("targets"), witness.get("final_targets")
     if not isinstance(targets, list) or not isinstance(final, list) or witness.get("errors"):
