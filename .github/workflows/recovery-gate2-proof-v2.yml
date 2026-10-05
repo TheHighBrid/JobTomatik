@@ -79,6 +79,10 @@ jobs:
   proof-v2-fresh-runner-rehearsal:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
+      actions: read
     defaults:
       run:
         working-directory: backend
@@ -108,3 +112,16 @@ jobs:
           set -euo pipefail
           test "$PWD" = "$GITHUB_WORKSPACE/backend"
           test -f scripts/run_recovery_gate2_v2.py
+      - name: Shared receipt helper loads in github-script and excludes non-main receipts
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const gate2 = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/gate2_proof_v2_receipts.cjs`);
+            if (gate2.REQUIRED_CHECKS.length !== 12) throw new Error('unexpected REQUIRED_CHECKS');
+            const {owner, repo} = context.repo;
+            const sha = context.payload.pull_request ? context.payload.pull_request.head.sha : context.sha;
+            const {receipts, missing} = await gate2.collectReceipts({github, owner, repo, sha});
+            core.info(`receipts=${receipts.length} missing=${missing.length} event=${context.eventName} ref=${context.ref}`);
+            // Live negative control: pull_request runs and non-main dispatches are never receipts.
+            if (context.ref !== 'refs/heads/main' && receipts.length !== 0)
+              throw new Error(`non-main receipts accepted for ${sha}`);

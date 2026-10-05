@@ -601,6 +601,11 @@ def test_proof_controls_require_node_backed_helper_tests_and_rehearse_fresh_runn
     assert guard["env"]["INHERITED_OUTCOME"] == f"${{{{ steps.{negative['id']}.outcome }}}}"
     assert 'test "$INHERITED_OUTCOME" = "failure"' in guard["run"]
     assert "test ! -e backend" in guard["run"]
+    assert rehearsal["permissions"] == {"contents": "read", "checks": "read", "actions": "read"}
+    smoke = steps[checkout + 2]
+    assert smoke["uses"] == "actions/github-script@v9"
+    assert f"/{RECEIPT_HELPER_PATH}`)" in smoke["with"]["script"]
+    assert "receipts.length !== 0" in smoke["with"]["script"]
 
 
 def test_preflight_is_read_only_non_consuming_and_uses_identical_logic():
