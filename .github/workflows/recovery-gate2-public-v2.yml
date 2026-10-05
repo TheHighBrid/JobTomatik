@@ -1,0 +1,147 @@
+name: Recovery Gate 2 public proof v2
+
+on:
+  workflow_dispatch:
+    inputs:
+      execution_sha:
+        description: "Exact reviewed main SHA to execute"
+        required: true
+        type: string
+      proof_id:
+        description: "Exact code-reviewed proof identity"
+        required: true
+        type: string
+      target_url:
+        description: "Exact approved Greenhouse target URL"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: recovery-gate2-public-proof-v2
+  cancel-in-progress: false
+
+jobs:
+  public-proof-v2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+      DATABASE_URL: sqlite:///./gate2-public-v2.db
+      SECRET_KEY: gate2-public-v2-synthetic-only-secret
+      AI_PROVIDER: template
+      ALLOW_REAL_APPLICATION_SUBMIT: "false"
+      AUTOPILOT_ENABLED: "false"
+      GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+      LEVER_SUPERVISED_PILOT_ENABLED: "false"
+      ENABLE_RESUMABLE_HANDOFFS: "false"
+      AUTHORIZED_PROOF_ID: gate2-public-proof-v2-20261004
+      AUTHORIZED_TARGET_URL: https://job-boards.greenhouse.io/gitlab/jobs/8860302002
+      DISPATCH_EXECUTION_SHA: ${{ inputs.execution_sha }}
+      DISPATCH_PROOF_ID: ${{ inputs.proof_id }}
+      DISPATCH_TARGET_URL: ${{ inputs.target_url }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      # A fresh runner has an empty workspace until checkout, so this guard must
+      # not inherit the job's repo-relative default working directory.
+      - name: Reject reruns, non-main dispatches and unapproved inputs before checkout
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [[ "$GITHUB_RUN_ATTEMPT" == "1" ]] || fail "Gate 2 proof-v2 reruns are prohibited"
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || fail "Gate 2 proof-v2 must dispatch from main"
+          [[ "$DISPATCH_EXECUTION_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "Invalid execution SHA"
+          [[ "$DISPATCH_EXECUTION_SHA" == "$GITHUB_SHA" ]] || fail "Approved execution SHA differs from dispatched main SHA"
+          [[ "$DISPATCH_PROOF_ID" == "$AUTHORIZED_PROOF_ID" ]] || fail "Unapproved Gate 2 proof identity"
+          [[ "$DISPATCH_TARGET_URL" == "$AUTHORIZED_TARGET_URL" ]] || fail "Unapproved Gate 2 target"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.execution_sha }}
+
+      - name: Require exact authorization, canonical CI and unused proof-v2 workflow
+        uses: actions/github-script@v9
+        env:
+          EXECUTION_SHA: ${{ inputs.execution_sha }}
+          PROOF_ID: ${{ inputs.proof_id }}
+          TARGET_URL: ${{ inputs.target_url }}
+          AUTHORIZED_PROOF_ID: ${{ env.AUTHORIZED_PROOF_ID }}
+          AUTHORIZED_TARGET_URL: ${{ env.AUTHORIZED_TARGET_URL }}
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const sha = process.env.EXECUTION_SHA;
+            const proofId = process.env.PROOF_ID;
+            const targetUrl = process.env.TARGET_URL;
+            if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error("Invalid execution SHA");
+            if (sha !== context.sha) throw new Error("Approved execution SHA differs from dispatched main SHA");
+            if (proofId !== process.env.AUTHORIZED_PROOF_ID)
+              throw new Error("Unapproved Gate 2 proof identity");
+            if (targetUrl !== process.env.AUTHORIZED_TARGET_URL)
+              throw new Error("Unapproved Gate 2 target");
+            const workspace = process.env.GITHUB_WORKSPACE;
+            const head = require('child_process')
+              .execFileSync('git', ['-C', workspace, 'rev-parse', 'HEAD']).toString().trim();
+            if (head !== sha) throw new Error("Checked-out source differs from approved execution SHA");
+
+            const gate2 = require(`${workspace}/.github/scripts/gate2_proof_v2_receipts.cjs`);
+            const {receipts} = await gate2.requireReceipts({github, owner, repo, sha});
+            const history = await gate2.requireProofWorkflowUnused({github, owner, repo, runId: context.runId});
+
+            const fs = require('fs');
+            fs.writeFileSync(process.env.RUNNER_TEMP + '/gate2-ci-prerequisites-v2.json',
+              JSON.stringify({schema: gate2.PROOF_SCHEMA, proof_id: proofId, target_url: targetUrl, sha,
+                run_id: context.runId, receipts, proof_workflow_history: history}, null, 2));
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - run: python -m pip install -q -r requirements.txt
+      - run: python -m playwright install --with-deps chromium
+
+      - name: Exactly one proof-v2 Greenhouse no-submit dry-run
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run_recovery_gate2_v2.py \
+            --url "$DISPATCH_TARGET_URL" \
+            --proof-id "$DISPATCH_PROOF_ID" \
+            --execution-sha "$DISPATCH_EXECUTION_SHA" \
+            --ci-receipts "$RUNNER_TEMP/gate2-ci-prerequisites-v2.json" \
+            --evidence "$RUNNER_TEMP/gate2-public-v2-evidence" \
+            --ledger "$RUNNER_TEMP/gate2-public-v2-ledger.sqlite"
+
+      - name: Independently recompute proof-v2 verdict
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f "$RUNNER_TEMP/gate2-public-v2-evidence/summary.json"; then
+            python scripts/run_recovery_gate2_v2.py \
+              --evidence "$RUNNER_TEMP/gate2-public-v2-evidence" --review
+          else
+            echo "GATE 2: NOT PROVEN; proof-v2 runner did not execute"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: recovery-gate2-public-v2-${{ inputs.execution_sha }}
+          path: |
+            ${{ runner.temp }}/gate2-public-v2-evidence
+            ${{ runner.temp }}/gate2-public-v2-ledger.sqlite
+            ${{ runner.temp }}/gate2-ci-prerequisites-v2.json
+          if-no-files-found: error
+          retention-days: 90
