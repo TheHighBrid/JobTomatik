@@ -38,12 +38,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install focused test dependencies
-        run: python -m pip install -q pytest pyyaml
-
-      - name: Run production cutover regressions
-        run: python -m pytest -q backend/tests/test_onehost_production_cutover.py
-
       - name: Generate ephemeral CI runtime secrets
         shell: bash
         run: |
@@ -51,6 +45,12 @@ jobs:
           echo "SECRET_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" >> "$GITHUB_ENV"
           echo "ANSWER_VAULT_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" >> "$GITHUB_ENV"
           echo "JOBTOMATIK_RUNTIME_REVISION=${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Install backend test dependencies
+        run: python -m pip install -q -r backend/requirements.txt
+
+      - name: Run production cutover regressions
+        run: python -m pytest -q backend/tests/test_onehost_production_cutover.py
 
       - name: Render production Compose
         run: docker compose -f docker-compose.onehost-production.yml config > "$RUNNER_TEMP/onehost-production.rendered.yml"
