@@ -1,0 +1,844 @@
+diff --git a/backend/app/services/application_reconciliation.py b/backend/app/services/application_reconciliation.py
+new file mode 100644
+--- /dev/null
+@@ -0,0 +1,295 @@
++"""Evidence-gated forward reconciliation for interrupted submissions.
++
++Recovery (``application_recovery``) is deliberately fail-closed: an attempt that was
++abandoned in ``applying`` becomes ``submission_uncertain``. That is correct when no
++confirmation was observed. It leaves a gap when the worker died *after* sufficient
++confirmation evidence was durably recorded but *before* the lifecycle state was
++promoted: the application stays uncertain, an uncertainty review task stays open, a
++final-submit handoff may stay active, and the submission attempt stays "active".
++
++This module closes that gap without relaxing any invariant:
++
++* It never creates, edits, or infers evidence. It only consumes evidence rows that were
++  already recorded as sufficient through the normal evidence pipeline.
++* State promotion still goes through ``transition_application_state`` so the
++  evidence-before-state-promotion invariant is enforced by the canonical state machine.
++* Evidence whose replay receipt belongs to a different application is refused.
++* It never reopens retry authority. Closing the attempt and handoff only removes stale
++  "active" markers; ``submission_is_closed`` then blocks any further queued work.
++* It is idempotent: running it twice produces one promotion and one event.
++
++It is additive and intentionally not wired into Celery beat or the API here. Wiring is a
++shared-file change that must be coordinated with the integration lead.
++"""
++
++from __future__ import annotations
++
++from datetime import datetime
++from typing import Any, Dict, List, Optional
++
++from sqlalchemy.orm import Session
++
++from app.models.application import (
++    Application,
++    ApplicationAutomationState,
++    ApplicationEvent,
++    ApplicationStatus,
++    ManualReviewReason,
++    ManualReviewStatus,
++    ManualReviewTask,
++    SubmissionEvidence,
++)
++from app.models.handoff import ACTIVE_HANDOFF_STATUSES, ManualHandoffSession
++from app.models.submission_integrity import (
++    ACTIVE_SUBMISSION_ATTEMPT_STATUSES,
++    SubmissionAttempt,
++    SubmissionAttemptStatus,
++    SubmissionEvidenceReceipt,
++)
++from app.services.application_state import (
++    InvalidApplicationTransition,
++    normalize_state,
++    transition_application_state,
++)
++from app.services.handoff_session import cancel_handoff_session
++from app.services.submission_integrity import finalize_submission_attempt
++
++RECONCILED_EVENT = "application_reconciled_from_evidence"
++
++# States that can legitimately be left behind by a crash between evidence persistence
++# and state promotion. Anything else (preparing, ready_to_apply, needs_review, failed)
++# is not an in-flight submission and is never promoted from evidence alone.
++RECONCILABLE_STATES = frozenset(
++    {
++        ApplicationAutomationState.applying.value,
++        ApplicationAutomationState.submission_uncertain.value,
++        ApplicationAutomationState.submitted.value,
++    }
++)
++ALREADY_FINAL_STATES = frozenset(
++    {
++        ApplicationAutomationState.confirmed.value,
++        ApplicationAutomationState.withdrawn.value,
++    }
++)
++
++
++def _result(application: Application, reconciled: bool, reason: str, **extra: Any) -> Dict[str, Any]:
++    return {
++        "application_id": application.id,
++        "reconciled": reconciled,
++        "reason": reason,
++        "state": normalize_state(application.automation_state),
++        "automatic_retry_allowed": False,
++        **extra,
++    }
++
++
++def _sufficient_evidence(db: Session, application_id: int) -> List[SubmissionEvidence]:
++    return (
++        db.query(SubmissionEvidence)
++        .filter(
++            SubmissionEvidence.application_id == application_id,
++            SubmissionEvidence.is_sufficient.is_(True),
++        )
++        .order_by(SubmissionEvidence.id.asc())
++        .all()
++    )
++
++
++def _foreign_receipt(
++    db: Session,
++    application: Application,
++    evidence: List[SubmissionEvidence],
++) -> Optional[SubmissionEvidenceReceipt]:
++    ids = [item.id for item in evidence if item.id is not None]
++    if not ids:
++        return None
++    return (
++        db.query(SubmissionEvidenceReceipt)
++        .filter(
++            SubmissionEvidenceReceipt.evidence_id.in_(ids),
++            SubmissionEvidenceReceipt.application_id != application.id,
++        )
++        .first()
++    )
++
++
++def reconcile_application_from_evidence(
++    db: Session,
++    application: Application,
++    *,
++    source: str = "reconciliation",
++) -> Dict[str, Any]:
++    """Promote one interrupted application to ``confirmed`` only on recorded evidence."""
++
++    state = normalize_state(application.automation_state)
++    if state in ALREADY_FINAL_STATES:
++        return _result(application, False, "already_final")
++    if state not in RECONCILABLE_STATES:
++        return _result(application, False, "state_not_reconcilable")
++
++    evidence = _sufficient_evidence(db, application.id)
++    if not evidence:
++        # No evidence: stay exactly where we are. Uncertain stays uncertain.
++        return _result(application, False, "no_sufficient_evidence")
++
++    foreign = _foreign_receipt(db, application, evidence)
++    if foreign is not None:
++        return _result(
++            application,
++            False,
++            "evidence_receipt_owned_by_other_application",
++            existing_application_id=foreign.application_id,
++        )
++
++    evidence_id = evidence[-1].id
++    try:
++        if state == ApplicationAutomationState.applying.value:
++            # The canonical graph has no applying -> confirmed edge. Step through
++            # submitted; both hops are individually evidence-gated.
++            transition_application_state(
++                db,
++                application,
++                ApplicationAutomationState.submitted,
++                RECONCILED_EVENT,
++                {
++                    "source": source,
++                    "from_state": state,
++                    "evidence_id": evidence_id,
++                    "evidence_created_by_reconciliation": False,
++                    "automatic_retry_allowed": False,
++                },
++                allow_same=False,
++            )
++        transition_application_state(
++            db,
++            application,
++            ApplicationAutomationState.confirmed,
++            RECONCILED_EVENT,
++            {
++                "source": source,
++                "from_state": state,
++                "evidence_id": evidence_id,
++                "evidence_created_by_reconciliation": False,
++                "automatic_retry_allowed": False,
++            },
++            allow_same=False,
++        )
++    except InvalidApplicationTransition as exc:
++        return _result(application, False, "transition_refused", error=str(exc)[:300])
++
++    now = datetime.utcnow()
++    application.status = ApplicationStatus.applied
++    application.applied_at = application.applied_at or now
++
++    closed_attempts: List[str] = []
++    attempts = (
++        db.query(SubmissionAttempt)
++        .filter(
++            SubmissionAttempt.application_id == application.id,
++            SubmissionAttempt.status.in_(ACTIVE_SUBMISSION_ATTEMPT_STATUSES),
++        )
++        .all()
++    )
++    for attempt in attempts:
++        finalize_submission_attempt(
++            db,
++            attempt,
++            status=SubmissionAttemptStatus.succeeded,
++            result={
++                "reconciled_from_evidence": True,
++                "evidence_id": evidence_id,
++                "source": source,
++            },
++        )
++        closed_attempts.append(attempt.reference)
++
++    resolved_reviews = 0
++    reviews = (
++        db.query(ManualReviewTask)
++        .filter(
++            ManualReviewTask.application_id == application.id,
++            ManualReviewTask.reason_code
++            == ManualReviewReason.submission_confirmation_uncertain.value,
++            ManualReviewTask.status.in_(
++                [ManualReviewStatus.open.value, ManualReviewStatus.in_progress.value]
++            ),
++        )
++        .all()
++    )
++    for review in reviews:
++        review.status = ManualReviewStatus.resolved.value
++        review.resolved_at = now
++        review.resolution_notes = (
++            "Resolved by evidence reconciliation: sufficient confirmation evidence "
++            f"{evidence_id} was already recorded."
++        )
++        resolved_reviews += 1
++
++    cancelled_handoffs = 0
++    sessions = (
++        db.query(ManualHandoffSession)
++        .filter(
++            ManualHandoffSession.application_id == application.id,
++            ManualHandoffSession.status.in_(ACTIVE_HANDOFF_STATUSES),
++        )
++        .all()
++    )
++    for session in sessions:
++        cancel_handoff_session(
++            db,
++            session,
++            user_id=application.user_id,
++            reason="Application reconciled from recorded confirmation evidence.",
++        )
++        cancelled_handoffs += 1
++
++    db.flush()
++    return _result(
++        application,
++        True,
++        "promoted_from_evidence",
++        evidence_id=evidence_id,
++        closed_attempts=closed_attempts,
++        resolved_reviews=resolved_reviews,
++        cancelled_handoffs=cancelled_handoffs,
++        from_state=state,
++    )
++
++
++def reconcile_interrupted_applications(
++    db: Session,
++    *,
++    user_id: Optional[int] = None,
++    limit: int = 200,
++    source: str = "reconciliation_sweep",
++) -> List[Dict[str, Any]]:
++    """Reconcile every interrupted application that already has sufficient evidence."""
++
++    query = (
++        db.query(Application)
++        .filter(Application.automation_state.in_(sorted(RECONCILABLE_STATES)))
++        .filter(
++            db.query(SubmissionEvidence.id)
++            .filter(
++                SubmissionEvidence.application_id == Application.id,
++                SubmissionEvidence.is_sufficient.is_(True),
++            )
++            .exists()
++        )
++        .order_by(Application.id.asc())
++    )
++    if user_id is not None:
++        query = query.filter(Application.user_id == user_id)
++    return [
++        reconcile_application_from_evidence(db, application, source=source)
++        for application in query.limit(max(1, int(limit))).all()
++    ]
++
++
++__all__ = [
++    "RECONCILED_EVENT",
++    "reconcile_application_from_evidence",
++    "reconcile_interrupted_applications",
++]
+diff --git a/backend/tests/test_greenhouse_reconciliation_defense.py b/backend/tests/test_greenhouse_reconciliation_defense.py
+new file mode 100644
+--- /dev/null
+@@ -0,0 +1,541 @@
++"""Synthetic reconciliation and duplicate-defense tests (Greenhouse lane, Bot 3).
++
++All results here are SYNTHETIC: in-memory database, no browser, no employer, no real
++submission, no approval for a real action. They exercise the accounting layer only and
++do not certify physical Greenhouse behavior.
++
++Scenarios:
++  1. submit -> confirmation -> evidence -> confirmed
++  2. submit -> ambiguous result -> submission_uncertain (never confirmed without evidence)
++  3. confirmation -> process crash -> restart -> reconcile
++  4. confirmed -> retry -> blocked
++  5. same job -> new application -> blocked
++  6. stale approval -> blocked
++  7. changed payload -> approval invalid
++"""
++
++from __future__ import annotations
++
++from datetime import datetime, timedelta
++
++import pytest
++
++from app.models.application import (
++    Application,
++    ApplicationAutomationState,
++    ApplicationEvent,
++    ApplicationStatus,
++    ManualReviewReason,
++    ManualReviewStatus,
++    ManualReviewTask,
++    SubmissionEvidence,
++    SubmissionEvidenceType,
++)
++from app.models.handoff import (
++    HandoffChallengeType,
++    HandoffSessionStatus,
++    ManualHandoffSession,
++)
++from app.models.job import Job, JobSource, JobStatus
++from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
++from app.models.submission_integrity import (
++    SubmissionAttempt,
++    SubmissionAttemptStatus,
++    SubmissionEvidenceReceipt,
++)
++from app.models.user import User
++from app.services.application_integrity import (
++    closed_application_task_result,
++    submission_is_closed,
++)
++from app.services.application_reconciliation import (
++    RECONCILED_EVENT,
++    reconcile_application_from_evidence,
++    reconcile_interrupted_applications,
++)
++from app.services.application_recovery import recover_stale_application_attempt
++from app.services.application_state import (
++    InvalidApplicationTransition,
++    record_submission_evidence,
++    transition_application_state,
++)
++from app.services.submission_integrity import (
++    DuplicateSubmissionIdentityError,
++    approval_submission_binding_hash,
++    build_submission_identity_aliases,
++    claim_submission_attempt,
++    claim_submission_identity_aliases,
++    reserve_submission_attempt,
++    submission_attempt_replay_result,
++)
++
++GREENHOUSE_URL = "https://job-boards.greenhouse.io/synthetic/jobs/900001"
++CONFIRMATION_URL = GREENHOUSE_URL + "/confirmation"
++
++
++# ---------------------------------------------------------------- fixtures
++
++
++def _user(db, suffix="a"):
++    item = User(
++        email=f"gh-recon-{suffix}@example.test",
++        hashed_password="not-used-in-test",
++        full_name="Synthetic Candidate",
++    )
++    db.add(item)
++    db.flush()
++    return item
++
++
++def _job(db, suffix="a", url=GREENHOUSE_URL):
++    item = Job(
++        external_id=f"gh-recon-{suffix}",
++        title="Synthetic Role",
++        company="Synthetic Employer",
++        url=url,
++        source=JobSource.manual,
++        status=JobStatus.approved,
++        raw_data={},
++    )
++    db.add(item)
++    db.flush()
++    return item
++
++
++def _application(
++    db,
++    user,
++    job,
++    *,
++    state=ApplicationAutomationState.applying.value,
++    key=None,
++    started_minutes_ago=60,
++    live=True,
++):
++    started = datetime.utcnow() - timedelta(minutes=started_minutes_ago)
++    item = Application(
++        user_id=user.id,
++        job_id=job.id,
++        status=ApplicationStatus.applying,
++        automation_state=state,
++        source_listing_url=job.url,
++        submission_attempt_count=1,
++        last_submission_attempt_at=started,
++        submission_idempotency_key=key or f"gh-recon:{user.id}:{job.id}",
++        created_at=started,
++    )
++    db.add(item)
++    db.flush()
++    claim_submission_identity_aliases(
++        db,
++        item,
++        build_submission_identity_aliases(job, application=item),
++    )
++    db.add(
++        ApplicationEvent(
++            application_id=item.id,
++            event_type="application_attempt_started",
++            from_state=ApplicationAutomationState.ready_to_apply.value,
++            to_state=ApplicationAutomationState.applying.value,
++            payload={"dry_run": not live, "attempt": 1},
++            created_at=started,
++        )
++    )
++    db.flush()
++    return item
++
++
++def _approval(db, user, application, *, reference="ghsup-synthetic-1"):
++    now = datetime.utcnow()
++    item = SubmissionApproval(
++        reference=reference,
++        application_id=application.id,
++        user_id=user.id,
++        platform="greenhouse",
++        status=SubmissionApprovalStatus.active.value,
++        employer="Synthetic Employer",
++        role="Synthetic Role",
++        application_url=GREENHOUSE_URL,
++        submission_idempotency_key=application.submission_idempotency_key,
++        profile_snapshot_hash="1" * 64,
++        resume_hash="2" * 64,
++        cover_letter_hash="3" * 64,
++        answer_payload_hash="4" * 64,
++        combined_payload_hash="5" * 64,
++        approved_at=now,
++        expires_at=now + timedelta(minutes=20),
++        approval_metadata={
++            "adapter_version": "greenhouse-v1",
++            "target_identity_hash": "6" * 64,
++        },
++    )
++    db.add(item)
++    db.flush()
++    item.approval_metadata = {
++        **dict(item.approval_metadata or {}),
++        "submission_binding_hash": approval_submission_binding_hash(item),
++    }
++    db.flush()
++    return item
++
++
++def _sufficient_evidence(db, application, *, external_id="gh-application-900001"):
++    evidence = record_submission_evidence(
++        db,
++        application,
++        SubmissionEvidenceType.confirmation_page,
++        is_sufficient=True,
++        final_url=CONFIRMATION_URL,
++        confirmation_text="Thank you for applying.",
++        external_application_id=external_id,
++        metadata={"platform": "greenhouse", "synthetic": True},
++    )
++    db.flush()
++    return evidence
++
++
++def _events(db, application, event_type):
++    return (
++        db.query(ApplicationEvent)
++        .filter(
++            ApplicationEvent.application_id == application.id,
++            ApplicationEvent.event_type == event_type,
++        )
++        .order_by(ApplicationEvent.id.asc())
++        .all()
++    )
++
++
++# --------------------------------------------- 1. evidence -> confirmed
++
++
++def test_submit_confirmation_evidence_then_confirmed(db_session):
++    user = _user(db_session)
++    application = _application(db_session, user, _job(db_session))
++
++    # Evidence-before-state-promotion: no evidence, no promotion by any route.
++    for target in (
++        ApplicationAutomationState.submitted,
++        ApplicationAutomationState.confirmed,
++    ):
++        with pytest.raises(InvalidApplicationTransition, match="evidence"):
++            transition_application_state(db_session, application, target, "premature")
++
++    unchanged = reconcile_application_from_evidence(db_session, application)
++    assert unchanged["reconciled"] is False
++    assert unchanged["reason"] == "no_sufficient_evidence"
++    assert application.automation_state == ApplicationAutomationState.applying.value
++
++    _sufficient_evidence(db_session, application)
++    result = reconcile_application_from_evidence(db_session, application)
++
++    assert result["reconciled"] is True
++    assert result["reason"] == "promoted_from_evidence"
++    assert result["automatic_retry_allowed"] is False
++    assert application.automation_state == ApplicationAutomationState.confirmed.value
++    assert application.status == ApplicationStatus.applied
++    assert application.applied_at is not None
++    # Reconciliation consumes evidence; it never creates any.
++    assert db_session.query(SubmissionEvidence).count() == 1
++    hops = [
++        (event.from_state, event.to_state)
++        for event in _events(db_session, application, RECONCILED_EVENT)
++    ]
++    assert hops == [("applying", "submitted"), ("submitted", "confirmed")]
++
++
++# ----------------------------------- 2. ambiguous -> submission_uncertain
++
++
++def test_ambiguous_result_stays_uncertain_and_never_confirms(db_session):
++    user = _user(db_session)
++    application = _application(db_session, user, _job(db_session))
++
++    # An ambiguous page produced a screenshot but no confirmation signal.
++    ambiguous = record_submission_evidence(
++        db_session,
++        application,
++        SubmissionEvidenceType.screenshot,
++        is_sufficient=False,
++        final_url=GREENHOUSE_URL,
++        screenshot_path="/state/evidence/ambiguous.png",
++        metadata={"platform": "greenhouse", "synthetic": True},
++    )
++    db_session.flush()
++    assert ambiguous.is_sufficient is False
++
++    before = reconcile_application_from_evidence(db_session, application)
++    assert before["reconciled"] is False
++    assert before["reason"] == "no_sufficient_evidence"
++    assert application.automation_state == ApplicationAutomationState.applying.value
++
++    recovered = recover_stale_application_attempt(
++        db_session,
++        application,
++        timeout_minutes=30,
++    )
++    assert recovered["recovered"] is True
++    assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
++
++    after = reconcile_application_from_evidence(db_session, application)
++    assert after["reconciled"] is False
++    assert after["reason"] == "no_sufficient_evidence"
++    assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
++    review = (
++        db_session.query(ManualReviewTask)
++        .filter(ManualReviewTask.application_id == application.id)
++        .one()
++    )
++    assert review.status == ManualReviewStatus.open.value
++    assert review.reason_code == ManualReviewReason.submission_confirmation_uncertain.value
++    assert _events(db_session, application, RECONCILED_EVENT) == []
++
++
++# ----------------------- 3. confirmation -> crash -> restart -> reconcile
++
++
++def test_crash_after_confirmation_reconciles_after_restart(db_session):
++    user = _user(db_session)
++    application = _application(db_session, user, _job(db_session))
++    approval = _approval(db_session, user, application)
++    attempt, _ = reserve_submission_attempt(
++        db_session, application, approval, task_id="gh-crash-task"
++    )
++    claimed, owner = claim_submission_attempt(
++        db_session, application, approval, attempt_reference=attempt.reference
++    )
++    assert owner is True
++    # claim_submission_attempt updates the row without refreshing the ORM object.
++    db_session.refresh(claimed)
++    assert claimed.status == SubmissionAttemptStatus.in_progress.value
++
++    # The confirmation was recorded durably, then the worker died before promotion.
++    evidence = _sufficient_evidence(db_session, application)
++
++    # Restart: stale recovery runs first and fails closed.
++    recovered = recover_stale_application_attempt(
++        db_session, application, timeout_minutes=30
++    )
++    assert recovered["recovered"] is True
++    assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
++
++    # A stale final-submit handoff is still active for the uncertain application.
++    review = (
++        db_session.query(ManualReviewTask)
++        .filter(ManualReviewTask.application_id == application.id)
++        .one()
++    )
++    handoff = ManualHandoffSession(
++        application_id=application.id,
++        manual_review_id=review.id,
++        user_id=user.id,
++        challenge_type=HandoffChallengeType.final_submit.value,
++        status=HandoffSessionStatus.awaiting_user.value,
++        idempotency_key="gh-crash-handoff",
++        resume_token_hash="a" * 64,
++        encrypted_resume_token="synthetic",
++        resume_token_prefix="synthetic",
++        expires_at=datetime.utcnow() + timedelta(minutes=10),
++    )
++    db_session.add(handoff)
++    db_session.flush()
++
++    results = reconcile_interrupted_applications(db_session)
++    db_session.flush()
++
++    assert len(results) == 1
++    assert results[0]["reconciled"] is True
++    assert results[0]["from_state"] == ApplicationAutomationState.submission_uncertain.value
++    assert results[0]["evidence_id"] == evidence.id
++    assert application.automation_state == ApplicationAutomationState.confirmed.value
++    assert application.status == ApplicationStatus.applied
++
++    db_session.refresh(claimed)
++    db_session.refresh(review)
++    db_session.refresh(handoff)
++    assert claimed.status == SubmissionAttemptStatus.succeeded.value
++    assert review.status == ManualReviewStatus.resolved.value
++    assert handoff.status == HandoffSessionStatus.cancelled.value
++
++    # Replay of the same sweep is a no-op: one promotion, no extra events.
++    event_count = db_session.query(ApplicationEvent).count()
++    again = reconcile_application_from_evidence(db_session, application)
++    assert again["reconciled"] is False
++    assert again["reason"] == "already_final"
++    assert db_session.query(ApplicationEvent).count() == event_count
++
++
++def test_reconciliation_refuses_evidence_owned_by_another_application(db_session):
++    user = _user(db_session)
++    owner = _application(db_session, user, _job(db_session, "owner"))
++    victim = _application(
++        db_session,
++        user,
++        _job(db_session, "victim", url=GREENHOUSE_URL + "-2"),
++        key="gh-recon:victim",
++    )
++    stolen = SubmissionEvidence(
++        application_id=victim.id,
++        evidence_type=SubmissionEvidenceType.confirmation_page.value,
++        is_sufficient=True,
++        final_url=CONFIRMATION_URL,
++        confirmation_text="Thank you for applying.",
++        evidence_metadata={"platform": "greenhouse", "synthetic": True},
++    )
++    db_session.add(stolen)
++    db_session.flush()
++    db_session.add(
++        SubmissionEvidenceReceipt(
++            fingerprint="f" * 64,
++            application_id=owner.id,
++            user_id=user.id,
++            evidence_id=stolen.id,
++            evidence_type=stolen.evidence_type,
++            final_url=CONFIRMATION_URL,
++        )
++    )
++    db_session.flush()
++
++    result = reconcile_application_from_evidence(db_session, victim)
++
++    assert result["reconciled"] is False
++    assert result["reason"] == "evidence_receipt_owned_by_other_application"
++    assert result["existing_application_id"] == owner.id
++    assert victim.automation_state == ApplicationAutomationState.applying.value
++
++
++# ------------------------------------------- 4. confirmed -> retry -> blocked
++
++
++def test_confirmed_application_blocks_every_retry_path(db_session):
++    user = _user(db_session)
++    application = _application(db_session, user, _job(db_session))
++    approval = _approval(db_session, user, application)
++    attempt, _ = reserve_submission_attempt(
++        db_session, application, approval, task_id="gh-retry-task"
++    )
++    claim_submission_attempt(
++        db_session, application, approval, attempt_reference=attempt.reference
++    )
++    _sufficient_evidence(db_session, application)
++    assert reconcile_application_from_evidence(db_session, application)["reconciled"]
++
++    # Terminal state: no outgoing transition of any kind.
++    for target in (
++        ApplicationAutomationState.ready_to_apply,
++        ApplicationAutomationState.applying,
++        ApplicationAutomationState.failed,
++        ApplicationAutomationState.needs_review,
++    ):
++        with pytest.raises(InvalidApplicationTransition):
++            transition_application_state(
++                db_session, application, target, "retry", allow_same=False
++            )
++
++    # Queued stale work is turned into an idempotent no-op before any approval use.
++    assert submission_is_closed(application) is True
++    replay_task = closed_application_task_result(application, dry_run=False)
++    assert replay_task["idempotent"] is True
++    assert replay_task["already_submitted"] is True
++
++    # The finished attempt can never be claimed again.
++    db_session.refresh(attempt)
++    replay, is_owner = claim_submission_attempt(
++        db_session, application, approval, attempt_reference=attempt.reference
++    )
++    assert is_owner is False
++    replay_result = submission_attempt_replay_result(replay)
++    assert replay_result["duplicate_final_action_prevented"] is True
++    assert replay_result["automatic_retry_allowed"] is False
++
++
++# ------------------------------- 5. same job -> new application -> blocked
++
++
++def test_same_job_new_application_is_blocked(db_session):
++    user = _user(db_session)
++    job = _job(db_session)
++    first = _application(db_session, user, job)
++    assert first.id is not None
++
++    second = Application(
++        user_id=user.id,
++        job_id=job.id,
++        status=ApplicationStatus.pending,
++        automation_state=ApplicationAutomationState.ready_to_apply.value,
++        source_listing_url=job.url,
++        submission_idempotency_key="gh-recon:second-application",
++    )
++    db_session.add(second)
++    db_session.flush()
++
++    with pytest.raises(DuplicateSubmissionIdentityError) as blocked:
++        claim_submission_identity_aliases(
++            db_session,
++            second,
++            build_submission_identity_aliases(job, application=second),
++        )
++    assert blocked.value.existing_application_id == first.id
++
++
++# ---------------------------------------------- 6. stale approval -> blocked
++
++
++def test_stale_approval_changes_binding_and_blocks_claim(db_session):
++    user = _user(db_session)
++    application = _application(db_session, user, _job(db_session))
++    approval = _approval(db_session, user, application)
++    attempt, created = reserve_submission_attempt(
++        db_session, application, approval, task_id="gh-stale-task"
++    )
++    assert created is True
++
++    # Re-issuing/extending the approval after reservation changes its exact binding.
++    approval.expires_at = approval.expires_at + timedelta(hours=6)
++    db_session.flush()
++
++    blocked, is_owner = claim_submission_attempt(
++        db_session, application, approval, attempt_reference=attempt.reference
++    )
++
++    assert is_owner is False
++    assert blocked.status == SubmissionAttemptStatus.blocked.value
++    assert blocked.attempt_metadata["block_reason"] == "approval_binding_changed"
++    assert blocked.started_at is None
++
++
++# ----------------------------------- 7. changed payload -> approval invalid
++
++
++@pytest.mark.parametrize(
++    "field",
++    ["resume_hash", "cover_letter_hash", "answer_payload_hash", "combined_payload_hash"],
++)
++def test_changed_payload_invalidates_approval_binding(db_session, field):
++    user = _user(db_session, suffix=field)
++    application = _application(
++        db_session, user, _job(db_session, suffix=field), key=f"gh-recon:{field}"
++    )
++    approval = _approval(db_session, user, application, reference=f"ghsup-{field}")
++    attempt, _ = reserve_submission_attempt(
++        db_session, application, approval, task_id=f"task-{field}"
++    )
++    original_binding = attempt.binding_hash
++
++    setattr(approval, field, "9" * 64)
++    db_session.flush()
++    assert approval_submission_binding_hash(approval) != original_binding
++
++    blocked, is_owner = claim_submission_attempt(
++        db_session, application, approval, attempt_reference=attempt.reference
++    )
++
++    assert is_owner is False
++    assert blocked.status == SubmissionAttemptStatus.blocked.value
++    assert blocked.attempt_metadata["block_reason"] == "approval_binding_changed"
++    assert (
++        db_session.query(SubmissionAttempt)
++        .filter(SubmissionAttempt.status == SubmissionAttemptStatus.in_progress.value)
++        .count()
++        == 0
++    )
