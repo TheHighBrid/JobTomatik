@@ -431,8 +431,18 @@ activate_stack() {
   ensure_pilot_controller
 }
 
+android_thin_client_notice() {
+  local action="$1"
+  echo "JOBTOMATIK_ANDROID_THIN_CLIENT_MODE action=$action"
+  echo "Android is a JobTomatik client only; API, Celery and application Chromium run on OneHost."
+  echo "Configure the APK API connection to the reachable OneHost backend."
+}
+
 case "$ACTION" in
   browser-preflight)
+    android_thin_client_notice browser-preflight
+    echo "JOBTOMATIK_ANDROID_BROWSER_PREFLIGHT_RETIRED" >&2
+    exit 2
     verify_backend_environment
     ensure_application_browser_endpoint
     # Persist the validated default/explicit endpoint before the probe reloads
@@ -441,6 +451,8 @@ case "$ACTION" in
     ensure_browser_playwright_ready
     ;;
   start)
+    android_thin_client_notice start
+    exit 0
     verify_backend_environment
     # `jobtomatik start` is idempotent. Never recycle the external authenticated
     # Chromium while the managed stack is already live and healthy because that could
@@ -458,6 +470,8 @@ case "$ACTION" in
     fi
     ;;
   restart)
+    android_thin_client_notice restart
+    exit 0
     verify_backend_environment
     stop_stack_supervisor
     # Deployment markers are consumed for compatibility, never to replace Chrome.
@@ -465,6 +479,8 @@ case "$ACTION" in
     activate_stack restart
     ;;
   status)
+    android_thin_client_notice status
+    exit 0
     verify_backend_environment
     native_android_chrome_cdp_ready
     run_stack_foreground status
@@ -472,6 +488,9 @@ case "$ACTION" in
     pilot_controller_status || true
     ;;
   acceptance)
+    android_thin_client_notice acceptance
+    echo "JOBTOMATIK_ANDROID_RUNTIME_ACCEPTANCE_RETIRED" >&2
+    exit 2
     verify_backend_environment
     # Acceptance evidence is device-bound, not merely browser-package-bound. Recheck
     # the exact selected ADB serial and forward before a PASS receipt can be written.
