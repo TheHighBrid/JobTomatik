@@ -257,6 +257,58 @@ def checkpoint_operator_final_action_live_snapshot(
     return approval
 
 
+def _load_reconciliation_review(
+    db: Session,
+    session: ManualHandoffSession,
+) -> Optional[ManualReviewTask]:
+    """Lock the linked open review when one exists."""
+
+    review_id = getattr(session, "manual_review_id", None)
+    if review_id is None:
+        return None
+    review = (
+        db.query(ManualReviewTask)
+        .filter(ManualReviewTask.id == review_id)
+        .with_for_update()
+        .first()
+    )
+    if review is None:
+        return None
+    if review.status not in {
+        ManualReviewStatus.open.value,
+        ManualReviewStatus.in_progress.value,
+    }:
+        return None
+    return review
+
+
+def _update_reconciliation_review(
+    review: ManualReviewTask,
+    session: ManualHandoffSession,
+    *,
+    outcome: str,
+    error_text: Optional[str],
+    current_url: str,
+) -> None:
+    """Convert the existing final-submit review into confirmation reconciliation."""
+
+    review.reason_code = ManualReviewReason.submission_confirmation_uncertain.value
+    review.status = ManualReviewStatus.in_progress.value
+    review.summary = (
+        "The once-only final action was claimed, but employer confirmation is "
+        "not yet proven. Verify the retained employer page before any new action."
+    )
+    review.blocking_url = current_url or review.blocking_url
+    review.details = {
+        **dict(review.details or {}),
+        "handoff_public_id": session.public_id,
+        "operator_final_action_outcome": outcome,
+        "automatic_retry_allowed": False,
+        "confirmation_reconciliation_required": True,
+        "error": error_text,
+    }
+
+
 def _reconcile_uncertain_final_action(
     db: Session,
     application: Application,
@@ -290,31 +342,15 @@ def _reconcile_uncertain_final_action(
             },
         )
 
-    review = (
-        db.query(ManualReviewTask)
-        .filter(ManualReviewTask.id == session.manual_review_id)
-        .with_for_update()
-        .first()
-    )
-    if review is not None and review.status in {
-        ManualReviewStatus.open.value,
-        ManualReviewStatus.in_progress.value,
-    }:
-        review.reason_code = ManualReviewReason.submission_confirmation_uncertain.value
-        review.status = ManualReviewStatus.in_progress.value
-        review.summary = (
-            "The once-only final action was claimed, but employer confirmation is "
-            "not yet proven. Verify the retained employer page before any new action."
+    review = _load_reconciliation_review(db, session)
+    if review is not None:
+        _update_reconciliation_review(
+            review,
+            session,
+            outcome=outcome,
+            error_text=error_text,
+            current_url=current_url,
         )
-        review.blocking_url = current_url or review.blocking_url
-        review.details = {
-            **dict(review.details or {}),
-            "handoff_public_id": session.public_id,
-            "operator_final_action_outcome": outcome,
-            "automatic_retry_allowed": False,
-            "confirmation_reconciliation_required": True,
-            "error": error_text,
-        }
 
     session.handoff_metadata = {
         **dict(session.handoff_metadata or {}),
