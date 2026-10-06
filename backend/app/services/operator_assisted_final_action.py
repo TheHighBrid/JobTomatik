@@ -40,20 +40,24 @@ def _claim_runtime_blockers(url: str) -> list[str]:
     core = get_settings()
     platform = platform_key_for_url(str(url or ""))
     disabled = disabled_platforms(operations.disabled_platforms)
-    blockers: list[str] = []
-
-    if operations.global_kill_switch:
-        blockers.append("global_kill_switch_active")
-    if platform in disabled or "all" in disabled:
-        blockers.append("platform_disabled")
-    if operations.autopilot_enabled:
-        blockers.append("operator_assisted_requires_autopilot_disabled")
-    if bool(core.allow_real_application_submit):
-        blockers.append("operator_assisted_requires_global_submit_disabled")
     policy = get_supervised_platform_policy(platform)
-    if policy is not None and policy.pilot_enabled(core):
-        blockers.append("operator_assisted_requires_platform_pilot_disabled")
-    return blockers
+    checks = (
+        (operations.global_kill_switch, "global_kill_switch_active"),
+        (platform in disabled or "all" in disabled, "platform_disabled"),
+        (
+            operations.autopilot_enabled,
+            "operator_assisted_requires_autopilot_disabled",
+        ),
+        (
+            bool(core.allow_real_application_submit),
+            "operator_assisted_requires_global_submit_disabled",
+        ),
+        (
+            policy is not None and policy.pilot_enabled(core),
+            "operator_assisted_requires_platform_pilot_disabled",
+        ),
+    )
+    return [reason for blocked, reason in checks if blocked]
 
 
 def _bound_consumed_approval(
@@ -359,6 +363,30 @@ def _reconcile_uncertain_final_action(
     }
 
 
+def _reconcile_final_action_if_needed(
+    db: Session,
+    application: Application,
+    session: ManualHandoffSession,
+    *,
+    confirmed: bool,
+    outcome: str,
+    error_text: Optional[str],
+    current_url: str,
+) -> None:
+    """Reconcile only outcomes that still lack employer confirmation."""
+
+    if confirmed:
+        return
+    _reconcile_uncertain_final_action(
+        db,
+        application,
+        session,
+        outcome=outcome,
+        error_text=error_text,
+        current_url=current_url,
+    )
+
+
 def finalize_operator_final_action(
     db: Session,
     application: Application,
@@ -448,15 +476,15 @@ def finalize_operator_final_action(
             },
         )
     )
-    if not confirmed:
-        _reconcile_uncertain_final_action(
-            db,
-            application,
-            session,
-            outcome=outcome,
-            error_text=error_text,
-            current_url=current_url,
-        )
+    _reconcile_final_action_if_needed(
+        db,
+        application,
+        session,
+        confirmed=confirmed,
+        outcome=outcome,
+        error_text=error_text,
+        current_url=current_url,
+    )
 
     db.flush()
 
