@@ -1,0 +1,122 @@
+name: OneHost production cutover
+
+on:
+  pull_request:
+    paths:
+      - docker-compose.onehost-production.yml
+      - backend/scripts/jobtomatik_termux_wrapper.sh
+      - backend/tests/test_onehost_production_cutover.py
+      - docs/operations/ONEHOST_PRODUCTION_DEPLOYMENT.md
+      - .github/workflows/onehost-production-cutover.yml
+  push:
+    branches: [main]
+    paths:
+      - docker-compose.onehost-production.yml
+      - backend/scripts/jobtomatik_termux_wrapper.sh
+      - backend/tests/test_onehost_production_cutover.py
+      - docs/operations/ONEHOST_PRODUCTION_DEPLOYMENT.md
+      - .github/workflows/onehost-production-cutover.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: onehost-production-cutover-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-topology:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install focused test dependencies
+        run: python -m pip install -q pytest pyyaml
+
+      - name: Run production cutover regressions
+        run: python -m pytest -q backend/tests/test_onehost_production_cutover.py
+
+      - name: Generate ephemeral CI runtime secrets
+        shell: bash
+        run: |
+          echo "POSTGRES_PASSWORD=$(python -c 'import secrets; print(secrets.token_hex(24))')" >> "$GITHUB_ENV"
+          echo "SECRET_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" >> "$GITHUB_ENV"
+          echo "ANSWER_VAULT_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" >> "$GITHUB_ENV"
+          echo "JOBTOMATIK_RUNTIME_REVISION=${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Render production Compose
+        run: docker compose -f docker-compose.onehost-production.yml config > "$RUNNER_TEMP/onehost-production.rendered.yml"
+
+      - name: Boot production topology
+        run: docker compose -f docker-compose.onehost-production.yml up -d --build
+
+      - name: Prove API and worker namespace affinity
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8000/health >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" -eq 60 ]]; then
+              docker compose -f docker-compose.onehost-production.yml ps
+              docker compose -f docker-compose.onehost-production.yml logs --no-color
+              exit 1
+            fi
+            sleep 2
+          done
+
+          api_id="$(docker compose -f docker-compose.onehost-production.yml ps -q backend)"
+          worker_id="$(docker compose -f docker-compose.onehost-production.yml ps -q celery_worker)"
+          test -n "$api_id"
+          test -n "$worker_id"
+
+          api_net="$(docker exec "$api_id" readlink /proc/1/ns/net)"
+          worker_net="$(docker exec "$worker_id" readlink /proc/1/ns/net)"
+          test "$api_net" = "$worker_net"
+
+          api_pid="$(docker exec "$api_id" readlink /proc/1/ns/pid)"
+          worker_pid="$(docker exec "$worker_id" readlink /proc/1/ns/pid)"
+          test "$api_pid" = "$worker_pid"
+
+          docker exec "$worker_id" sh -c 'printf "shared-state-ok\n" > /state/namespace-proof'
+          test "$(docker exec "$api_id" cat /state/namespace-proof)" = "shared-state-ok"
+
+          docker exec -d "$worker_id" python -m http.server 19090 --bind 127.0.0.1
+          sleep 1
+          docker exec "$api_id" python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:19090', timeout=3).read(1)"
+
+          docker exec "$worker_id" sh -c 'sleep 30 & echo $! > /state/worker-child.pid'
+          sleep 1
+          docker exec "$api_id" sh -c 'pid="$(cat /state/worker-child.pid)"; test -r "/proc/$pid/cmdline"'
+
+      - name: Capture production topology logs
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f docker-compose.onehost-production.yml ps > "$RUNNER_TEMP/onehost-production.ps.txt" 2>&1 || true
+          docker compose -f docker-compose.onehost-production.yml logs --no-color > "$RUNNER_TEMP/onehost-production.log" 2>&1 || true
+
+      - name: Tear down production topology
+        if: always()
+        run: docker compose -f docker-compose.onehost-production.yml down -v --remove-orphans || true
+
+      - name: Retain topology evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: onehost-production-cutover-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/onehost-production.rendered.yml
+            ${{ runner.temp }}/onehost-production.ps.txt
+            ${{ runner.temp }}/onehost-production.log
+          if-no-files-found: warn
+          retention-days: 30
