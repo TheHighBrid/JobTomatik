@@ -9,6 +9,24 @@ on:
       - backend/app/services/browser_runtime_base.py
       - backend/app/services/handoff_session.py
       - backend/app/services/handoff_integration.py
+      - backend/app/services/retained_browser_lifecycle.py
+      - backend/app/tasks/handoffs.py
+      - backend/tests/test_onehost_gate3_handoff.py
+      - backend/tests/test_handoff_submission_confirmation.py
+      - backend/tests/test_operator_assisted_submission.py
+      - docs/ONEHOST_GATE3_HANDOFF_CONTRACT.md
+      - scripts/verify-onehost-handoff.sh
+      - .github/workflows/onehost-gate3-handoff.yml
+  push:
+    branches: [main]
+    paths:
+      - backend/app/api/handoffs.py
+      - backend/app/services/browser_handoff.py
+      - backend/app/services/browser_runtime.py
+      - backend/app/services/browser_runtime_base.py
+      - backend/app/services/handoff_session.py
+      - backend/app/services/handoff_integration.py
+      - backend/app/services/retained_browser_lifecycle.py
       - backend/app/tasks/handoffs.py
       - backend/tests/test_onehost_gate3_handoff.py
       - backend/tests/test_handoff_submission_confirmation.py
