@@ -72,21 +72,21 @@ activate_stack restart
     assert "FORBIDDEN" not in result.stdout
 
 
-def test_warm_start_rejects_wrong_native_identity():
+def test_android_start_exits_in_thin_client_mode_before_legacy_browser_checks():
     source = WRAPPER.read_text()
     start = source.split('\ncase "$ACTION" in\n', 1)[1].split("  start)\n", 1)[1].split("    ;;", 1)[0]
-    result = run("""
-verify_backend_environment() { :; }
-supervisor_alive() { return 0; }
-run_stack_foreground() { return 0; }
-run_frontend_guard() { return 0; }
-ensure_application_browser_endpoint() { echo NATIVE_IDENTITY_REJECTED; return 1; }
+    result = run(function("android_thin_client_notice") + """
+verify_backend_environment() { echo FORBIDDEN_VERIFY; }
+supervisor_alive() { echo FORBIDDEN_SUPERVISOR; return 0; }
+run_stack_foreground() { echo FORBIDDEN_STACK; return 0; }
+run_frontend_guard() { echo FORBIDDEN_FRONTEND; return 0; }
+ensure_application_browser_endpoint() { echo FORBIDDEN_NATIVE_IDENTITY; return 1; }
 run_runtime_acceptance() { echo FORBIDDEN_ACCEPTANCE; }
-ensure_pilot_controller() { :; }
+ensure_pilot_controller() { echo FORBIDDEN_CONTROLLER; }
 """ + start)
-    assert result.returncode != 0
-    assert "NATIVE_IDENTITY_REJECTED" in result.stdout
-    assert "FORBIDDEN_ACCEPTANCE" not in result.stdout
+    assert result.returncode == 0
+    assert "JOBTOMATIK_ANDROID_THIN_CLIENT_MODE action=start" in result.stdout
+    assert "FORBIDDEN" not in result.stdout
 
 
 @pytest.mark.parametrize("devices", ["", "first\\tdevice\\nsecond\\tdevice"])
@@ -253,18 +253,20 @@ ensure_application_browser_endpoint
     assert "FORBIDDEN_FORWARD" not in result.stdout
 
 
-def test_browser_preflight_persists_contract_before_playwright_probe():
+def test_browser_preflight_is_retired_before_native_browser_or_stack_probe():
     source = WRAPPER.read_text()
     preflight = source.split('\ncase "$ACTION" in\n', 1)[1].split("  browser-preflight)\n", 1)[1].split("    ;;", 1)[0]
-    result = run("""
-verify_backend_environment() { echo VERIFY; }
-ensure_application_browser_endpoint() { echo ENDPOINT; }
-run_stack_foreground() { echo "STACK:$1"; }
-ensure_browser_playwright_ready() { echo "PROBE"; }
+    result = run(function("android_thin_client_notice") + """
+verify_backend_environment() { echo FORBIDDEN_VERIFY; }
+ensure_application_browser_endpoint() { echo FORBIDDEN_ENDPOINT; }
+run_stack_foreground() { echo "FORBIDDEN_STACK:$1"; }
+ensure_browser_playwright_ready() { echo FORBIDDEN_PROBE; }
 """ + preflight)
-    assert result.returncode == 0
-    output = result.stdout
-    assert output.index("ENDPOINT") < output.index("STACK:configure-browser") < output.index("PROBE")
+    output = result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "JOBTOMATIK_ANDROID_THIN_CLIENT_MODE action=browser-preflight" in output
+    assert "JOBTOMATIK_ANDROID_BROWSER_PREFLIGHT_RETIRED" in output
+    assert "FORBIDDEN" not in output
 
 
 def test_absent_deployment_restart_marker_is_successful_noop(tmp_path):

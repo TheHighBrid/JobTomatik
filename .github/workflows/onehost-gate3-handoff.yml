@@ -14,7 +14,11 @@ on:
       - backend/tests/test_onehost_gate3_handoff.py
       - backend/tests/test_handoff_submission_confirmation.py
       - backend/tests/test_operator_assisted_submission.py
+      - backend/tests/test_onehost_production_cutover.py
+      - backend/scripts/jobtomatik_termux_wrapper.sh
+      - docker-compose.onehost-production.yml
       - docs/ONEHOST_GATE3_HANDOFF_CONTRACT.md
+      - docs/operations/ONEHOST_PRODUCTION_DEPLOYMENT.md
       - scripts/verify-onehost-handoff.sh
       - .github/workflows/onehost-gate3-handoff.yml
   push:
@@ -31,7 +35,11 @@ on:
       - backend/tests/test_onehost_gate3_handoff.py
       - backend/tests/test_handoff_submission_confirmation.py
       - backend/tests/test_operator_assisted_submission.py
+      - backend/tests/test_onehost_production_cutover.py
+      - backend/scripts/jobtomatik_termux_wrapper.sh
+      - docker-compose.onehost-production.yml
       - docs/ONEHOST_GATE3_HANDOFF_CONTRACT.md
+      - docs/operations/ONEHOST_PRODUCTION_DEPLOYMENT.md
       - scripts/verify-onehost-handoff.sh
       - .github/workflows/onehost-gate3-handoff.yml
   workflow_dispatch:

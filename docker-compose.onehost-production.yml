@@ -1,0 +1,109 @@
+x-onehost-environment: &onehost-environment
+  APP_ENV: production
+  ENABLE_API_DOCS: "false"
+  JOBTOMATIK_RUNTIME_MODE: onehost
+  JOBTOMATIK_RUNTIME_REVISION: ${JOBTOMATIK_RUNTIME_REVISION:?Set JOBTOMATIK_RUNTIME_REVISION to the deployed git SHA}
+  JOBTOMATIK_EXPECTED_REVISION: ${JOBTOMATIK_RUNTIME_REVISION:?Set JOBTOMATIK_RUNTIME_REVISION to the deployed git SHA}
+  DATABASE_URL: postgresql://jobtomatik:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/jobtomatik
+  REDIS_URL: redis://redis:6379/0
+  SECRET_KEY: ${SECRET_KEY:?Set a stable production SECRET_KEY}
+  ANSWER_VAULT_KEY: ${ANSWER_VAULT_KEY:?Set a stable production ANSWER_VAULT_KEY}
+  AI_PROVIDER: ${AI_PROVIDER:-template}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+  FROM_EMAIL: ${FROM_EMAIL:-noreply@jobtomatik.com}
+  CORS_ORIGINS: ${CORS_ORIGINS:-capacitor://localhost,http://localhost,https://localhost}
+  DEV_MOCK_JOBS: "false"
+  APPLICATION_BROWSER_PROVIDER: local
+  APPLICATION_BROWSER_CDP_ENDPOINT: ""
+  APPLICATION_BROWSER_EXECUTABLE: ""
+  APPLICATION_BROWSER_PROFILE_DIR: /state/browser-profile
+  APPLICATION_BROWSER_HEADLESS: ${APPLICATION_BROWSER_HEADLESS:-true}
+  HANDOFF_STORAGE_DIR: /state/handoffs
+  UPLOAD_DIR: /state/uploads
+  JOBTOMATIK_BROWSER_NODE_ID: onehost-primary
+  ENABLE_RESUMABLE_HANDOFFS: ${ENABLE_RESUMABLE_HANDOFFS:-true}
+  ALLOW_REAL_APPLICATION_SUBMIT: ${ALLOW_REAL_APPLICATION_SUBMIT:-false}
+  GREENHOUSE_SUPERVISED_PILOT_ENABLED: ${GREENHOUSE_SUPERVISED_PILOT_ENABLED:-false}
+  LEVER_SUPERVISED_PILOT_ENABLED: ${LEVER_SUPERVISED_PILOT_ENABLED:-false}
+  ALLOW_REAL_FOLLOWUP_SEND: ${ALLOW_REAL_FOLLOWUP_SEND:-false}
+  AUTOPILOT_ENABLED: ${AUTOPILOT_ENABLED:-false}
+  AUTOMATION_GLOBAL_KILL_SWITCH: ${AUTOMATION_GLOBAL_KILL_SWITCH:-false}
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jobtomatik
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: jobtomatik
+    volumes:
+      - onehost_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobtomatik -d jobtomatik"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - onehost_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build: ./backend
+    init: true
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - python scripts/check_runtime_identity.py --require-sensitive && exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      <<: *onehost-environment
+      JOBTOMATIK_RUNTIME_ROLE: api
+    volumes:
+      - onehost_state:/state
+    ports:
+      - "${ONEHOST_API_BIND_ADDRESS:-127.0.0.1}:${ONEHOST_API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/system/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_worker:
+    build: ./backend
+    init: true
+    restart: unless-stopped
+    network_mode: "service:backend"
+    pid: "service:backend"
+    command:
+      - sh
+      - -c
+      - python scripts/check_runtime_identity.py --require-sensitive && exec celery -A app.celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q celery,scraping,applications,followup
+    environment:
+      <<: *onehost-environment
+      JOBTOMATIK_RUNTIME_ROLE: worker
+    volumes:
+      - onehost_state:/state
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  onehost_postgres:
+  onehost_redis:
+  onehost_state:
