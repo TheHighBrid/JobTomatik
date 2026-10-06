@@ -32,6 +32,8 @@ GREENHOUSE_URL = "https://job-boards.greenhouse.io/example/jobs/1234567"
 
 
 def _fixture(db_session):
+    """Build a consumed-approval final-action reconciliation fixture."""
+
     user = User(
         email="operator-reconcile@example.test",
         hashed_password="not-used",
@@ -122,7 +124,7 @@ def test_unconfirmed_once_only_action_becomes_submission_uncertain(
     db_session,
     monkeypatch,
 ):
-    """Unconfirmed once-only actions immediately enter reconciliation."""
+    """Verify unconfirmed once-only actions immediately enter reconciliation."""
 
     user, application, review, session, approval = _fixture(db_session)
     monkeypatch.setattr(final_action, "_claim_runtime_blockers", lambda _url: [])
@@ -174,7 +176,7 @@ def test_exception_after_claim_becomes_submission_uncertain(
     db_session,
     monkeypatch,
 ):
-    """Exceptions after claim preserve uncertainty and forbid automatic retry."""
+    """Verify post-claim exceptions preserve uncertainty and forbid automatic retry."""
 
     user, application, review, session, approval = _fixture(db_session)
     monkeypatch.setattr(final_action, "_claim_runtime_blockers", lambda _url: [])
@@ -204,7 +206,7 @@ def test_exception_after_claim_becomes_submission_uncertain(
 
 
 def test_runtime_gate_uses_the_registered_platform_pilot_switch(monkeypatch):
-    """Runtime drift checks the target platform's registered pilot switch."""
+    """Verify runtime drift checks the target platform-specific pilot switch."""
 
     monkeypatch.setattr(
         final_action,
