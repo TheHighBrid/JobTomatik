@@ -52,8 +52,20 @@ jobs:
       - name: Run production cutover regressions
         run: python -m pytest -q backend/tests/test_onehost_production_cutover.py
 
-      - name: Render production Compose
-        run: docker compose -f docker-compose.onehost-production.yml config > "$RUNNER_TEMP/onehost-production.rendered.yml"
+      - name: Validate production Compose without retaining resolved secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.onehost-production.yml config > /dev/null
+          cp docker-compose.onehost-production.yml "$RUNNER_TEMP/onehost-production.source.yml"
+          {
+            echo "revision=${{ github.event.pull_request.head.sha || github.sha }}"
+            sha256sum docker-compose.onehost-production.yml
+            echo "services:"
+            docker compose -f docker-compose.onehost-production.yml config --services
+            echo "images:"
+            docker compose -f docker-compose.onehost-production.yml config --images
+          } > "$RUNNER_TEMP/onehost-production.topology.txt"
 
       - name: Boot production topology
         run: docker compose -f docker-compose.onehost-production.yml up -d --build
@@ -115,7 +127,8 @@ jobs:
         with:
           name: onehost-production-cutover-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            ${{ runner.temp }}/onehost-production.rendered.yml
+            ${{ runner.temp }}/onehost-production.source.yml
+            ${{ runner.temp }}/onehost-production.topology.txt
             ${{ runner.temp }}/onehost-production.ps.txt
             ${{ runner.temp }}/onehost-production.log
           if-no-files-found: warn
