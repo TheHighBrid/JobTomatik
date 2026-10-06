@@ -1,4 +1,6 @@
-"""Regression coverage for once-only final-action reconciliation."""\n\nfrom datetime import datetime, timedelta
+"""Regression coverage for once-only final-action reconciliation."""
+
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
