@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -80,8 +81,7 @@ def _fixture(db_session):
         expires_at=review.created_at if review.created_at is not None else None,
         handoff_metadata={},
     )
-    # SQLite fixtures assign created_at on flush; keep the handoff safely future-dated.
-    from datetime import datetime, timedelta
+    # Keep the synthetic retained handoff safely future-dated.
     session.expires_at = datetime.utcnow() + timedelta(hours=1)
     db_session.add(session)
     db_session.flush()
@@ -100,6 +100,9 @@ def _fixture(db_session):
         cover_letter_hash="3" * 64,
         answer_payload_hash="4" * 64,
         combined_payload_hash="5" * 64,
+        approved_at=datetime.utcnow() - timedelta(minutes=2),
+        expires_at=datetime.utcnow() + timedelta(minutes=20),
+        consumed_at=datetime.utcnow() - timedelta(minutes=1),
         approval_metadata={
             "approval_source": OPERATOR_ASSISTED_APPROVAL_SOURCE,
             "handoff_public_id": session.public_id,
