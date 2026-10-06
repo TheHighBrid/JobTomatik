@@ -31,9 +31,7 @@ from app.services.operator_assisted_submission import (
 GREENHOUSE_URL = "https://job-boards.greenhouse.io/example/jobs/1234567"
 
 
-def _fixture(db_session):
-    """Build a consumed-approval final-action reconciliation fixture."""
-
+def _build_user_and_job(db_session):
     user = User(
         email="operator-reconcile@example.test",
         hashed_password="not-used",
@@ -46,7 +44,10 @@ def _fixture(db_session):
     )
     db_session.add_all([user, job])
     db_session.flush()
+    return user, job
 
+
+def _build_application_and_review(db_session, user, job):
     application = Application(
         user_id=user.id,
         job_id=job.id,
@@ -68,7 +69,10 @@ def _fixture(db_session):
     )
     db_session.add(review)
     db_session.flush()
+    return application, review
 
+
+def _build_handoff(db_session, user, application, review, job):
     session = ManualHandoffSession(
         application_id=application.id,
         manual_review_id=review.id,
@@ -85,11 +89,13 @@ def _fixture(db_session):
         expires_at=review.created_at if review.created_at is not None else None,
         handoff_metadata={},
     )
-    # Keep the synthetic retained handoff safely future-dated.
     session.expires_at = datetime.utcnow() + timedelta(hours=1)
     db_session.add(session)
     db_session.flush()
+    return session
 
+
+def _build_consumed_approval(db_session, user, application, session, job):
     approval = SubmissionApproval(
         application_id=application.id,
         user_id=user.id,
@@ -117,8 +123,16 @@ def _fixture(db_session):
     )
     db_session.add(approval)
     db_session.commit()
-    return user, application, review, session, approval
+    return approval
 
+
+def _fixture(db_session):
+    """Build a consumed-approval final-action reconciliation fixture."""
+    user, job = _build_user_and_job(db_session)
+    application, review = _build_application_and_review(db_session, user, job)
+    session = _build_handoff(db_session, user, application, review, job)
+    approval = _build_consumed_approval(db_session, user, application, session, job)
+    return user, application, review, session, approval
 
 def test_unconfirmed_once_only_action_becomes_submission_uncertain(
     db_session,
