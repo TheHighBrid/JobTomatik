@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="${ROOT}/backend${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 "${ROOT}/backend/scripts/jobtomatik.py" "$@"
