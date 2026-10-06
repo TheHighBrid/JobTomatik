@@ -8,15 +8,25 @@ from typing import Any, Mapping, Optional
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models.application import Application, ApplicationEvent
+from app.models.application import (
+    Application,
+    ApplicationAutomationState,
+    ApplicationEvent,
+    ApplicationStatus,
+    ManualReviewReason,
+    ManualReviewStatus,
+    ManualReviewTask,
+)
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
+from app.services.application_state import normalize_state, transition_application_state
 from app.services.operations_policy import disabled_platforms, platform_key_for_url
 from app.services.operations_settings import get_operations_settings
 from app.services.operator_assisted_submission import (
     OPERATOR_ASSISTED_APPROVAL_SOURCE,
     OperatorAssistedSubmissionError,
 )
+from app.services.supervised_platforms import get_supervised_platform_policy
 
 
 def _now() -> datetime:
@@ -40,7 +50,8 @@ def _claim_runtime_blockers(url: str) -> list[str]:
         blockers.append("operator_assisted_requires_autopilot_disabled")
     if bool(core.allow_real_application_submit):
         blockers.append("operator_assisted_requires_global_submit_disabled")
-    if bool(core.lever_supervised_pilot_enabled):
+    policy = get_supervised_platform_policy(platform)
+    if policy is not None and policy.pilot_enabled(core):
         blockers.append("operator_assisted_requires_platform_pilot_disabled")
     return blockers
 
@@ -246,6 +257,72 @@ def checkpoint_operator_final_action_live_snapshot(
     return approval
 
 
+def _reconcile_uncertain_final_action(
+    db: Session,
+    application: Application,
+    session: ManualHandoffSession,
+    *,
+    outcome: str,
+    error_text: Optional[str],
+    current_url: str,
+) -> None:
+    """Persist post-claim uncertainty immediately without restoring click authority."""
+
+    state = normalize_state(application.automation_state)
+    if state in {
+        ApplicationAutomationState.submitted.value,
+        ApplicationAutomationState.confirmed.value,
+    }:
+        return
+
+    if state != ApplicationAutomationState.submission_uncertain.value:
+        application.status = ApplicationStatus.pending
+        transition_application_state(
+            db,
+            application,
+            ApplicationAutomationState.submission_uncertain,
+            "operator_assisted_final_action_requires_reconciliation",
+            {
+                "handoff_public_id": session.public_id,
+                "outcome": outcome,
+                "automatic_retry_allowed": False,
+                "error": error_text,
+            },
+        )
+
+    review = (
+        db.query(ManualReviewTask)
+        .filter(ManualReviewTask.id == session.manual_review_id)
+        .with_for_update()
+        .first()
+    )
+    if review is not None and review.status in {
+        ManualReviewStatus.open.value,
+        ManualReviewStatus.in_progress.value,
+    }:
+        review.reason_code = ManualReviewReason.submission_confirmation_uncertain.value
+        review.status = ManualReviewStatus.in_progress.value
+        review.summary = (
+            "The once-only final action was claimed, but employer confirmation is "
+            "not yet proven. Verify the retained employer page before any new action."
+        )
+        review.blocking_url = current_url or review.blocking_url
+        review.details = {
+            **dict(review.details or {}),
+            "handoff_public_id": session.public_id,
+            "operator_final_action_outcome": outcome,
+            "automatic_retry_allowed": False,
+            "confirmation_reconciliation_required": True,
+            "error": error_text,
+        }
+
+    session.handoff_metadata = {
+        **dict(session.handoff_metadata or {}),
+        "confirmation_reconciliation_required": True,
+        "automatic_retry_allowed": False,
+    }
+
+
 def finalize_operator_final_action(
     db: Session,
     application: Application,
@@ -335,6 +412,16 @@ def finalize_operator_final_action(
             },
         )
     )
+    if not confirmed:
+        _reconcile_uncertain_final_action(
+            db,
+            application,
+            session,
+            outcome=outcome,
+            error_text=error_text,
+            current_url=current_url,
+        )
+
     db.flush()
 
 
