@@ -85,6 +85,7 @@ def test_finalization_preserves_fresh_live_checkpoint_from_outer_handoff_state()
     )
     session = SimpleNamespace(
         public_id="handoff-final-action-test",
+        manual_review_id=None,
         current_url=LEVER_URL,
         current_fingerprint="fresh-page-before",
         handoff_metadata={
@@ -117,5 +118,7 @@ def test_finalization_preserves_fresh_live_checkpoint_from_outer_handoff_state()
     assert metadata["operator_submit_action_result"] == "awaiting_confirmation"
     assert metadata["automatic_retry_allowed"] is False
     assert session.handoff_metadata["operator_submit_live_snapshot_checkpointed"] is True
+    assert session.handoff_metadata["confirmation_reconciliation_required"] is True
+    assert application.automation_state == "submission_uncertain"
     assert db.flushed is True
-    assert len(db.added) == 1
+    assert len(db.added) == 2
