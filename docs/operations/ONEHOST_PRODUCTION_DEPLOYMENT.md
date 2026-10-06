@@ -40,6 +40,8 @@ Do not use the Android tablet as this host.
 
 ## Secrets and revision
 
+Use `docs/operations/onehost-production.env.example` as the non-secret deployment template. Populate the values through the host environment or an approved secret manager, never by committing a filled copy.
+
 From an exact checked-out revision:
 
 ```bash
