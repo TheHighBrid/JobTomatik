@@ -16,6 +16,7 @@ class ReleaseManifestError(ValueError):
     """Raised when exact release identity cannot be proven."""
 
     def __init__(self, code: str, message: str):
+        """Initialize the error with a stable machine-readable code."""
         super().__init__(message)
         self.code = code
 
