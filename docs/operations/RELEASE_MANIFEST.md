@@ -1,8 +1,9 @@
 # Release manifest
 
-`build_release_manifest` writes the canonical OneHost release identity:
+`build_release_manifest` binds a release candidate to explicit, exact identity
+fields before any publication or rollback decision:
 
-```
+```text
 source_sha
 version
 android_version_code
@@ -15,5 +16,11 @@ verification_runs
 build_timestamp
 ```
 
-Missing hashes, a backend revision that is not the source SHA, or a destructive
-rollback fail closed. The manifest does not grant submit authority.
+Every field above must be supplied. Source and revision SHAs require exact
+40-character hexadecimal values, artifact and certificate digests require exact
+SHA-256 values, and `build_timestamp` must be timezone-aware ISO-8601.
+
+The backend revision must equal `source_sha`. Missing or malformed identity,
+an empty verification set, or a destructive schema transition fails closed.
+The manifest records rollback and upgrade test claims but never grants submit
+authority.
