@@ -396,7 +396,6 @@ def build_greenhouse_oh1_preflight(
     blockers = _intake_blockers(dossier, target, dict(job.raw_data or {}))
     blockers.extend(dossier["preflight"]["structural_blockers"])
     blockers.extend(_runtime_blockers(runtime))
-
     duplicate_state, approval_state, integrity_blockers = _integrity_states(
         db,
         application,
@@ -406,12 +405,10 @@ def build_greenhouse_oh1_preflight(
     )
     blockers.extend(integrity_blockers)
     blockers = list(dict.fromkeys(_text(item) for item in blockers if _text(item)))
-    ready = not blockers
-
     return {
         "preflight_version": PREFLIGHT_VERSION,
-        "status": READY_STATUS if ready else BLOCKED_STATUS,
-        "ready": ready,
+        "status": READY_STATUS if not blockers else BLOCKED_STATUS,
+        "ready": not blockers,
         "application_id": application.id,
         "blockers": blockers,
         "target": target,
