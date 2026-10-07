@@ -1,9 +1,8 @@
-"""Read-only readiness gate for the first OneHost Greenhouse acceptance.
+"""Build the read-only readiness gate for the first OneHost Greenhouse acceptance."""
 
-GH-OH1 preflight composes existing canonical evidence. It never opens a browser,
-changes an execution flag, issues or consumes an approval, queues work, or performs
-a submission.
-"""
+# GH-OH1 preflight composes existing canonical evidence. It never opens a browser,
+# changes an execution flag, issues or consumes an approval, queues work, or
+# performs a submission.
 
 from __future__ import annotations
 
