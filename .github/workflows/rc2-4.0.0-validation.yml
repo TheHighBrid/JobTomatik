@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RC_SHA: 6b7683deeec5101cfafd439120ea90500351a63c
+  RC_SHA: 519b204bcbd0ff84a78929cbb2d5b31617c60f48
   PREVIOUS_V1_SHA: 6f7f9fa6a7d3c63516cde381410ac188364dba36
 
 jobs:
@@ -201,7 +201,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: JobTomatik-4.0.0-RC2-validation-6b7683d
+          name: JobTomatik-4.0.0-RC2-validation-519b204
           path: |
             candidate/backend/evidence/rc2-day41-previous-release-compatibility.json
             candidate/backend/evidence/rc2-recovery-incident-drill.json
