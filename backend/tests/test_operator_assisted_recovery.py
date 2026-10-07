@@ -154,6 +154,7 @@ def test_expired_by_time_operator_handoff_recovers_to_submission_uncertain(db_se
     handoff.expires_at = now - timedelta(minutes=1)
     db_session.commit()
 
+    original_review_id = handoff.manual_review_id
     result = recover_stale_application_attempt(
         db_session,
         application,
@@ -162,6 +163,7 @@ def test_expired_by_time_operator_handoff_recovers_to_submission_uncertain(db_se
     )
     db_session.commit()
     db_session.refresh(application)
+    db_session.refresh(handoff)
 
     assert result["recovered"] is True
     assert result["dry_run"] is None
@@ -178,12 +180,19 @@ def test_expired_by_time_operator_handoff_recovers_to_submission_uncertain(db_se
     checkpoint = (uncertain_review.details or {})["operator_final_submit_checkpoint"]
     assert checkpoint["handoff_active"] is False
     assert checkpoint["automatic_retry_allowed"] is False
+    assert uncertain_review.id == original_review_id
+    assert db_session.query(ManualReviewTask).filter(
+        ManualReviewTask.application_id == application.id,
+    ).count() == 1
+    assert handoff.handoff_metadata["confirmation_reconciliation_required"] is True
+    assert handoff.handoff_metadata["automatic_retry_allowed"] is False
 
 
 def test_runtime_interruption_quarantines_operator_window_even_with_historical_dry_run(db_session):
     now = datetime.utcnow().replace(microsecond=0)
     application, handoff, approval = _make_operator_final_submit_window(db_session, now=now)
 
+    original_review_id = handoff.manual_review_id
     result = recover_stale_application_attempt(
         db_session,
         application,
@@ -192,6 +201,7 @@ def test_runtime_interruption_quarantines_operator_window_even_with_historical_d
     )
     db_session.commit()
     db_session.refresh(application)
+    db_session.refresh(handoff)
 
     assert result["recovered"] is True
     assert result["dry_run"] is None
@@ -205,5 +215,12 @@ def test_runtime_interruption_quarantines_operator_window_even_with_historical_d
         ManualReviewTask.application_id == application.id,
         ManualReviewTask.reason_code == ManualReviewReason.submission_confirmation_uncertain.value,
     ).one()
+    assert uncertain_review.id == original_review_id
+    assert db_session.query(ManualReviewTask).filter(
+        ManualReviewTask.application_id == application.id,
+    ).count() == 1
     assert (uncertain_review.details or {})["dry_run"] is None
     assert (uncertain_review.details or {})["automatic_retry_allowed"] is False
+    assert (uncertain_review.details or {})["confirmation_reconciliation_required"] is True
+    assert handoff.handoff_metadata["confirmation_reconciliation_required"] is True
+    assert handoff.handoff_metadata["automatic_retry_allowed"] is False
