@@ -26,15 +26,16 @@ from app.services.ats_lever import parse_lever_job_url
 from app.services.lever_ordinary_path_support import (
     application_is_confirmed as _application_is_confirmed,
     application_is_stale as _application_is_stale,
+    continuity_ledger as _ledger,
     explicit_confirmation,
     lever_target as _target,
     recovery_target_state as _recovery_target_state,
     same_lever_target as _same_target,
     unconfirmed_result as _unconfirmed_result,
+    utc_now as _now,
 )
 
 
-CONTINUITY_KEY = "lever_ordinary_path"
 STALE_AFTER = timedelta(hours=6)
 
 
@@ -45,18 +46,6 @@ class LeverOrdinaryPathError(ValueError):
         """Initialize the error with a stable machine-readable code."""
         super().__init__(message)
         self.code = code
-
-
-def _now() -> datetime:
-    return datetime.utcnow()
-
-
-def _ledger(application: Application) -> Dict[str, Any]:
-    metadata = dict(application.application_target_metadata or {})
-    ledger = dict(metadata.get(CONTINUITY_KEY) or {})
-    metadata[CONTINUITY_KEY] = ledger
-    application.application_target_metadata = metadata
-    return ledger
 
 
 def _move(
