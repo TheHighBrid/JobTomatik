@@ -26,6 +26,7 @@ from app.api import (
     materials,
     notifications,
     operations,
+    operator_diagnostics,
     pilot_ledger,
     post_application,
     profile,
@@ -302,6 +303,7 @@ app.include_router(post_application.router, prefix="/api")
 app.include_router(certification.router, prefix="/api")
 app.include_router(recovery.router, prefix="/api")
 app.include_router(shadow_runs.router, prefix="/api")
+app.include_router(operator_diagnostics.router, prefix="/api")
 
 
 @app.get("/health")
