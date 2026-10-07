@@ -1,6 +1,10 @@
+"""Regression coverage for the supported ordinary Lever reliability path."""
+
 from __future__ import annotations
 
+import ast
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -18,6 +22,7 @@ from app.models.job import Job, JobSource, JobStatus
 from app.models.user import User
 from app.services.lever_ordinary_path_reliability import (
     LeverOrdinaryPathError,
+    explicit_confirmation,
     reconcile_lever_confirmation,
     record_answer_vault_interruption,
     recover_stranded_application,
@@ -33,6 +38,7 @@ OTHER_URL = "https://jobs.lever.co/maple/11111111-2222-3333-4444-555555555555"
 
 @pytest.fixture
 def records(auth_client):
+    """Create one synthetic Lever application for ordinary-path tests."""
     db = TestingSessionLocal()
     user = db.query(User).filter(User.email == "test@example.com").one()
     job = Job(
@@ -56,26 +62,55 @@ def records(auth_client):
     db.add(application)
     db.commit()
     db.refresh(application)
-    ids = {"application_id": application.id, "job_id": job.id}
+    ids = {
+        "application_id": application.id,
+        "job_id": job.id,
+    }
     db.close()
     return ids
 
 
 def _load(ids):
     db = TestingSessionLocal()
-    application = db.query(Application).filter(Application.id == ids["application_id"]).one()
+    application = (
+        db.query(Application)
+        .filter(Application.id == ids["application_id"])
+        .one()
+    )
     job = db.query(Job).filter(Job.id == ids["job_id"]).one()
     return db, application, job
 
 
 def test_repeated_answer_vault_interruptions_resume_same_application(records):
     db, application, job = _load(records)
-    first = record_answer_vault_interruption(db, application, job, question="Work eligibility", current_url=LEVER_URL)
-    second = record_answer_vault_interruption(db, application, job, question="Salary expectation", current_url=LEVER_URL)
-    resumed = resume_same_application(db, application, job, current_url=LEVER_URL)
+    first = record_answer_vault_interruption(
+        db,
+        application,
+        job,
+        question="Work eligibility",
+        current_url=LEVER_URL,
+    )
+    second = record_answer_vault_interruption(
+        db,
+        application,
+        job,
+        question="Salary expectation",
+        current_url=LEVER_URL,
+    )
+    resumed = resume_same_application(
+        db,
+        application,
+        job,
+        current_url=LEVER_URL,
+    )
     db.commit()
     db.close()
-    assert first["application_id"] == second["application_id"] == resumed["application_id"]
+
+    assert (
+        first["application_id"]
+        == second["application_id"]
+        == resumed["application_id"]
+    )
     assert second["interruption_count"] == 2
     assert resumed["opened_new_application"] is False
     assert resumed["resume_count"] == 1
@@ -84,12 +119,35 @@ def test_repeated_answer_vault_interruptions_resume_same_application(records):
 def test_resume_rejects_a_different_posting(records):
     db, application, job = _load(records)
     with pytest.raises(LeverOrdinaryPathError) as caught:
-        resume_same_application(db, application, job, current_url=OTHER_URL)
+        resume_same_application(
+            db,
+            application,
+            job,
+            current_url=OTHER_URL,
+        )
+
     assert caught.value.code == "target_continuity_broken"
     db.close()
 
 
-def test_confirmation_persists_evidence_before_promotion_and_closes_handoff(records):
+def test_explicit_confirmation_requires_url_and_success_phrase():
+    assert explicit_confirmation(
+        THANKS_URL,
+        "Application submitted!",
+    ) is True
+    assert explicit_confirmation(
+        "",
+        "Application submitted!",
+    ) is False
+    assert explicit_confirmation(
+        THANKS_URL,
+        "We'll be in touch",
+    ) is False
+
+
+def test_confirmation_persists_evidence_before_promotion_and_closes_handoff(
+    records,
+):
     db, application, job = _load(records)
     review = ManualReviewTask(
         application_id=application.id,
@@ -114,6 +172,7 @@ def test_confirmation_persists_evidence_before_promotion_and_closes_handoff(reco
         )
     )
     db.commit()
+
     result = reconcile_lever_confirmation(
         db,
         application,
@@ -124,14 +183,37 @@ def test_confirmation_persists_evidence_before_promotion_and_closes_handoff(reco
         approval_reference="lvsup-test",
     )
     db.commit()
-    evidence = db.query(SubmissionEvidence).filter(SubmissionEvidence.id == result["evidence_id"]).one()
-    events = db.query(ApplicationEvent).filter(ApplicationEvent.application_id == application.id).all()
+    evidence = (
+        db.query(SubmissionEvidence)
+        .filter(SubmissionEvidence.id == result["evidence_id"])
+        .one()
+    )
+    events = (
+        db.query(ApplicationEvent)
+        .filter(ApplicationEvent.application_id == application.id)
+        .all()
+    )
     event_types = [item.event_type for item in events]
-    review = db.query(ManualReviewTask).filter(ManualReviewTask.id == review.id).one()
-    handoff = db.query(ManualHandoffSession).filter(ManualHandoffSession.application_id == application.id).one()
+    review = (
+        db.query(ManualReviewTask)
+        .filter(ManualReviewTask.id == review.id)
+        .one()
+    )
+    handoff = (
+        db.query(ManualHandoffSession)
+        .filter(ManualHandoffSession.application_id == application.id)
+        .one()
+    )
     db.close()
+
+    evidence_index = event_types.index(
+        "lever_confirmation_evidence_persisted"
+    )
+    confirmed_index = event_types.index(
+        "lever_ordinary_path_confirmed"
+    )
     assert evidence.is_sufficient is True
-    assert event_types.index("lever_confirmation_evidence_persisted") < event_types.index("lever_ordinary_path_confirmed")
+    assert evidence_index < confirmed_index
     assert result["status"] == "applied"
     assert result["automation_state"] == "confirmed"
     assert review.status == ManualReviewStatus.resolved.value
@@ -150,8 +232,14 @@ def test_thanks_url_without_explicit_phrase_is_uncertain(records):
             target_verified=True,
         )
     db.commit()
-    state = db.query(Application).filter(Application.id == application.id).one().automation_state
+    state = (
+        db.query(Application)
+        .filter(Application.id == application.id)
+        .one()
+        .automation_state
+    )
     db.close()
+
     assert caught.value.code == "confirmation_not_explicit"
     assert state == "submission_uncertain"
 
@@ -168,8 +256,14 @@ def test_stale_target_does_not_confirm(records):
             target_verified=False,
         )
     db.commit()
-    status = db.query(Application).filter(Application.id == application.id).one().status
+    status = (
+        db.query(Application)
+        .filter(Application.id == application.id)
+        .one()
+        .status
+    )
     db.close()
+
     assert caught.value.code == "stale_or_unverified_target"
     assert status == ApplicationStatus.applying
 
@@ -194,8 +288,14 @@ def test_confirmed_posting_blocks_a_new_application(records):
     db.add(duplicate)
     db.commit()
     with pytest.raises(LeverOrdinaryPathError) as caught:
-        resume_same_application(db, duplicate, job, current_url=LEVER_URL)
+        resume_same_application(
+            db,
+            duplicate,
+            job,
+            current_url=LEVER_URL,
+        )
     db.close()
+
     assert caught.value.code == "duplicate_lever_submission_blocked"
 
 
@@ -203,9 +303,16 @@ def test_stranded_applying_without_evidence_becomes_uncertain(records):
     db, application, job = _load(records)
     application.updated_at = datetime.utcnow() - timedelta(hours=8)
     db.commit()
-    result = recover_stranded_application(db, application, job, now=datetime.utcnow())
+
+    result = recover_stranded_application(
+        db,
+        application,
+        job,
+        now=datetime.utcnow(),
+    )
     db.commit()
     db.close()
+
     assert result["confirmed"] is False
     assert result["automation_state"] == "submission_uncertain"
 
@@ -223,25 +330,39 @@ def test_stranded_with_sufficient_evidence_reconciles(records):
     )
     application.automation_state = ApplicationAutomationState.applying.value
     db.commit()
+
     result = recover_stranded_application(db, application, job)
     db.commit()
     db.close()
+
     assert result["confirmed"] is True
     assert result["status"] == "applied"
 
 
-def test_module_uses_state_service_and_does_not_attempt_captcha():
-    import ast
-    from app.services import lever_ordinary_path_reliability as reliability
-
-    source = open(reliability.__file__, encoding="utf-8").read()
+def _automation_state_write_lines(source: str):
     tree = ast.parse(source)
     writes = []
     for node in ast.walk(tree):
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
-        for target in targets:
-            if isinstance(target, ast.Attribute) and target.attr == "automation_state":
-                writes.append(node.lineno)
-    assert writes == []
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        else:
+            targets = []
+        writes.extend(
+            node.lineno
+            for target in targets
+            if isinstance(target, ast.Attribute)
+            and target.attr == "automation_state"
+        )
+    return writes
+
+
+def test_module_uses_state_service_and_does_not_attempt_captcha():
+    from app.services import lever_ordinary_path_reliability as reliability
+
+    source = Path(reliability.__file__).read_text(encoding="utf-8")
+
+    assert _automation_state_write_lines(source) == []
     assert "solve_captcha" not in source
     assert "hcaptcha" not in source.lower()
