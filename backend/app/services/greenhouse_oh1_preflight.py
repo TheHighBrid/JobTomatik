@@ -359,6 +359,29 @@ def _safety_boundary() -> Dict[str, Any]:
     }
 
 
+def _integrity_states(
+    db: Session,
+    application: Application,
+    job: Job,
+    target: Dict[str, Any],
+    exact_payload: Dict[str, Any],
+) -> tuple[Dict[str, Any], Dict[str, Any], list[str]]:
+    duplicate_state, duplicate_blockers = _duplicate_defense(
+        db,
+        application,
+        job,
+        dict(target),
+    )
+    approval_state, approval_blockers = _approval_state(
+        db,
+        application,
+        exact_payload,
+        _text(target.get("application_url")),
+    )
+    blockers = [*duplicate_blockers, *approval_blockers]
+    return duplicate_state, approval_state, blockers
+
+
 def build_greenhouse_oh1_preflight(
     db: Session,
     application: Application,
@@ -374,20 +397,14 @@ def build_greenhouse_oh1_preflight(
     blockers.extend(dossier["preflight"]["structural_blockers"])
     blockers.extend(_runtime_blockers(runtime))
 
-    duplicate_state, duplicate_blockers = _duplicate_defense(
+    duplicate_state, approval_state, integrity_blockers = _integrity_states(
         db,
         application,
         job,
-        dict(target),
-    )
-    blockers.extend(duplicate_blockers)
-    approval_state, approval_blockers = _approval_state(
-        db,
-        application,
+        target,
         exact_payload,
-        _text(target.get("application_url")),
     )
-    blockers.extend(approval_blockers)
+    blockers.extend(integrity_blockers)
     blockers = list(dict.fromkeys(_text(item) for item in blockers if _text(item)))
     ready = not blockers
 
