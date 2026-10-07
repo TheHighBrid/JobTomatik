@@ -13,6 +13,9 @@ from app.models.application import (
 from app.services.ats_lever import parse_lever_job_url
 
 
+CONTINUITY_KEY = "lever_ordinary_path"
+
+
 EXPLICIT_CONFIRMATION_PHRASES = (
     "thank you for applying",
     "thank you for your application",
@@ -107,3 +110,17 @@ def unconfirmed_result(application: Application) -> Dict[str, Any]:
         "automation_state": application.automation_state,
         "confirmed": False,
     }
+
+
+def continuity_ledger(application: Application) -> Dict[str, Any]:
+    """Return and retain the ordinary-path continuity ledger mapping."""
+    metadata = dict(application.application_target_metadata or {})
+    ledger = dict(metadata.get(CONTINUITY_KEY) or {})
+    metadata[CONTINUITY_KEY] = ledger
+    application.application_target_metadata = metadata
+    return ledger
+
+
+def utc_now() -> datetime:
+    """Return the naive UTC timestamp used by the existing persistence contract."""
+    return datetime.utcnow()
