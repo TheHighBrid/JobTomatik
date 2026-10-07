@@ -6,8 +6,6 @@ from pydantic import BaseModel, Field
 
 
 class GreenhouseOH1PreflightOut(BaseModel):
-    """Represent the serialized GH-OH1 readiness result for an authenticated owner."""
-
     preflight_version: str
     status: str
     ready: bool
