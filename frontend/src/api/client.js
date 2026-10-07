@@ -240,6 +240,7 @@ export const updateSettings = (data) => api.patch('/settings', data)
 // Runtime readiness and adapter evidence
 export const getOperationsReadiness = () => api.get('/system/operations-readiness')
 export const getAtsCertification = () => api.get('/system/ats-certification')
+export const getOperatorDiagnostics = () => api.get('/system/operator-diagnostics')
 
 // The existing controller uses dedicated preparation-only endpoints. Neither accepts a
 // live-submit argument, so old callers cannot turn a dashboard action into a real submission.
