@@ -161,9 +161,18 @@ def _process_alive(pid: int) -> bool:
         return False
     try:
         os.kill(pid, 0)
-        return True
     except ProcessLookupError:
         return False
+
+    # A zombie has exited even though its PID remains visible until the parent
+    # reaps it. Treat that state as terminated so cleanup assertions measure
+    # browser lifetime rather than Linux process-table reaping latency.
+    proc_stat = Path(f"/proc/{pid}/stat")
+    try:
+        fields = proc_stat.read_text(encoding="utf-8").split()
+    except (FileNotFoundError, PermissionError, OSError):
+        return True
+    return len(fields) < 3 or fields[2] != "Z"
 
 
 def _wait_process_exit(pid: int, timeout: float = 5.0) -> bool:
