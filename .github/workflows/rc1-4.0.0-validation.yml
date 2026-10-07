@@ -1,0 +1,229 @@
+name: JobTomatik 4.0.0 RC1 exact-source validation
+
+on:
+  push:
+    branches:
+      - sol56/rc1-4.0.0-validation
+    paths:
+      - ".github/workflows/rc1-4.0.0-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobtomatik-4.0.0-rc1-exact-validation
+  cancel-in-progress: false
+
+env:
+  RC_SHA: 93c06ff00c9128c30a733636b01add0bf70e084b
+  PREVIOUS_V1_SHA: 6f7f9fa6a7d3c63516cde381410ac188364dba36
+
+jobs:
+  exact-source-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out frozen RC1 source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RC_SHA }}
+          path: candidate
+          fetch-depth: 0
+
+      - name: Check out frozen v1 source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.PREVIOUS_V1_SHA }}
+          path: previous
+          fetch-depth: 1
+
+      - name: Verify immutable candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C candidate rev-parse HEAD)" = "$RC_SHA"
+          test -z "$(git -C candidate tag --list 'v4.0.0')"
+
+          RELEASE_IDENTITY="candidate/frontend/android/release-version.properties"
+          test -s "$RELEASE_IDENTITY"
+          test "$(sed -n 's/^VERSION_CODE=//p' "$RELEASE_IDENTITY" | tr -d '[:space:]')" = "400"
+          test "$(sed -n 's/^VERSION_NAME=//p' "$RELEASE_IDENTITY" | tr -d '[:space:]')" = "4.0.0"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install isolated current and frozen-v1 dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .venv-current
+          python -m venv .venv-v1
+          .venv-current/bin/python -m pip install -q --disable-pip-version-check -r candidate/backend/requirements.txt
+          .venv-v1/bin/python -m pip install -q --disable-pip-version-check -r previous/backend/requirements.txt
+
+      - name: Run release manifest and rollback regression tests
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/candidate/backend
+          DATABASE_URL: sqlite:///./rc1-validation.db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: rc1-validation-ci-secret
+          AI_PROVIDER: template
+          DEV_MOCK_JOBS: "false"
+          ALLOW_REAL_APPLICATION_SUBMIT: "false"
+          ALLOW_REAL_FOLLOWUP_SEND: "false"
+          AUTOPILOT_ENABLED: "false"
+          ENABLE_RESUMABLE_HANDOFFS: "false"
+        run: |
+          set -euo pipefail
+          cd candidate/backend
+          ../../.venv-current/bin/python -m pytest -q --tb=short -ra             tests/test_release_manifest.py             tests/test_day41_previous_release_compatibility.py             tests/test_recovery_incident_drill.py
+
+      - name: Run frozen-v1 runtime-schema compatibility drill
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/candidate/backend
+          DATABASE_URL: sqlite:///./rc1-v1-compatibility.db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: rc1-compatibility-ci-secret
+          AI_PROVIDER: template
+          DEV_MOCK_JOBS: "false"
+          ALLOW_REAL_APPLICATION_SUBMIT: "false"
+          ALLOW_REAL_FOLLOWUP_SEND: "false"
+          AUTOPILOT_ENABLED: "false"
+        run: |
+          set -euo pipefail
+          cd candidate/backend
+          ../../.venv-current/bin/python scripts/run_day41_previous_release_compatibility.py             --previous-checkout "${{ github.workspace }}/previous"             --candidate-checkout "${{ github.workspace }}/candidate"             --previous-python "${{ github.workspace }}/.venv-v1/bin/python"             --candidate-python "${{ github.workspace }}/.venv-current/bin/python"             --output evidence/rc1-day41-previous-release-compatibility.json
+
+      - name: Run non-network recovery incident drill
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/candidate/backend
+          DATABASE_URL: sqlite:///./rc1-recovery-drill.db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: rc1-recovery-ci-secret
+          AI_PROVIDER: template
+          DEV_MOCK_JOBS: "false"
+          ALLOW_REAL_APPLICATION_SUBMIT: "false"
+          ALLOW_REAL_FOLLOWUP_SEND: "false"
+          AUTOPILOT_ENABLED: "false"
+          ENABLE_RESUMABLE_HANDOFFS: "false"
+        run: |
+          set -euo pipefail
+          cd candidate/backend
+          ../../.venv-current/bin/python scripts/run_recovery_incident_drill.py             --output evidence/rc1-recovery-incident-drill.json
+
+      - name: Verify safety state and compile RC1 evidence summary
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/candidate/backend
+          DATABASE_URL: sqlite:///./rc1-safety.db
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: rc1-safety-ci-secret
+          AI_PROVIDER: template
+          DEV_MOCK_JOBS: "false"
+          ALLOW_REAL_APPLICATION_SUBMIT: "false"
+          ALLOW_REAL_FOLLOWUP_SEND: "false"
+          AUTOPILOT_ENABLED: "false"
+          ENABLE_RESUMABLE_HANDOFFS: "false"
+        run: |
+          set -euo pipefail
+          cd candidate/backend
+          ../../.venv-current/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from app.config import get_settings
+          from app.services.operations_policy import operations_readiness_manifest
+          from app.services.release_manifest import rollback_is_safe
+
+          rc_sha = os.environ["RC_SHA"]
+          compat_path = Path("evidence/rc1-day41-previous-release-compatibility.json")
+          recovery_path = Path("evidence/rc1-recovery-incident-drill.json")
+          compat = json.loads(compat_path.read_text(encoding="utf-8"))
+          recovery = json.loads(recovery_path.read_text(encoding="utf-8"))
+
+          settings = get_settings()
+          operations = operations_readiness_manifest()
+          same_schema = rollback_is_safe(
+              from_schema="head",
+              to_schema="head",
+              destructive=False,
+          )
+          destructive = rollback_is_safe(
+              from_schema="head",
+              to_schema="previous",
+              destructive=True,
+          )
+
+          assert compat["passed"] is True
+          assert compat["candidate_revision"] == rc_sha
+          assert compat["previous_release_revision"] == os.environ["PREVIOUS_V1_SHA"]
+          assert compat["live_database_touched"] is False
+          assert compat["synthetic_data_only"] is True
+
+          assert recovery["passed"] is True
+          assert recovery["safety"]["browser_opened"] is False
+          assert recovery["safety"]["network_contacted"] is False
+          assert recovery["safety"]["final_submit_clicked"] is False
+          assert recovery["safety"]["real_submission_enabled"] is False
+          assert recovery["safety"]["autopilot_enabled"] is False
+          assert recovery["counts"]["submitted_or_confirmed"] == 0
+
+          assert settings.allow_real_application_submit is False
+          assert settings.allow_real_followup_send is False
+          assert operations["real_submission_enabled"] is False
+          assert operations["autopilot_enabled"] is False
+          assert same_schema == {"safe": True, "reason": "same_schema"}
+          assert destructive == {
+              "safe": False,
+              "reason": "destructive_migration_blocks_rollback",
+          }
+
+          summary = {
+              "candidate_sha": rc_sha,
+              "version": "4.0.0",
+              "android_version_code": 400,
+              "candidate_source_exact": True,
+              "release_manifest_regression_passed": True,
+              "frozen_v1_compatibility_passed": True,
+              "frozen_v1_compatibility_report_sha256": compat["report_sha256"],
+              "recovery_incident_drill_passed": True,
+              "recovery_incident_report_sha256": recovery["report_sha256"],
+              "rollback_same_schema_safe": True,
+              "destructive_rollback_blocked": True,
+              "real_application_submit_enabled": False,
+              "real_followup_send_enabled": False,
+              "autopilot_enabled": False,
+              "network_contacted_by_recovery_drill": False,
+              "production_signed_artifact_bound_to_candidate": False,
+              "apk_sha256": None,
+              "signing_certificate_sha256": None,
+              "publication_authorized": False,
+              "release_tag_created": False,
+              "governed_onehost_real_submit_authorized": False,
+              "validation_scope": "synthetic/offline exact-source release and recovery validation",
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+          }
+          Path("evidence/rc1-4.0.0-validation.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Upload RC1 validation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: JobTomatik-4.0.0-RC1-validation-93c06ff
+          path: |
+            candidate/backend/evidence/rc1-day41-previous-release-compatibility.json
+            candidate/backend/evidence/rc1-recovery-incident-drill.json
+            candidate/backend/evidence/rc1-4.0.0-validation.json
+          if-no-files-found: error
+          retention-days: 90
