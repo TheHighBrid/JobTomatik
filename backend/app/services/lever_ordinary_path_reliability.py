@@ -402,20 +402,17 @@ def _validate_confirmation_target(
 ) -> None:
     if not target_verified or not _same_target(str(job.url or ""), final_url):
         _reject_for_confirmation(
-            application,
             "stale_or_unverified_target",
             "Lever confirmation target is not the retained posting",
         )
     if not explicit_confirmation(final_url, confirmation_text):
         _reject_for_confirmation(
-            application,
             "confirmation_not_explicit",
             "Lever confirmation is missing an explicit success phrase",
         )
 
 
 def _reject_for_confirmation(
-    application: Application,
     code: str,
     message: str,
 ) -> None:
