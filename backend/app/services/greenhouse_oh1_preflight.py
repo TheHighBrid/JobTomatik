@@ -74,6 +74,24 @@ def _runtime_contract() -> Dict[str, Any]:
     }
 
 
+def _revision_blockers(runtime: Dict[str, Any]) -> list[str]:
+    runtime_revision = runtime["runtime_revision"]
+    expected_revision = runtime["expected_revision"]
+    runtime_revision_valid = _SHA40_RE.fullmatch(runtime_revision) is not None
+    expected_revision_valid = _SHA40_RE.fullmatch(expected_revision) is not None
+    checks = (
+        (not runtime_revision_valid, "runtime_revision_unverified"),
+        (not expected_revision_valid, "expected_revision_unverified"),
+        (
+            runtime_revision_valid
+            and expected_revision_valid
+            and runtime_revision != expected_revision,
+            "runtime_revision_mismatch",
+        ),
+    )
+    return [reason for blocked, reason in checks if blocked]
+
+
 def _runtime_blockers(runtime: Dict[str, Any]) -> list[str]:
     checks = (
         (runtime["runtime_mode"] != "onehost", "onehost_runtime_mode_required"),
@@ -90,10 +108,7 @@ def _runtime_blockers(runtime: Dict[str, Any]) -> list[str]:
         (not runtime["handoff_storage_dir"], "handoff_storage_dir_missing"),
         (not runtime["resumable_handoffs_enabled"], "resumable_handoffs_disabled"),
         (runtime["global_kill_switch_active"], "global_kill_switch_active"),
-        (
-            runtime["autopilot_enabled"],
-            "autopilot_must_be_disabled_for_gh_oh1",
-        ),
+        (runtime["autopilot_enabled"], "autopilot_must_be_disabled_for_gh_oh1"),
         (
             runtime["real_submit_enabled"],
             "real_submit_flag_open_before_final_action_boundary",
@@ -104,23 +119,50 @@ def _runtime_blockers(runtime: Dict[str, Any]) -> list[str]:
         ),
     )
     blockers = [reason for blocked, reason in checks if blocked]
-
-    runtime_revision = runtime["runtime_revision"]
-    expected_revision = runtime["expected_revision"]
-    runtime_revision_valid = _SHA40_RE.fullmatch(runtime_revision) is not None
-    expected_revision_valid = _SHA40_RE.fullmatch(expected_revision) is not None
-    revision_checks = (
-        (not runtime_revision_valid, "runtime_revision_unverified"),
-        (not expected_revision_valid, "expected_revision_unverified"),
-        (
-            runtime_revision_valid
-            and expected_revision_valid
-            and runtime_revision != expected_revision,
-            "runtime_revision_mismatch",
-        ),
-    )
-    blockers.extend(reason for blocked, reason in revision_checks if blocked)
+    blockers.extend(_revision_blockers(runtime))
     return blockers
+
+
+def _submission_history(
+    db: Session,
+    application: Application,
+) -> tuple[list[SubmissionAttempt], int]:
+    attempts = (
+        db.query(SubmissionAttempt)
+        .filter(SubmissionAttempt.application_id == application.id)
+        .order_by(SubmissionAttempt.id.asc())
+        .all()
+    )
+    evidence_count = (
+        db.query(SubmissionEvidence.id)
+        .filter(SubmissionEvidence.application_id == application.id)
+        .count()
+    )
+    return attempts, int(evidence_count)
+
+
+def _duplicate_state(
+    application: Application,
+    *,
+    aliases: list[str],
+    conflict: Any,
+    attempts: list[SubmissionAttempt],
+    evidence_count: int,
+    blockers: list[str],
+) -> Dict[str, Any]:
+    return {
+        "submission_idempotency_key_present": bool(
+            _text(application.submission_idempotency_key)
+        ),
+        "identity_alias_count": len(aliases),
+        "conflicting_application_id": (
+            int(conflict.application_id) if conflict is not None else None
+        ),
+        "submission_attempt_count": len(attempts),
+        "application_attempt_counter": int(application.submission_attempt_count or 0),
+        "submission_evidence_count": evidence_count,
+        "duplicate_or_replay_detected": bool(blockers),
+    }
 
 
 def _duplicate_defense(
@@ -140,23 +182,9 @@ def _duplicate_defense(
         aliases,
         current_application_id=application.id,
     )
-    attempts = (
-        db.query(SubmissionAttempt)
-        .filter(SubmissionAttempt.application_id == application.id)
-        .order_by(SubmissionAttempt.id.asc())
-        .all()
-    )
-    evidence_count = (
-        db.query(SubmissionEvidence.id)
-        .filter(SubmissionEvidence.application_id == application.id)
-        .count()
-    )
-
+    attempts, evidence_count = _submission_history(db, application)
     duplicate_checks = (
-        (
-            conflict is not None,
-            "duplicate_target_owned_by_another_application",
-        ),
+        (conflict is not None, "duplicate_target_owned_by_another_application"),
         (
             int(application.submission_attempt_count or 0) > 0 or bool(attempts),
             "prior_submission_attempt_recorded",
@@ -164,20 +192,15 @@ def _duplicate_defense(
         (bool(evidence_count), "prior_submission_evidence_recorded"),
     )
     blockers = [reason for blocked, reason in duplicate_checks if blocked]
-
-    return {
-        "submission_idempotency_key_present": bool(
-            _text(application.submission_idempotency_key)
-        ),
-        "identity_alias_count": len(aliases),
-        "conflicting_application_id": (
-            int(conflict.application_id) if conflict is not None else None
-        ),
-        "submission_attempt_count": len(attempts),
-        "application_attempt_counter": int(application.submission_attempt_count or 0),
-        "submission_evidence_count": int(evidence_count),
-        "duplicate_or_replay_detected": bool(blockers),
-    }, blockers
+    state = _duplicate_state(
+        application,
+        aliases=aliases,
+        conflict=conflict,
+        attempts=attempts,
+        evidence_count=evidence_count,
+        blockers=blockers,
+    )
+    return state, blockers
 
 
 def _approval_is_stale(
@@ -196,6 +219,64 @@ def _approval_is_expired(approval: SubmissionApproval, now: datetime) -> bool:
     return expires_at is not None and expires_at <= now
 
 
+def _approval_buckets(
+    approvals: list[SubmissionApproval],
+    *,
+    combined_payload_hash: str,
+    application_url: str,
+    now: datetime,
+) -> tuple[
+    list[SubmissionApproval],
+    list[SubmissionApproval],
+    list[SubmissionApproval],
+    list[SubmissionApproval],
+    list[SubmissionApproval],
+]:
+    active = [
+        item
+        for item in approvals
+        if item.status == SubmissionApprovalStatus.active.value
+    ]
+    consumed = [
+        item
+        for item in approvals
+        if item.status == SubmissionApprovalStatus.consumed.value
+    ]
+    stale_active = [
+        item
+        for item in active
+        if _approval_is_stale(item, combined_payload_hash, application_url)
+    ]
+    expired_active = [item for item in active if _approval_is_expired(item, now)]
+    matching_active = [
+        item
+        for item in active
+        if item not in stale_active and item not in expired_active
+    ]
+    return active, consumed, stale_active, expired_active, matching_active
+
+
+def _approval_summary(
+    approvals: list[SubmissionApproval],
+    *,
+    active: list[SubmissionApproval],
+    consumed: list[SubmissionApproval],
+    stale_active: list[SubmissionApproval],
+    expired_active: list[SubmissionApproval],
+    matching_active: list[SubmissionApproval],
+) -> Dict[str, Any]:
+    return {
+        "approval_count": len(approvals),
+        "active_count": len(active),
+        "matching_active_count": len(matching_active),
+        "consumed_count": len(consumed),
+        "stale_active_count": len(stale_active),
+        "expired_active_count": len(expired_active),
+        "fresh_final_action_approval_present": bool(matching_active),
+        "fresh_final_action_approval_required_before_final_action": True,
+    }
+
+
 def _approval_state(
     db: Session,
     application: Application,
@@ -208,27 +289,13 @@ def _approval_state(
         .order_by(SubmissionApproval.created_at.asc(), SubmissionApproval.id.asc())
         .all()
     )
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    active = [
-        item
-        for item in approvals
-        if item.status == SubmissionApprovalStatus.active.value
-    ]
-    consumed = [
-        item
-        for item in approvals
-        if item.status == SubmissionApprovalStatus.consumed.value
-    ]
-    combined_payload_hash = exact_payload["combined_payload_hash"]
-    stale_active = [
-        item
-        for item in active
-        if _approval_is_stale(item, combined_payload_hash, application_url)
-    ]
-    expired_active = [
-        item for item in active if _approval_is_expired(item, now)
-    ]
-
+    buckets = _approval_buckets(
+        approvals,
+        combined_payload_hash=exact_payload["combined_payload_hash"],
+        application_url=application_url,
+        now=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    active, consumed, stale_active, expired_active, matching_active = buckets
     blocker_checks = (
         (len(active) > 1, "multiple_active_final_action_approvals"),
         (bool(stale_active), "stale_active_final_action_approval"),
@@ -236,38 +303,23 @@ def _approval_state(
         (bool(consumed), "final_action_approval_already_consumed"),
     )
     blockers = [reason for blocked, reason in blocker_checks if blocked]
-    matching_active = [
-        item
-        for item in active
-        if item not in stale_active and item not in expired_active
-    ]
-    return {
-        "approval_count": len(approvals),
-        "active_count": len(active),
-        "matching_active_count": len(matching_active),
-        "consumed_count": len(consumed),
-        "stale_active_count": len(stale_active),
-        "expired_active_count": len(expired_active),
-        "fresh_final_action_approval_present": bool(matching_active),
-        "fresh_final_action_approval_required_before_final_action": True,
-    }, blockers
+    summary = _approval_summary(
+        approvals,
+        active=active,
+        consumed=consumed,
+        stale_active=stale_active,
+        expired_active=expired_active,
+        matching_active=matching_active,
+    )
+    return summary, blockers
 
 
-def build_greenhouse_oh1_preflight(
-    db: Session,
-    application: Application,
-    user: User,
-    job: Job,
-) -> Dict[str, Any]:
-    """Return a deterministic, fail-closed GH-OH1 readiness report."""
-
-    dossier = build_supervised_pilot_dossier(db, application, user, job)
-    target = dict(dossier["target"])
-    exact_payload = dict(dossier["exact_payload"])
-    runtime = _runtime_contract()
-
-    raw_job = dict(job.raw_data or {})
-    intake_checks = (
+def _intake_blockers(
+    dossier: Dict[str, Any],
+    target: Dict[str, Any],
+    raw_job: Dict[str, Any],
+) -> list[str]:
+    checks = (
         (
             target.get("platform") != "greenhouse",
             "gh_oh1_requires_greenhouse_target",
@@ -287,7 +339,38 @@ def build_greenhouse_oh1_preflight(
             "canonical_greenhouse_intake_event_missing",
         ),
     )
-    blockers = [reason for blocked, reason in intake_checks if blocked]
+    return [reason for blocked, reason in checks if blocked]
+
+
+def _safety_boundary() -> Dict[str, Any]:
+    return {
+        "read_only": True,
+        "browser_started": False,
+        "submission_queued": False,
+        "approval_issued": False,
+        "approval_consumed": False,
+        "runtime_flags_changed": False,
+        "final_action_authorized": False,
+        "captcha_or_security_bypass_authorized": False,
+        "next_boundary": (
+            "supervised browser preparation, then fresh exact-payload "
+            "final-action approval and revalidation"
+        ),
+    }
+
+
+def build_greenhouse_oh1_preflight(
+    db: Session,
+    application: Application,
+    user: User,
+    job: Job,
+) -> Dict[str, Any]:
+    """Return a deterministic, fail-closed GH-OH1 readiness report."""
+    dossier = build_supervised_pilot_dossier(db, application, user, job)
+    target = dict(dossier["target"])
+    exact_payload = dict(dossier["exact_payload"])
+    runtime = _runtime_contract()
+    blockers = _intake_blockers(dossier, target, dict(job.raw_data or {}))
     blockers.extend(dossier["preflight"]["structural_blockers"])
     blockers.extend(_runtime_blockers(runtime))
 
@@ -298,7 +381,6 @@ def build_greenhouse_oh1_preflight(
         dict(target),
     )
     blockers.extend(duplicate_blockers)
-
     approval_state, approval_blockers = _approval_state(
         db,
         application,
@@ -306,7 +388,6 @@ def build_greenhouse_oh1_preflight(
         _text(target.get("application_url")),
     )
     blockers.extend(approval_blockers)
-
     blockers = list(dict.fromkeys(_text(item) for item in blockers if _text(item)))
     ready = not blockers
 
@@ -323,20 +404,7 @@ def build_greenhouse_oh1_preflight(
         "runtime_contract": runtime,
         "duplicate_defense": duplicate_state,
         "approval_state": approval_state,
-        "safety_boundary": {
-            "read_only": True,
-            "browser_started": False,
-            "submission_queued": False,
-            "approval_issued": False,
-            "approval_consumed": False,
-            "runtime_flags_changed": False,
-            "final_action_authorized": False,
-            "captcha_or_security_bypass_authorized": False,
-            "next_boundary": (
-                "supervised browser preparation, then fresh exact-payload "
-                "final-action approval and revalidation"
-            ),
-        },
+        "safety_boundary": _safety_boundary(),
     }
 
 
