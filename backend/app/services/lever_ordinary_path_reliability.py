@@ -1,13 +1,8 @@
 """Ordinary Lever path reliability.
 
-This module closes the bookkeeping around the supported Lever flow:
-
-prepare -> fill -> Answer Vault interruption -> resume the same application
--> another question if needed -> resume -> owner final action -> explicit
-confirmation -> evidence -> applied/confirmed -> close handoff -> block duplicate.
-
-It does not submit, does not solve CAPTCHA, and does not revive the old
-Chromium campaign. A URL change alone is never confirmation.
+Bookkeeping for the supported flow only. State changes go through
+``transition_application_state``. This module does not submit and does not
+touch CAPTCHA handling.
 """
 
 from __future__ import annotations
@@ -21,7 +16,6 @@ from sqlalchemy.orm import Session
 from app.models.application import (
     Application,
     ApplicationAutomationState,
-    ApplicationEvent,
     ApplicationStatus,
     ManualReviewStatus,
     ManualReviewTask,
@@ -30,6 +24,10 @@ from app.models.application import (
 )
 from app.models.handoff import HandoffSessionStatus, ManualHandoffSession
 from app.models.job import Job
+from app.services.application_state import (
+    InvalidApplicationTransition,
+    transition_application_state,
+)
 from app.services.ats_lever import parse_lever_job_url
 
 EXPLICIT_CONFIRMATION_PHRASES = (
@@ -66,15 +64,13 @@ def _normalize(value: Any) -> str:
 
 def _target(url: str) -> Dict[str, Optional[str]]:
     site, posting_id, region = parse_lever_job_url(url)
-    return {"site": site, "posting_id": posting_id, "region": region, "url": str(url or "").strip()}
+    return {"site": site, "posting_id": posting_id, "region": region}
 
 
 def _same_target(left: str, right: str) -> bool:
     a = _target(left)
     b = _target(right)
-    return bool(a["site"] and a["posting_id"] and a == {**b, "url": b["url"]} or (
-        a["site"] == b["site"] and a["posting_id"] == b["posting_id"] and a["region"] == b["region"]
-    ))
+    return bool(a["site"] and a["posting_id"] and a == b)
 
 
 def _ledger(application: Application) -> Dict[str, Any]:
@@ -85,16 +81,11 @@ def _ledger(application: Application) -> Dict[str, Any]:
     return ledger
 
 
-def _event(db: Session, application: Application, event_type: str, to_state: str, payload: Mapping[str, Any]) -> None:
-    db.add(
-        ApplicationEvent(
-            application_id=application.id,
-            event_type=event_type,
-            from_state=application.automation_state,
-            to_state=to_state,
-            payload=dict(payload),
-        )
-    )
+def _move(db: Session, application: Application, state: str, event_type: str, payload: Mapping[str, Any]) -> None:
+    try:
+        transition_application_state(db, application, state, event_type, dict(payload))
+    except InvalidApplicationTransition as exc:
+        raise LeverOrdinaryPathError("invalid_state_transition", str(exc)) from exc
 
 
 def explicit_confirmation(final_url: str, confirmation_text: str) -> bool:
@@ -102,7 +93,7 @@ def explicit_confirmation(final_url: str, confirmation_text: str) -> bool:
     if not any(phrase in text for phrase in EXPLICIT_CONFIRMATION_PHRASES):
         return False
     path = urlparse(final_url or "").path.lower()
-    return "/thanks" in path or any(phrase in text for phrase in EXPLICIT_CONFIRMATION_PHRASES)
+    return "/thanks" in path or True
 
 
 def duplicate_blocker(db: Session, application: Application, job: Job) -> Optional[str]:
@@ -136,8 +127,6 @@ def record_answer_vault_interruption(
     question: str,
     current_url: str,
 ) -> Dict[str, Any]:
-    """Keep an unknown-question pause on the same Lever application."""
-
     if not _same_target(str(job.url or ""), current_url):
         raise LeverOrdinaryPathError("target_continuity_broken", "Answer Vault interruption left the retained Lever target")
     blocker = duplicate_blocker(db, application, job)
@@ -155,8 +144,7 @@ def record_answer_vault_interruption(
     ledger["interruptions"] = interruptions
     ledger["application_id"] = application.id
     ledger["posting_id"] = _target(str(job.url or ""))["posting_id"]
-    application.automation_state = ApplicationAutomationState.needs_review.value
-    _event(db, application, "lever_answer_vault_interruption", application.automation_state, {
+    _move(db, application, ApplicationAutomationState.needs_review.value, "lever_answer_vault_interruption", {
         "application_id": application.id,
         "question": str(question or "").strip(),
         "same_target": True,
@@ -183,14 +171,20 @@ def resume_same_application(
     ledger["application_id"] = application.id
     ledger["resume_count"] = int(ledger.get("resume_count") or 0) + 1
     ledger["posting_id"] = _target(current_url)["posting_id"]
-    application.automation_state = ApplicationAutomationState.applying.value
-    _event(db, application, "lever_same_application_resumed", application.automation_state, {
+    _move(db, application, ApplicationAutomationState.applying.value, "lever_same_application_resumed", {
         "application_id": application.id,
         "resume_count": ledger["resume_count"],
         "posting_id": ledger["posting_id"],
     })
     db.flush()
     return {"application_id": application.id, "resume_count": ledger["resume_count"], "opened_new_application": False}
+
+
+def _reject(db: Session, application: Application, reason: str) -> None:
+    if application.automation_state == ApplicationAutomationState.applying.value:
+        _move(db, application, ApplicationAutomationState.submission_uncertain.value, "lever_confirmation_rejected", {"reason": reason})
+    elif application.automation_state != ApplicationAutomationState.submission_uncertain.value:
+        _move(db, application, ApplicationAutomationState.needs_review.value, "lever_confirmation_rejected", {"reason": reason})
 
 
 def reconcile_lever_confirmation(
@@ -203,20 +197,12 @@ def reconcile_lever_confirmation(
     target_verified: bool,
     approval_reference: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Persist explicit confirmation evidence before any state promotion."""
-
     if not target_verified or not _same_target(str(job.url or ""), final_url):
-        application.automation_state = ApplicationAutomationState.submission_uncertain.value
-        _event(db, application, "lever_confirmation_rejected", application.automation_state, {
-            "reason": "stale_or_unverified_target",
-        })
+        _reject(db, application, "stale_or_unverified_target")
         db.flush()
         raise LeverOrdinaryPathError("stale_or_unverified_target", "Lever confirmation target is not the retained posting")
     if not explicit_confirmation(final_url, confirmation_text):
-        application.automation_state = ApplicationAutomationState.submission_uncertain.value
-        _event(db, application, "lever_confirmation_rejected", application.automation_state, {
-            "reason": "confirmation_not_explicit",
-        })
+        _reject(db, application, "confirmation_not_explicit")
         db.flush()
         raise LeverOrdinaryPathError("confirmation_not_explicit", "Lever confirmation is missing an explicit success phrase")
     blocker = duplicate_blocker(db, application, job)
@@ -239,18 +225,21 @@ def reconcile_lever_confirmation(
     )
     db.add(evidence)
     db.flush()
-    _event(db, application, "lever_confirmation_evidence_persisted", application.automation_state, {
+    _move(db, application, application.automation_state, "lever_confirmation_evidence_persisted", {
         "evidence_id": evidence.id,
         "before_promotion": True,
     })
-    application.status = ApplicationStatus.applied
-    application.automation_state = ApplicationAutomationState.confirmed.value
-    application.applied_at = _now()
-    _close_reviews_and_handoffs(db, application)
-    _event(db, application, "lever_ordinary_path_confirmed", application.automation_state, {
+    if application.automation_state == ApplicationAutomationState.needs_review.value:
+        _move(db, application, ApplicationAutomationState.applying.value, "lever_confirmation_resume", {"evidence_id": evidence.id})
+    if application.automation_state == ApplicationAutomationState.applying.value:
+        _move(db, application, ApplicationAutomationState.submitted.value, "lever_confirmation_submitted", {"evidence_id": evidence.id})
+    _move(db, application, ApplicationAutomationState.confirmed.value, "lever_ordinary_path_confirmed", {
         "evidence_id": evidence.id,
         "approval_reference": approval_reference,
     })
+    application.status = ApplicationStatus.applied
+    application.applied_at = _now()
+    _close_reviews_and_handoffs(db, application)
     db.flush()
     return {
         "application_id": application.id,
@@ -303,8 +292,6 @@ def recover_stranded_application(
     confirmation_text: Optional[str] = None,
     target_verified: bool = False,
 ) -> Dict[str, Any]:
-    """Recover a stuck pending/applying application without inventing confirmation."""
-
     current = now or _now()
     evidence = (
         db.query(SubmissionEvidence)
@@ -332,16 +319,14 @@ def recover_stranded_application(
     updated = application.updated_at or application.created_at or current
     if getattr(updated, "tzinfo", None) is not None:
         updated = updated.replace(tzinfo=None)
-    stranded = application.automation_state in {
-        ApplicationAutomationState.preparing.value,
-        ApplicationAutomationState.applying.value,
-        ApplicationAutomationState.needs_review.value,
-    } or application.status == ApplicationStatus.applying
-    if stranded and current - updated >= stale_after:
-        application.automation_state = ApplicationAutomationState.submission_uncertain.value
-        _event(db, application, "lever_stranded_application_recovered", application.automation_state, {
-            "reason": "no_explicit_confirmation",
-        })
-        db.flush()
+    if current - updated < stale_after:
         return {"application_id": application.id, "automation_state": application.automation_state, "confirmed": False}
+    if application.automation_state == ApplicationAutomationState.applying.value:
+        _move(db, application, ApplicationAutomationState.submission_uncertain.value, "lever_stranded_application_recovered", {"reason": "no_explicit_confirmation"})
+    elif application.automation_state in {
+        ApplicationAutomationState.preparing.value,
+        ApplicationAutomationState.ready_to_apply.value,
+    }:
+        _move(db, application, ApplicationAutomationState.needs_review.value, "lever_stranded_application_recovered", {"reason": "no_explicit_confirmation"})
+    db.flush()
     return {"application_id": application.id, "automation_state": application.automation_state, "confirmed": False}

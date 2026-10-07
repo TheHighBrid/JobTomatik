@@ -230,9 +230,18 @@ def test_stranded_with_sufficient_evidence_reconciles(records):
     assert result["status"] == "applied"
 
 
-def test_module_does_not_attempt_captcha():
+def test_module_uses_state_service_and_does_not_attempt_captcha():
+    import ast
     from app.services import lever_ordinary_path_reliability as reliability
 
     source = open(reliability.__file__, encoding="utf-8").read()
+    tree = ast.parse(source)
+    writes = []
+    for node in ast.walk(tree):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+        for target in targets:
+            if isinstance(target, ast.Attribute) and target.attr == "automation_state":
+                writes.append(node.lineno)
+    assert writes == []
     assert "solve_captcha" not in source
     assert "hcaptcha" not in source.lower()
