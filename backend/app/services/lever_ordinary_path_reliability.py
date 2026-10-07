@@ -131,18 +131,6 @@ def _application_is_confirmed(application: Application) -> bool:
     )
 
 
-def _is_confirmed_target(
-    application: Application,
-    job: Job,
-    *,
-    site: str,
-    posting_id: str,
-) -> bool:
-    other_site, other_posting, _ = parse_lever_job_url(str(job.url or ""))
-    target_matches = (other_site, other_posting) == (site, posting_id)
-    return target_matches and _application_is_confirmed(application)
-
-
 def _confirmed_sibling_matches(
     db: Session,
     application: Application,
@@ -159,15 +147,17 @@ def _confirmed_sibling_matches(
         )
         .all()
     )
-    return any(
-        _is_confirmed_target(
-            other,
-            other_job,
-            site=site,
-            posting_id=posting_id,
+    for other, other_job in siblings:
+        other_site, other_posting, _ = parse_lever_job_url(
+            str(other_job.url or "")
         )
-        for other, other_job in siblings
-    )
+        if (
+            other_site == site
+            and other_posting == posting_id
+            and _application_is_confirmed(other)
+        ):
+            return True
+    return False
 
 
 def duplicate_blocker(
@@ -392,45 +382,6 @@ def _promote_confirmation(
     )
 
 
-def _validate_confirmation_target(
-    job: Job,
-    *,
-    final_url: str,
-    confirmation_text: str,
-    target_verified: bool,
-) -> None:
-    if not target_verified or not _same_target(str(job.url or ""), final_url):
-        _reject_for_confirmation(
-            "stale_or_unverified_target",
-            "Lever confirmation target is not the retained posting",
-        )
-    if not explicit_confirmation(final_url, confirmation_text):
-        _reject_for_confirmation(
-            "confirmation_not_explicit",
-            "Lever confirmation is missing an explicit success phrase",
-        )
-
-
-def _reject_for_confirmation(
-    code: str,
-    message: str,
-) -> None:
-    raise LeverOrdinaryPathError(code, message)
-
-
-def _ensure_confirmation_not_duplicate(
-    db: Session,
-    application: Application,
-    job: Job,
-) -> None:
-    blocker = duplicate_blocker(db, application, job)
-    if blocker == "duplicate_lever_submission_blocked":
-        raise LeverOrdinaryPathError(
-            blocker,
-            "This Lever posting is already confirmed",
-        )
-
-
 def reconcile_lever_confirmation(
     db: Session,
     application: Application,
@@ -442,19 +393,27 @@ def reconcile_lever_confirmation(
     approval_reference: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Promote to confirmed only after target and success evidence are proven."""
-    try:
-        _validate_confirmation_target(
-            job,
-            final_url=final_url,
-            confirmation_text=confirmation_text,
-            target_verified=target_verified,
-        )
-    except LeverOrdinaryPathError as exc:
-        _reject(db, application, exc.code)
+    if not target_verified or not _same_target(str(job.url or ""), final_url):
+        _reject(db, application, "stale_or_unverified_target")
         db.flush()
-        raise
+        raise LeverOrdinaryPathError(
+            "stale_or_unverified_target",
+            "Lever confirmation target is not the retained posting",
+        )
+    if not explicit_confirmation(final_url, confirmation_text):
+        _reject(db, application, "confirmation_not_explicit")
+        db.flush()
+        raise LeverOrdinaryPathError(
+            "confirmation_not_explicit",
+            "Lever confirmation is missing an explicit success phrase",
+        )
+    blocker = duplicate_blocker(db, application, job)
+    if blocker == "duplicate_lever_submission_blocked":
+        raise LeverOrdinaryPathError(
+            blocker,
+            "This Lever posting is already confirmed",
+        )
 
-    _ensure_confirmation_not_duplicate(db, application, job)
     evidence = _confirmation_evidence(
         application,
         final_url=final_url,
@@ -582,42 +541,6 @@ def _application_is_stale(
     return current - updated >= stale_after
 
 
-def _runtime_reconciliation(
-    db: Session,
-    application: Application,
-    job: Job,
-    *,
-    final_url: Optional[str],
-    confirmation_text: Optional[str],
-    target_verified: bool,
-) -> Optional[Dict[str, Any]]:
-    reconciled = _reconcile_existing_evidence(db, application, job)
-    if reconciled is not None:
-        return reconciled
-    if final_url and confirmation_text and target_verified:
-        return reconcile_lever_confirmation(
-            db,
-            application,
-            job,
-            final_url=final_url,
-            confirmation_text=confirmation_text,
-            target_verified=True,
-        )
-    return None
-
-
-def _recovery_target_state(application: Application) -> Optional[str]:
-    if application.automation_state == ApplicationAutomationState.applying.value:
-        return ApplicationAutomationState.submission_uncertain.value
-    recoverable_states = {
-        ApplicationAutomationState.preparing.value,
-        ApplicationAutomationState.ready_to_apply.value,
-    }
-    if application.automation_state in recoverable_states:
-        return ApplicationAutomationState.needs_review.value
-    return None
-
-
 def recover_stranded_application(
     db: Session,
     application: Application,
@@ -630,16 +553,22 @@ def recover_stranded_application(
     target_verified: bool = False,
 ) -> Dict[str, Any]:
     """Reconcile stale ordinary-path state without inventing confirmation."""
-    reconciled = _runtime_reconciliation(
+    reconciled = _reconcile_existing_evidence(
         db,
         application,
         job,
-        final_url=final_url,
-        confirmation_text=confirmation_text,
-        target_verified=target_verified,
     )
     if reconciled is not None:
         return reconciled
+    if final_url and confirmation_text and target_verified:
+        return reconcile_lever_confirmation(
+            db,
+            application,
+            job,
+            final_url=final_url,
+            confirmation_text=confirmation_text,
+            target_verified=True,
+        )
 
     current = now or _now()
     if not _application_is_stale(
@@ -653,7 +582,16 @@ def recover_stranded_application(
             "confirmed": False,
         }
 
-    target_state = _recovery_target_state(application)
+    if application.automation_state == ApplicationAutomationState.applying.value:
+        target_state = ApplicationAutomationState.submission_uncertain.value
+    elif application.automation_state in {
+        ApplicationAutomationState.preparing.value,
+        ApplicationAutomationState.ready_to_apply.value,
+    }:
+        target_state = ApplicationAutomationState.needs_review.value
+    else:
+        target_state = None
+
     if target_state is not None:
         _move(
             db,
