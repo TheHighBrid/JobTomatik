@@ -31,6 +31,30 @@ directly to the retained Chromium CDP endpoint while resume and cleanup run in C
 
 Celery Beat is intentionally absent.
 
+## Worker restart recovery
+
+Because Beat is absent, the production worker performs a synchronous reconciliation
+before Celery begins consuming new tasks. The startup chain is:
+
+```text
+runtime identity check
+  -> OneHost restart reconciliation
+  -> Celery worker
+```
+
+The reconciliation uses the canonical application recovery rules. An interrupted live
+or unknown application attempt becomes `submission_uncertain`; it is never retried or
+marked submitted automatically. A proven dry-run interruption may return to
+`ready_to_apply` under the existing recovery contract.
+
+A handoff already in the worker-owned `resuming` state is failed on worker restart so
+the new worker cannot silently replay that resume. User-owned pre-resume states
+(`awaiting_user`, `claimed`, and `ready_to_resume`) are preserved.
+
+If reconciliation fails, the startup command exits before Celery starts. The worker
+also has a Docker healthcheck that requires a real Celery `ping` response. This makes
+"container is running" different from "worker is able to consume work."
+
 ## Required host
 
 Use a Docker-capable Linux host with enough persistent disk for PostgreSQL, uploads,
@@ -124,7 +148,7 @@ At minimum:
 
 ```bash
 docker compose -f docker-compose.onehost-production.yml config
-python -m pytest -q backend/tests/test_onehost_production_cutover.py
+python -m pytest -q backend/tests/test_onehost_production_cutover.py backend/tests/test_onehost_startup_recovery.py
 bash scripts/verify-onehost-handoff.sh
 ```
 
