@@ -96,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           cd candidate/backend
-          ../../.venv-current/bin/python scripts/run_day41_previous_release_compatibility.py             --previous-checkout "${{ github.workspace }}/previous"             --candidate-checkout "${{ github.workspace }}/candidate"             --previous-python "${{ github.workspace }}/.venv-v1/bin/python"             --candidate-python "${{ github.workspace }}/.venv-current/bin/python"             --output evidence/rc1-day41-previous-release-compatibility.json
+          ../../.venv-current/bin/python scripts/run_day41_previous_release_compatibility.py --output evidence/rc1-day41-previous-release-compatibility.json
 
       - name: Run non-network recovery incident drill
         shell: bash
