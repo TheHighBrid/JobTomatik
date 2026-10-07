@@ -69,6 +69,23 @@ def _status_label(result: Mapping[str, Any], ready: str, not_ready: str) -> str:
     return "Unverified"
 
 
+def _database_label(database_ok: bool) -> str:
+    return {True: "Healthy", False: "Unhealthy"}[bool(database_ok)]
+
+
+def _safety_labels(
+    *,
+    autopilot: bool,
+    real_submit: bool,
+    kill_armed: bool,
+) -> Dict[str, str]:
+    return {
+        "autopilot": {True: "ON", False: "OFF"}[bool(autopilot)],
+        "real_submit": {True: "ON", False: "OFF"}[bool(real_submit)],
+        "kill_switch": {True: "ARMED", False: "DISARMED"}[bool(kill_armed)],
+    }
+
+
 def _evidence_count(db: Session, user_id: int) -> int:
     return (
         db.query(SubmissionEvidence.id)
@@ -233,7 +250,7 @@ def build_operator_diagnostics(
             ),
             "worker": _status_label(worker, "Ready", "Not ready"),
             "browser": _status_label(browser, "Ready", "Not ready"),
-            "database": "Healthy" if database_ok else "Unhealthy",
+            "database": _database_label(database_ok),
         },
         "applications": _application_counts(db, user.id),
         "handoff": {"open": handoff_count},
@@ -241,11 +258,11 @@ def build_operator_diagnostics(
             "sufficient": evidence_count,
             "available": evidence_count > 0,
         },
-        "safety": {
-            "autopilot": "OFF" if not autopilot else "ON",
-            "real_submit": "OFF" if not real_submit else "ON",
-            "kill_switch": "ARMED" if kill_armed else "DISARMED",
-        },
+        "safety": _safety_labels(
+            autopilot=autopilot,
+            real_submit=real_submit,
+            kill_armed=kill_armed,
+        ),
         "actionable_errors": _actionable_errors(
             onehost=onehost,
             worker=worker,
