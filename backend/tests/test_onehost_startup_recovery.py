@@ -171,3 +171,104 @@ def test_worker_restart_preserves_user_owned_pre_resume_handoff(db_session):
     assert result["resuming_handoffs_checked"] == 0
     assert session.status == HandoffSessionStatus.claimed.value
     assert application.automation_state == ApplicationAutomationState.needs_review.value
+
+
+def test_repeated_worker_restart_reconciliation_is_idempotent_and_fail_closed(db_session):
+    live_user, live_application = _application(
+        db_session,
+        "41",
+        dry_run=False,
+        state=ApplicationAutomationState.applying.value,
+    )
+    _, dry_application = _application(
+        db_session,
+        "42",
+        dry_run=True,
+        state=ApplicationAutomationState.applying.value,
+    )
+    claimed_user, claimed_application = _application(
+        db_session,
+        "43",
+        dry_run=None,
+        state=ApplicationAutomationState.needs_review.value,
+    )
+    resuming_user, resuming_application = _application(
+        db_session,
+        "44",
+        dry_run=None,
+        state=ApplicationAutomationState.needs_review.value,
+    )
+    claimed_session = _handoff(
+        db_session,
+        claimed_user,
+        claimed_application,
+        "43",
+        HandoffSessionStatus.claimed.value,
+    )
+    resuming_session = _handoff(
+        db_session,
+        resuming_user,
+        resuming_application,
+        "44",
+        HandoffSessionStatus.resuming.value,
+    )
+    db_session.commit()
+
+    first = reconcile_onehost_worker_restart(db_session)
+    db_session.commit()
+
+    for record in (
+        live_application,
+        dry_application,
+        claimed_application,
+        resuming_application,
+        claimed_session,
+        resuming_session,
+    ):
+        db_session.refresh(record)
+
+    assert first["resuming_handoffs_failed"] == 1
+    assert first["automatic_live_retry_performed"] is False
+    assert first["submission_authorized"] is False
+    assert live_application.automation_state == ApplicationAutomationState.submission_uncertain.value
+    assert dry_application.automation_state == ApplicationAutomationState.ready_to_apply.value
+    assert claimed_application.automation_state == ApplicationAutomationState.needs_review.value
+    assert resuming_application.automation_state == ApplicationAutomationState.needs_review.value
+    assert claimed_session.status == HandoffSessionStatus.claimed.value
+    assert resuming_session.status == HandoffSessionStatus.failed.value
+
+    protected_ids = {
+        live_application.id,
+        dry_application.id,
+        claimed_application.id,
+        resuming_application.id,
+    }
+    forbidden_states = {
+        ApplicationAutomationState.submitted.value,
+        ApplicationAutomationState.confirmed.value,
+    }
+
+    for _ in range(25):
+        repeated = reconcile_onehost_worker_restart(db_session)
+        db_session.commit()
+        assert repeated["resuming_handoffs_failed"] == 0
+        assert repeated["application_recovery"]["recovered"] == 0
+        assert repeated["automatic_live_retry_performed"] is False
+        assert repeated["submission_authorized"] is False
+
+        applications = (
+            db_session.query(Application)
+            .filter(Application.id.in_(protected_ids))
+            .all()
+        )
+        assert len(applications) == 4
+        assert all(app.automation_state not in forbidden_states for app in applications)
+
+    db_session.refresh(live_application)
+    db_session.refresh(dry_application)
+    db_session.refresh(claimed_session)
+    db_session.refresh(resuming_session)
+    assert live_application.automation_state == ApplicationAutomationState.submission_uncertain.value
+    assert dry_application.automation_state == ApplicationAutomationState.ready_to_apply.value
+    assert claimed_session.status == HandoffSessionStatus.claimed.value
+    assert resuming_session.status == HandoffSessionStatus.failed.value
