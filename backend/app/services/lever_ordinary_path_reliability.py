@@ -23,22 +23,13 @@ from app.services.application_state import (
     transition_application_state,
 )
 from app.services.ats_lever import parse_lever_job_url
-
-
-EXPLICIT_CONFIRMATION_PHRASES = (
-    "thank you for applying",
-    "thank you for your application",
-    "thanks for applying",
-    "thanks for your application",
-    "application submitted",
-    "application received",
-    "your application has been submitted",
-    "your application was submitted",
-    "application successfully submitted",
-    "successfully submitted your application",
-    "we have received your application",
-    "we've received your application",
+from app.services.lever_ordinary_path_support import (
+    explicit_confirmation,
+    lever_target as _target,
+    same_lever_target as _same_target,
 )
+
+
 CONTINUITY_KEY = "lever_ordinary_path"
 STALE_AFTER = timedelta(hours=6)
 
@@ -54,29 +45,6 @@ class LeverOrdinaryPathError(ValueError):
 
 def _now() -> datetime:
     return datetime.utcnow()
-
-
-def _normalize(value: Any) -> str:
-    return " ".join(str(value or "").strip().lower().split())
-
-
-def _target(url: str) -> Dict[str, Optional[str]]:
-    site, posting_id, region = parse_lever_job_url(url)
-    return {
-        "site": site,
-        "posting_id": posting_id,
-        "region": region,
-    }
-
-
-def _same_target(left: str, right: str) -> bool:
-    left_target = _target(left)
-    right_target = _target(right)
-    return bool(
-        left_target["site"]
-        and left_target["posting_id"]
-        and left_target == right_target
-    )
 
 
 def _ledger(application: Application) -> Dict[str, Any]:
@@ -107,17 +75,6 @@ def _move(
             "invalid_state_transition",
             str(exc),
         ) from exc
-
-
-def explicit_confirmation(final_url: str, confirmation_text: str) -> bool:
-    """Return true only for a non-empty target carrying an explicit success phrase."""
-    if not str(final_url or "").strip():
-        return False
-    text = _normalize(confirmation_text)
-    return any(
-        phrase in text
-        for phrase in EXPLICIT_CONFIRMATION_PHRASES
-    )
 
 
 def _application_is_confirmed(application: Application) -> bool:
@@ -382,7 +339,7 @@ def _promote_confirmation(
     )
 
 
-def reconcile_lever_confirmation(
+def _validate_confirmation(
     db: Session,
     application: Application,
     job: Job,
@@ -390,9 +347,7 @@ def reconcile_lever_confirmation(
     final_url: str,
     confirmation_text: str,
     target_verified: bool,
-    approval_reference: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Promote to confirmed only after target and success evidence are proven."""
+) -> None:
     if not target_verified or not _same_target(str(job.url or ""), final_url):
         _reject(db, application, "stale_or_unverified_target")
         db.flush()
@@ -414,6 +369,26 @@ def reconcile_lever_confirmation(
             "This Lever posting is already confirmed",
         )
 
+
+def reconcile_lever_confirmation(
+    db: Session,
+    application: Application,
+    job: Job,
+    *,
+    final_url: str,
+    confirmation_text: str,
+    target_verified: bool,
+    approval_reference: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Promote to confirmed only after target and success evidence are proven."""
+    _validate_confirmation(
+        db,
+        application,
+        job,
+        final_url=final_url,
+        confirmation_text=confirmation_text,
+        target_verified=target_verified,
+    )
     evidence = _confirmation_evidence(
         application,
         final_url=final_url,
@@ -422,12 +397,7 @@ def reconcile_lever_confirmation(
     )
     db.add(evidence)
     db.flush()
-    _promote_confirmation(
-        db,
-        application,
-        evidence.id,
-        approval_reference,
-    )
+    _promote_confirmation(db, application, evidence.id, approval_reference)
     application.status = ApplicationStatus.applied
     application.applied_at = _now()
     _close_reviews_and_handoffs(db, application)
@@ -541,6 +511,49 @@ def _application_is_stale(
     return current - updated >= stale_after
 
 
+def _runtime_confirmation(
+    db: Session,
+    application: Application,
+    job: Job,
+    *,
+    final_url: Optional[str],
+    confirmation_text: Optional[str],
+    target_verified: bool,
+) -> Optional[Dict[str, Any]]:
+    reconciled = _reconcile_existing_evidence(db, application, job)
+    if reconciled is not None:
+        return reconciled
+    if final_url and confirmation_text and target_verified:
+        return reconcile_lever_confirmation(
+            db,
+            application,
+            job,
+            final_url=final_url,
+            confirmation_text=confirmation_text,
+            target_verified=True,
+        )
+    return None
+
+
+def _recovery_target_state(application: Application) -> Optional[str]:
+    if application.automation_state == ApplicationAutomationState.applying.value:
+        return ApplicationAutomationState.submission_uncertain.value
+    if application.automation_state in {
+        ApplicationAutomationState.preparing.value,
+        ApplicationAutomationState.ready_to_apply.value,
+    }:
+        return ApplicationAutomationState.needs_review.value
+    return None
+
+
+def _unconfirmed_result(application: Application) -> Dict[str, Any]:
+    return {
+        "application_id": application.id,
+        "automation_state": application.automation_state,
+        "confirmed": False,
+    }
+
+
 def recover_stranded_application(
     db: Session,
     application: Application,
@@ -553,45 +566,24 @@ def recover_stranded_application(
     target_verified: bool = False,
 ) -> Dict[str, Any]:
     """Reconcile stale ordinary-path state without inventing confirmation."""
-    reconciled = _reconcile_existing_evidence(
+    reconciled = _runtime_confirmation(
         db,
         application,
         job,
+        final_url=final_url,
+        confirmation_text=confirmation_text,
+        target_verified=target_verified,
     )
     if reconciled is not None:
         return reconciled
-    if final_url and confirmation_text and target_verified:
-        return reconcile_lever_confirmation(
-            db,
-            application,
-            job,
-            final_url=final_url,
-            confirmation_text=confirmation_text,
-            target_verified=True,
-        )
-
     current = now or _now()
     if not _application_is_stale(
         application,
         current=current,
         stale_after=stale_after,
     ):
-        return {
-            "application_id": application.id,
-            "automation_state": application.automation_state,
-            "confirmed": False,
-        }
-
-    if application.automation_state == ApplicationAutomationState.applying.value:
-        target_state = ApplicationAutomationState.submission_uncertain.value
-    elif application.automation_state in {
-        ApplicationAutomationState.preparing.value,
-        ApplicationAutomationState.ready_to_apply.value,
-    }:
-        target_state = ApplicationAutomationState.needs_review.value
-    else:
-        target_state = None
-
+        return _unconfirmed_result(application)
+    target_state = _recovery_target_state(application)
     if target_state is not None:
         _move(
             db,
@@ -601,8 +593,4 @@ def recover_stranded_application(
             {"reason": "no_explicit_confirmation"},
         )
     db.flush()
-    return {
-        "application_id": application.id,
-        "automation_state": application.automation_state,
-        "confirmed": False,
-    }
+    return _unconfirmed_result(application)
