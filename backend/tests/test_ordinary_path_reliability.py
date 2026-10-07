@@ -145,10 +145,7 @@ def test_explicit_confirmation_requires_url_and_success_phrase():
     ) is False
 
 
-def test_confirmation_persists_evidence_before_promotion_and_closes_handoff(
-    records,
-):
-    db, application, job = _load(records)
+def _seed_confirmation_handoff(db, application):
     review = ManualReviewTask(
         application_id=application.id,
         reason_code="answer_required",
@@ -172,7 +169,30 @@ def test_confirmation_persists_evidence_before_promotion_and_closes_handoff(
         )
     )
     db.commit()
+    return review.id
 
+
+def _confirmation_observations(db, application, result, review_id):
+    evidence = db.query(SubmissionEvidence).filter(
+        SubmissionEvidence.id == result["evidence_id"]
+    ).one()
+    events = db.query(ApplicationEvent).filter(
+        ApplicationEvent.application_id == application.id
+    ).all()
+    review = db.query(ManualReviewTask).filter(
+        ManualReviewTask.id == review_id
+    ).one()
+    handoff = db.query(ManualHandoffSession).filter(
+        ManualHandoffSession.application_id == application.id
+    ).one()
+    return evidence, [item.event_type for item in events], review, handoff
+
+
+def test_confirmation_persists_evidence_before_promotion_and_closes_handoff(
+    records,
+):
+    db, application, job = _load(records)
+    review_id = _seed_confirmation_handoff(db, application)
     result = reconcile_lever_confirmation(
         db,
         application,
@@ -183,35 +203,16 @@ def test_confirmation_persists_evidence_before_promotion_and_closes_handoff(
         approval_reference="lvsup-test",
     )
     db.commit()
-    evidence = (
-        db.query(SubmissionEvidence)
-        .filter(SubmissionEvidence.id == result["evidence_id"])
-        .one()
-    )
-    events = (
-        db.query(ApplicationEvent)
-        .filter(ApplicationEvent.application_id == application.id)
-        .all()
-    )
-    event_types = [item.event_type for item in events]
-    review = (
-        db.query(ManualReviewTask)
-        .filter(ManualReviewTask.id == review.id)
-        .one()
-    )
-    handoff = (
-        db.query(ManualHandoffSession)
-        .filter(ManualHandoffSession.application_id == application.id)
-        .one()
+    evidence, event_types, review, handoff = _confirmation_observations(
+        db,
+        application,
+        result,
+        review_id,
     )
     db.close()
 
-    evidence_index = event_types.index(
-        "lever_confirmation_evidence_persisted"
-    )
-    confirmed_index = event_types.index(
-        "lever_ordinary_path_confirmed"
-    )
+    evidence_index = event_types.index("lever_confirmation_evidence_persisted")
+    confirmed_index = event_types.index("lever_ordinary_path_confirmed")
     assert evidence.is_sufficient is True
     assert evidence_index < confirmed_index
     assert result["status"] == "applied"
