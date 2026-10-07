@@ -1,0 +1,178 @@
+name: JobTomatik 4.0.0 RC1 OneHost governed readiness
+
+on:
+  push:
+    branches:
+      - sol56/rc1-4.0.0-validation
+    paths:
+      - ".github/workflows/rc1-onehost-governed-readiness.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobtomatik-4.0.0-rc1-onehost-readiness
+  cancel-in-progress: false
+
+env:
+  RC_SHA: 93c06ff00c9128c30a733636b01add0bf70e084b
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+  AUTOPILOT_ENABLED: "false"
+  GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+  LEVER_SUPERVISED_PILOT_ENABLED: "false"
+  ENABLE_RESUMABLE_HANDOFFS: "false"
+  JOBTOMATIK_RUNTIME_REVISION: 93c06ff00c9128c30a733636b01add0bf70e084b
+
+jobs:
+  governed-onehost-readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Check out frozen RC1 source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RC_SHA }}
+          fetch-depth: 1
+
+      - name: Verify exact source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$RC_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Generate ephemeral CI runtime secrets
+        shell: bash
+        run: |
+          echo "POSTGRES_PASSWORD=$(python -c 'import secrets; print(secrets.token_hex(24))')" >> "$GITHUB_ENV"
+          echo "SECRET_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" >> "$GITHUB_ENV"
+          echo "ANSWER_VAULT_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" >> "$GITHUB_ENV"
+
+      - name: Install backend dependencies
+        run: python -m pip install -q --disable-pip-version-check -r backend/requirements.txt
+
+      - name: Run OneHost production and restart regressions
+        run: |
+          python -m pytest -q --tb=short -ra             backend/tests/test_onehost_production_cutover.py             backend/tests/test_onehost_startup_recovery.py
+
+      - name: Validate production Compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.onehost-production.yml config > /dev/null
+          {
+            echo "candidate_sha=$RC_SHA"
+            sha256sum docker-compose.onehost-production.yml
+            echo "services:"
+            docker compose -f docker-compose.onehost-production.yml config --services
+            echo "images:"
+            docker compose -f docker-compose.onehost-production.yml config --images
+          } > "$RUNNER_TEMP/rc1-onehost-topology.txt"
+
+      - name: Boot actual production topology
+        run: docker compose -f docker-compose.onehost-production.yml up -d --build
+
+      - name: Prove API and worker namespace affinity
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8000/health >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" -eq 60 ]]; then
+              docker compose -f docker-compose.onehost-production.yml ps
+              docker compose -f docker-compose.onehost-production.yml logs --no-color
+              exit 1
+            fi
+            sleep 2
+          done
+
+          api_id="$(docker compose -f docker-compose.onehost-production.yml ps -q backend)"
+          worker_id="$(docker compose -f docker-compose.onehost-production.yml ps -q celery_worker)"
+          test -n "$api_id"
+          test -n "$worker_id"
+
+          api_net="$(docker exec "$api_id" readlink /proc/1/ns/net)"
+          worker_net="$(docker exec "$worker_id" readlink /proc/1/ns/net)"
+          test "$api_net" = "$worker_net"
+
+          api_pid="$(docker exec "$api_id" readlink /proc/1/ns/pid)"
+          worker_pid="$(docker exec "$worker_id" readlink /proc/1/ns/pid)"
+          test "$api_pid" = "$worker_pid"
+
+          docker exec "$worker_id" sh -c 'printf "rc1-shared-state-ok\n" > /state/rc1-namespace-proof'
+          test "$(docker exec "$api_id" cat /state/rc1-namespace-proof)" = "rc1-shared-state-ok"
+
+      - name: Capture production topology evidence
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f docker-compose.onehost-production.yml ps > "$RUNNER_TEMP/rc1-onehost-ps.txt" 2>&1 || true
+          docker compose -f docker-compose.onehost-production.yml logs --no-color > "$RUNNER_TEMP/rc1-onehost.log" 2>&1 || true
+
+      - name: Tear down production topology
+        if: always()
+        run: docker compose -f docker-compose.onehost-production.yml down -v --remove-orphans || true
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Bind retained handoff evidence paths
+        shell: bash
+        run: |
+          echo "JOBTOMATIK_GATE3_EVIDENCE_DIR=$RUNNER_TEMP/rc1-gate3-evidence" >> "$GITHUB_ENV"
+          echo "HANDOFF_STORAGE_DIR=$RUNNER_TEMP/rc1-gate3-handoffs" >> "$GITHUB_ENV"
+
+      - name: Prove same-browser authenticated handoff
+        run: bash scripts/verify-onehost-handoff.sh
+
+      - name: Compile governed-readiness summary
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary = {
+              "candidate_sha": os.environ["RC_SHA"],
+              "version": "4.0.0",
+              "onehost_production_topology_booted": True,
+              "api_worker_namespace_affinity_proven": True,
+              "startup_recovery_regressions_passed": True,
+              "same_browser_authenticated_handoff_proven": True,
+              "real_application_submit_enabled": False,
+              "real_followup_send_enabled": False,
+              "autopilot_enabled": False,
+              "greenhouse_supervised_pilot_enabled": False,
+              "lever_supervised_pilot_enabled": False,
+              "governed_real_submit_authorized": False,
+              "publication_authorized": False,
+              "evidence_scope": "synthetic/offline OneHost governed-readiness proof",
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+          }
+          Path(os.environ["RUNNER_TEMP"], "rc1-onehost-readiness.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Retain governed-readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: JobTomatik-4.0.0-RC1-OneHost-readiness-93c06ff
+          path: |
+            ${{ runner.temp }}/rc1-onehost-topology.txt
+            ${{ runner.temp }}/rc1-onehost-ps.txt
+            ${{ runner.temp }}/rc1-onehost.log
+            ${{ runner.temp }}/rc1-gate3-evidence
+            ${{ runner.temp }}/rc1-gate3-handoffs
+            ${{ runner.temp }}/rc1-onehost-readiness.json
+          if-no-files-found: warn
+          retention-days: 90
