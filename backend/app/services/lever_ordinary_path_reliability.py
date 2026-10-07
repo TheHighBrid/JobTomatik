@@ -24,9 +24,13 @@ from app.services.application_state import (
 )
 from app.services.ats_lever import parse_lever_job_url
 from app.services.lever_ordinary_path_support import (
+    application_is_confirmed as _application_is_confirmed,
+    application_is_stale as _application_is_stale,
     explicit_confirmation,
     lever_target as _target,
+    recovery_target_state as _recovery_target_state,
     same_lever_target as _same_target,
+    unconfirmed_result as _unconfirmed_result,
 )
 
 
@@ -75,17 +79,6 @@ def _move(
             "invalid_state_transition",
             str(exc),
         ) from exc
-
-
-def _application_is_confirmed(application: Application) -> bool:
-    return (
-        application.status == ApplicationStatus.applied
-        or application.automation_state
-        in {
-            ApplicationAutomationState.confirmed.value,
-            ApplicationAutomationState.submitted.value,
-        }
-    )
 
 
 def _confirmed_sibling_matches(
@@ -499,18 +492,6 @@ def _reconcile_existing_evidence(
     )
 
 
-def _application_is_stale(
-    application: Application,
-    *,
-    current: datetime,
-    stale_after: timedelta,
-) -> bool:
-    updated = application.updated_at or application.created_at or current
-    if getattr(updated, "tzinfo", None) is not None:
-        updated = updated.replace(tzinfo=None)
-    return current - updated >= stale_after
-
-
 def _runtime_confirmation(
     db: Session,
     application: Application,
@@ -533,25 +514,6 @@ def _runtime_confirmation(
             target_verified=True,
         )
     return None
-
-
-def _recovery_target_state(application: Application) -> Optional[str]:
-    if application.automation_state == ApplicationAutomationState.applying.value:
-        return ApplicationAutomationState.submission_uncertain.value
-    if application.automation_state in {
-        ApplicationAutomationState.preparing.value,
-        ApplicationAutomationState.ready_to_apply.value,
-    }:
-        return ApplicationAutomationState.needs_review.value
-    return None
-
-
-def _unconfirmed_result(application: Application) -> Dict[str, Any]:
-    return {
-        "application_id": application.id,
-        "automation_state": application.automation_state,
-        "confirmed": False,
-    }
 
 
 def recover_stranded_application(
