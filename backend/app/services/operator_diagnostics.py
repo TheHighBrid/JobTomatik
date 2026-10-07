@@ -233,6 +233,58 @@ def _owner_diagnostic_snapshot(db: Session, user_id: int) -> Dict[str, Any]:
     }
 
 
+def _operator_report(
+    *,
+    runtime_mode: str,
+    onehost: Mapping[str, Any],
+    worker: Mapping[str, Any],
+    browser: Mapping[str, Any],
+    owner: Mapping[str, Any],
+    autopilot: bool,
+    real_submit: bool,
+    kill_armed: bool,
+) -> Dict[str, Any]:
+    evidence_count = int(owner["evidence_count"])
+    database_ok = bool(owner["database_ok"])
+    return {
+        "product": "JOBTOMATIK",
+        "version": APP_VERSION,
+        "runtime_mode": runtime_mode or "unspecified",
+        "backend_compatible": True,
+        "grants_submit": False,
+        "retired_controls": ["android_native_chrome", "termux_browser", "adb"],
+        "status": {
+            "onehost": _status_label(onehost, "Connected", "Not connected"),
+            "worker": _status_label(worker, "Ready", "Not ready"),
+            "browser": _status_label(browser, "Ready", "Not ready"),
+            "database": _database_label(database_ok),
+        },
+        "applications": owner["applications"],
+        "handoff": {"open": owner["handoff_count"]},
+        "evidence": {
+            "sufficient": evidence_count,
+            "available": evidence_count > 0,
+        },
+        "safety": _safety_labels(
+            autopilot=autopilot,
+            real_submit=real_submit,
+            kill_armed=kill_armed,
+        ),
+        "actionable_errors": _actionable_errors(
+            onehost=onehost,
+            worker=worker,
+            browser=browser,
+            database_ok=database_ok,
+            real_submit=real_submit,
+            kill_armed=kill_armed,
+        ),
+        "recovery_controls": [
+            "refresh_diagnostics",
+            "export_diagnostics_bundle",
+        ],
+    }
+
+
 def build_operator_diagnostics(
     db: Session,
     user: User,
@@ -250,47 +302,17 @@ def build_operator_diagnostics(
         browser_probe=browser_probe,
     )
     owner = _owner_diagnostic_snapshot(db, user.id)
-    real_submit = bool(settings.allow_real_application_submit)
-    autopilot = bool(operations.autopilot_enabled)
-    kill_armed = operations.global_kill_switch is True
-    evidence_count = owner["evidence_count"]
-    return {
-        "product": "JOBTOMATIK",
-        "version": APP_VERSION,
-        "runtime_mode": runtime_mode or "unspecified",
-        "backend_compatible": True,
-        "grants_submit": False,
-        "retired_controls": ["android_native_chrome", "termux_browser", "adb"],
-        "status": {
-            "onehost": _status_label(onehost, "Connected", "Not connected"),
-            "worker": _status_label(worker, "Ready", "Not ready"),
-            "browser": _status_label(browser, "Ready", "Not ready"),
-            "database": _database_label(owner["database_ok"]),
-        },
-        "applications": owner["applications"],
-        "handoff": {"open": owner["handoff_count"]},
-        "evidence": {
-            "sufficient": evidence_count,
-            "available": evidence_count > 0,
-        },
-        "safety": _safety_labels(
-            autopilot=autopilot,
-            real_submit=real_submit,
-            kill_armed=kill_armed,
-        ),
-        "actionable_errors": _actionable_errors(
-            onehost=onehost,
-            worker=worker,
-            browser=browser,
-            database_ok=owner["database_ok"],
-            real_submit=real_submit,
-            kill_armed=kill_armed,
-        ),
-        "recovery_controls": [
-            "refresh_diagnostics",
-            "export_diagnostics_bundle",
-        ],
-    }
+    return _operator_report(
+        runtime_mode=runtime_mode,
+        onehost=onehost,
+        worker=worker,
+        browser=browser,
+        owner=owner,
+        autopilot=bool(operations.autopilot_enabled),
+        real_submit=bool(settings.allow_real_application_submit),
+        kill_armed=operations.global_kill_switch is True,
+    )
+
 
 
 def render_operator_status(report: Mapping[str, Any]) -> str:
