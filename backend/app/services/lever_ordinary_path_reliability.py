@@ -393,7 +393,6 @@ def _promote_confirmation(
 
 
 def _validate_confirmation_target(
-    application: Application,
     job: Job,
     *,
     final_url: str,
@@ -441,10 +440,10 @@ def reconcile_lever_confirmation(
     confirmation_text: str,
     target_verified: bool,
     approval_reference: Optional[str] = None,
-) -> Dict[str, Any    """Promote to confirmed only after target and success evidence are proven."""
+) -> Dict[str, Any]:
+    """Promote to confirmed only after target and success evidence are proven."""
     try:
         _validate_confirmation_target(
-            application,
             job,
             final_url=final_url,
             confirmation_text=confirmation_text,
@@ -629,7 +628,8 @@ def recover_stranded_application(
     final_url: Optional[str] = None,
     confirmation_text: Optional[str] = None,
     target_verified: bool = False,
-) -> Dict[str, Any    """Reconcile stale ordinary-path state without inventing confirmation."""
+) -> Dict[str, Any]:
+    """Reconcile stale ordinary-path state without inventing confirmation."""
     reconciled = _runtime_reconciliation(
         db,
         application,
