@@ -9,8 +9,7 @@ from app.models.user import User
 
 
 def acquire_user_settings_write_lock(db: Session, user_id: int) -> User:
-    """
-    Serialize a settings read/modify/write transaction and return fresh state.
+    """Serialize a settings read/modify/write transaction and return fresh state.
 
     SQLite ignores ``SELECT ... FOR UPDATE``. Starting with a harmless write makes
     SQLite acquire its database write reservation before the JSON snapshot is read;
