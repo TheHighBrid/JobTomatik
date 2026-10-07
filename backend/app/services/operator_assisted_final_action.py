@@ -8,15 +8,25 @@ from typing import Any, Mapping, Optional
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models.application import Application, ApplicationEvent
+from app.models.application import (
+    Application,
+    ApplicationAutomationState,
+    ApplicationEvent,
+    ApplicationStatus,
+    ManualReviewReason,
+    ManualReviewStatus,
+    ManualReviewTask,
+)
 from app.models.handoff import HandoffChallengeType, ManualHandoffSession
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
+from app.services.application_state import normalize_state, transition_application_state
 from app.services.operations_policy import disabled_platforms, platform_key_for_url
 from app.services.operations_settings import get_operations_settings
 from app.services.operator_assisted_submission import (
     OPERATOR_ASSISTED_APPROVAL_SOURCE,
     OperatorAssistedSubmissionError,
 )
+from app.services.supervised_platforms import get_supervised_platform_policy
 
 
 def _now() -> datetime:
@@ -30,19 +40,24 @@ def _claim_runtime_blockers(url: str) -> list[str]:
     core = get_settings()
     platform = platform_key_for_url(str(url or ""))
     disabled = disabled_platforms(operations.disabled_platforms)
-    blockers: list[str] = []
-
-    if operations.global_kill_switch:
-        blockers.append("global_kill_switch_active")
-    if platform in disabled or "all" in disabled:
-        blockers.append("platform_disabled")
-    if operations.autopilot_enabled:
-        blockers.append("operator_assisted_requires_autopilot_disabled")
-    if bool(core.allow_real_application_submit):
-        blockers.append("operator_assisted_requires_global_submit_disabled")
-    if bool(core.lever_supervised_pilot_enabled):
-        blockers.append("operator_assisted_requires_platform_pilot_disabled")
-    return blockers
+    policy = get_supervised_platform_policy(platform)
+    checks = (
+        (operations.global_kill_switch, "global_kill_switch_active"),
+        (platform in disabled or "all" in disabled, "platform_disabled"),
+        (
+            operations.autopilot_enabled,
+            "operator_assisted_requires_autopilot_disabled",
+        ),
+        (
+            bool(core.allow_real_application_submit),
+            "operator_assisted_requires_global_submit_disabled",
+        ),
+        (
+            policy is not None and policy.pilot_enabled(core),
+            "operator_assisted_requires_platform_pilot_disabled",
+        ),
+    )
+    return [reason for blocked, reason in checks if blocked]
 
 
 def _bound_consumed_approval(
@@ -246,6 +261,132 @@ def checkpoint_operator_final_action_live_snapshot(
     return approval
 
 
+def _load_reconciliation_review(
+    db: Session,
+    session: ManualHandoffSession,
+) -> Optional[ManualReviewTask]:
+    """Lock the linked open review when one exists."""
+
+    review_id = getattr(session, "manual_review_id", None)
+    if review_id is None:
+        return None
+    review = (
+        db.query(ManualReviewTask)
+        .filter(ManualReviewTask.id == review_id)
+        .with_for_update()
+        .first()
+    )
+    if review is None:
+        return None
+    if review.status not in {
+        ManualReviewStatus.open.value,
+        ManualReviewStatus.in_progress.value,
+    }:
+        return None
+    return review
+
+
+def _update_reconciliation_review(
+    review: ManualReviewTask,
+    session: ManualHandoffSession,
+    *,
+    outcome: str,
+    error_text: Optional[str],
+    current_url: str,
+) -> None:
+    """Convert the existing final-submit review into confirmation reconciliation."""
+
+    review.reason_code = ManualReviewReason.submission_confirmation_uncertain.value
+    review.status = ManualReviewStatus.in_progress.value
+    review.summary = (
+        "The once-only final action was claimed, but employer confirmation is "
+        "not yet proven. Verify the retained employer page before any new action."
+    )
+    review.blocking_url = current_url or review.blocking_url
+    review.details = {
+        **dict(review.details or {}),
+        "handoff_public_id": session.public_id,
+        "operator_final_action_outcome": outcome,
+        "automatic_retry_allowed": False,
+        "confirmation_reconciliation_required": True,
+        "error": error_text,
+    }
+
+
+def _reconcile_uncertain_final_action(
+    db: Session,
+    application: Application,
+    session: ManualHandoffSession,
+    *,
+    outcome: str,
+    error_text: Optional[str],
+    current_url: str,
+) -> None:
+    """Persist post-claim uncertainty immediately without restoring click authority."""
+
+    state = normalize_state(application.automation_state)
+    if state in {
+        ApplicationAutomationState.submitted.value,
+        ApplicationAutomationState.confirmed.value,
+    }:
+        return
+
+    if state != ApplicationAutomationState.submission_uncertain.value:
+        application.status = ApplicationStatus.pending
+        transition_application_state(
+            db,
+            application,
+            ApplicationAutomationState.submission_uncertain,
+            "operator_assisted_final_action_requires_reconciliation",
+            {
+                "handoff_public_id": session.public_id,
+                "outcome": outcome,
+                "automatic_retry_allowed": False,
+                "error": error_text,
+            },
+        )
+
+    review = _load_reconciliation_review(db, session)
+    if review is not None:
+        _update_reconciliation_review(
+            review,
+            session,
+            outcome=outcome,
+            error_text=error_text,
+            current_url=current_url,
+        )
+
+    session.handoff_metadata = {
+        **dict(session.handoff_metadata or {}),
+        "confirmation_reconciliation_required": True,
+        "automatic_retry_allowed": False,
+    }
+
+
+def _reconcile_final_action_if_needed(
+    db: Session,
+    application: Application,
+    session: ManualHandoffSession,
+    *,
+    confirmed: bool,
+    outcome: str,
+    error_text: Optional[str],
+    current_url: str,
+) -> None:
+    """Reconcile only outcomes that still lack employer confirmation."""
+
+    if confirmed:
+        return
+    _reconcile_uncertain_final_action(
+        db,
+        application,
+        session,
+        outcome=outcome,
+        error_text=error_text,
+        current_url=current_url,
+    )
+
+
 def finalize_operator_final_action(
     db: Session,
     application: Application,
@@ -335,6 +476,16 @@ def finalize_operator_final_action(
             },
         )
     )
+    _reconcile_final_action_if_needed(
+        db,
+        application,
+        session,
+        confirmed=confirmed,
+        outcome=outcome,
+        error_text=error_text,
+        current_url=current_url,
+    )
+
     db.flush()
 
 
