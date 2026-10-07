@@ -15,14 +15,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RC_SHA: 6b7683deeec5101cfafd439120ea90500351a63c
+  RC_SHA: 519b204bcbd0ff84a78929cbb2d5b31617c60f48
   ALLOW_REAL_APPLICATION_SUBMIT: "false"
   ALLOW_REAL_FOLLOWUP_SEND: "false"
   AUTOPILOT_ENABLED: "false"
   GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
   LEVER_SUPERVISED_PILOT_ENABLED: "false"
   ENABLE_RESUMABLE_HANDOFFS: "false"
-  JOBTOMATIK_RUNTIME_REVISION: 6b7683deeec5101cfafd439120ea90500351a63c
+  JOBTOMATIK_RUNTIME_REVISION: 519b204bcbd0ff84a78929cbb2d5b31617c60f48
 
 jobs:
   governed-onehost-readiness:
@@ -158,7 +158,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: JobTomatik-4.0.0-RC2-OneHost-readiness-6b7683d
+          name: JobTomatik-4.0.0-RC2-OneHost-readiness-519b204
           path: |
             ${{ runner.temp }}/rc2-onehost-topology.txt
             ${{ runner.temp }}/rc2-onehost-ps.txt
