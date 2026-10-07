@@ -58,16 +58,12 @@ function UnavailableBoard() {
 }
 
 
-export default function OperatorStatusBoard() {
-  const diagnostics = useQuery({
-    queryKey: ['operatorDiagnostics'],
-    queryFn: () => getOperatorDiagnostics().then((response) => response.data),
-  })
+function hasDiagnosticsError(diagnostics) {
+  return diagnostics.isError || !diagnostics.data
+}
 
-  if (diagnostics.isLoading) return null
-  if (diagnostics.isError || !diagnostics.data) return <UnavailableBoard />
 
-  const report = diagnostics.data
+function OperatorStatusContent({ report }) {
   const statusRows = [
     ['OneHost', report.status.onehost],
     ['Worker', report.status.worker],
@@ -85,6 +81,7 @@ export default function OperatorStatusBoard() {
     ['Real Submit', report.safety.real_submit],
     ['Kill Switch', report.safety.kill_switch],
   ]
+  const evidenceAvailability = ['no', 'yes'][Number(Boolean(report.evidence.available))]
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-4">
@@ -104,7 +101,7 @@ export default function OperatorStatusBoard() {
 
       <p className="mt-3 text-xs text-gray-400">
         Handoffs open: {report.handoff.open}. Evidence available:{' '}
-        {report.evidence.available ? 'yes' : 'no'}.
+        {evidenceAvailability}.
       </p>
 
       <ActionableErrors items={report.actionable_errors} />
@@ -118,4 +115,17 @@ export default function OperatorStatusBoard() {
       </button>
     </section>
   )
+}
+
+
+export default function OperatorStatusBoard() {
+  const diagnostics = useQuery({
+    queryKey: ['operatorDiagnostics'],
+    queryFn: () => getOperatorDiagnostics().then((response) => response.data),
+  })
+
+  if (diagnostics.isLoading) return null
+  if (hasDiagnosticsError(diagnostics)) return <UnavailableBoard />
+
+  return <OperatorStatusContent report={diagnostics.data} />
 }
