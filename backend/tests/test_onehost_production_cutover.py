@@ -1,3 +1,5 @@
+"""Regression coverage for the OneHost production cutover contract."""
+
 import os
 from pathlib import Path
 import subprocess
@@ -23,6 +25,8 @@ def test_onehost_production_has_no_beat_and_exactly_one_worker():
     command = " ".join(worker["command"])
     assert "--pool=solo" in command
     assert "--concurrency=1" in command
+    assert "-m scripts.reconcile_onehost_startup" in command
+    assert command.index("-m scripts.reconcile_onehost_startup") < command.index("exec celery")
     assert "celery beat" not in command.lower()
 
 
@@ -41,6 +45,17 @@ def test_onehost_worker_shares_api_network_pid_and_state_for_retained_browser():
         assert env["APPLICATION_BROWSER_PROFILE_DIR"] == "/state/browser-profile"
         assert env["HANDOFF_STORAGE_DIR"] == "/state/handoffs"
         assert env["JOBTOMATIK_BROWSER_NODE_ID"] == "onehost-primary"
+
+
+def test_onehost_worker_exposes_a_real_celery_healthcheck():
+    """Verify the worker healthcheck requires a real Celery response."""
+    data = _compose()
+    worker = data["services"]["celery_worker"]
+    healthcheck = worker["healthcheck"]
+    command = " ".join(healthcheck["test"])
+    assert "celery -A app.celery_app inspect ping" in command
+    assert "grep -q pong" in command
+    assert healthcheck["start_period"] == "20s"
 
 
 def test_onehost_production_defaults_keep_real_actions_closed():

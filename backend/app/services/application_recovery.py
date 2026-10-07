@@ -19,6 +19,8 @@ from app.models.application import (
     ApplicationEvent,
     ApplicationStatus,
     ManualReviewReason,
+    ManualReviewStatus,
+    ManualReviewTask,
 )
 from app.models.notification import Notification, NotificationType
 from app.models.submission_approval import SubmissionApproval, SubmissionApprovalStatus
@@ -150,6 +152,116 @@ def _operator_final_submit_checkpoint(
         "automatic_retry_allowed": False,
     }
 
+
+def _load_operator_final_submit_review(
+    db,
+    application: Application,
+    operator_checkpoint: Dict[str, Any] | None,
+):
+    """Lock the handoff-linked active review when one exists."""
+    if not operator_checkpoint:
+        return None, None, None
+    handoff_public_id = str(operator_checkpoint.get("handoff_public_id") or "").strip()
+    if not handoff_public_id:
+        return None, None, None
+
+    from app.models.handoff import ManualHandoffSession
+
+    session = (
+        db.query(ManualHandoffSession)
+        .filter(
+            ManualHandoffSession.public_id == handoff_public_id,
+            ManualHandoffSession.application_id == application.id,
+            ManualHandoffSession.user_id == application.user_id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if session is None:
+        return None, None, None
+    review = (
+        db.query(ManualReviewTask)
+        .filter(
+            ManualReviewTask.id == session.manual_review_id,
+            ManualReviewTask.application_id == application.id,
+            ManualReviewTask.status.in_(
+                [ManualReviewStatus.open.value, ManualReviewStatus.in_progress.value]
+            ),
+        )
+        .with_for_update()
+        .first()
+    )
+    return handoff_public_id, session, review
+
+
+def _apply_operator_final_submit_reconciliation(
+    db,
+    application: Application,
+    *,
+    handoff_public_id: str,
+    session,
+    review: ManualReviewTask,
+    summary: str,
+    details: Dict[str, Any],
+    blocking_url: str | None,
+) -> ManualReviewTask:
+    """Convert one linked final-submit review into confirmation reconciliation."""
+    review.reason_code = ManualReviewReason.submission_confirmation_uncertain.value
+    review.status = ManualReviewStatus.in_progress.value
+    review.summary = summary
+    review.details = {
+        **dict(review.details or {}),
+        **details,
+        "confirmation_reconciliation_required": True,
+        "automatic_retry_allowed": False,
+    }
+    review.blocking_url = blocking_url or review.blocking_url
+    session.handoff_metadata = {
+        **dict(session.handoff_metadata or {}),
+        "confirmation_reconciliation_required": True,
+        "automatic_retry_allowed": False,
+    }
+    transition_application_state(
+        db,
+        application,
+        ApplicationAutomationState.submission_uncertain,
+        "operator_final_submit_recovery_reconciled",
+        {
+            "review_id": review.id,
+            "handoff_public_id": handoff_public_id,
+            "automatic_retry_allowed": False,
+        },
+    )
+    return review
+
+
+def _reuse_operator_final_submit_review(
+    db,
+    application: Application,
+    operator_checkpoint: Dict[str, Any] | None,
+    *,
+    summary: str,
+    details: Dict[str, Any],
+    blocking_url: str | None,
+) -> ManualReviewTask | None:
+    """Reuse the linked final-submit review when recovery has a checkpoint."""
+    handoff_public_id, session, review = _load_operator_final_submit_review(
+        db,
+        application,
+        operator_checkpoint,
+    )
+    if not handoff_public_id or session is None or review is None:
+        return None
+    return _apply_operator_final_submit_reconciliation(
+        db,
+        application,
+        handoff_public_id=handoff_public_id,
+        session=session,
+        review=review,
+        summary=summary,
+        details=details,
+        blocking_url=blocking_url,
+    )
 
 def recover_stale_application_attempt(
     db,
@@ -315,15 +427,24 @@ def recover_stale_application_attempt(
             "attempt. Verify the employer portal before any retry."
         )
 
-    review = create_manual_review_task(
+    review = _reuse_operator_final_submit_review(
         db,
         application,
-        reason_code,
-        summary,
+        operator_checkpoint,
+        summary=summary,
         details=details,
         blocking_url=blocking_url,
-        target_state=target_state,
     )
+    if review is None:
+        review = create_manual_review_task(
+            db,
+            application,
+            reason_code,
+            summary,
+            details=details,
+            blocking_url=blocking_url,
+            target_state=target_state,
+        )
     application.status = ApplicationStatus.pending
     db.flush()
     recovered_state = normalize_state(application.automation_state)
