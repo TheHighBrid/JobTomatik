@@ -201,17 +201,12 @@ def _actionable_errors(
     return errors
 
 
-def build_operator_diagnostics(
-    db: Session,
-    user: User,
+def _runtime_probe_snapshot(
     *,
-    onehost_probe: Optional[Probe] = None,
-    worker_probe: Optional[Probe] = None,
-    browser_probe: Optional[Probe] = None,
-) -> Dict[str, Any]:
-    """Return a truthful read-only status snapshot for the authenticated owner."""
-    settings = get_settings()
-    operations = get_operations_settings()
+    onehost_probe: Optional[Probe],
+    worker_probe: Optional[Probe],
+    browser_probe: Optional[Probe],
+) -> tuple[str, Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     runtime_mode = str(os.environ.get("JOBTOMATIK_RUNTIME_MODE") or "").strip()
     onehost = _probe_result(
         onehost_probe,
@@ -225,35 +220,55 @@ def build_operator_diagnostics(
         browser_probe,
         default={"ok": None, "reason": "browser_unverified"},
     )
-    database_ok = _database_is_healthy(db, user.id)
-    evidence_count = _evidence_count(db, user.id)
-    handoff_count = _handoff_count(db, user.id)
+    return runtime_mode, onehost, worker, browser
+
+
+def _owner_diagnostic_snapshot(db: Session, user_id: int) -> Dict[str, Any]:
+    evidence_count = _evidence_count(db, user_id)
+    return {
+        "database_ok": _database_is_healthy(db, user_id),
+        "applications": _application_counts(db, user_id),
+        "handoff_count": _handoff_count(db, user_id),
+        "evidence_count": evidence_count,
+    }
+
+
+def build_operator_diagnostics(
+    db: Session,
+    user: User,
+    *,
+    onehost_probe: Optional[Probe] = None,
+    worker_probe: Optional[Probe] = None,
+    browser_probe: Optional[Probe] = None,
+) -> Dict[str, Any]:
+    """Return a truthful read-only status snapshot for the authenticated owner."""
+    settings = get_settings()
+    operations = get_operations_settings()
+    runtime_mode, onehost, worker, browser = _runtime_probe_snapshot(
+        onehost_probe=onehost_probe,
+        worker_probe=worker_probe,
+        browser_probe=browser_probe,
+    )
+    owner = _owner_diagnostic_snapshot(db, user.id)
     real_submit = bool(settings.allow_real_application_submit)
     autopilot = bool(operations.autopilot_enabled)
     kill_armed = operations.global_kill_switch is True
+    evidence_count = owner["evidence_count"]
     return {
         "product": "JOBTOMATIK",
         "version": APP_VERSION,
         "runtime_mode": runtime_mode or "unspecified",
         "backend_compatible": True,
         "grants_submit": False,
-        "retired_controls": [
-            "android_native_chrome",
-            "termux_browser",
-            "adb",
-        ],
+        "retired_controls": ["android_native_chrome", "termux_browser", "adb"],
         "status": {
-            "onehost": _status_label(
-                onehost,
-                "Connected",
-                "Not connected",
-            ),
+            "onehost": _status_label(onehost, "Connected", "Not connected"),
             "worker": _status_label(worker, "Ready", "Not ready"),
             "browser": _status_label(browser, "Ready", "Not ready"),
-            "database": _database_label(database_ok),
+            "database": _database_label(owner["database_ok"]),
         },
-        "applications": _application_counts(db, user.id),
-        "handoff": {"open": handoff_count},
+        "applications": owner["applications"],
+        "handoff": {"open": owner["handoff_count"]},
         "evidence": {
             "sufficient": evidence_count,
             "available": evidence_count > 0,
@@ -267,7 +282,7 @@ def build_operator_diagnostics(
             onehost=onehost,
             worker=worker,
             browser=browser,
-            database_ok=database_ok,
+            database_ok=owner["database_ok"],
             real_submit=real_submit,
             kill_armed=kill_armed,
         ),
