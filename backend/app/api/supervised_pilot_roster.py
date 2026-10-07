@@ -429,7 +429,6 @@ def greenhouse_oh1_application_preflight(
     db: Session = Depends(get_db),
 ):
     """Return a read-only, application-bound GH-OH1 readiness report."""
-
     application, job = _owned_application_records(
         db,
         application_id,
