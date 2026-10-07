@@ -98,6 +98,19 @@ Plans are versioned understanding. Certification means evidence has satisfied th
 
 This role split does not bypass task claims, repository evidence requirements, release gates, or user-gated real-world actions.
 
+## Zero-cost development invariant
+
+Until TheHighBrid explicitly authorizes a specific paid production commitment, JobTomatik core development operates under a **$0 total-cost rule**.
+
+- Do not provision paid VPS instances, managed databases, paid APIs, paid SaaS, paid browser automation, or recurring cloud infrastructure as a default development step.
+- Do not introduce trials that require a payment method or silently convert to paid service.
+- Prefer repository tests, fixtures, local containers, existing no-cost CI capacity, and owner-controlled hardware or already-free resources.
+- A future paid production deployment is a separate business decision that requires explicit owner authorization after stability, usefulness, and economics are demonstrated.
+- Never present paid infrastructure as required merely because the production architecture supports it.
+- If a proposed engineering path would incur any charge, stop before the charge and choose a $0 alternative unless the owner explicitly authorizes that exact commitment.
+
+This invariant does not prohibit documenting future production hosting options. It prohibits turning those options into development dependencies or financial commitments without explicit owner authorization.
+
 ## Non-negotiable product direction
 
 The final JobTomatik goal is a **fully autonomous job-hunt system** capable of:
