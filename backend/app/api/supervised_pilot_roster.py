@@ -14,6 +14,7 @@ from app.schemas.lever_phase_b_current_intake import (
     CurrentLeverPhaseBMaterialReviewIn,
     CurrentLeverRuntimeArmIn,
 )
+from app.schemas.greenhouse_oh1_preflight import GreenhouseOH1PreflightOut
 from app.schemas.supervised_pilot_dossier import SupervisedPilotDossierOut
 from app.schemas.supervised_pilot_roster import (
     LeverPhaseBLaunchOut,
@@ -25,6 +26,7 @@ from app.schemas.supervised_pilot_roster import (
     SupervisedPilotCandidateImportOut,
     SupervisedPilotRosterOut,
 )
+from app.services.greenhouse_oh1_preflight import build_greenhouse_oh1_preflight
 from app.services.greenhouse_pilot_ingestion import (
     GreenhousePilotIngestionError,
     read_greenhouse_pilot_readiness,
@@ -415,6 +417,33 @@ def supervised_pilot_roster(
         current_user,
         readiness=_greenhouse_readiness_or_none(),
     )
+
+
+@router.get(
+    "/applications/{application_id}/gh-oh1-preflight",
+    response_model=GreenhouseOH1PreflightOut,
+)
+def greenhouse_oh1_application_preflight(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return a read-only, application-bound GH-OH1 readiness report."""
+
+    application, job = _owned_application_records(
+        db,
+        application_id,
+        current_user.id,
+    )
+    try:
+        return build_greenhouse_oh1_preflight(
+            db,
+            application,
+            current_user,
+            job,
+        )
+    except SupervisedPilotDossierError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get(
