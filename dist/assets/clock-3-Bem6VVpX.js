@@ -1,1 +1,0 @@
-import{k as e}from"./index-CaZcCNQY.js";var t={name:`clock-3`,size:24,node:[[`circle`,{cx:`12`,cy:`12`,r:`10`,key:`1mglay`}],[`path`,{d:`M12 6v6h4`,key:`135r8i`}]]};t.node;var n=e(t);export{n as t};
