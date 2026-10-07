@@ -41,6 +41,7 @@ from app.services.operator_autonomy_control import (
     set_autonomy_control_mode,
 )
 from app.services.scheduler_policy import build_scheduler_preview, scheduler_settings
+from app.services.user_settings_serialization import acquire_user_settings_write_lock
 
 
 DAY34_CONTROL_CENTRE_VERSION = "android-autonomy-control-centre-v1"
@@ -341,15 +342,9 @@ def change_autonomy_mode(
     reason: str | None = None,
 ) -> dict[str, Any]:
     # ``automation_settings`` is a single JSON value shared with the settings API.
-    # Lock and refresh before replacing it so a concurrent settings PATCH cannot
-    # commit an older snapshot over a pause or drain action (or vice versa).
-    user = (
-        db.query(User)
-        .filter(User.id == user.id)
-        .with_for_update()
-        .populate_existing()
-        .one()
-    )
+    # Take a real write lock before refreshing; unlike FOR UPDATE, this serializes
+    # concurrent read/modify/write transactions on SQLite as well as server DBs.
+    user = acquire_user_settings_write_lock(db, user.id)
     state = set_autonomy_control_mode(
         user,
         mode=mode,
