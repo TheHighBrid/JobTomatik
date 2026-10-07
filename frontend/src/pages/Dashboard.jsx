@@ -12,6 +12,7 @@ import {
 } from '../api/client'
 import { useAuthStore } from '../store'
 import StatusBadge from '../components/StatusBadge'
+import OperatorStatusBoard from '../components/OperatorStatusBoard'
 import { StatCardSkeleton } from '../components/Skeleton'
 import {
   TrendingUp, Briefcase, Clock, Award, ChevronRight,
@@ -256,6 +257,8 @@ export default function Dashboard() {
           </Link>
         )}
       </div>
+
+      <OperatorStatusBoard />
 
       <AutoPilotPanel
         readiness={readiness}
