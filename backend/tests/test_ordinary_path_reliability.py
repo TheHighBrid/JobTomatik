@@ -339,28 +339,22 @@ def test_stranded_with_sufficient_evidence_reconciles(records):
     assert result["status"] == "applied"
 
 
-def _assignment_targets(node):
-    if isinstance(node, ast.Assign):
-        return node.targets
-    if isinstance(node, ast.AnnAssign):
-        return [node.target]
-    return []
-
-
-def _is_automation_state_target(target) -> bool:
-    return (
-        isinstance(target, ast.Attribute)
-        and target.attr == "automation_state"
-    )
-
-
 def _automation_state_write_lines(source: str):
     tree = ast.parse(source)
     writes = []
     for node in ast.walk(tree):
-        for target in _assignment_targets(node):
-            if _is_automation_state_target(target):
-                writes.append(node.lineno)
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        else:
+            targets = []
+        writes.extend(
+            node.lineno
+            for target in targets
+            if isinstance(target, ast.Attribute)
+            and target.attr == "automation_state"
+        )
     return writes
 
 
