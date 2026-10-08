@@ -107,6 +107,64 @@ def _apply_challenge_result(result: Dict[str, Any], challenge: Dict[str, Any]) -
     result["review_items"] = [challenge]
 
 
+async def _retain_dry_run_failure_handoff(
+    *,
+    result: Dict[str, Any],
+    runtime: Any,
+    page: Any,
+    log: List[Dict[str, Any]],
+) -> bool:
+    """Retain the browser for a failed dry run so the failure is diagnosable.
+
+    Dry runs are explicitly non-submitting. When Chromium reached a real page but
+    automation failed before a classified human boundary, destroying the page loses
+    the strongest evidence and prevents operator recovery. Convert that technical
+    failure into an automation-error review with a retained snapshot.
+    """
+    if runtime is None or result.get("success") or result.get("handoff_snapshot"):
+        return False
+
+    result["requires_manual_review"] = True
+    controlled_target_id = await controlled_page_target_id(runtime.page)
+    snapshot_metadata = {
+        "dry_run": True,
+        "adapter": result.get("ats_adapter"),
+        "adapter_version": result.get("ats_adapter_version"),
+        "fields_filled": int(result.get("fields_filled") or 0),
+        "steps_completed": int(result.get("steps_completed") or 0),
+        "handoff_stage": "dry_run_failure_diagnostic",
+        "failure_error": str(result.get("error") or "")[:500],
+        "application_browser_identity": retainable_application_browser_identity(
+            runtime,
+            controlled_page_target_id=controlled_target_id,
+        ),
+    }
+    if controlled_target_id:
+        snapshot_metadata["controlled_page_target_id"] = controlled_target_id
+
+    try:
+        snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
+    except Exception as exc:
+        log.append({
+            "action": "dry_run_failure_handoff_capture_failed",
+            "detail": str(exc)[:300],
+            "ts": now_iso(),
+        })
+        return False
+
+    result["handoff_snapshot"] = snapshot
+    log.append({
+        "action": "dry_run_failure_handoff_retained",
+        "provider": snapshot.get("browser_provider"),
+        "browser_session_id": snapshot.get("browser_session_id"),
+        "current_url": snapshot.get("current_url") or str(getattr(page, "url", "") or ""),
+        "current_fingerprint": snapshot.get("current_fingerprint"),
+        "fields_filled": int(result.get("fields_filled") or 0),
+        "ts": now_iso(),
+    })
+    return True
+
+
 async def fill_and_submit_application_with_handoff(
     job_url: str,
     user_profile: Dict[str, Any],
@@ -218,6 +276,13 @@ async def fill_and_submit_application_with_handoff(
                             "manual_handoff_created": False,
                             "ts": now_iso(),
                         })
+                        if dry_run:
+                            retained = await _retain_dry_run_failure_handoff(
+                                result=result,
+                                runtime=runtime,
+                                page=page,
+                                log=log,
+                            )
                         return result
 
                 async def fill_step(surface: Any, step_number: int) -> Dict[str, Any]:
@@ -293,6 +358,13 @@ async def fill_and_submit_application_with_handoff(
                         "controlled_page_target_id_recorded": bool(controlled_target_id),
                         "ts": now_iso(),
                     })
+                elif dry_run and not result.get("success"):
+                    retained = await _retain_dry_run_failure_handoff(
+                        result=result,
+                        runtime=runtime,
+                        page=page,
+                        log=log,
+                    )
             finally:
                 if runtime is not None:
                     await release_application_browser(
