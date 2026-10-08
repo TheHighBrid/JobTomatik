@@ -150,6 +150,53 @@ def test_playwright_attachment_gets_fresh_budget_after_slow_cdp_startup(
     assert log_handle.closed is False
 
 
+
+
+def test_owned_chromium_creates_explicit_page_when_profile_restores_tabs():
+    class FakePage:
+        def __init__(self, name):
+            self.name = name
+            self.viewport = None
+            self.front = False
+            self.closed = False
+
+        async def set_viewport_size(self, viewport):
+            self.viewport = viewport
+
+        async def bring_to_front(self):
+            self.front = True
+
+        async def close(self, run_before_unload=False):
+            self.closed = True
+
+    class FakeContext:
+        def __init__(self):
+            self.pages = [FakePage("restored-1"), FakePage("restored-2")]
+            self.created = None
+
+        async def new_page(self):
+            self.created = FakePage("controlled")
+            self.pages.append(self.created)
+            return self.created
+
+    context = FakeContext()
+    browser = SimpleNamespace(contexts=[context])
+
+    selected_context, page = asyncio.run(
+        browser_runtime._create_owned_controlled_page(
+            browser,
+            viewport={"width": 1280, "height": 900},
+        )
+    )
+
+    assert selected_context is context
+    assert page is context.created
+    assert page.name == "controlled"
+    assert page.viewport == {"width": 1280, "height": 900}
+    assert page.front is True
+    assert [item.name for item in context.pages[:2]] == ["restored-1", "restored-2"]
+
+
 def test_compose_serializes_the_shared_application_browser_profile():
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     worker_command = (
