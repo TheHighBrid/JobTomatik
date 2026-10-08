@@ -261,6 +261,44 @@ async def _select_context_page(
     return context, page
 
 
+async def _create_owned_controlled_page(
+    browser: Any,
+    *,
+    viewport: Optional[Dict[str, int]],
+) -> tuple[Any, Any]:
+    """Create one explicit application tab in JobTomatik-owned Chromium.
+
+    A persistent profile can restore stale tabs from an earlier attempt. Those tabs
+    are browser history, not authority to choose an application target. Because this
+    Chromium process is owned by JobTomatik, create a fresh page and control only that
+    page instead of guessing from restored page order.
+    """
+    contexts = list(browser.contexts)
+    if not contexts:
+        raise BrowserRuntimeError("JobTomatik-owned Chromium exposed no browser context.")
+    if len(contexts) != 1:
+        raise BrowserRuntimeError(
+            "JobTomatik-owned Chromium exposed multiple browser contexts; "
+            "controlled application page creation is fail-closed."
+        )
+
+    context = contexts[0]
+    page = await context.new_page()
+    await page.set_viewport_size(viewport or {"width": 1280, "height": 900})
+    try:
+        await page.bring_to_front()
+    except Exception:
+        try:
+            await page.close(run_before_unload=False)
+        except Exception:
+            pass
+        raise BrowserRuntimeError(
+            "JobTomatik-owned Chromium created an application page but could not "
+            "activate the explicit controlled target."
+        )
+    return context, page
+
+
 @dataclass
 class RetainableBrowserRuntime:
     process: Any
@@ -386,10 +424,9 @@ async def launch_retainable_browser(
     )
 
     try:
-        context, page = await _select_context_page(
+        context, page = await _create_owned_controlled_page(
             browser,
             viewport=viewport,
-            resize_viewport=True,
         )
     except Exception:
         process.terminate()
