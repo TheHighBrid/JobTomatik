@@ -197,6 +197,80 @@ def test_owned_chromium_creates_explicit_page_when_profile_restores_tabs():
     assert all(item.closed for item in context.pages[:2])
 
 
+def test_owned_profile_removes_stale_singleton_markers(monkeypatch, tmp_path):
+    profile = tmp_path / "browser-profile"
+    profile.mkdir()
+    for name in browser_runtime.CHROMIUM_TRANSIENT_SINGLETON_NAMES:
+        (profile / name).write_text("stale", encoding="utf-8")
+
+    monkeypatch.setattr(browser_runtime, "_owned_profile_processes", lambda _profile: [])
+
+    browser_runtime._prepare_owned_profile(profile)
+
+    assert all(
+        not (profile / name).exists()
+        for name in browser_runtime.CHROMIUM_TRANSIENT_SINGLETON_NAMES
+    )
+
+
+def test_owned_profile_never_removes_markers_while_live_owner_exists(
+    monkeypatch,
+    tmp_path,
+):
+    profile = tmp_path / "browser-profile"
+    profile.mkdir()
+    lock = profile / "SingletonLock"
+    lock.write_text("live", encoding="utf-8")
+    monkeypatch.setattr(browser_runtime, "_owned_profile_processes", lambda _profile: [4321])
+
+    try:
+        browser_runtime._prepare_owned_profile(profile)
+    except browser_runtime.BrowserRuntimeError as exc:
+        assert "APPLICATION_BROWSER_PROFILE_IN_USE" in str(exc)
+    else:
+        raise AssertionError("live Chromium profile ownership must fail closed")
+
+    assert lock.exists()
+
+
+def test_owned_process_cleanup_escalates_from_group_term_to_kill(monkeypatch):
+    events = []
+
+    class FakeProcess:
+        pid = 4321
+        waits = 0
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout):
+            self.waits += 1
+            events.append(("wait", timeout))
+            if self.waits == 1:
+                raise browser_runtime.subprocess.TimeoutExpired("chromium", timeout)
+            return 0
+
+        def terminate(self):
+            events.append(("terminate", None))
+
+        def kill(self):
+            events.append(("kill", None))
+
+    monkeypatch.setattr(browser_runtime.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(
+        browser_runtime.os,
+        "killpg",
+        lambda pgid, sig: events.append(("killpg", pgid, sig)),
+    )
+
+    browser_runtime._terminate_owned_process(FakeProcess(), timeout=0.01)
+
+    assert events[0][0] == "killpg"
+    assert events[0][2] == browser_runtime.signal.SIGTERM
+    assert events[2][0] == "killpg"
+    assert events[2][2] == browser_runtime.signal.SIGKILL
+
+
 def test_compose_serializes_the_shared_application_browser_profile():
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     worker_command = (
