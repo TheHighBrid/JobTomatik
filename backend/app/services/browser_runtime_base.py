@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
 from dataclasses import dataclass
@@ -23,6 +24,11 @@ from app.services.browser_handoff import current_browser_node_id
 CDP_STARTUP_TIMEOUT_SECONDS = 120
 PLAYWRIGHT_ATTACH_TIMEOUT_SECONDS = 120
 EXTERNAL_CDP_CONNECT_TIMEOUT_SECONDS = 20
+CHROMIUM_TRANSIENT_SINGLETON_NAMES = (
+    "SingletonLock",
+    "SingletonSocket",
+    "SingletonCookie",
+)
 
 
 class BrowserRuntimeError(RuntimeError):
@@ -70,6 +76,93 @@ def _reserve_port() -> int:
     port = int(sock.getsockname()[1])
     sock.close()
     return port
+
+
+def _owned_profile_processes(profile_dir: Path) -> list[int]:
+    """Return live Chromium PIDs that explicitly own this user-data-dir."""
+    expected = f"--user-data-dir={profile_dir}"
+    owners: list[int] = []
+    proc_root = Path("/proc")
+    if not proc_root.is_dir():
+        return owners
+
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if not raw:
+            continue
+        command = raw.replace(b"\x00", b" ").decode("utf-8", errors="replace")
+        if expected not in command:
+            continue
+        if "chrom" not in command.lower():
+            continue
+        try:
+            pid = int(entry.name)
+        except ValueError:
+            continue
+        if pid != os.getpid():
+            owners.append(pid)
+    return owners
+
+
+def _prepare_owned_profile(profile_dir: Path) -> None:
+    """Clear only stale Chromium singleton markers before an owned launch.
+
+    Never remove profile locks while a live Chromium process advertises the exact
+    user-data-dir. That state may be a deliberate retained human handoff.
+    """
+    owners = _owned_profile_processes(profile_dir)
+    if owners:
+        raise BrowserRuntimeError(
+            "APPLICATION_BROWSER_PROFILE_IN_USE: JobTomatik's persistent Chromium "
+            f"profile is still owned by live process(es) {owners}; refusing to "
+            "remove browser ownership markers."
+        )
+
+    for name in CHROMIUM_TRANSIENT_SINGLETON_NAMES:
+        marker = profile_dir / name
+        try:
+            marker.unlink(missing_ok=True)
+        except OSError as exc:
+            raise BrowserRuntimeError(
+                f"APPLICATION_BROWSER_PROFILE_CLEANUP_FAILED: could not remove {marker}"
+            ) from exc
+
+
+def _terminate_owned_process(process: subprocess.Popen, timeout: float = 5.0) -> None:
+    """Terminate the isolated Chromium process group and verify it exits."""
+    if process.poll() is not None:
+        return
+
+    try:
+        process_group = os.getpgid(process.pid)
+    except (ProcessLookupError, PermissionError, OSError):
+        process_group = None
+
+    try:
+        if process_group == process.pid:
+            os.killpg(process_group, signal.SIGTERM)
+        else:
+            process.terminate()
+        process.wait(timeout=timeout)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    except ProcessLookupError:
+        return
+
+    try:
+        if process_group == process.pid:
+            os.killpg(process_group, signal.SIGKILL)
+        else:
+            process.kill()
+    except ProcessLookupError:
+        return
+    process.wait(timeout=timeout)
 
 
 def _chromium_environment() -> Dict[str, str]:
@@ -144,7 +237,7 @@ async def _wait_for_cdp_endpoint(
             last_error = str(exc)
         await asyncio.sleep(0.25)
 
-    process.terminate()
+    _terminate_owned_process(process)
     log_handle.close()
     raise BrowserRuntimeError(
         "Chromium CDP endpoint did not become ready within "
@@ -204,7 +297,7 @@ async def _connect_playwright_over_cdp(
             attach_error = str(exc)
             await asyncio.sleep(1)
 
-    process.terminate()
+    _terminate_owned_process(process)
     log_handle.close()
     raise BrowserRuntimeError(
         "Playwright could not attach to the Chromium CDP websocket within "
@@ -340,13 +433,8 @@ class RetainableBrowserRuntime:
         }
 
     def terminate(self, *, remove_profile: bool = False) -> None:
-        if self.owns_process and self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=5)
+        if self.owns_process:
+            _terminate_owned_process(self.process)
         if remove_profile and self.owns_process and self.browser_profile_path:
             profile = Path(self.browser_profile_path)
             try:
@@ -374,6 +462,7 @@ async def launch_retainable_browser(
     resolved_profile_dir = Path(profile_dir) if profile_dir else session_dir / "profile"
     session_dir.mkdir(parents=True, exist_ok=True)
     resolved_profile_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_owned_profile(resolved_profile_dir)
     port = _reserve_port()
     executable = playwright.chromium.executable_path
     log_path = session_dir / "chromium.log"
@@ -423,7 +512,7 @@ async def launch_retainable_browser(
             viewport=viewport,
         )
     except Exception:
-        process.terminate()
+        _terminate_owned_process(process)
         log_handle.close()
         raise
 
