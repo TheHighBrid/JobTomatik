@@ -266,36 +266,30 @@ async def _create_owned_controlled_page(
     *,
     viewport: Optional[Dict[str, int]],
 ) -> tuple[Any, Any]:
-    """Create one explicit application tab in JobTomatik-owned Chromium.
-
-    A persistent profile can restore stale tabs from an earlier attempt. Those tabs
-    are browser history, not authority to choose an application target. Because this
-    Chromium process is owned by JobTomatik, create a fresh page and control only that
-    page instead of guessing from restored page order.
-    """
+    """Create one explicit tab and retire restored tabs in owned Chromium."""
     contexts = list(browser.contexts)
-    if not contexts:
-        raise BrowserRuntimeError("JobTomatik-owned Chromium exposed no browser context.")
     if len(contexts) != 1:
         raise BrowserRuntimeError(
-            "JobTomatik-owned Chromium exposed multiple browser contexts; "
-            "controlled application page creation is fail-closed."
+            "JobTomatik-owned Chromium must expose exactly one browser context."
         )
 
     context = contexts[0]
+    restored_pages = list(context.pages)
     page = await context.new_page()
-    await page.set_viewport_size(viewport or {"width": 1280, "height": 900})
     try:
+        await page.set_viewport_size(viewport or {"width": 1280, "height": 900})
         await page.bring_to_front()
-    except Exception:
+        for restored_page in restored_pages:
+            await restored_page.close(run_before_unload=False)
+    except Exception as exc:
         try:
             await page.close(run_before_unload=False)
         except Exception:
             pass
         raise BrowserRuntimeError(
-            "JobTomatik-owned Chromium created an application page but could not "
-            "activate the explicit controlled target."
-        )
+            "JobTomatik-owned Chromium could not establish one explicit controlled "
+            "application page."
+        ) from exc
     return context, page
 
 
