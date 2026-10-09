@@ -194,7 +194,7 @@ def test_owned_chromium_creates_explicit_page_when_profile_restores_tabs():
     assert page.name == "controlled"
     assert page.viewport == {"width": 1280, "height": 900}
     assert page.front is True
-    assert [item.name for item in context.pages[:2]] == ["restored-1", "restored-2"]
+    assert all(item.closed for item in context.pages[:2])
 
 
 def test_compose_serializes_the_shared_application_browser_profile():
