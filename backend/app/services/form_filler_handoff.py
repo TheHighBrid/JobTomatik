@@ -107,32 +107,32 @@ def _apply_challenge_result(result: Dict[str, Any], challenge: Dict[str, Any]) -
     result["review_items"] = [challenge]
 
 
-async def _retain_dry_run_failure_handoff(
-    *,
-    result: Dict[str, Any],
-    runtime: Any,
-    page: Any,
-    log: List[Dict[str, Any]],
-) -> bool:
-    """Retain the browser for a failed dry run so the failure is diagnosable.
+_DIAGNOSTIC_REASON = "automation_error"
+_DIAGNOSTIC_STAGE = "dry_run_failure_diagnostic"
 
-    Dry runs are explicitly non-submitting. When Chromium reached a real page but
-    automation failed before a classified human boundary, destroying the page loses
-    the strongest evidence and prevents operator recovery. Convert that technical
-    failure into an automation-error review with a retained snapshot.
-    """
-    if runtime is None or result.get("success") or result.get("handoff_snapshot"):
-        return False
 
+def _add_diagnostic_review(result: Dict[str, Any]) -> None:
     result["requires_manual_review"] = True
+    result.setdefault("review_items", []).append({
+        "reason_code": _DIAGNOSTIC_REASON,
+        "summary": result.get("error") or "Dry-run browser automation failed before completion.",
+        "details": {
+            "handoff_stage": _DIAGNOSTIC_STAGE,
+            "diagnostic_only": True,
+            "submit_clicked": False,
+        },
+    })
+
+
+async def _diagnostic_snapshot_metadata(result: Dict[str, Any], runtime: Any) -> Dict[str, Any]:
     controlled_target_id = await controlled_page_target_id(runtime.page)
-    snapshot_metadata = {
+    metadata = {
         "dry_run": True,
         "adapter": result.get("ats_adapter"),
         "adapter_version": result.get("ats_adapter_version"),
         "fields_filled": int(result.get("fields_filled") or 0),
         "steps_completed": int(result.get("steps_completed") or 0),
-        "handoff_stage": "dry_run_failure_diagnostic",
+        "handoff_stage": _DIAGNOSTIC_STAGE,
         "failure_error": str(result.get("error") or "")[:500],
         "application_browser_identity": retainable_application_browser_identity(
             runtime,
@@ -140,24 +140,57 @@ async def _retain_dry_run_failure_handoff(
         ),
     }
     if controlled_target_id:
-        snapshot_metadata["controlled_page_target_id"] = controlled_target_id
+        metadata["controlled_page_target_id"] = controlled_target_id
+    return metadata
 
+
+async def _capture_diagnostic_snapshot(
+    result: Dict[str, Any],
+    runtime: Any,
+    log: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
     try:
-        snapshot = await runtime.capture_snapshot(metadata=snapshot_metadata)
+        metadata = await _diagnostic_snapshot_metadata(result, runtime)
+        return await runtime.capture_snapshot(metadata=metadata)
     except Exception as exc:
         log.append({
             "action": "dry_run_failure_handoff_capture_failed",
             "detail": str(exc)[:300],
             "ts": now_iso(),
         })
+        return None
+
+
+async def _retain_dry_run_failure_handoff(
+    *,
+    result: Dict[str, Any],
+    runtime: Any,
+    log: List[Dict[str, Any]],
+) -> bool:
+    """
+    Retain a failed dry-run browser through an explicit diagnostic handoff.
+
+    Technical failures are classified as automation errors rather than security
+    challenges. The browser is retained only after a snapshot is captured so the
+    task layer can persist a durable navigation handoff and expiry lifecycle.
+    """
+    if runtime is None or result.get("success"):
+        return False
+    if result.get("handoff_snapshot"):
+        return True
+
+    _add_diagnostic_review(result)
+    snapshot = await _capture_diagnostic_snapshot(result, runtime, log)
+    if snapshot is None:
         return False
 
     result["handoff_snapshot"] = snapshot
     log.append({
         "action": "dry_run_failure_handoff_retained",
+        "reason_code": _DIAGNOSTIC_REASON,
         "provider": snapshot.get("browser_provider"),
         "browser_session_id": snapshot.get("browser_session_id"),
-        "current_url": snapshot.get("current_url") or str(getattr(page, "url", "") or ""),
+        "current_url": snapshot.get("current_url") or str(getattr(runtime.page, "url", "") or ""),
         "current_fingerprint": snapshot.get("current_fingerprint"),
         "fields_filled": int(result.get("fields_filled") or 0),
         "ts": now_iso(),
@@ -265,9 +298,8 @@ async def fill_and_submit_application_with_handoff(
                         _apply_challenge_result(result, challenge)
                     else:
                         result["error"] = (
-                            "The Apply doorway did not expose an application form. No CAPTCHA, "
-                            "login, MFA, or anti-bot boundary was observed, so the browser was "
-                            "not handed off."
+                            "The Apply doorway did not expose an application form, and no "
+                            "classified human boundary was detected."
                         )
                         log.append({
                             "action": "application_form_not_reached",
@@ -280,7 +312,6 @@ async def fill_and_submit_application_with_handoff(
                             retained = await _retain_dry_run_failure_handoff(
                                 result=result,
                                 runtime=runtime,
-                                page=page,
                                 log=log,
                             )
                         return result
@@ -362,7 +393,15 @@ async def fill_and_submit_application_with_handoff(
                     retained = await _retain_dry_run_failure_handoff(
                         result=result,
                         runtime=runtime,
-                        page=page,
+                        log=log,
+                    )
+            except Exception as exc:
+                result["error"] = str(exc)
+                log.append({"action": "error", "detail": str(exc)[:300], "ts": now_iso()})
+                if dry_run and runtime is not None:
+                    retained = await _retain_dry_run_failure_handoff(
+                        result=result,
+                        runtime=runtime,
                         log=log,
                     )
             finally:
