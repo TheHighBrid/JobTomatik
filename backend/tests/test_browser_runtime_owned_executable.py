@@ -53,7 +53,7 @@ async def test_owned_browser_ignores_legacy_executable_override(monkeypatch, tmp
     monkeypatch.setattr(runtime_base.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(runtime_base, "_wait_for_cdp_endpoint", fake_wait)
     monkeypatch.setattr(runtime_base, "_connect_playwright_over_cdp", fake_connect)
-    monkeypatch.setattr(runtime_base, "_select_context_page", fake_select)
+    monkeypatch.setattr(runtime_base, "_create_owned_controlled_page", fake_select)
 
     result = await runtime_base.launch_retainable_browser(
         playwright,

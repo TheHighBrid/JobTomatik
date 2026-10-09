@@ -261,6 +261,38 @@ async def _select_context_page(
     return context, page
 
 
+async def _create_owned_controlled_page(
+    browser: Any,
+    *,
+    viewport: Optional[Dict[str, int]],
+) -> tuple[Any, Any]:
+    """Create one explicit tab and retire restored tabs in owned Chromium."""
+    contexts = list(browser.contexts)
+    if len(contexts) != 1:
+        raise BrowserRuntimeError(
+            "JobTomatik-owned Chromium must expose exactly one browser context."
+        )
+
+    context = contexts[0]
+    restored_pages = list(context.pages)
+    page = await context.new_page()
+    try:
+        await page.set_viewport_size(viewport or {"width": 1280, "height": 900})
+        await page.bring_to_front()
+        for restored_page in restored_pages:
+            await restored_page.close(run_before_unload=False)
+    except Exception as exc:
+        try:
+            await page.close(run_before_unload=False)
+        except Exception:
+            pass
+        raise BrowserRuntimeError(
+            "JobTomatik-owned Chromium could not establish one explicit controlled "
+            "application page."
+        ) from exc
+    return context, page
+
+
 @dataclass
 class RetainableBrowserRuntime:
     process: Any
@@ -386,10 +418,9 @@ async def launch_retainable_browser(
     )
 
     try:
-        context, page = await _select_context_page(
+        context, page = await _create_owned_controlled_page(
             browser,
             viewport=viewport,
-            resize_viewport=True,
         )
     except Exception:
         process.terminate()
