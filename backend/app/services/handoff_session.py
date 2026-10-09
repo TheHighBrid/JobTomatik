@@ -28,6 +28,7 @@ _ALLOWED_REASON_TO_CHALLENGE = {
     ManualReviewReason.mfa_required.value: HandoffChallengeType.mfa.value,
     ManualReviewReason.login_required.value: HandoffChallengeType.login.value,
     ManualReviewReason.anti_bot_challenge.value: HandoffChallengeType.anti_bot.value,
+    ManualReviewReason.automation_error.value: HandoffChallengeType.navigation.value,
 }
 
 

@@ -171,7 +171,11 @@ export default function ManualHandoffPanel({ applicationId }) {
       writeLease(session.public_id, '')
       setLeaseToken('')
       setSecretInput('')
-      toast.success('Challenge verified. JobTomatik is resuming the application.')
+      toast.success(
+        session?.challenge_type === 'navigation'
+          ? 'Diagnostic review completed. JobTomatik is resuming from the preserved page.'
+          : 'Challenge verified. JobTomatik is resuming the application.'
+      )
       invalidate()
     },
     onError: (error) => toast.error(getApiErrorMessage(error, 'The challenge is still active')),
@@ -215,13 +219,16 @@ export default function ManualHandoffPanel({ applicationId }) {
   const claimed = session.status === 'claimed' && Boolean(leaseToken)
   const waitingForWorker = ['ready_to_resume', 'resuming'].includes(session.status)
   const terminal = RECOVERABLE_STATUSES.has(session.status)
-  const challengeLabel = session.challenge_type === 'mfa'
-    ? 'MFA verification'
-    : session.challenge_type === 'login'
-      ? 'Secure sign-in'
-      : session.challenge_type === 'anti_bot'
-        ? 'Human verification'
-        : 'CAPTCHA verification'
+  const diagnosticNavigation = session.challenge_type === 'navigation'
+  const challengeLabel = diagnosticNavigation
+    ? 'Diagnostic browser review'
+    : session.challenge_type === 'mfa'
+      ? 'MFA verification'
+      : session.challenge_type === 'login'
+        ? 'Secure sign-in'
+        : session.challenge_type === 'anti_bot'
+          ? 'Human verification'
+          : 'CAPTCHA verification'
 
   const handleFrameClick = (event) => {
     if (!claimed || actionMutation.isPending) return
@@ -268,7 +275,9 @@ export default function ManualHandoffPanel({ applicationId }) {
         </div>
         <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <p className="text-sm text-gray-600">
-            Start fresh to rebuild the application form and request a new verification code.
+            {diagnosticNavigation
+              ? 'Start fresh to rebuild the application form in a new browser session.'
+              : 'Start fresh to rebuild the application form and request a new verification code.'}
           </p>
           <button
             className="btn-primary flex items-center gap-2 justify-center whitespace-nowrap"
@@ -295,7 +304,9 @@ export default function ManualHandoffPanel({ applicationId }) {
             <span className="badge bg-amber-100 text-amber-800 text-xs">{session.status.replaceAll('_', ' ')}</span>
           </div>
           <p className="text-sm text-gray-600 mt-1">
-            JobTomatik preserved the filled application and paused before the protected step. Use only the newest code you receive.
+            {diagnosticNavigation
+              ? 'JobTomatik preserved the browser at the technical failure. Inspect or correct the page, then continue from the retained session.'
+              : 'JobTomatik preserved the filled application and paused before the protected step. Use only the newest code you receive.'}
           </p>
         </div>
       </div>
@@ -348,7 +359,7 @@ export default function ManualHandoffPanel({ applicationId }) {
           <div className="flex items-center gap-3 rounded-xl bg-blue-50 text-blue-800 p-4">
             <Loader2 className="w-5 h-5 animate-spin flex-shrink-0" />
             <div>
-              <div className="font-medium">Challenge completed</div>
+              <div className="font-medium">{diagnosticNavigation ? 'Diagnostic review completed' : 'Challenge completed'}</div>
               <div className="text-sm text-blue-700">JobTomatik is reconnecting and continuing from the preserved form.</div>
             </div>
           </div>
@@ -390,14 +401,16 @@ export default function ManualHandoffPanel({ applicationId }) {
             </div>
 
             <div className="flex flex-wrap gap-2 rounded-xl bg-gray-50 p-3">
-              <button
-                className="btn-secondary text-xs flex items-center gap-1.5"
-                onClick={() => runRecoveryAction('resend_code', 'A new verification code was requested')}
-                disabled={actionMutation.isPending}
-              >
-                <MailPlus className="w-3.5 h-3.5" />
-                Request new code
-              </button>
+              {!diagnosticNavigation && (
+                <button
+                  className="btn-secondary text-xs flex items-center gap-1.5"
+                  onClick={() => runRecoveryAction('resend_code', 'A new verification code was requested')}
+                  disabled={actionMutation.isPending}
+                >
+                  <MailPlus className="w-3.5 h-3.5" />
+                  Request new code
+                </button>
+              )}
               <button
                 className="btn-secondary text-xs flex items-center gap-1.5"
                 onClick={() => runRecoveryAction('back', 'Returned to the previous verification page')}
@@ -417,29 +430,31 @@ export default function ManualHandoffPanel({ applicationId }) {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={secretInput}
-                  onChange={(event) => setSecretInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') submitSecret()
-                  }}
-                  className="input flex-1"
-                  placeholder="Paste the newest MFA or verification code"
-                  autoComplete="one-time-code"
-                  autoCapitalize="none"
-                  spellCheck="false"
-                />
-                <button
-                  className="btn-primary flex items-center gap-2"
-                  onClick={submitSecret}
-                  disabled={!secretInput.trim() || actionMutation.isPending}
-                >
-                  <Keyboard className="w-4 h-4" />
-                  Replace and submit
-                </button>
-              </div>
+              {!diagnosticNavigation && (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={secretInput}
+                    onChange={(event) => setSecretInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') submitSecret()
+                    }}
+                    className="input flex-1"
+                    placeholder="Paste the newest MFA or verification code"
+                    autoComplete="one-time-code"
+                    autoCapitalize="none"
+                    spellCheck="false"
+                  />
+                  <button
+                    className="btn-primary flex items-center gap-2"
+                    onClick={submitSecret}
+                    disabled={!secretInput.trim() || actionMutation.isPending}
+                  >
+                    <Keyboard className="w-4 h-4" />
+                    Replace and submit
+                  </button>
+                </div>
+              )}
               <div className="flex gap-2 flex-wrap">
                 {['Tab', 'Shift+Tab', 'Enter', 'Escape', 'Backspace'].map((key) => (
                   <button
@@ -454,9 +469,11 @@ export default function ManualHandoffPanel({ applicationId }) {
               </div>
             </div>
 
-            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
-              Replace and submit clears any expired code already in the focused field, types the newest code, and presses Enter in one action.
-            </div>
+            {!diagnosticNavigation && (
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+                Replace and submit clears any expired code already in the focused field, types the newest code, and presses Enter in one action.
+              </div>
+            )}
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -486,7 +503,7 @@ export default function ManualHandoffPanel({ applicationId }) {
                   disabled={completeMutation.isPending}
                 >
                   {completeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                  I completed the challenge
+                  {diagnosticNavigation ? 'Continue from this page' : 'I completed the challenge'}
                 </button>
               </div>
             </div>

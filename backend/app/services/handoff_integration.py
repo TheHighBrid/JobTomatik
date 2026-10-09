@@ -26,6 +26,7 @@ _RESUMABLE_REASON_VALUES = {
     ManualReviewReason.mfa_required.value,
     ManualReviewReason.login_required.value,
     ManualReviewReason.anti_bot_challenge.value,
+    ManualReviewReason.automation_error.value,
 }
 _TERMINAL_REISSUE_MESSAGE = "A terminal handoff session already exists for this review."
 _HANDOFF_DETAIL_KEYS = {

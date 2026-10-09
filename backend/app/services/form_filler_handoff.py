@@ -107,6 +107,97 @@ def _apply_challenge_result(result: Dict[str, Any], challenge: Dict[str, Any]) -
     result["review_items"] = [challenge]
 
 
+_DIAGNOSTIC_REASON = "automation_error"
+_DIAGNOSTIC_STAGE = "dry_run_failure_diagnostic"
+
+
+def _add_diagnostic_review(result: Dict[str, Any]) -> None:
+    result["requires_manual_review"] = True
+    result.setdefault("review_items", []).append({
+        "reason_code": _DIAGNOSTIC_REASON,
+        "summary": result.get("error") or "Dry-run browser automation failed before completion.",
+        "details": {
+            "handoff_stage": _DIAGNOSTIC_STAGE,
+            "diagnostic_only": True,
+            "submit_clicked": False,
+        },
+    })
+
+
+async def _diagnostic_snapshot_metadata(result: Dict[str, Any], runtime: Any) -> Dict[str, Any]:
+    controlled_target_id = await controlled_page_target_id(runtime.page)
+    metadata = {
+        "dry_run": True,
+        "adapter": result.get("ats_adapter"),
+        "adapter_version": result.get("ats_adapter_version"),
+        "fields_filled": int(result.get("fields_filled") or 0),
+        "steps_completed": int(result.get("steps_completed") or 0),
+        "handoff_stage": _DIAGNOSTIC_STAGE,
+        "failure_error": str(result.get("error") or "")[:500],
+        "application_browser_identity": retainable_application_browser_identity(
+            runtime,
+            controlled_page_target_id=controlled_target_id,
+        ),
+    }
+    if controlled_target_id:
+        metadata["controlled_page_target_id"] = controlled_target_id
+    return metadata
+
+
+async def _capture_diagnostic_snapshot(
+    result: Dict[str, Any],
+    runtime: Any,
+    log: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    try:
+        metadata = await _diagnostic_snapshot_metadata(result, runtime)
+        return await runtime.capture_snapshot(metadata=metadata)
+    except Exception as exc:
+        log.append({
+            "action": "dry_run_failure_handoff_capture_failed",
+            "detail": str(exc)[:300],
+            "ts": now_iso(),
+        })
+        return None
+
+
+async def _retain_dry_run_failure_handoff(
+    *,
+    result: Dict[str, Any],
+    runtime: Any,
+    log: List[Dict[str, Any]],
+) -> bool:
+    """
+    Retain a failed dry-run browser through an explicit diagnostic handoff.
+
+    Technical failures are classified as automation errors rather than security
+    challenges. The browser is retained only after a snapshot is captured so the
+    task layer can persist a durable navigation handoff and expiry lifecycle.
+    """
+    if runtime is None or result.get("success"):
+        return False
+    if result.get("handoff_snapshot"):
+        return True
+
+    _add_diagnostic_review(result)
+    snapshot = await _capture_diagnostic_snapshot(result, runtime, log)
+    if snapshot is None:
+        return False
+
+    result["handoff_snapshot"] = snapshot
+    log.append({
+        "action": "dry_run_failure_handoff_retained",
+        "reason_code": _DIAGNOSTIC_REASON,
+        "provider": snapshot.get("browser_provider"),
+        "browser_session_id": snapshot.get("browser_session_id"),
+        "current_url": snapshot.get("current_url") or str(getattr(runtime.page, "url", "") or ""),
+        "current_fingerprint": snapshot.get("current_fingerprint"),
+        "fields_filled": int(result.get("fields_filled") or 0),
+        "ts": now_iso(),
+    })
+    return True
+
+
 async def fill_and_submit_application_with_handoff(
     job_url: str,
     user_profile: Dict[str, Any],
@@ -207,9 +298,8 @@ async def fill_and_submit_application_with_handoff(
                         _apply_challenge_result(result, challenge)
                     else:
                         result["error"] = (
-                            "The Apply doorway did not expose an application form. No CAPTCHA, "
-                            "login, MFA, or anti-bot boundary was observed, so the browser was "
-                            "not handed off."
+                            "The Apply doorway did not expose an application form, and no "
+                            "classified human boundary was detected."
                         )
                         log.append({
                             "action": "application_form_not_reached",
@@ -218,6 +308,12 @@ async def fill_and_submit_application_with_handoff(
                             "manual_handoff_created": False,
                             "ts": now_iso(),
                         })
+                        if dry_run:
+                            retained = await _retain_dry_run_failure_handoff(
+                                result=result,
+                                runtime=runtime,
+                                log=log,
+                            )
                         return result
 
                 async def fill_step(surface: Any, step_number: int) -> Dict[str, Any]:
@@ -293,6 +389,21 @@ async def fill_and_submit_application_with_handoff(
                         "controlled_page_target_id_recorded": bool(controlled_target_id),
                         "ts": now_iso(),
                     })
+                elif dry_run and not result.get("success"):
+                    retained = await _retain_dry_run_failure_handoff(
+                        result=result,
+                        runtime=runtime,
+                        log=log,
+                    )
+            except Exception as exc:
+                result["error"] = str(exc)
+                log.append({"action": "error", "detail": str(exc)[:300], "ts": now_iso()})
+                if dry_run and runtime is not None:
+                    retained = await _retain_dry_run_failure_handoff(
+                        result=result,
+                        runtime=runtime,
+                        log=log,
+                    )
             finally:
                 if runtime is not None:
                     await release_application_browser(
