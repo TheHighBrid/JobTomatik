@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 from urllib.parse import parse_qs, urlsplit
@@ -70,7 +70,12 @@ class SupervisedSubmissionApprovalMismatch(SupervisedSubmissionApprovalError):
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    """Return timezone-aware UTC now.
+
+    SubmissionApproval timestamp columns are DateTime(timezone=True).
+    Naive utcnow() caused TypeError on Affirm #14.
+    """
+    return datetime.now(timezone.utc)
 
 
 def _canonical_json(value: Any) -> str:
