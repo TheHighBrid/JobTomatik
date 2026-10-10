@@ -153,6 +153,7 @@ def test_playwright_attachment_gets_fresh_budget_after_slow_cdp_startup(
 
 
 def test_owned_chromium_creates_explicit_page_when_profile_restores_tabs():
+    """Verify owned Chromium creates a controlled page and closes restored tabs."""
     class FakePage:
         def __init__(self, name):
             self.name = name
@@ -197,7 +198,89 @@ def test_owned_chromium_creates_explicit_page_when_profile_restores_tabs():
     assert all(item.closed for item in context.pages[:2])
 
 
+def test_owned_profile_removes_stale_singleton_markers(monkeypatch, tmp_path):
+    """Verify singleton markers are removed when the profile has no live owner."""
+    profile = tmp_path / "browser-profile"
+    profile.mkdir()
+    for name in browser_runtime.CHROMIUM_TRANSIENT_SINGLETON_NAMES:
+        (profile / name).write_text("stale", encoding="utf-8")
+
+    monkeypatch.setattr(browser_runtime._base, "_owned_profile_processes", lambda _profile: [])
+
+    browser_runtime._prepare_owned_profile(profile)
+
+    assert all(
+        not (profile / name).exists()
+        for name in browser_runtime.CHROMIUM_TRANSIENT_SINGLETON_NAMES
+    )
+
+
+def test_owned_profile_never_removes_markers_while_live_owner_exists(
+    monkeypatch,
+    tmp_path,
+):
+    """Verify a live profile owner blocks preparation and preserves its lock."""
+    profile = tmp_path / "browser-profile"
+    profile.mkdir()
+    lock = profile / "SingletonLock"
+    lock.write_text("live", encoding="utf-8")
+    monkeypatch.setattr(browser_runtime._base, "_owned_profile_processes", lambda _profile: [4321])
+
+    try:
+        browser_runtime._prepare_owned_profile(profile)
+    except browser_runtime.BrowserRuntimeError as exc:
+        assert "APPLICATION_BROWSER_PROFILE_IN_USE" in str(exc)
+    else:
+        raise AssertionError("live Chromium profile ownership must fail closed")
+
+    assert lock.exists()
+
+
+def test_owned_process_cleanup_escalates_from_group_term_to_kill(monkeypatch):
+    """Verify group termination escalates to SIGKILL after a SIGTERM timeout."""
+    events = []
+
+    class FakeProcess:
+        pid = 4321
+        waits = 0
+
+        def poll(self):
+            """Report the fake process as running so cleanup attempts termination."""
+            return None
+
+        def wait(self, timeout):
+            """Record each wait, timing out once before simulating process exit."""
+            self.waits += 1
+            events.append(("wait", timeout))
+            if self.waits == 1:
+                raise browser_runtime.subprocess.TimeoutExpired("chromium", timeout)
+            return 0
+
+        def terminate(self):
+            """Record a direct termination attempt for inspection by the test."""
+            events.append(("terminate", None))
+
+        def kill(self):
+            """Record a direct kill attempt for inspection by the test."""
+            events.append(("kill", None))
+
+    monkeypatch.setattr(browser_runtime.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(
+        browser_runtime.os,
+        "killpg",
+        lambda pgid, sig: events.append(("killpg", pgid, sig)),
+    )
+
+    browser_runtime._terminate_owned_process(FakeProcess(), timeout=0.01)
+
+    assert events[0][0] == "killpg"
+    assert events[0][2] == browser_runtime.signal.SIGTERM
+    assert events[2] == ("killpg", 4321, 0)
+    assert events[3] == ("killpg", 4321, browser_runtime.signal.SIGKILL)
+
+
 def test_compose_serializes_the_shared_application_browser_profile():
+    """Verify Compose serializes worker tasks that share the browser profile."""
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     worker_command = (
         "exec celery -A app.celery_app worker --loglevel=info "
