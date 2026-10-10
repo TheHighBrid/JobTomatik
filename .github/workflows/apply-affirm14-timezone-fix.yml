@@ -1,0 +1,29 @@
+name: Apply Affirm14 timezone fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: grok/fix-approval-timezone-v2
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply fix
+        run: python3 scripts/apply_affirm14_timezone_fix.py
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backend/app/services/supervised_submission.py
+          if git diff --cached --quiet; then
+            echo "No changes (already fixed)"
+            exit 0
+          fi
+          git commit -m "fix(supervised): apply timezone-aware _now() for Affirm #14"
+          git push origin HEAD:grok/fix-approval-timezone-v2
