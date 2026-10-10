@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import hashlib
 import json
 import os
@@ -8,6 +9,7 @@ import shutil
 import signal
 import socket
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -79,27 +81,47 @@ def _reserve_port() -> int:
     return port
 
 
-def _owned_profile_processes(profile_dir: Path) -> list[int]:
-    """Return live Chromium PIDs that explicitly own this user-data-dir."""
-    expected = f"--user-data-dir={profile_dir}"
+def _owned_profile_processes(profile_dir: Path) -> Optional[list[int]]:
+    """Return exact profile owners, or None when ownership cannot be determined."""
+    expected = os.fsencode(profile_dir)
     owners: list[int] = []
     proc_root = Path("/proc")
-    if not proc_root.is_dir():
-        return owners
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError:
+        return None
 
-    for entry in proc_root.iterdir():
+    for entry in entries:
         if not entry.name.isdigit():
             continue
         try:
             raw = (entry / "cmdline").read_bytes()
+        except (FileNotFoundError, ProcessLookupError):
+            # Only a vanished PID is harmless; a missing cmdline for an existing
+            # PID leaves ownership unknown.
+            try:
+                entry.stat()
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            except OSError:
+                return None
+            return None
         except OSError:
-            continue
+            return None
         if not raw:
             continue
-        command = raw.replace(b"\x00", b" ").decode("utf-8", errors="replace")
-        if expected not in command:
+        arguments = raw.split(b"\x00")
+        if not any(
+            argument == b"--user-data-dir=" + expected
+            or (
+                argument == b"--user-data-dir"
+                and index + 1 < len(arguments)
+                and arguments[index + 1] == expected
+            )
+            for index, argument in enumerate(arguments)
+        ):
             continue
-        if "chrom" not in command.lower():
+        if b"chrom" not in raw.lower():
             continue
         try:
             pid = int(entry.name)
@@ -117,6 +139,11 @@ def _prepare_owned_profile(profile_dir: Path) -> None:
     user-data-dir. That state may be a deliberate retained human handoff.
     """
     owners = _owned_profile_processes(profile_dir)
+    if owners is None:
+        raise BrowserRuntimeError(
+            "APPLICATION_BROWSER_PROFILE_OWNERSHIP_UNKNOWN: could not fully scan "
+            "process ownership; refusing to remove browser ownership markers."
+        )
     if owners:
         raise BrowserRuntimeError(
             "APPLICATION_BROWSER_PROFILE_IN_USE: JobTomatik's persistent Chromium "
@@ -134,35 +161,46 @@ def _prepare_owned_profile(profile_dir: Path) -> None:
             ) from exc
 
 
+@contextmanager
+def _owned_profile_startup_lock(profile_dir: Path):
+    """Serialize cooperating launches through CDP readiness without blocking asyncio."""
+    # Keep the file in place: unlinking a flock file can create competing locks
+    # on different inodes for the same profile.
+    with (profile_dir / ".jobtomatik-startup.lock").open("a+b") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise BrowserRuntimeError(
+                "APPLICATION_BROWSER_PROFILE_IN_USE: another launch is preparing "
+                "this Chromium profile."
+            ) from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 def _terminate_owned_process(process: subprocess.Popen, timeout: float = 5.0) -> None:
-    """Terminate the isolated Chromium process group and verify it exits."""
-    if process.poll() is not None:
-        return
+    """Stop a Chromium group created with start_new_session, including orphans."""
+    # The PGID remains the launch PID even after the leader exits and is reaped.
+    process_group = process.pid
 
     try:
-        process_group = os.getpgid(process.pid)
-    except (ProcessLookupError, PermissionError, OSError):
-        process_group = None
-
-    try:
-        if process_group == process.pid:
-            os.killpg(process_group, signal.SIGTERM)
-        else:
-            process.terminate()
+        os.killpg(process_group, signal.SIGTERM)
+    except ProcessLookupError:
         process.wait(timeout=timeout)
         return
+    try:
+        process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         pass
-    except ProcessLookupError:
-        return
 
     try:
-        if process_group == process.pid:
-            os.killpg(process_group, signal.SIGKILL)
-        else:
-            process.kill()
+        # Waiting for the leader alone says nothing about surviving renderers.
+        os.killpg(process_group, 0)
+        os.killpg(process_group, signal.SIGKILL)
     except ProcessLookupError:
-        return
+        pass
     process.wait(timeout=timeout)
 
 
@@ -464,15 +502,13 @@ async def launch_retainable_browser(
 ) -> RetainableBrowserRuntime:
     """Launch Playwright-owned Chromium; legacy executable overrides are ignored."""
     session_id = str(uuid4())
-    session_dir = handoff_storage_root() / session_id
-    resolved_profile_dir = Path(profile_dir) if profile_dir else session_dir / "profile"
+    session_dir = (handoff_storage_root() / session_id).resolve()
+    resolved_profile_dir = (Path(profile_dir) if profile_dir else session_dir / "profile").resolve()
     session_dir.mkdir(parents=True, exist_ok=True)
     resolved_profile_dir.mkdir(parents=True, exist_ok=True)
-    _prepare_owned_profile(resolved_profile_dir)
     port = _reserve_port()
     executable = playwright.chromium.executable_path
     log_path = session_dir / "chromium.log"
-    log_handle = log_path.open("ab")
 
     args = [
         executable,
@@ -490,20 +526,30 @@ async def launch_retainable_browser(
     if headless:
         args.insert(1, "--headless=new")
 
-    process = subprocess.Popen(
-        args,
-        stdout=log_handle,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-        close_fds=True,
-        env=_chromium_environment(),
-    )
-    endpoint = f"http://127.0.0.1:{port}"
+    process = None
+    with _owned_profile_startup_lock(resolved_profile_dir):
+        log_handle = log_path.open("ab")
+        try:
+            _prepare_owned_profile(resolved_profile_dir)
+            process = subprocess.Popen(
+                args,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                close_fds=True,
+                env=_chromium_environment(),
+            )
+            endpoint = f"http://127.0.0.1:{port}"
 
-    # Android + Ubuntu PRoot can take substantially longer than desktop Linux
-    # to expose the CDP websocket. Give readiness and Playwright attachment
-    # independent retry budgets so a slow first stage cannot starve the second.
-    await _wait_for_cdp_endpoint(process, endpoint, log_handle, log_path)
+            # Android + Ubuntu PRoot can take substantially longer than desktop Linux
+            # to expose the CDP websocket. Give readiness and Playwright attachment
+            # independent retry budgets so a slow first stage cannot starve the second.
+            await _wait_for_cdp_endpoint(process, endpoint, log_handle, log_path)
+        except BaseException:
+            if process is not None:
+                _terminate_owned_process(process)
+            log_handle.close()
+            raise
     browser = await _connect_playwright_over_cdp(
         playwright,
         process,

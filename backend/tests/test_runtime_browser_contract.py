@@ -205,7 +205,7 @@ def test_owned_profile_removes_stale_singleton_markers(monkeypatch, tmp_path):
     for name in browser_runtime.CHROMIUM_TRANSIENT_SINGLETON_NAMES:
         (profile / name).write_text("stale", encoding="utf-8")
 
-    monkeypatch.setattr(browser_runtime, "_owned_profile_processes", lambda _profile: [])
+    monkeypatch.setattr(browser_runtime._base, "_owned_profile_processes", lambda _profile: [])
 
     browser_runtime._prepare_owned_profile(profile)
 
@@ -224,7 +224,7 @@ def test_owned_profile_never_removes_markers_while_live_owner_exists(
     profile.mkdir()
     lock = profile / "SingletonLock"
     lock.write_text("live", encoding="utf-8")
-    monkeypatch.setattr(browser_runtime, "_owned_profile_processes", lambda _profile: [4321])
+    monkeypatch.setattr(browser_runtime._base, "_owned_profile_processes", lambda _profile: [4321])
 
     try:
         browser_runtime._prepare_owned_profile(profile)
@@ -275,8 +275,8 @@ def test_owned_process_cleanup_escalates_from_group_term_to_kill(monkeypatch):
 
     assert events[0][0] == "killpg"
     assert events[0][2] == browser_runtime.signal.SIGTERM
-    assert events[2][0] == "killpg"
-    assert events[2][2] == browser_runtime.signal.SIGKILL
+    assert events[2] == ("killpg", 4321, 0)
+    assert events[3] == ("killpg", 4321, browser_runtime.signal.SIGKILL)
 
 
 def test_compose_serializes_the_shared_application_browser_profile():
