@@ -153,6 +153,7 @@ def test_playwright_attachment_gets_fresh_budget_after_slow_cdp_startup(
 
 
 def test_owned_chromium_creates_explicit_page_when_profile_restores_tabs():
+    """Verify owned Chromium creates a controlled page and closes restored tabs."""
     class FakePage:
         def __init__(self, name):
             self.name = name
@@ -198,6 +199,7 @@ def test_owned_chromium_creates_explicit_page_when_profile_restores_tabs():
 
 
 def test_owned_profile_removes_stale_singleton_markers(monkeypatch, tmp_path):
+    """Verify singleton markers are removed when the profile has no live owner."""
     profile = tmp_path / "browser-profile"
     profile.mkdir()
     for name in browser_runtime.CHROMIUM_TRANSIENT_SINGLETON_NAMES:
@@ -217,6 +219,7 @@ def test_owned_profile_never_removes_markers_while_live_owner_exists(
     monkeypatch,
     tmp_path,
 ):
+    """Verify a live profile owner blocks preparation and preserves its lock."""
     profile = tmp_path / "browser-profile"
     profile.mkdir()
     lock = profile / "SingletonLock"
@@ -234,6 +237,7 @@ def test_owned_profile_never_removes_markers_while_live_owner_exists(
 
 
 def test_owned_process_cleanup_escalates_from_group_term_to_kill(monkeypatch):
+    """Verify group termination escalates to SIGKILL after a SIGTERM timeout."""
     events = []
 
     class FakeProcess:
@@ -241,9 +245,11 @@ def test_owned_process_cleanup_escalates_from_group_term_to_kill(monkeypatch):
         waits = 0
 
         def poll(self):
+            """Report the fake process as running so cleanup attempts termination."""
             return None
 
         def wait(self, timeout):
+            """Record each wait, timing out once before simulating process exit."""
             self.waits += 1
             events.append(("wait", timeout))
             if self.waits == 1:
@@ -251,9 +257,11 @@ def test_owned_process_cleanup_escalates_from_group_term_to_kill(monkeypatch):
             return 0
 
         def terminate(self):
+            """Record a direct termination attempt for inspection by the test."""
             events.append(("terminate", None))
 
         def kill(self):
+            """Record a direct kill attempt for inspection by the test."""
             events.append(("kill", None))
 
     monkeypatch.setattr(browser_runtime.os, "getpgid", lambda pid: pid)
@@ -272,6 +280,7 @@ def test_owned_process_cleanup_escalates_from_group_term_to_kill(monkeypatch):
 
 
 def test_compose_serializes_the_shared_application_browser_profile():
+    """Verify Compose serializes worker tasks that share the browser profile."""
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     worker_command = (
         "exec celery -A app.celery_app worker --loglevel=info "

@@ -71,6 +71,7 @@ def handoff_storage_root() -> Path:
 
 
 def _reserve_port() -> int:
+    """Find an available loopback TCP port and release the temporary socket."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     port = int(sock.getsockname()[1])
@@ -401,6 +402,7 @@ class RetainableBrowserRuntime:
     session_dir: Path
 
     async def capture_snapshot(self, *, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Save page and storage snapshots and return handoff metadata and hashes."""
         self.session_dir.mkdir(parents=True, exist_ok=True)
         screenshot_path = self.session_dir / "handoff.png"
         storage_state_path = self.session_dir / "storage-state.json"
@@ -433,6 +435,10 @@ class RetainableBrowserRuntime:
         }
 
     def terminate(self, *, remove_profile: bool = False) -> None:
+        """Stop owned Chromium and optionally remove session artifacts.
+
+        Profile cleanup is limited to owned profiles within the session directory.
+        """
         if self.owns_process:
             _terminate_owned_process(self.process)
         if remove_profile and self.owns_process and self.browser_profile_path:
