@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
+from app.models.application import Application
 from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
 from app.services.application_attempt_jt5 import reserve_jt5_attempt
@@ -18,6 +19,51 @@ from app.services.application_execution_gate import ApplyDecision
 from app.tasks.jt5_execution import execute_reserved_application
 
 router = APIRouter(prefix="/applications", tags=["applications-jt5"])
+
+
+@router.get("/{application_id}/jt5/status")
+def jt5_status(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Read-only status for owner monitoring. Does not reserve or dispatch."""
+    application = (
+        db.query(Application)
+        .filter(Application.id == application_id, Application.user_id == current_user.id)
+        .first()
+    )
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    attempt = (
+        db.query(SubmissionAttempt)
+        .filter(SubmissionAttempt.application_id == application_id)
+        .order_by(SubmissionAttempt.id.desc())
+        .first()
+    )
+    attempt_payload = None
+    if attempt is not None:
+        attempt_payload = {
+            "reference": attempt.reference,
+            "status": attempt.status,
+            "task_id": attempt.task_id,
+            "attempt_number": attempt.attempt_number,
+            "execution_contract": (attempt.attempt_metadata or {}).get("execution_contract"),
+            "queued_at": attempt.queued_at.isoformat() if attempt.queued_at else None,
+            "started_at": attempt.started_at.isoformat() if attempt.started_at else None,
+            "completed_at": attempt.completed_at.isoformat() if attempt.completed_at else None,
+        }
+
+    return {
+        "application_id": application_id,
+        "automation_state": application.automation_state,
+        "status": application.status.value if hasattr(application.status, "value") else application.status,
+        "applied_at": application.applied_at.isoformat() if application.applied_at else None,
+        "latest_attempt": attempt_payload,
+        "execution_contract": "jt5",
+        "automatic_retry_allowed": False,
+    }
 
 
 @router.post("/{application_id}/jt5/reserve")
