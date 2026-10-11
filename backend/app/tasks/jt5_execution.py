@@ -6,6 +6,7 @@ supervised_submission_integration wrapper never runs.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Dict
 
 from app.celery_app import celery_app
@@ -16,6 +17,7 @@ from app.models.application import (
     ApplicationStatus,
 )
 from app.models.job import Job
+from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
 from app.services.application_attempt_lifecycle_jt5 import (
     claim_jt5_attempt,
@@ -24,7 +26,6 @@ from app.services.application_attempt_lifecycle_jt5 import (
 from app.services.application_state import transition_application_state
 from app.services.form_filler import fill_and_submit_application
 from app.tasks.applications import (
-    _job_dict,
     _profile_dict,
     _record_result_evidence,
     _run_async,
@@ -38,7 +39,6 @@ def _classify_browser_result(result: Dict[str, Any]) -> str:
     if not isinstance(result, dict):
         return "submission_uncertain"
     if result.get("requires_manual_review"):
-        # May be pre-submit (missing fields) or post-click uncertain.
         log_actions = " ".join(
             str(item.get("action", "")) for item in (result.get("log") or [])
         ).lower()
@@ -61,7 +61,7 @@ def _classify_browser_result(result: Dict[str, Any]) -> str:
     ):
         return "confirmed"
     if result.get("success") and result.get("dry_run"):
-        return "failed_pre_submit"  # dry-run success is not employer receipt
+        return "failed_pre_submit"
     if result.get("error") and not result.get("submitted_at"):
         return "failed_pre_submit"
     return "submission_uncertain"
@@ -75,7 +75,6 @@ def _classify_browser_result(result: Dict[str, Any]) -> str:
 )
 def execute_reserved_application(self, application_id: int, attempt_reference: str):
     db = SessionLocal()
-    attempt = None
     try:
         attempt = claim_jt5_attempt(db, application_id, attempt_reference)
         if attempt is None:
@@ -137,11 +136,13 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
 
         outcome = _classify_browser_result(result)
 
-        # Re-load after long browser work.
         application = db.query(Application).filter(Application.id == application_id).first()
         attempt = (
-            db.query(type(attempt))
-            .filter_by(reference=attempt_reference)
+            db.query(SubmissionAttempt)
+            .filter(
+                SubmissionAttempt.application_id == application_id,
+                SubmissionAttempt.reference == attempt_reference,
+            )
             .with_for_update()
             .first()
         )
@@ -157,19 +158,16 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
 
         if outcome == "confirmed":
             application.status = ApplicationStatus.applied
-            if result.get("submitted_at"):
-                # Prefer browser-reported time when present; leave applied_at if already set.
-                from datetime import datetime
-
-                if application.applied_at is None:
+            if application.applied_at is None:
+                if result.get("submitted_at"):
                     try:
                         application.applied_at = datetime.fromisoformat(
                             str(result["submitted_at"]).replace("Z", "+00:00")
                         ).replace(tzinfo=None)
                     except Exception:
-                        from datetime import datetime as _dt
-
-                        application.applied_at = _dt.utcnow()
+                        application.applied_at = datetime.utcnow()
+                else:
+                    application.applied_at = datetime.utcnow()
             transition_application_state(
                 db,
                 application,
@@ -228,10 +226,7 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
         try:
             db.rollback()
             attempt = claim_jt5_attempt(db, application_id, attempt_reference)
-            # If already claimed earlier in this run, re-fetch.
             if attempt is None:
-                from app.models.submission_integrity import SubmissionAttempt
-
                 attempt = (
                     db.query(SubmissionAttempt)
                     .filter(
@@ -242,7 +237,12 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                     .first()
                 )
             application = db.query(Application).filter(Application.id == application_id).first()
-            if attempt is not None:
+            if attempt is not None and attempt.status not in {
+                "succeeded",
+                "failed",
+                "uncertain",
+                "blocked",
+            }:
                 complete_jt5_attempt(
                     db,
                     attempt,

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
+from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
 from app.services.application_attempt_jt5 import reserve_jt5_attempt
 from app.services.application_execution_gate import ApplyDecision
@@ -90,6 +91,7 @@ def apply_application(
                 "application_id": application_id,
             }
 
+        attempt_reference = attempt.reference
         db.commit()
     except LookupError:
         db.rollback()
@@ -101,24 +103,20 @@ def apply_application(
             detail="Concurrent reservation; reload application status",
         ) from None
 
-    assert attempt is not None
-    attempt_reference = attempt.reference
-
     try:
         async_result = execute_reserved_application.apply_async(
             args=[application_id, attempt_reference],
             queue="applications",
         )
-        # Persist real Celery task id for observability.
-        attempt = (
-            db.query(type(attempt))
-            .filter_by(reference=attempt_reference)
+        task_id = str(async_result.id)
+        reserved = (
+            db.query(SubmissionAttempt)
+            .filter(SubmissionAttempt.reference == attempt_reference)
             .first()
         )
-        if attempt is not None:
-            attempt.task_id = str(async_result.id)
+        if reserved is not None:
+            reserved.task_id = task_id
             db.commit()
-        task_id = str(async_result.id)
     except Exception as exc:
         db.rollback()
         raise HTTPException(
