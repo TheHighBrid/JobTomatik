@@ -64,6 +64,10 @@ celery_app.conf.update(
         "app.tasks.runtime.*": {"queue": "applications"},
     },
     beat_schedule={
+        "reconcile-stale-jt5-reservations": {
+            "task": "app.tasks.jt5_execution.reconcile_stale_reserved_applications",
+            "schedule": crontab(minute="*/15"),
+        },
         "check-followups-every-hour": {
             "task": "app.tasks.followup.send_pending_followups",
             "schedule": crontab(minute=0),
