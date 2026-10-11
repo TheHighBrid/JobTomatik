@@ -42,7 +42,7 @@ def decide_application_execution(
     if authenticated_user_id != application_owner_id:
         return ApplyGateResult(ApplyDecision.FORBIDDEN, "application_not_owned")
     state = application_state.strip().lower()
-    if state in {"confirmed", "submitted"}:
+    if state in {"confirmed", "submitted", "applied"}:
         return ApplyGateResult(ApplyDecision.ALREADY_CONFIRMED, "existing_submission")
     if state in {"submission_uncertain", "submitted_unconfirmed"}:
         return ApplyGateResult(ApplyDecision.RECONCILE, "prior_outcome_uncertain")
