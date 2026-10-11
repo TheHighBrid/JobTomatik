@@ -6,6 +6,7 @@ pilot flag, or secondary confirmation.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -48,6 +49,7 @@ def jt5_status(
             "reference": attempt.reference,
             "status": attempt.status,
             "task_id": attempt.task_id,
+            "dispatch_status": (attempt.attempt_metadata or {}).get("dispatch_status", "unknown"),
             "attempt_number": attempt.attempt_number,
             "execution_contract": (attempt.attempt_metadata or {}).get("execution_contract"),
             "queued_at": attempt.queued_at.isoformat() if attempt.queued_at else None,
@@ -162,9 +164,19 @@ def apply_application(
         )
         if reserved is not None:
             reserved.task_id = task_id
+            reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "published", "published_at": datetime.utcnow().isoformat()}
             db.commit()
     except Exception as exc:
         db.rollback()
+        # Broker publication may have succeeded before the client observed an error.
+        # Never auto-republish a potentially delivered final-submit task.
+        try:
+            reserved = db.query(SubmissionAttempt).filter(SubmissionAttempt.reference == attempt_reference).first()
+            if reserved is not None:
+                reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "reconciliation_required", "dispatch_error_type": type(exc).__name__}
+                db.commit()
+        except Exception:
+            db.rollback()
         raise HTTPException(
             status_code=503,
             detail=(
