@@ -18,6 +18,7 @@ from app.services.application_execution_gate import (
         (2, 1, "ready_to_apply", False, ApplyDecision.FORBIDDEN),
         (1, 1, "confirmed", False, ApplyDecision.ALREADY_CONFIRMED),
         (1, 1, "submitted", False, ApplyDecision.ALREADY_CONFIRMED),
+        (1, 1, "applied", False, ApplyDecision.ALREADY_CONFIRMED),
         (1, 1, "submission_uncertain", False, ApplyDecision.RECONCILE),
         (1, 1, "submitted_unconfirmed", False, ApplyDecision.RECONCILE),
         (1, 1, "ready_to_apply", True, ApplyDecision.IN_PROGRESS),
