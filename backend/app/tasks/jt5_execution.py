@@ -23,6 +23,7 @@ from app.services.application_attempt_lifecycle_jt5 import (
     claim_jt5_attempt,
     complete_jt5_attempt,
 )
+from app.services.application_integrity import submission_is_closed
 from app.services.application_state import transition_application_state
 from app.services.form_filler import fill_and_submit_application
 from app.tasks.applications import (
@@ -108,6 +109,40 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                 "application_id": application_id,
                 "error": "missing_application_job_or_user",
                 "automatic_retry_allowed": False,
+            }
+
+        # Stale queue message after user/employer already closed the row.
+        if submission_is_closed(application):
+            complete_jt5_attempt(
+                db,
+                attempt,
+                outcome="confirmed",
+                details={
+                    "reason": "already_submitted",
+                    "idempotent": True,
+                    "status": str(
+                        getattr(application.status, "value", application.status) or ""
+                    ),
+                    "state": str(
+                        getattr(
+                            application.automation_state,
+                            "value",
+                            application.automation_state,
+                        )
+                        or ""
+                    ),
+                },
+            )
+            db.commit()
+            return {
+                "success": True,
+                "idempotent": True,
+                "already_submitted": True,
+                "application_id": application_id,
+                "attempt_reference": attempt_reference,
+                "outcome": "confirmed",
+                "automatic_retry_allowed": False,
+                "execution_contract": "jt5",
             }
 
         transition_application_state(
