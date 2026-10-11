@@ -309,3 +309,23 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
         }
     finally:
         db.close()
+
+
+@celery_app.task(
+    name="app.tasks.jt5_execution.reconcile_stale_reserved_applications",
+    queue="applications",
+    max_retries=0,
+)
+def reconcile_stale_reserved_applications():
+    """Sweep stale JT5 reservations without triggering browser execution."""
+    from app.services.jt5_reconciliation import reconcile_stale_jt5_attempts
+
+    db = SessionLocal()
+    try:
+        references = reconcile_stale_jt5_attempts(db)
+        return {"reconciled": len(references), "attempt_references": references}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
