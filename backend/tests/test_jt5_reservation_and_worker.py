@@ -301,3 +301,36 @@ def test_worker_failed_pre_submit_is_retryable_state(monkeypatch, db_session):
     assert decision.decision is ApplyDecision.EXECUTE
     assert new_attempt is not None
     assert new_attempt.reference != reference
+
+
+def test_jt5_dispatch_failure_requires_reconciliation(auth_client, db_session, monkeypatch):
+    from app.tasks.jt5_execution import execute_reserved_application
+
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    application = _application(db_session, user, _job(db_session))
+    db_session.commit()
+
+    def ambiguous_publish(*args, **kwargs):
+        raise ConnectionError("broker acknowledgement lost")
+
+    monkeypatch.setattr(execute_reserved_application, "apply_async", ambiguous_publish)
+    response = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
+    assert response.status_code == 503
+    attempts = db_session.query(SubmissionAttempt).filter(
+        SubmissionAttempt.application_id == application.id
+    ).all()
+    assert len(attempts) == 1
+    assert attempts[0].status == SubmissionAttemptStatus.queued.value
+    db_session.expire_all()
+    assert db_session.query(SubmissionAttempt).filter_by(id=attempts[0].id).one().attempt_metadata["dispatch_status"] == "reconciliation_required"
+
+    status = auth_client.get(f"/api/applications/{application.id}/jt5/status")
+    assert status.status_code == 200
+    assert status.json()["latest_attempt"]["dispatch_status"] == "reconciliation_required"
+
+    again = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
+    assert again.status_code == 200
+    assert again.json()["status"] == "in_progress"
+    assert db_session.query(SubmissionAttempt).filter(
+        SubmissionAttempt.application_id == application.id
+    ).count() == 1
