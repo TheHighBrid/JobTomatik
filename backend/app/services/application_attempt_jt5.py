@@ -57,6 +57,9 @@ def reserve_jt5_attempt(
     if decision.decision is not ApplyDecision.EXECUTE:
         return decision, active
 
+    # A failed pre-submit attempt is retryable; a confirmed or uncertain one is not.
+    # Database uniqueness plus the locked application row protects attempt numbers.
+
     # Keep the attempt counter synchronized with the durable attempt history.
     latest = (
         db.query(SubmissionAttempt.attempt_number)
