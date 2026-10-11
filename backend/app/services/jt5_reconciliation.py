@@ -66,7 +66,7 @@ def reconcile_stale_jt5_attempts(db, *, now=None, stale_after_minutes=30, limit=
             .with_for_update()
             .first()
         )
-        if application is not None:
+        if application is not None and str(getattr(application.automation_state, "value", application.automation_state)) not in ("confirmed", "submitted"):
             transition_application_state(
                 db, application, ApplicationAutomationState.submission_uncertain,
                 "jt5_stale_attempt_requires_reconciliation",
