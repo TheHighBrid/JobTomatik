@@ -199,6 +199,11 @@ async def _retain_dry_run_failure_handoff(
     }
     if original_reasons - _DIAGNOSTIC_REPAIR_REASONS:
         return False
+    # Existing non-Lever/Greenhouse adapter reviews already own their human
+    # boundary. Do not change their certification outcome or hold the shared
+    # profile while another candidate is exercised.
+    if original_reasons and result.get("ats_adapter") not in {"lever", "greenhouse"}:
+        return False
 
     _add_diagnostic_review(result)
     snapshot = await _capture_diagnostic_snapshot(
