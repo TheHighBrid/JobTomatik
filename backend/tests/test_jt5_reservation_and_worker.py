@@ -1,6 +1,8 @@
 """JT5 reservation concurrency and worker outcome integration tests."""
 from unittest.mock import MagicMock
 
+import pytest
+
 
 from app.models.application import (
     Application,
@@ -132,6 +134,60 @@ def test_uncertain_attempt_requires_reconcile(db_session):
     )
     assert decision.decision is ApplyDecision.RECONCILE
     assert decision.reason == "prior_outcome_uncertain"
+
+
+
+@pytest.mark.parametrize("terminal_status", [
+    SubmissionAttemptStatus.succeeded.value,
+    SubmissionAttemptStatus.uncertain.value,
+])
+def test_other_user_cannot_reserve_terminal_attempt(db_session, terminal_status):
+    owner = _user(db_session)
+    other = _user(db_session, email="jt5-other@example.com")
+    application = _application(db_session, owner, _job(db_session))
+    _, attempt = reserve_jt5_attempt(
+        db_session,
+        application_id=application.id,
+        authenticated_user_id=owner.id,
+    )
+    attempt.status = terminal_status
+    db_session.commit()
+
+    decision, other_attempt = reserve_jt5_attempt(
+        db_session,
+        application_id=application.id,
+        authenticated_user_id=other.id,
+    )
+
+    assert decision.decision is ApplyDecision.FORBIDDEN
+    assert other_attempt is None
+    assert db_session.query(SubmissionAttempt).count() == 1
+
+
+@pytest.mark.parametrize("terminal_status", [
+    SubmissionAttemptStatus.succeeded.value,
+    SubmissionAttemptStatus.uncertain.value,
+])
+@pytest.mark.parametrize("endpoint", ["apply", "reserve"])
+def test_other_user_cannot_inspect_terminal_attempt_via_jt5_api(
+    auth_client, db_session, terminal_status, endpoint
+):
+    owner = _user(db_session, email="jt5-different-owner@example.com")
+    application = _application(db_session, owner, _job(db_session))
+    _, attempt = reserve_jt5_attempt(
+        db_session,
+        application_id=application.id,
+        authenticated_user_id=owner.id,
+    )
+    attempt.status = terminal_status
+    db_session.commit()
+
+    response = auth_client.post(f"/api/applications/{application.id}/jt5/{endpoint}")
+
+    assert response.status_code == 404
+    assert db_session.query(SubmissionAttempt).filter_by(
+        application_id=application.id
+    ).count() == 1
 
 
 def test_claim_is_single_owner(db_session):
