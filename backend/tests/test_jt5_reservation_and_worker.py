@@ -528,3 +528,39 @@ def test_worker_exception_after_confirmed_commit_does_not_demote_application(
     assert saved_application.automation_state == ApplicationAutomationState.confirmed.value
     assert saved_application.status == ApplicationStatus.applied
     assert saved_attempt.status == SubmissionAttemptStatus.succeeded.value
+
+
+def test_jt5_reservation_initializes_direct_greenhouse_target(db_session):
+    user = _user(db_session, email="jt5-init-greenhouse@example.com")
+    job = _job(db_session)
+    application = _application(db_session, user, job)
+    application.application_target_url = None
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    assert application.application_target_url == job.url
+    assert attempt.attempt_metadata["reserved_target_url"] == job.url
+
+
+def test_jt5_reservation_initializes_direct_lever_target(db_session):
+    user = _user(db_session, email="jt5-init-lever@example.com")
+    job = _job(db_session, url="https://jobs.lever.co/example/12345678-1234-1234-1234-123456789abc")
+    application = _application(db_session, user, job)
+    application.application_target_url = None
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    assert application.application_target_url == job.url
+    assert attempt.attempt_metadata["reserved_target_url"] == job.url
+
+
+def test_jt5_does_not_reserve_listing_as_application_target(db_session):
+    user = _user(db_session, email="jt5-listing-only@example.com")
+    job = _job(db_session, url="https://www.linkedin.com/jobs/view/123456")
+    application = _application(db_session, user, job)
+    application.application_target_url = None
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    assert application.application_target_url is None
+    assert attempt.attempt_metadata["reserved_target_url"] == ""
