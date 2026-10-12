@@ -18,6 +18,7 @@ from app.services.submission_integrity import (
     claim_submission_identity_aliases,
 )
 import app.api.jt5_applications as jt5_api
+from app.tasks.jt5_execution import execute_reserved_application
 from tests.conftest import TestingSessionLocal
 
 
