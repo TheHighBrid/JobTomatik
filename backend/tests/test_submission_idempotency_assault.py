@@ -413,20 +413,25 @@ def test_two_database_workers_only_one_claims_the_attempt(db_session):
         task_id="race-task",
     )
     db_session.commit()
+    # Capture plain values before starting threads. ORM attributes expire on
+    # commit and reading them in workers would share the parent SQLite session.
+    application_id = application.id
+    approval_id = approval.id
+    attempt_reference = attempt.reference
 
     def claim_once():
         for retry in range(2):
             session = TestingSessionLocal()
             try:
-                app = session.query(Application).filter(Application.id == application.id).first()
+                app = session.query(Application).filter(Application.id == application_id).first()
                 item = session.query(SubmissionApproval).filter(
-                    SubmissionApproval.id == approval.id
+                    SubmissionApproval.id == approval_id
                 ).first()
                 claimed_attempt, claimed = claim_submission_attempt(
                     session,
                     app,
                     item,
-                    attempt_reference=attempt.reference,
+                    attempt_reference=attempt_reference,
                 )
                 session.commit()
                 return claimed, claimed_attempt.status
