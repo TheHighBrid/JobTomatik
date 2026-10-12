@@ -280,6 +280,30 @@ def test_worker_uses_resolved_target_with_supervised_metadata(monkeypatch, db_se
     assert calls[0][1]["dry_run"] is False
 
 
+def test_worker_rejects_reservation_target_drift_before_browser(monkeypatch, db_session):
+    user = _user(db_session, email="jt5-target-drift@example.com")
+    application = _application(db_session, user, _job(db_session))
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    reserved_url = application.application_target_url
+    application.application_target_url = "https://boards.greenhouse.io/other/jobs/999"
+    db_session.commit()
+
+    async def forbidden_fill(*args, **kwargs):
+        raise AssertionError("browser must not start after target drift")
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", forbidden_fill)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["error"] == "reservation_target_changed"
+    assert reserved_url != application.application_target_url
+    db_session.expire_all()
+    saved_attempt = db_session.query(SubmissionAttempt).filter_by(id=attempt.id).one()
+    assert saved_attempt.status == SubmissionAttemptStatus.failed.value
+
+
 def test_worker_rejects_reservation_identity_drift_before_browser(monkeypatch, db_session):
     user = _user(db_session, email="jt5-identity-drift@example.com")
     application = _application(db_session, user, _job(db_session))
