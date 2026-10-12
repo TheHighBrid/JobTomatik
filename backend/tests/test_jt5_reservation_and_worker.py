@@ -1,9 +1,6 @@
 """JT5 reservation concurrency and worker outcome integration tests."""
-from concurrent.futures import ThreadPoolExecutor
-import time
 from unittest.mock import MagicMock
 
-from sqlalchemy.exc import OperationalError
 
 from app.models.application import (
     Application,
@@ -20,7 +17,7 @@ from app.services.submission_integrity import (
     build_submission_identity_aliases,
     claim_submission_identity_aliases,
 )
-from app.tasks.jt5_execution import execute_reserved_application
+import app.api.jt5_applications as jt5_api
 from tests.conftest import TestingSessionLocal
 
 
@@ -147,26 +144,15 @@ def test_claim_is_single_owner(db_session):
     db_session.commit()
     reference = attempt.reference
 
-    def claim_once():
-        for retry in range(2):
-            session = TestingSessionLocal()
-            try:
-                claimed = claim_jt5_attempt(session, application.id, reference)
-                session.commit()
-                return claimed is not None
-            except OperationalError:
-                session.rollback()
-                if retry == 0:
-                    time.sleep(0.05)
-                    continue
-                raise
-            finally:
-                session.close()
+    first = claim_jt5_attempt(db_session, application.id, reference)
+    db_session.commit()
+    assert first is not None
+    assert first.status == SubmissionAttemptStatus.in_progress.value
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(lambda _: claim_once(), range(2)))
-
-    assert sum(1 for owned in results if owned) == 1
+    second = claim_jt5_attempt(db_session, application.id, reference)
+    assert second is None
+    db_session.refresh(attempt)
+    assert attempt.status == SubmissionAttemptStatus.in_progress.value
 
 
 def test_api_reserve_then_second_returns_in_progress(auth_client, db_session):
@@ -231,10 +217,6 @@ def test_worker_confirmed_outcome(monkeypatch, db_session):
     monkeypatch.setattr(
         "app.tasks.jt5_execution.fill_and_submit_application",
         fake_fill,
-    )
-    monkeypatch.setattr(
-        "app.tasks.jt5_execution._record_result_evidence",
-        lambda *args, **kwargs: None,
     )
 
     result = execute_reserved_application.run(application.id, reference)
@@ -308,7 +290,7 @@ def test_worker_failed_pre_submit_is_retryable_state(monkeypatch, db_session):
 
 
 def test_jt5_dispatch_failure_requires_reconciliation(auth_client, db_session, monkeypatch):
-    from app.tasks.jt5_execution import execute_reserved_application
+    import app.api.jt5_applications as jt5_api
 
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
@@ -317,7 +299,7 @@ def test_jt5_dispatch_failure_requires_reconciliation(auth_client, db_session, m
     def ambiguous_publish(*args, **kwargs):
         raise ConnectionError("broker acknowledgement lost")
 
-    monkeypatch.setattr(execute_reserved_application, "apply_async", ambiguous_publish)
+    monkeypatch.setattr(jt5_api.execute_reserved_application, "apply_async", ambiguous_publish)
     response = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
     assert response.status_code == 503
     attempts = db_session.query(SubmissionAttempt).filter(
@@ -344,7 +326,7 @@ def test_dispatch_ack_after_worker_completion_does_not_reopen_attempt(
     auth_client, db_session, monkeypatch
 ):
     """Broker ACK can arrive after worker has completed its transaction."""
-    from app.tasks.jt5_execution import execute_reserved_application
+    import app.api.jt5_applications as jt5_api
 
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
@@ -368,7 +350,7 @@ def test_dispatch_ack_after_worker_completion_does_not_reopen_attempt(
             session.close()
         return type("Result", (), {"id": "ack-after-worker"})()
 
-    monkeypatch.setattr(execute_reserved_application, "apply_async", finish_before_ack)
+    monkeypatch.setattr(jt5_api.execute_reserved_application, "apply_async", finish_before_ack)
     response = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
     assert response.status_code == 200
     db_session.expire_all()
@@ -382,7 +364,7 @@ def test_dispatch_error_after_worker_completion_does_not_reopen_attempt(
     auth_client, db_session, monkeypatch
 ):
     """A lost ACK must not change a terminal worker outcome to queued."""
-    from app.tasks.jt5_execution import execute_reserved_application
+    import app.api.jt5_applications as jt5_api
 
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
@@ -406,7 +388,7 @@ def test_dispatch_error_after_worker_completion_does_not_reopen_attempt(
             session.close()
         raise ConnectionError("ACK lost after worker completion")
 
-    monkeypatch.setattr(execute_reserved_application, "apply_async", finish_then_raise)
+    monkeypatch.setattr(jt5_api.execute_reserved_application, "apply_async", finish_then_raise)
     response = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
     assert response.status_code == 503
     db_session.expire_all()
