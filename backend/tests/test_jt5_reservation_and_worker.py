@@ -204,6 +204,8 @@ def test_api_apply_dispatches_without_approval(auth_client, db_session):
         .one()
     )
     assert (attempt.attempt_metadata or {}).get("execution_contract") == "jt5"
+    assert attempt.task_id.startswith("reserved-")
+    assert attempt.attempt_metadata["broker_task_id"] == "test-task-id"
 
 
 def test_worker_confirmed_outcome(monkeypatch, db_session):
