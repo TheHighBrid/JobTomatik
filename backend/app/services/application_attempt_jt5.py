@@ -54,6 +54,9 @@ def reserve_jt5_attempt(
         application_state=str(getattr(application.automation_state, "value", application.automation_state) or ""),
         has_active_attempt=active is not None,
     )
+    if decision.decision in {ApplyDecision.FORBIDDEN, ApplyDecision.AUTH_REQUIRED}:
+        return decision, None
+
     latest_status = (
         db.query(SubmissionAttempt.status)
         .filter(SubmissionAttempt.application_id == application.id)
