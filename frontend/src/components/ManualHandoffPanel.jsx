@@ -250,6 +250,16 @@ export default function ManualHandoffPanel({ applicationId }) {
     })
   }
 
+  const typeDiagnosticText = () => {
+    if (!secretInput.trim() || !claimed) return
+    actionMutation.mutate({ action: 'type', text: secretInput }, {
+      onSuccess: () => {
+        setSecretInput('')
+        toast.success('Text entered in the focused browser field')
+      },
+    })
+  }
+
   const runRecoveryAction = (action, successMessage) => {
     actionMutation.mutate({ action }, {
       onSuccess: () => toast.success(successMessage),
@@ -430,6 +440,28 @@ export default function ManualHandoffPanel({ applicationId }) {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
+              {diagnosticNavigation && (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={secretInput}
+                    onChange={(event) => setSecretInput(event.target.value)}
+                    className="input flex-1"
+                    placeholder="Type into the focused browser field"
+                    aria-label="Text for the focused browser field"
+                    autoCapitalize="none"
+                    spellCheck="false"
+                  />
+                  <button
+                    className="btn-primary flex items-center gap-2"
+                    onClick={typeDiagnosticText}
+                    disabled={!secretInput.trim() || actionMutation.isPending}
+                  >
+                    <Keyboard className="w-4 h-4" />
+                    Type text
+                  </button>
+                </div>
+              )}
               {!diagnosticNavigation && (
                 <div className="flex gap-2">
                   <input
