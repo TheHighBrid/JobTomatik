@@ -10,7 +10,10 @@ from app.config import Settings
 from app.schemas.user import UserCreate
 
 
-def test_development_defaults_remain_available_for_local_installations():
+def test_development_defaults_remain_available_for_local_installations(monkeypatch):
+    # Explicit CI secrets must not replace the defaults this test inspects.
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.delenv("APP_ENVIRONMENT", raising=False)
     settings = Settings(_env_file=None)
 
     assert settings.app_environment == "development"
