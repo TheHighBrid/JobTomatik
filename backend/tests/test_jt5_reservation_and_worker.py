@@ -267,6 +267,8 @@ def test_worker_failed_pre_submit_is_retryable_state(monkeypatch, db_session):
             "success": False,
             "error": "missing required field",
             "requires_manual_review": True,
+            "final_submit_attempted": False,
+            "pre_submit_failure_verified": True,
             "log": [{"action": "missing_field"}],
         }
 
