@@ -26,7 +26,6 @@ from app.services.application_attempt_lifecycle_jt5 import (
 from app.services.application_integrity import submission_is_closed
 from app.services.application_state import transition_application_state
 from app.services.form_filler import fill_and_submit_application
-from app.services.application_target import is_valid_application_target
 from app.services.supervised_target_identity import platform_key_for_url, LEVER_PLATFORM_KEY
 from app.services.submission_integrity import application_identity_digest
 from app.services.supervised_target_identity import persisted_supervised_target_metadata
