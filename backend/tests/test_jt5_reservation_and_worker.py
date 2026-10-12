@@ -248,6 +248,7 @@ def test_worker_uses_resolved_target_with_supervised_metadata(monkeypatch, db_se
         "supervised_target_metadata": {
             "platform": "lever",
             "verified": True,
+            "target_url": target_url,
             "identity_hash": "bound-target",
         }
     }
