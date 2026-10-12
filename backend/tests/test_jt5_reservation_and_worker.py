@@ -236,6 +236,74 @@ def test_worker_confirmed_outcome(monkeypatch, db_session):
     assert attempt.status == SubmissionAttemptStatus.succeeded.value
 
 
+
+
+def test_worker_uses_resolved_target_with_supervised_metadata(monkeypatch, db_session):
+    user = _user(db_session, email="jt5-resolved-target@example.com")
+    job = _job(db_session)
+    application = _application(db_session, user, job)
+    target_url = application.application_target_url
+    job.url = "https://www.linkedin.com/jobs/view/123456"
+    job.raw_data = {
+        "supervised_target_metadata": {
+            "platform": "lever",
+            "verified": True,
+            "identity_hash": "bound-target",
+        }
+    }
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    db_session.commit()
+
+    calls = []
+
+    async def fake_fill(job_url, *args, **kwargs):
+        calls.append((job_url, kwargs))
+        return {
+            "success": False,
+            "error": "pre-submit test boundary",
+            "final_submit_attempted": False,
+            "pre_submit_failure_verified": True,
+            "log": [],
+        }
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", fake_fill)
+    monkeypatch.setattr("app.tasks.jt5_execution._record_result_evidence", lambda *args, **kwargs: None)
+
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert len(calls) == 1
+    assert calls[0][0] == target_url
+    assert calls[0][1]["supervised_target"]["identity_hash"] == "bound-target"
+    assert calls[0][1]["dry_run"] is False
+
+
+def test_worker_rejects_reservation_identity_drift_before_browser(monkeypatch, db_session):
+    user = _user(db_session, email="jt5-identity-drift@example.com")
+    application = _application(db_session, user, _job(db_session))
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    attempt.identity_digest = "stale-identity-digest"
+    db_session.commit()
+
+    async def forbidden_fill(*args, **kwargs):
+        raise AssertionError("browser must not start after reservation identity drift")
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", forbidden_fill)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["error"] == "reservation_identity_changed"
+    db_session.expire_all()
+    saved_attempt = db_session.query(SubmissionAttempt).filter_by(id=attempt.id).one()
+    saved_application = db_session.query(Application).filter_by(id=application.id).one()
+    assert saved_attempt.status == SubmissionAttemptStatus.failed.value
+    assert saved_application.automation_state == ApplicationAutomationState.ready_to_apply.value
+
+
 def test_worker_failed_pre_submit_is_retryable_state(monkeypatch, db_session):
     user = _user(db_session, email="jt5-worker-fail@example.com")
     application = _application(db_session, user, _job(db_session))
