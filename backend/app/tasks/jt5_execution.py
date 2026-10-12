@@ -26,6 +26,8 @@ from app.services.application_attempt_lifecycle_jt5 import (
 from app.services.application_integrity import submission_is_closed
 from app.services.application_state import transition_application_state
 from app.services.form_filler import fill_and_submit_application
+from app.services.submission_integrity import application_identity_digest
+from app.services.supervised_target_identity import persisted_supervised_target_metadata
 from app.tasks.applications import (
     _profile_dict,
     _record_result_evidence,
@@ -214,6 +216,22 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                 "execution_contract": "jt5",
             }
 
+        target_url = str(application.application_target_url or "").strip()
+        if not target_url or attempt.identity_digest != application_identity_digest(db, application):
+            reason = "application_target_missing" if not target_url else "reservation_identity_changed"
+            complete_jt5_attempt(
+                db, attempt, outcome="failed_pre_submit", details={"reason": reason}
+            )
+            db.commit()
+            return {
+                "success": False,
+                "application_id": application_id,
+                "attempt_reference": attempt_reference,
+                "outcome": "failed_pre_submit",
+                "error": reason,
+                "automatic_retry_allowed": False,
+            }
+
         transition_application_state(
             db,
             application,
@@ -226,11 +244,12 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
         profile = _profile_dict(user, db, job)
         result = _run_async(
             fill_and_submit_application(
-                job.url or "",
+                target_url,
                 profile,
                 application.cover_letter or "",
                 user.resume_path or "",
                 dry_run=False,
+                supervised_target=persisted_supervised_target_metadata(job),
             )
         )
         if not isinstance(result, dict):
