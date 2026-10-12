@@ -160,6 +160,7 @@ def apply_application(
         reserved = (
             db.query(SubmissionAttempt)
             .filter(SubmissionAttempt.reference == attempt_reference)
+            .with_for_update()
             .first()
         )
         if reserved is not None:
@@ -175,7 +176,7 @@ def apply_application(
         # Broker publication may have succeeded before the client observed an error.
         # Never auto-republish a potentially delivered final-submit task.
         try:
-            reserved = db.query(SubmissionAttempt).filter(SubmissionAttempt.reference == attempt_reference).first()
+            reserved = db.query(SubmissionAttempt).filter(SubmissionAttempt.reference == attempt_reference).with_for_update().first()
             if reserved is not None:
                 if reserved.status == "queued":
                     reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "reconciliation_required", "dispatch_error_type": type(exc).__name__}
