@@ -57,13 +57,17 @@ def test_status_endpoint_reports_latest_attempt(auth_client, db_session):
     assert empty.json()["execution_contract"] == "jt5"
     assert empty.json()["automatic_retry_allowed"] is False
 
-    reserved = auth_client.post(f"/api/applications/{application.id}/jt5/reserve")
-    assert reserved.status_code == 200
+    _, reserved = reserve_jt5_attempt(
+        db_session,
+        application_id=application.id,
+        authenticated_user_id=user.id,
+    )
+    db_session.commit()
 
     status = auth_client.get(f"/api/applications/{application.id}/jt5/status")
     body = status.json()
     assert status.status_code == 200
-    assert body["latest_attempt"]["reference"] == reserved.json()["attempt_reference"]
+    assert body["latest_attempt"]["reference"] == reserved.reference
     assert body["latest_attempt"]["status"] == "queued"
     assert body["latest_attempt"]["execution_contract"] == "jt5"
 
