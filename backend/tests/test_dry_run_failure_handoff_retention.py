@@ -240,3 +240,25 @@ def test_diagnostic_navigation_challenge_uses_same_page_ats_resume():
         },
     )
     assert application_target_handoff._is_target_navigation_session(session) is False
+
+
+@pytest.mark.asyncio
+async def test_classified_account_boundary_keeps_original_review():
+    runtime = _Runtime()
+    result = {
+        "success": False,
+        "error": "Candidate account required",
+        "review_items": [{
+            "reason_code": "account_creation_required",
+            "summary": "Complete account creation manually",
+            "details": {"handoff_boundary": "pre_form"},
+        }],
+    }
+    retained = await form_filler_handoff._retain_dry_run_failure_handoff(
+        result=result, runtime=runtime, log=[], supervised_target=None
+    )
+    assert retained is False
+    assert runtime.capture_calls == 0
+    assert [item["reason_code"] for item in result["review_items"]] == [
+        "account_creation_required"
+    ]
