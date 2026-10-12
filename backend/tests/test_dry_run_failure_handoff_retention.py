@@ -6,7 +6,12 @@ import pytest
 
 from app.models.application import ManualReviewReason
 from app.models.handoff import HandoffChallengeType
-from app.services import form_filler_handoff, handoff_integration, handoff_session
+from app.services import (
+    application_target_handoff,
+    form_filler_handoff,
+    handoff_integration,
+    handoff_session,
+)
 from app.tasks.applications import _manual_reason_code
 
 
@@ -99,8 +104,13 @@ async def test_failed_dry_run_retains_explicit_automation_error_handoff(monkeypa
         cover_letter="",
         resume_path="",
         dry_run=True,
+        supervised_target={"platform": "lever", "posting_id": "posting"},
     )
 
+    assert result["handoff_snapshot"]["metadata"]["supervised_target"] == {
+        "platform": "lever",
+        "posting_id": "posting",
+    }
     assert result["success"] is False
     assert result["requires_manual_review"] is True
     assert result["handoff_snapshot"]["browser_session_id"] == "dry-run-failure-session"
@@ -203,3 +213,30 @@ def test_automation_error_has_durable_navigation_handoff_route():
         result,
         ManualReviewReason.unsupported_control,
     ) == ManualReviewReason.automation_error.value
+
+
+def test_diagnostic_review_preserves_original_blocker_without_sibling():
+    result = {
+        "error": "Field could not be verified",
+        "review_items": [{
+            "reason_code": "unsupported_control",
+            "summary": "Review employer field",
+            "details": {"control_type": "text"},
+        }],
+    }
+    form_filler_handoff._add_diagnostic_review(result)
+    assert len(result["review_items"]) == 1
+    review = result["review_items"][0]
+    assert review["reason_code"] == "automation_error"
+    assert review["details"]["original_review_items"][0]["reason_code"] == "unsupported_control"
+
+
+def test_diagnostic_navigation_challenge_uses_same_page_ats_resume():
+    session = SimpleNamespace(
+        challenge_type=HandoffChallengeType.navigation.value,
+        handoff_metadata={
+            "handoff_stage": "dry_run_failure_diagnostic",
+            "target_resolution_only": False,
+        },
+    )
+    assert application_target_handoff._is_target_navigation_session(session) is False
