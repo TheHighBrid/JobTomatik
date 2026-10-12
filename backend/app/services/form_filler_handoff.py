@@ -109,6 +109,7 @@ def _apply_challenge_result(result: Dict[str, Any], challenge: Dict[str, Any]) -
 
 _DIAGNOSTIC_REASON = "automation_error"
 _DIAGNOSTIC_STAGE = "dry_run_failure_diagnostic"
+_DIAGNOSTIC_REPAIR_REASONS = {"unsupported_control", "validation_error", "automation_error"}
 
 
 def _add_diagnostic_review(result: Dict[str, Any]) -> None:
@@ -189,6 +190,15 @@ async def _retain_dry_run_failure_handoff(
         return False
     if result.get("handoff_snapshot"):
         return True
+
+    # A classified account, assessment, or other human boundary retains its
+    # own review meaning. Do not recast it as a technical failure.
+    original_reasons = {
+        str(item.get("reason_code") or "")
+        for item in result.get("review_items") or []
+    }
+    if original_reasons - _DIAGNOSTIC_REPAIR_REASONS:
+        return False
 
     _add_diagnostic_review(result)
     snapshot = await _capture_diagnostic_snapshot(
