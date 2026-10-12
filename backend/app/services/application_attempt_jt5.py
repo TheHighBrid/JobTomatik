@@ -16,6 +16,8 @@ from app.models.submission_integrity import (
     SubmissionAttempt,
     SubmissionAttemptStatus,
 )
+from app.models.job import Job
+from app.services.application_target import initialize_application_target
 from app.services.application_execution_gate import (
     ApplyDecision,
     ApplyGateResult,
@@ -67,7 +69,7 @@ def reserve_jt5_attempt(
     if decision.decision is not ApplyDecision.EXECUTE:
         return decision, active
 
-    # A failed pre-submit attempt is retryable; a confirmed or uncertain one is not.
+    # Resolve direct ATS URLs before freezing the immutable JT5 reservation.\n    # Listing-only sources remain unresolved and cannot be silently treated as apply URLs.\n    job = db.query(Job).filter(Job.id == application.job_id).first()\n    if job is not None:\n        initialize_application_target(db, application, job)\n\n    # A failed pre-submit attempt is retryable; a confirmed or uncertain one is not.
     # Database uniqueness plus the locked application row protects attempt numbers.
 
     # Keep the attempt counter synchronized with the durable attempt history.
