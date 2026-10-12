@@ -113,18 +113,26 @@ _DIAGNOSTIC_STAGE = "dry_run_failure_diagnostic"
 
 def _add_diagnostic_review(result: Dict[str, Any]) -> None:
     result["requires_manual_review"] = True
-    result.setdefault("review_items", []).append({
+    # One session owns one review. Preserve original blockers inside the
+    # diagnostic review so a successful resume closes the same review record.
+    original_items = list(result.get("review_items") or [])
+    result["review_items"] = [{
         "reason_code": _DIAGNOSTIC_REASON,
         "summary": result.get("error") or "Dry-run browser automation failed before completion.",
         "details": {
             "handoff_stage": _DIAGNOSTIC_STAGE,
             "diagnostic_only": True,
             "submit_clicked": False,
+            "original_review_items": original_items,
         },
-    })
+    }]
 
 
-async def _diagnostic_snapshot_metadata(result: Dict[str, Any], runtime: Any) -> Dict[str, Any]:
+async def _diagnostic_snapshot_metadata(
+    result: Dict[str, Any],
+    runtime: Any,
+    supervised_target: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
     controlled_target_id = await controlled_page_target_id(runtime.page)
     metadata = {
         "dry_run": True,
@@ -133,6 +141,7 @@ async def _diagnostic_snapshot_metadata(result: Dict[str, Any], runtime: Any) ->
         "fields_filled": int(result.get("fields_filled") or 0),
         "steps_completed": int(result.get("steps_completed") or 0),
         "handoff_stage": _DIAGNOSTIC_STAGE,
+        "supervised_target": dict(supervised_target or {}),
         "failure_error": str(result.get("error") or "")[:500],
         "application_browser_identity": retainable_application_browser_identity(
             runtime,
@@ -148,9 +157,10 @@ async def _capture_diagnostic_snapshot(
     result: Dict[str, Any],
     runtime: Any,
     log: List[Dict[str, Any]],
+    supervised_target: Optional[Mapping[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     try:
-        metadata = await _diagnostic_snapshot_metadata(result, runtime)
+        metadata = await _diagnostic_snapshot_metadata(result, runtime, supervised_target)
         return await runtime.capture_snapshot(metadata=metadata)
     except Exception as exc:
         log.append({
@@ -166,6 +176,7 @@ async def _retain_dry_run_failure_handoff(
     result: Dict[str, Any],
     runtime: Any,
     log: List[Dict[str, Any]],
+    supervised_target: Optional[Mapping[str, Any]],
 ) -> bool:
     """
     Retain a failed dry-run browser through an explicit diagnostic handoff.
@@ -180,7 +191,9 @@ async def _retain_dry_run_failure_handoff(
         return True
 
     _add_diagnostic_review(result)
-    snapshot = await _capture_diagnostic_snapshot(result, runtime, log)
+    snapshot = await _capture_diagnostic_snapshot(
+        result, runtime, log, supervised_target
+    )
     if snapshot is None:
         return False
 
@@ -313,6 +326,7 @@ async def fill_and_submit_application_with_handoff(
                                 result=result,
                                 runtime=runtime,
                                 log=log,
+                                supervised_target=supervised_target,
                             )
                         return result
 
@@ -394,6 +408,7 @@ async def fill_and_submit_application_with_handoff(
                         result=result,
                         runtime=runtime,
                         log=log,
+                        supervised_target=supervised_target,
                     )
             except Exception as exc:
                 result["error"] = str(exc)
@@ -403,6 +418,7 @@ async def fill_and_submit_application_with_handoff(
                         result=result,
                         runtime=runtime,
                         log=log,
+                        supervised_target=supervised_target,
                     )
             finally:
                 if runtime is not None:
