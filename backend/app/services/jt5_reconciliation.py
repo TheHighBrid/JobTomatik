@@ -23,6 +23,11 @@ def reconcile_stale_jt5_attempts(db, *, now=None, stale_after_minutes=30, limit=
             SubmissionAttemptStatus.queued.value,
             SubmissionAttemptStatus.in_progress.value,
         ]))
+        .filter(
+            ((SubmissionAttempt.started_at.isnot(None)) & (SubmissionAttempt.started_at <= cutoff.replace(tzinfo=None)))
+            | ((SubmissionAttempt.started_at.is_(None)) & (SubmissionAttempt.queued_at.isnot(None)) & (SubmissionAttempt.queued_at <= cutoff.replace(tzinfo=None)))
+            | ((SubmissionAttempt.started_at.is_(None)) & (SubmissionAttempt.queued_at.is_(None)) & (SubmissionAttempt.created_at <= cutoff.replace(tzinfo=None)))
+        )
         .order_by(SubmissionAttempt.id)
         .limit(limit)
         .all()
