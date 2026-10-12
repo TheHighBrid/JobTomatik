@@ -1,0 +1,74 @@
+name: JT5 exact-head focused and full backend verification
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/jt5-exact-head.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: sqlite:///./jt5-exact-head.db
+  REDIS_URL: redis://localhost:6379/1
+  SECRET_KEY: jt5-exact-head-ci-not-production
+  AI_PROVIDER: template
+  DEV_MOCK_JOBS: "false"
+  ALLOW_REAL_APPLICATION_SUBMIT: "false"
+  GREENHOUSE_SUPERVISED_PILOT_ENABLED: "false"
+  LEVER_SUPERVISED_PILOT_ENABLED: "false"
+  AUTOPILOT_ENABLED: "false"
+  ALLOW_REAL_FOLLOWUP_SEND: "false"
+
+jobs:
+  jt5-focused:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r requirements.txt
+      - name: Exact revision and static compilation
+        run: |
+          git -C .. rev-parse HEAD
+          python -m compileall -q app tests
+      - name: JT5 focused tests
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_application_execution_gate_jt5.py \
+            tests/test_application_attempt_lifecycle_jt5.py \
+            tests/test_jt5_browser_outcome_fail_closed.py \
+            tests/test_jt5_reservation_and_worker.py \
+            tests/test_jt5_reconciliation.py
+
+  backend-full:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r requirements.txt
+      - name: Exact-head full backend suite
+        run: |
+          git -C .. rev-parse HEAD
+          python -m pytest -q --tb=short -ra tests/
