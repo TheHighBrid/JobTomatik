@@ -53,3 +53,22 @@ def test_recent_attempt_is_untouched(db_session):
     assert reconcile_stale_jt5_attempts(db_session) == []
     db_session.refresh(attempt)
     assert attempt.status == SubmissionAttemptStatus.queued.value
+
+
+def test_stale_attempt_not_starved_by_recent_attempt(db_session):
+    user = _user(db_session, email="jt5-batch-age@example.com")
+    first = _application(db_session, user, _job(db_session))
+    _, recent = reserve_jt5_attempt(
+        db_session, application_id=first.id, authenticated_user_id=user.id
+    )
+    db_session.commit()
+    second = _application(db_session, user, _job(db_session))
+    _, stale = reserve_jt5_attempt(
+        db_session, application_id=second.id, authenticated_user_id=user.id
+    )
+    db_session.commit()
+    stale.queued_at = datetime.utcnow() - timedelta(hours=2)
+    db_session.commit()
+    assert reconcile_stale_jt5_attempts(db_session, limit=1) == [stale.reference]
+    db_session.refresh(recent)
+    assert recent.status == SubmissionAttemptStatus.queued.value
