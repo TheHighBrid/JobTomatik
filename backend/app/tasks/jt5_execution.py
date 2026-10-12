@@ -355,14 +355,20 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                         "exception": f"{type(exc).__name__}: {str(exc)[:300]}",
                     },
                 )
-            if application is not None:
-                transition_application_state(
-                    db,
-                    application,
-                    ApplicationAutomationState.submission_uncertain,
-                    "jt5_worker_exception",
-                    {"attempt_reference": attempt_reference},
+            # A late exception must not demote an already-finalized success.
+            # Reconciliation is only appropriate for non-terminal attempts.
+            if application is not None and attempt is not None and attempt.status == "uncertain":
+                current_state = str(
+                    getattr(application.automation_state, "value", application.automation_state)
                 )
+                if current_state not in {"confirmed", "submitted"}:
+                    transition_application_state(
+                        db,
+                        application,
+                        ApplicationAutomationState.submission_uncertain,
+                        "jt5_worker_exception",
+                        {"attempt_reference": attempt_reference},
+                    )
             db.commit()
         except Exception:
             db.rollback()
