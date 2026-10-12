@@ -262,3 +262,23 @@ async def test_classified_account_boundary_keeps_original_review():
     assert [item["reason_code"] for item in result["review_items"]] == [
         "account_creation_required"
     ]
+
+
+@pytest.mark.asyncio
+async def test_workday_field_review_keeps_its_certified_boundary():
+    runtime = _Runtime()
+    result = {
+        "success": False,
+        "ats_adapter": "workday",
+        "error": "No next-step control was found",
+        "review_items": [{
+            "reason_code": "unsupported_control",
+            "summary": "Review the Workday field",
+        }],
+    }
+    retained = await form_filler_handoff._retain_dry_run_failure_handoff(
+        result=result, runtime=runtime, log=[], supervised_target=None
+    )
+    assert retained is False
+    assert runtime.capture_calls == 0
+    assert result["review_items"][0]["reason_code"] == "unsupported_control"
