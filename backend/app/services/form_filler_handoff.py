@@ -202,6 +202,8 @@ async def _retain_dry_run_failure_handoff(
     # Existing non-Lever/Greenhouse adapter reviews already own their human
     # boundary. Do not change their certification outcome or hold the shared
     # profile while another candidate is exercised.
+    if result.get("ats_adapter") == "workday":
+        return False
     if original_reasons and result.get("ats_adapter") not in {"lever", "greenhouse"}:
         return False
 
