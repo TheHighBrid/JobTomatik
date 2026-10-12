@@ -62,7 +62,9 @@ def test_stale_attempt_not_starved_by_recent_attempt(db_session):
         db_session, application_id=first.id, authenticated_user_id=user.id
     )
     db_session.commit()
-    second = _application(\n        db_session, user, _job(db_session, url="https://boards.greenhouse.io/example/jobs/2")\n    )
+    second = _application(
+        db_session, user, _job(db_session, url="https://boards.greenhouse.io/example/jobs/2")
+    )
     _, stale = reserve_jt5_attempt(
         db_session, application_id=second.id, authenticated_user_id=user.id
     )
