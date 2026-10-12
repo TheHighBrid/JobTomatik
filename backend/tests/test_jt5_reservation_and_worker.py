@@ -338,3 +338,79 @@ def test_jt5_dispatch_failure_requires_reconciliation(auth_client, db_session, m
     assert db_session.query(SubmissionAttempt).filter(
         SubmissionAttempt.application_id == application.id
     ).count() == 1
+
+
+def test_dispatch_ack_after_worker_completion_does_not_reopen_attempt(
+    auth_client, db_session, monkeypatch
+):
+    """Broker ACK can arrive after worker has completed its transaction."""
+    from app.tasks.jt5_execution import execute_reserved_application
+
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    application = _application(db_session, user, _job(db_session))
+    db_session.commit()
+
+    def finish_before_ack(*args, **kwargs):
+        session = TestingSessionLocal()
+        try:
+            attempt = (
+                session.query(SubmissionAttempt)
+                .filter(SubmissionAttempt.application_id == application.id)
+                .one()
+            )
+            attempt.status = SubmissionAttemptStatus.succeeded.value
+            attempt.attempt_metadata = {
+                **(attempt.attempt_metadata or {}),
+                "dispatch_status": "worker_completed",
+            }
+            session.commit()
+        finally:
+            session.close()
+        return type("Result", (), {"id": "ack-after-worker"})()
+
+    monkeypatch.setattr(execute_reserved_application, "apply_async", finish_before_ack)
+    response = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
+    assert response.status_code == 200
+    db_session.expire_all()
+    attempt = db_session.query(SubmissionAttempt).filter_by(application_id=application.id).one()
+    assert attempt.status == SubmissionAttemptStatus.succeeded.value
+    assert attempt.attempt_metadata["dispatch_status"] == "worker_completed"
+    assert attempt.attempt_metadata["broker_task_id"] == "ack-after-worker"
+
+
+def test_dispatch_error_after_worker_completion_does_not_reopen_attempt(
+    auth_client, db_session, monkeypatch
+):
+    """A lost ACK must not change a terminal worker outcome to queued."""
+    from app.tasks.jt5_execution import execute_reserved_application
+
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    application = _application(db_session, user, _job(db_session))
+    db_session.commit()
+
+    def finish_then_raise(*args, **kwargs):
+        session = TestingSessionLocal()
+        try:
+            attempt = (
+                session.query(SubmissionAttempt)
+                .filter(SubmissionAttempt.application_id == application.id)
+                .one()
+            )
+            attempt.status = SubmissionAttemptStatus.succeeded.value
+            attempt.attempt_metadata = {
+                **(attempt.attempt_metadata or {}),
+                "dispatch_status": "worker_completed",
+            }
+            session.commit()
+        finally:
+            session.close()
+        raise ConnectionError("ACK lost after worker completion")
+
+    monkeypatch.setattr(execute_reserved_application, "apply_async", finish_then_raise)
+    response = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
+    assert response.status_code == 503
+    db_session.expire_all()
+    attempt = db_session.query(SubmissionAttempt).filter_by(application_id=application.id).one()
+    assert attempt.status == SubmissionAttemptStatus.succeeded.value
+    assert attempt.attempt_metadata["dispatch_status"] == "worker_completed"
+    assert attempt.attempt_metadata["dispatch_error_type"] == "ConnectionError"
