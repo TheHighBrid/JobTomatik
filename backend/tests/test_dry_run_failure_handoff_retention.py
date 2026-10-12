@@ -282,3 +282,21 @@ async def test_workday_field_review_keeps_its_certified_boundary():
     assert retained is False
     assert runtime.capture_calls == 0
     assert result["review_items"][0]["reason_code"] == "unsupported_control"
+
+
+
+@pytest.mark.asyncio
+async def test_workday_technical_failure_without_review_releases_shared_profile():
+    runtime = _Runtime()
+    result = {
+        "success": False,
+        "ats_adapter": "workday",
+        "error": "No next-step or final-submit control was found.",
+        "review_items": [],
+    }
+    retained = await form_filler_handoff._retain_dry_run_failure_handoff(
+        result=result, runtime=runtime, log=[], supervised_target=None
+    )
+    assert retained is False
+    assert runtime.capture_calls == 0
+    assert result["review_items"] == []
