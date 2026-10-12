@@ -396,3 +396,42 @@ def test_dispatch_error_after_worker_completion_does_not_reopen_attempt(
     assert attempt.status == SubmissionAttemptStatus.succeeded.value
     assert attempt.attempt_metadata["dispatch_status"] == "worker_completed"
     assert attempt.attempt_metadata["dispatch_error_type"] == "ConnectionError"
+
+
+def test_worker_exception_after_confirmed_commit_does_not_demote_application(
+    monkeypatch, db_session
+):
+    """Failure in a post-commit path cannot reverse confirmed application state."""
+    import app.tasks.jt5_execution as jt5_task
+
+    user = _user(db_session, email="jt5-terminal-exception@example.com")
+    application = _application(db_session, user, _job(db_session))
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    db_session.commit()
+    reference = attempt.reference
+
+    def fail_after_confirmed_commit(*args, **kwargs):
+        session = TestingSessionLocal()
+        try:
+            current_attempt = session.query(SubmissionAttempt).filter_by(reference=reference).one()
+            current_application = session.query(Application).filter_by(id=application.id).one()
+            current_attempt.status = SubmissionAttemptStatus.succeeded.value
+            current_application.automation_state = ApplicationAutomationState.confirmed.value
+            current_application.status = ApplicationStatus.applied
+            session.commit()
+        finally:
+            session.close()
+        raise RuntimeError("post-commit failure")
+
+    monkeypatch.setattr(jt5_task, "_profile_dict", fail_after_confirmed_commit)
+    result = execute_reserved_application.run(application.id, reference)
+    assert result["success"] is False
+
+    db_session.expire_all()
+    saved_application = db_session.query(Application).filter_by(id=application.id).one()
+    saved_attempt = db_session.query(SubmissionAttempt).filter_by(reference=reference).one()
+    assert saved_application.automation_state == ApplicationAutomationState.confirmed.value
+    assert saved_application.status == ApplicationStatus.applied
+    assert saved_attempt.status == SubmissionAttemptStatus.succeeded.value
