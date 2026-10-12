@@ -95,6 +95,7 @@ def reserve_jt5_attempt(
         attempt_metadata={
             "execution_contract": "jt5",
             "automatic_retry_allowed": False,
+            "reserved_target_url": str(application.application_target_url or "").strip(),
         },
     )
     db.add(attempt)
