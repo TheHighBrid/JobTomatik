@@ -217,8 +217,13 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
             }
 
         target_url = str(application.application_target_url or "").strip()
-        if not target_url or attempt.identity_digest != application_identity_digest(db, application):
-            reason = "application_target_missing" if not target_url else "reservation_identity_changed"
+        reserved_target_url = str((attempt.attempt_metadata or {}).get("reserved_target_url") or "").strip()
+        if not target_url or target_url != reserved_target_url or attempt.identity_digest != application_identity_digest(db, application):
+            reason = (
+                "application_target_missing" if not target_url
+                else "reservation_target_changed" if target_url != reserved_target_url
+                else "reservation_identity_changed"
+            )
             complete_jt5_attempt(
                 db, attempt, outcome="failed_pre_submit", details={"reason": reason}
             )
