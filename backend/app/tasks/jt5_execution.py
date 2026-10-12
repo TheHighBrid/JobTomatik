@@ -254,7 +254,7 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                 application.cover_letter or "",
                 user.resume_path or "",
                 dry_run=False,
-                supervised_target=persisted_supervised_target_metadata(job),
+                supervised_target={**persisted_supervised_target_metadata(job), "execution_contract": "jt5"},
             )
         )
         if not isinstance(result, dict):
