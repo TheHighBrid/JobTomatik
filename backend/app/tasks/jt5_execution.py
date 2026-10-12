@@ -36,37 +36,30 @@ logger = logging.getLogger(__name__)
 
 
 def _classify_browser_result(result: Dict[str, Any]) -> str:
-    """Map browser result to JT5 outcome. Never promote weak evidence to confirmed."""
+    """Fail closed unless durable confirmation or explicit pre-submit proof exists.
+
+    A missing timestamp or an error message alone cannot establish that the
+    employer never received the final action.
+    """
     if not isinstance(result, dict):
         return "submission_uncertain"
-    if result.get("requires_manual_review"):
-        log_actions = " ".join(
-            str(item.get("action", "")) for item in (result.get("log") or [])
-        ).lower()
-        if any(
-            token in log_actions
-            for token in ("submit clicked", "submit_clicked", "final_action")
-        ):
-            return "submission_uncertain"
-        if result.get("submitted_at") or result.get("submission_confirmed"):
-            return "submission_uncertain"
-        return "failed_pre_submit"
-    if result.get("success") and (
-        result.get("submitted_at")
-        or result.get("submission_confirmed")
-        or any(
-            bool(item.get("is_sufficient"))
-            for item in (result.get("confirmation_evidence") or [])
-            if isinstance(item, dict)
-        )
+    evidence = result.get("confirmation_evidence") or []
+    if isinstance(evidence, dict):
+        evidence = [evidence]
+    if result.get("success") and any(
+        isinstance(item, dict) and bool(item.get("is_sufficient"))
+        for item in evidence
     ):
         return "confirmed"
-    if result.get("success") and result.get("dry_run"):
-        return "failed_pre_submit"
-    if result.get("error") and not result.get("submitted_at"):
+    # Only a positive, machine-readable pre-submit boundary permits retry.
+    # Do not infer it from missing submitted_at or a manual-review flag.
+    if (
+        result.get("success") is False
+        and result.get("final_submit_attempted") is False
+        and result.get("pre_submit_failure_verified") is True
+    ):
         return "failed_pre_submit"
     return "submission_uncertain"
-
 
 @celery_app.task(
     bind=True,
