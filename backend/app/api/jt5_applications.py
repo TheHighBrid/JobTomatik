@@ -165,7 +165,10 @@ def apply_application(
         if reserved is not None:
             # Preserve the immutable reservation task identity. A worker may
             # already have claimed this row before broker acknowledgement.
-            reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "published", "published_at": datetime.utcnow().isoformat(), "broker_task_id": task_id}
+            if reserved.status == "queued":
+                reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "published", "published_at": datetime.utcnow().isoformat(), "broker_task_id": task_id}
+            else:
+                reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "broker_task_id": task_id}
             db.commit()
     except Exception as exc:
         db.rollback()
@@ -174,7 +177,10 @@ def apply_application(
         try:
             reserved = db.query(SubmissionAttempt).filter(SubmissionAttempt.reference == attempt_reference).first()
             if reserved is not None:
-                reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "reconciliation_required", "dispatch_error_type": type(exc).__name__}
+                if reserved.status == "queued":
+                    reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "reconciliation_required", "dispatch_error_type": type(exc).__name__}
+                else:
+                    reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_error_type": type(exc).__name__}
                 db.commit()
         except Exception:
             db.rollback()
