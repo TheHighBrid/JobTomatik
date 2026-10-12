@@ -163,8 +163,9 @@ def apply_application(
             .first()
         )
         if reserved is not None:
-            reserved.task_id = task_id
-            reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "published", "published_at": datetime.utcnow().isoformat()}
+            # Preserve the immutable reservation task identity. A worker may
+            # already have claimed this row before broker acknowledgement.
+            reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "published", "published_at": datetime.utcnow().isoformat(), "broker_task_id": task_id}
             db.commit()
     except Exception as exc:
         db.rollback()
