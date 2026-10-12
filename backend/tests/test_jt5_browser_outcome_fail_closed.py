@@ -80,3 +80,21 @@ def test_normalize_submit_clicked_flag_marks_final_action():
     })
     assert normalized["final_submit_attempted"] is True
     assert _classify_browser_result(normalized) == "submission_uncertain"
+
+
+@pytest.mark.parametrize("final_action", [
+    {"submit_clicked": True},
+    {"log": [{"action": "ats_submit_clicked"}]},
+    {"final_submit_attempted": True},
+])
+def test_contradictory_pre_submit_proof_never_allows_retry(final_action):
+    result = {
+        "success": False,
+        "error": "timeout",
+        "pre_submit_failure_verified": True,
+        "final_submit_attempted": False,
+        **final_action,
+    }
+    normalized = normalize_jt5_browser_result(result)
+    assert normalized["pre_submit_failure_verified"] is False
+    assert _classify_browser_result(normalized) == "submission_uncertain"
