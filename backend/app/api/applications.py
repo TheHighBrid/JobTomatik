@@ -44,7 +44,6 @@ from app.services.application_integrity import (
     submission_is_closed,
 )
 from app.services.application_state import resolve_manual_review_task
-from app.services.application_target import initialize_application_target
 from app.services.browser_handoff import (
     BrowserHandoffUnavailable,
     terminate_retained_browser,
