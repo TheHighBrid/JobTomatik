@@ -69,7 +69,13 @@ def reserve_jt5_attempt(
     if decision.decision is not ApplyDecision.EXECUTE:
         return decision, active
 
-    # Resolve direct ATS URLs before freezing the immutable JT5 reservation.\n    # Listing-only sources remain unresolved and cannot be silently treated as apply URLs.\n    job = db.query(Job).filter(Job.id == application.job_id).first()\n    if job is not None:\n        initialize_application_target(db, application, job)\n\n    # A failed pre-submit attempt is retryable; a confirmed or uncertain one is not.
+    # Resolve direct ATS URLs before freezing the immutable JT5 reservation.
+    # Listing-only sources remain unresolved and cannot be silently treated as apply URLs.
+    job = db.query(Job).filter(Job.id == application.job_id).first()
+    if job is not None:
+        initialize_application_target(db, application, job)
+
+    # A failed pre-submit attempt is retryable; a confirmed or uncertain one is not.
     # Database uniqueness plus the locked application row protects attempt numbers.
 
     # Keep the attempt counter synchronized with the durable attempt history.
