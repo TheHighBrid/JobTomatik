@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from app.services import ats_flow, browser_handoff
 from app.services.ats_flow import run_ats_application_flow
 from app.services.handoff_confirmation_target import (
@@ -12,6 +13,7 @@ from app.services.supervised_runtime import (
     supervised_target_scope,
 )
 from app.services.supervised_target_identity import verify_supervised_browser_target
+
 
 POSTING_ID = "12345678-1234-1234-1234-123456789abc"
 OTHER_POSTING_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
@@ -75,43 +77,6 @@ async def test_browser_target_verifier_blocks_posting_drift(monkeypatch):
         expected_metadata=_expected_target(),
         refresh_official_metadata=False,
     )
-    assert drifted["verified"] is False
-    assert "lever_runtime_posting_mismatch" in drifted["blockers"]
-
-
-@pytest.mark.asyncio
-async def test_jt5_skips_legacy_worker_lease_but_keeps_target_verification(monkeypatch):
-    monkeypatch.setenv("JOBTOMATIK_RUNTIME_ROLE", "worker")
-    monkeypatch.setattr(
-        "app.services.supervised_target_identity.lever_supervised_runtime_lease_active",
-        lambda **_kwargs: False,
-    )
-
-    jt5 = await verify_supervised_browser_target(
-        current_url=LEVER_URL,
-        adapter_name="lever",
-        adapter_version="1.1.0",
-        expected_metadata={**_expected_target(), "execution_contract": "jt5"},
-        refresh_official_metadata=False,
-    )
-    legacy = await verify_supervised_browser_target(
-        current_url=LEVER_URL,
-        adapter_name="lever",
-        adapter_version="1.1.0",
-        expected_metadata=_expected_target(),
-        refresh_official_metadata=False,
-    )
-    drifted = await verify_supervised_browser_target(
-        current_url=OTHER_LEVER_URL,
-        adapter_name="lever",
-        adapter_version="1.1.0",
-        expected_metadata={**_expected_target(), "execution_contract": "jt5"},
-        refresh_official_metadata=False,
-    )
-
-    assert jt5["verified"] is True
-    assert legacy["verified"] is False
-    assert "lever_supervised_runtime_lease_inactive" in legacy["blockers"]
     assert drifted["verified"] is False
     assert "lever_runtime_posting_mismatch" in drifted["blockers"]
 

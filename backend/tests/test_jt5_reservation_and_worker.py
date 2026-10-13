@@ -2,6 +2,7 @@
 
 
 import app.api.jt5_applications as jt5_api
+import pytest
 from app.models.application import (
     Application,
     ApplicationAutomationState,
@@ -17,6 +18,7 @@ from app.services.submission_integrity import (
     build_submission_identity_aliases,
     claim_submission_identity_aliases,
 )
+from app.services.supervised_target_identity import verify_supervised_browser_target
 from app.tasks.jt5_execution import execute_reserved_application
 
 from tests.conftest import TestingSessionLocal
@@ -612,3 +614,72 @@ def test_jt5_does_not_reserve_listing_as_application_target(db_session):
     )
     assert application.application_target_url is None
     assert attempt.attempt_metadata["reserved_target_url"] == ""
+
+
+@pytest.mark.asyncio
+async def test_jt5_skips_legacy_worker_lease_but_keeps_target_verification(monkeypatch):
+    posting_id = "12345678-1234-1234-1234-123456789abc"
+    other_posting_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    target_url = f"https://jobs.lever.co/safeco/{posting_id}/apply"
+    other_url = f"https://jobs.lever.co/safeco/{other_posting_id}/apply"
+    expected = {
+        "platform": "lever",
+        "adapter": "lever",
+        "adapter_version": "1.1.0",
+        "verified": True,
+        "blockers": [],
+        "canonical_application_url": target_url,
+        "site": "safeco",
+        "posting_id": posting_id,
+        "region": "global",
+        "posting_metadata_hash": "a" * 64,
+        "identity_hash": "b" * 64,
+    }
+
+    async def fetch(*args, **kwargs):
+        return {
+            "id": posting_id,
+            "text": "Payments Risk Analyst",
+            "categories": {"team": "Risk", "location": "Remote"},
+            "description": "<p>Risk role</p>",
+            "descriptionPlain": "Risk role",
+            "hostedUrl": target_url.removesuffix("/apply"),
+            "applyUrl": target_url,
+        }
+
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_ROLE", "worker")
+    monkeypatch.setattr(
+        "app.services.supervised_target_identity.lever_supervised_runtime_lease_active",
+        lambda **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "app.services.supervised_target_identity.fetch_lever_posting", fetch
+    )
+
+    jt5 = await verify_supervised_browser_target(
+        current_url=target_url,
+        adapter_name="lever",
+        adapter_version="1.1.0",
+        expected_metadata={**expected, "execution_contract": "jt5"},
+        refresh_official_metadata=False,
+    )
+    legacy = await verify_supervised_browser_target(
+        current_url=target_url,
+        adapter_name="lever",
+        adapter_version="1.1.0",
+        expected_metadata=expected,
+        refresh_official_metadata=False,
+    )
+    drifted = await verify_supervised_browser_target(
+        current_url=other_url,
+        adapter_name="lever",
+        adapter_version="1.1.0",
+        expected_metadata={**expected, "execution_contract": "jt5"},
+        refresh_official_metadata=False,
+    )
+
+    assert jt5["verified"] is True
+    assert legacy["verified"] is False
+    assert "lever_supervised_runtime_lease_inactive" in legacy["blockers"]
+    assert drifted["verified"] is False
+    assert "lever_runtime_posting_mismatch" in drifted["blockers"]
