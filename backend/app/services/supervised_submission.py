@@ -78,6 +78,12 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
@@ -581,7 +587,7 @@ def _expire_or_revoke_prior_approvals(
         .all()
     )
     for approval in approvals:
-        if approval.expires_at <= now:
+        if _as_utc(approval.expires_at) <= _as_utc(now):
             approval.status = SubmissionApprovalStatus.expired.value
         else:
             approval.status = SubmissionApprovalStatus.revoked.value
@@ -758,7 +764,7 @@ def validate_supervised_approval(
         raise SupervisedSubmissionApprovalError(
             f"Submission approval is {approval.status}, not active"
         )
-    if approval.expires_at <= now:
+    if _as_utc(approval.expires_at) <= _as_utc(now):
         approval.status = SubmissionApprovalStatus.expired.value
         raise SupervisedSubmissionApprovalExpired("Submission approval has expired")
 
