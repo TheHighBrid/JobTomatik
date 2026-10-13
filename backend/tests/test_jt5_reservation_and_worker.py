@@ -195,6 +195,28 @@ def test_api_apply_dispatches_without_approval(auth_client, db_session):
     assert attempt.attempt_metadata["broker_task_id"] == "test-task-id"
 
 
+def test_api_apply_requires_authentication(client, db_session):
+    user = _user(db_session, email="jt5-unauthenticated-owner@example.com")
+    application = _application(db_session, user, _job(db_session))
+    db_session.commit()
+
+    response = client.post(f"/api/applications/{application.id}/jt5/apply")
+
+    assert response.status_code == 401
+    assert db_session.query(SubmissionAttempt).count() == 0
+
+
+def test_api_apply_hides_non_owned_application(auth_client, db_session):
+    owner = _user(db_session, email="jt5-different-owner@example.com")
+    application = _application(db_session, owner, _job(db_session))
+    db_session.commit()
+
+    response = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
+
+    assert response.status_code == 404
+    assert db_session.query(SubmissionAttempt).count() == 0
+
+
 def test_worker_confirmed_outcome(monkeypatch, db_session):
     user = _user(db_session, email="jt5-worker-confirmed@example.com")
     application = _application(db_session, user, _job(db_session))
