@@ -1,7 +1,7 @@
 """JT5 reservation concurrency and worker outcome integration tests."""
-from unittest.mock import MagicMock
 
 
+import app.api.jt5_applications as jt5_api
 from app.models.application import (
     Application,
     ApplicationAutomationState,
@@ -17,8 +17,8 @@ from app.services.submission_integrity import (
     build_submission_identity_aliases,
     claim_submission_identity_aliases,
 )
-import app.api.jt5_applications as jt5_api
 from app.tasks.jt5_execution import execute_reserved_application
+
 from tests.conftest import TestingSessionLocal
 
 
@@ -79,7 +79,7 @@ def test_second_reserve_while_queued_is_in_progress(db_session):
     )
     db_session.commit()
 
-    second_decision, second_attempt = reserve_jt5_attempt(
+    second_decision, _second_attempt = reserve_jt5_attempt(
         db_session,
         application_id=application.id,
         authenticated_user_id=user.id,
@@ -281,6 +281,34 @@ def test_worker_uses_resolved_target_with_supervised_metadata(monkeypatch, db_se
     assert calls[0][1]["dry_run"] is False
 
 
+def test_worker_rejects_unverified_lever_target_before_browser(monkeypatch, db_session):
+    target_url = "https://jobs.lever.co/example/12345678-1234-1234-1234-123456789abc"
+    user = _user(db_session, email="jt5-unverified-lever@example.com")
+    job = _job(db_session, url=target_url)
+    job.raw_data = {
+        "supervised_target_metadata": {
+            "platform": "lever",
+            "verified": False,
+            "blockers": ["lever_role_metadata_mismatch"],
+            "target_url": target_url,
+        }
+    }
+    application = _application(db_session, user, job)
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    db_session.commit()
+
+    async def forbidden_fill(*args, **kwargs):
+        raise AssertionError("browser must not start with unverified target metadata")
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", forbidden_fill)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["error"] == "lever_target_identity_unverified"
+
+
 def test_worker_rejects_reservation_target_drift_before_browser(monkeypatch, db_session):
     user = _user(db_session, email="jt5-target-drift@example.com")
     application = _application(db_session, user, _job(db_session))
@@ -384,7 +412,6 @@ def test_worker_failed_pre_submit_is_retryable_state(monkeypatch, db_session):
 
 
 def test_jt5_dispatch_failure_requires_reconciliation(auth_client, db_session, monkeypatch):
-    import app.api.jt5_applications as jt5_api
 
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
@@ -420,7 +447,6 @@ def test_dispatch_ack_after_worker_completion_does_not_reopen_attempt(
     auth_client, db_session, monkeypatch
 ):
     """Broker ACK can arrive after worker has completed its transaction."""
-    import app.api.jt5_applications as jt5_api
 
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
@@ -458,7 +484,6 @@ def test_dispatch_error_after_worker_completion_does_not_reopen_attempt(
     auth_client, db_session, monkeypatch
 ):
     """A lost ACK must not change a terminal worker outcome to queued."""
-    import app.api.jt5_applications as jt5_api
 
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
