@@ -10,6 +10,7 @@ Usage (from repo root):
 """
 from __future__ import annotations
 
+import ast
 import sys
 from pathlib import Path
 
@@ -28,12 +29,31 @@ NEW_NOW = '''def _now() -> datetime:
     return datetime.now(timezone.utc)'''
 
 
+def _has_aware_utc_now(source: str) -> bool:
+    """Detect the fix from `_now`'s return expression, not its docstring."""
+    try:
+        module = ast.parse(source)
+    except SyntaxError:
+        return False
+
+    for node in module.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.name != "_now":
+            continue
+        return any(
+            isinstance(statement, ast.Return)
+            and statement.value is not None
+            and ast.unparse(statement.value) == "datetime.now(timezone.utc)"
+            for statement in node.body
+        )
+    return False
+
+
 def main() -> int:
     if not TARGET.is_file():
         print(f"missing {TARGET}", file=sys.stderr)
         return 1
     text = TARGET.read_text()
-    if "datetime.now(timezone.utc)" in text and "utcnow" not in text.split("def _now")[1].split("def ")[0]:
+    if _has_aware_utc_now(text):
         print("already fixed")
         return 0
     if OLD_NOW not in text:
