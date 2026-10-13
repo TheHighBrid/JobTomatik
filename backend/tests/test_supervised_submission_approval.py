@@ -78,6 +78,35 @@ def _enable_pilot(monkeypatch):
         "greenhouse_supervised_pilot_enabled",
         True,
     )
+    monkeypatch.setattr(
+        approval_service,
+        "_greenhouse_target_liveness",
+        lambda application_url: {
+            "checked": True,
+            "live": True,
+            "status_code": 200,
+            "final_url": application_url,
+            "blocker": None,
+        },
+    )
+    monkeypatch.setattr(
+        approval_service,
+        "_greenhouse_form_schema_status",
+        lambda application_url: {
+            "checked": True,
+            "verified": True,
+            "status_code": 200,
+            "board_token": "safeco",
+            "job_id": "123456",
+            "schema_hash": "synthetic-test-schema-hash",
+            "fingerprint_version": 1,
+            "question_count": 0,
+            "required_question_count": 0,
+            "required_uploads": [],
+            "unsupported_fields": [],
+            "blocker": None,
+        },
+    )
 
 
 def _approval_payload():
@@ -327,7 +356,7 @@ def test_approved_submit_endpoint_queues_reference_without_consuming_it(
     response = auth_client.post(
         f"/api/supervised-submissions/applications/{app_id}/approvals/{reference}/submit"
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     data = response.json()
     assert data["task_id"] == "supervised-task-id"
     assert data["attempt_reference"]
