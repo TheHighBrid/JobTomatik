@@ -1,6 +1,6 @@
 # JobTomatik Multi-Agent Coordination Blueprint
 
-**Status:** Active  
+**Status:** Active (objectives corrected 2026-10-13)  
 **Owner (primary engine):** Grok  
 **Date:** 2026-10-13  
 **Scope:** JT5 cutover, OneHost reliability, approval safety, agent workflow  
@@ -10,13 +10,15 @@
 
 ## 1. Objectives (non-negotiable)
 
-1. **Ship JT5 without rebuilding bureaucracy** — four essential protections only: authentication, ownership, atomic duplicate prevention, uncertain-outcome handling.
-2. **Never weaken target identity or fail-closed classification** while removing pilot/lease/redundant approval gates.
-3. **Keep live submission off** until exact-head CI + four-gate regression are green on the JT5 integration line.
-4. **Preserve OneHost dry-run evidence** (retain browser, profile lifecycle) as a separate track from JT5 merge.
-5. **Maintain continuity across agents** — no overlapping branches on the same files without explicit handoff; no merge of draft JT5 until children are verified.
+**Product goal:** JobTomatik must reliably discover, prepare, and **live-submit** applications to real employer ATS targets when the owner enables production submit. Dry-run and fail-closed behavior exist to *reach* that goal safely — they are not a substitute for it.
 
-Success is measured by: green required checks on the intended base, no reactivation of removed pilot gates, Greenhouse/Lever can reach execution under JT5, Affirm-class timezone/approval defects closed.
+1. **Ship JT5 so live submit works under four essential protections only** — authentication, ownership, atomic duplicate prevention, and honest uncertain-outcome handling — without pilot/lease/redundant approval bureaucracy.
+2. **Never weaken target identity or fail-closed classification** while removing those redundant gates; a live submit that hits the wrong URL or lies about success is worse than no submit.
+3. **Reach production live submit on the JT5 path** after exact-head CI, four-gate regression, and Greenhouse/Lever execution proof on the integration line. Until that proof exists, agents and CI must not flip production submit flags or perform real employer submissions *as a testing shortcut* — that is a temporary execution discipline, not the product objective.
+4. **Preserve OneHost dry-run evidence** (retain browser, profile lifecycle) so failures are diagnosable on the way to live submit.
+5. **Maintain continuity across agents** — no overlapping writers on the same PR head without handoff; do not merge unfinished draft JT5 to main as if it were production-ready.
+
+Success is measured by: JT5 can execute real ATS applications under the four gates; removed pilot gates stay gone; Affirm-class defects (timezone, target identity, uncertain outcomes) stay closed; owner can enable live submit with evidence, not hope.
 
 ---
 
@@ -65,12 +67,12 @@ main @ a4092528
 |------|------|
 | C1 | Merge OneHost track (#673 then #683; #674 independent) if still green |
 | C2 | Merge #675 if approval gate green |
-| C3 | Merge #681 (JT5) with release notes: no live submit until production cutover checklist |
+| C3 | Merge #681 (JT5) with release notes and production cutover checklist so **live submit can be enabled** |
 | C4 | Tag / VERSION bump only after C3 + smoke on OneHost |
 
 ### Phase D — Production cutover (later)
 
-Controlled-target browser parity, live submit grant still owner-gated, Affirm-class monitoring, operator board read-only diagnostics. Out of scope for agent auto-merge.
+Controlled-target browser parity, **owner-enabled production live submit**, Affirm-class monitoring, operator diagnostics. Agents prepare the path; owner flips production submit when evidence is ready. Auto-merge to production remains owner-gated.
 
 ---
 
@@ -81,7 +83,7 @@ Controlled-target browser parity, live submit grant still owner-gated, Affirm-cl
 - [ ] Four-gate regression: auth, ownership, atomic claim, uncertain outcome — all enforced
 - [ ] Greenhouse + Lever fixtures reach execution without reactivating removed pilot gates
 - [ ] Invalid targets and unauthorized submissions fail closed
-- [ ] No live application submission in CI or agent runs
+- [ ] CI and agents do not perform real employer submissions *until* the owner enables production submit after the gates above are green (discipline, not product goal)
 - [ ] #681 still draft until the above are evidence-backed on exact head
 
 ---
@@ -92,7 +94,7 @@ Controlled-target browser parity, live submit grant still owner-gated, Affirm-cl
 
 - Continuity owner: status, merge safety, PR hygiene, CI root-cause, docs
 - Owns: #675, #683, JT5 CI breaks on #681, coordination docs, audits of Sol branches when stalled
-- Must not: claim merge of draft JT5; live submit; bulk-delete gates outside inventory
+- Must not: claim merge of draft JT5 as production-ready; perform real employer submits before owner enables production; bulk-delete gates outside inventory
 
 ### 5.2 Sol (Chat) / Sol 6.1 / Astra
 
@@ -110,7 +112,7 @@ Controlled-target browser parity, live submit grant still owner-gated, Affirm-cl
 
 ### 5.4 Owner
 
-- Merge authority on main; Codacy approvals; live submit / production flags
+- Merge authority on main; Codacy approvals; **production live-submit enablement**
 - Resolves agent conflicts when two engines touch the same PR
 
 ---
@@ -173,8 +175,8 @@ Next exact step: (one sentence)
 
 ## 9. Explicit non-goals (this cycle)
 
-- Live Affirm or any real ATS submission  
-- Merging draft #681 to main  
+- Real employer submissions *during unfinished CI/agent work* before owner enables production submit  
+- Merging draft #681 to main as if production-ready  
 - Full legacy approval path deletion before JT5 four-gate proof  
 - Rewriting OneHost and JT5 in one PR  
 
@@ -191,3 +193,7 @@ Next exact step: (one sentence)
 ### 2026-10-13 — Grok
 - Published this blueprint.  
 - Next: A2 (#675 409), then A1 residual (#681 backend-full), then audit #690 if Sol has not advanced.
+
+### 2026-10-13 — Grok (correction)
+- **Corrected objectives:** product goal is reliable **live submit** under JT5 four gates. Prior wording that read as “objective = no live submit” was wrong; temporary CI/agent discipline against premature real submits is not the product goal.
+- Blueprint retained and amended; not withdrawn wholesale — substance (phases, stack, handoff) still applies with fixed north star.
