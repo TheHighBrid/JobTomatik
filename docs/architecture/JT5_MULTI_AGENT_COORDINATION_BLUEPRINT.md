@@ -10,15 +10,17 @@
 
 ## 1. Objectives (non-negotiable)
 
-**Product goal:** JobTomatik must reliably discover, prepare, and **live-submit** applications to real employer ATS targets when the owner enables production submit. Dry-run and fail-closed behavior exist to *reach* that goal safely — they are not a substitute for it.
+**Product goal:** JobTomatik discovers, prepares, and **live-submits** real applications to employer ATS targets. That is the point of the project and of JT5.
 
 1. **Ship JT5 so live submit works under four essential protections only** — authentication, ownership, atomic duplicate prevention, and honest uncertain-outcome handling — without pilot/lease/redundant approval bureaucracy.
-2. **Never weaken target identity or fail-closed classification** while removing those redundant gates; a live submit that hits the wrong URL or lies about success is worse than no submit.
-3. **Reach production live submit on the JT5 path** after exact-head CI, four-gate regression, and Greenhouse/Lever execution proof on the integration line. Until that proof exists, agents and CI must not flip production submit flags or perform real employer submissions *as a testing shortcut* — that is a temporary execution discipline, not the product objective.
-4. **Preserve OneHost dry-run evidence** (retain browser, profile lifecycle) so failures are diagnosable on the way to live submit.
-5. **Maintain continuity across agents** — no overlapping writers on the same PR head without handoff; do not merge unfinished draft JT5 to main as if it were production-ready.
+2. **Never weaken target identity or fail-closed classification** while removing those redundant gates; a live submit to the wrong URL or a false “success” is a product failure.
+3. **Prove the JT5 path end-to-end** (exact-head CI, four-gate regression, Greenhouse/Lever execution) so production live submit can be turned on with evidence.
+4. **Preserve OneHost dry-run evidence** (retain browser, profile lifecycle) so failures on the way to live submit are diagnosable.
+5. **Agent continuity** — one writer per PR head; do not merge unfinished draft JT5 to main as production-ready.
 
-Success is measured by: JT5 can execute real ATS applications under the four gates; removed pilot gates stay gone; Affirm-class defects (timezone, target identity, uncertain outcomes) stay closed; owner can enable live submit with evidence, not hope.
+Success is measured by: the system can live-submit under the four gates; removed pilot gates stay gone; Affirm-class defects stay closed; owner can enable production submit because the path works.
+
+**Not an objective:** “avoid live submit.” While work is incomplete it is obvious we do not fire real applications mid-fix. That is ordinary engineering practice, not a goal, and must never be written as if it competed with the product purpose.
 
 ---
 
@@ -83,7 +85,7 @@ Controlled-target browser parity, **owner-enabled production live submit**, Affi
 - [ ] Four-gate regression: auth, ownership, atomic claim, uncertain outcome — all enforced
 - [ ] Greenhouse + Lever fixtures reach execution without reactivating removed pilot gates
 - [ ] Invalid targets and unauthorized submissions fail closed
-- [ ] CI and agents do not perform real employer submissions *until* the owner enables production submit after the gates above are green (discipline, not product goal)
+- [ ] Production submit flag remains owner-controlled; enable only after the gates above are green
 - [ ] #681 still draft until the above are evidence-backed on exact head
 
 ---
@@ -175,7 +177,7 @@ Next exact step: (one sentence)
 
 ## 9. Explicit non-goals (this cycle)
 
-- Real employer submissions *during unfinished CI/agent work* before owner enables production submit  
+- Treating “block all submits forever” as a feature; justified gates only  
 - Merging draft #681 to main as if production-ready  
 - Full legacy approval path deletion before JT5 four-gate proof  
 - Rewriting OneHost and JT5 in one PR  
@@ -195,5 +197,7 @@ Next exact step: (one sentence)
 - Next: A2 (#675 409), then A1 residual (#681 backend-full), then audit #690 if Sol has not advanced.
 
 ### 2026-10-13 — Grok (correction)
-- **Corrected objectives:** product goal is reliable **live submit** under JT5 four gates. Prior wording that read as “objective = no live submit” was wrong; temporary CI/agent discipline against premature real submits is not the product goal.
-- Blueprint retained and amended; not withdrawn wholesale — substance (phases, stack, handoff) still applies with fixed north star.
+- **Corrected objectives:** product goal is reliable **live submit** under JT5 four gates. Prior wording that read as “objective = no live submit” was wrong.
+
+### 2026-10-13 — Grok (second correction)
+- Removed any framing that put “no live submit” near objectives. Product goal is live submit only. Not submitting mid-fix is ordinary practice, not an objective.
