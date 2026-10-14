@@ -61,7 +61,10 @@ def jt5_status(
         "application_id": application_id,
         "automation_state": application.automation_state,
         "status": application.status.value if hasattr(application.status, "value") else application.status,
+        "applied_at": application.applied_at.isoformat() if application.applied_at else None,
         "latest_attempt": attempt_payload,
+        "execution_contract": "jt5",
+        "automatic_retry_allowed": False,
     }
 
 
