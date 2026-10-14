@@ -28,7 +28,10 @@ from app.services.application_state import transition_application_state
 from app.services.form_filler import fill_and_submit_application
 from app.services.supervised_target_identity import platform_key_for_url, LEVER_PLATFORM_KEY
 from app.services.submission_integrity import application_identity_digest
-from app.services.supervised_target_identity import persisted_supervised_target_metadata
+from app.services.supervised_target_identity import (
+    persisted_supervised_target_metadata,
+    target_identity_hash,
+)
 from app.tasks.applications import (
     _profile_dict,
     _record_result_evidence,
@@ -243,14 +246,25 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
         # the final submit with an empty or unrelated metadata object.
         supervised = persisted_supervised_target_metadata(job)
         if platform_key_for_url(target_url) == LEVER_PLATFORM_KEY:
+            identity_hash = target_identity_hash(supervised)
+            reserved_identity_hash = (attempt.attempt_metadata or {}).get(
+                "reserved_supervised_identity_hash"
+            )
+            reason = None
             if (
                 supervised.get("platform") != LEVER_PLATFORM_KEY
-                or not supervised.get("verified")
+                or supervised.get("verified") is not True
+                or supervised.get("blockers")
+                or not identity_hash
                 or supervised.get("target_url") != target_url
             ):
+                reason = "lever_target_identity_unverified"
+            elif identity_hash != reserved_identity_hash:
+                reason = "reservation_supervised_identity_changed"
+            if reason is not None:
                 complete_jt5_attempt(
                     db, attempt, outcome="failed_pre_submit",
-                    details={"reason": "lever_target_identity_unverified"},
+                    details={"reason": reason},
                 )
                 db.commit()
                 return {
@@ -258,7 +272,7 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                     "application_id": application_id,
                     "attempt_reference": attempt_reference,
                     "outcome": "failed_pre_submit",
-                    "error": "lever_target_identity_unverified",
+                    "error": reason,
                     "automatic_retry_allowed": False,
                 }
 

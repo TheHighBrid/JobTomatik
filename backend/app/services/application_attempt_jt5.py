@@ -23,6 +23,10 @@ from app.services.application_execution_gate import (
     ApplyGateResult,
     decide_application_execution,
 )
+from app.services.supervised_target_identity import (
+    persisted_supervised_target_metadata,
+    target_identity_hash,
+)
 from app.services.submission_integrity import (
     active_submission_attempt,
     application_identity_digest,
@@ -104,6 +108,9 @@ def reserve_jt5_attempt(
             "execution_contract": "jt5",
             "automatic_retry_allowed": False,
             "reserved_target_url": str(application.application_target_url or "").strip(),
+            "reserved_supervised_identity_hash": target_identity_hash(
+                persisted_supervised_target_metadata(job) if job is not None else None
+            ),
         },
     )
     db.add(attempt)

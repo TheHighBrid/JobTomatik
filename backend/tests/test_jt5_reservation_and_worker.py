@@ -683,3 +683,109 @@ async def test_jt5_skips_legacy_worker_lease_but_keeps_target_verification(monke
     assert "lever_supervised_runtime_lease_inactive" in legacy["blockers"]
     assert drifted["verified"] is False
     assert "lever_runtime_posting_mismatch" in drifted["blockers"]
+
+
+def _reserved_lever_attempt(db, *, email, metadata_overrides=None):
+    target_url = "https://jobs.lever.co/example/12345678-1234-1234-1234-123456789abc"
+    user = _user(db, email=email)
+    job = _job(db, url=target_url)
+    job.raw_data = {
+        "supervised_target_metadata": {
+            "platform": "lever",
+            "verified": True,
+            "blockers": [],
+            "target_url": target_url,
+            "identity_hash": "a" * 64,
+            **(metadata_overrides or {}),
+        }
+    }
+    application = _application(db, user, job)
+    _, attempt = reserve_jt5_attempt(
+        db, application_id=application.id, authenticated_user_id=user.id
+    )
+    db.commit()
+    return application, job, attempt
+
+
+@pytest.mark.parametrize(
+    "metadata_overrides",
+    [
+        {"verified": False},
+        {"verified": "true"},
+        {"blockers": ["lever_role_metadata_mismatch"]},
+        {"identity_hash": ""},
+    ],
+    ids=["unverified", "non_boolean_verification", "blocked", "missing_identity"],
+)
+def test_worker_rejects_invalid_lever_identity_before_browser(
+    monkeypatch, db_session, metadata_overrides
+):
+    application, _, attempt = _reserved_lever_attempt(
+        db_session,
+        email="jt5-invalid-identity@example.com",
+        metadata_overrides=metadata_overrides,
+    )
+
+    async def forbidden_fill(*args, **kwargs):
+        raise AssertionError("invalid Lever identity must never reach the browser")
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", forbidden_fill)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["error"] == "lever_target_identity_unverified"
+    db_session.refresh(attempt)
+    assert attempt.status == SubmissionAttemptStatus.failed.value
+
+
+def test_worker_rejects_supervised_identity_drift_after_reservation(monkeypatch, db_session):
+    application, job, attempt = _reserved_lever_attempt(
+        db_session, email="jt5-supervised-identity-drift@example.com"
+    )
+    assert attempt.attempt_metadata["reserved_supervised_identity_hash"] == "a" * 64
+    original_target = application.application_target_url
+    job.raw_data = {
+        **job.raw_data,
+        "supervised_target_metadata": {
+            **job.raw_data["supervised_target_metadata"],
+            "identity_hash": "b" * 64,
+        },
+    }
+    db_session.commit()
+
+    async def forbidden_fill(*args, **kwargs):
+        raise AssertionError("identity drift must never reach the browser")
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", forbidden_fill)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert application.application_target_url == original_target
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["error"] == "reservation_supervised_identity_changed"
+
+
+def test_worker_executes_lever_with_the_reserved_verified_identity(monkeypatch, db_session):
+    application, _, attempt = _reserved_lever_attempt(
+        db_session, email="jt5-bound-lever-identity@example.com"
+    )
+    calls = []
+
+    async def fake_fill(job_url, *args, **kwargs):
+        calls.append((job_url, kwargs))
+        return {
+            "success": False,
+            "final_submit_attempted": False,
+            "pre_submit_failure_verified": True,
+            "log": [],
+        }
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", fake_fill)
+    monkeypatch.setattr("app.tasks.jt5_execution._record_result_evidence", lambda *a, **kw: None)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert len(calls) == 1
+    assert calls[0][0] == application.application_target_url
+    assert calls[0][1]["dry_run"] is False
+    assert calls[0][1]["supervised_target"]["execution_contract"] == "jt5"
+    assert calls[0][1]["supervised_target"]["identity_hash"] == "a" * 64
