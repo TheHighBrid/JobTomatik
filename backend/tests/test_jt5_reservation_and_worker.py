@@ -1,7 +1,8 @@
 """JT5 reservation concurrency and worker outcome integration tests."""
-from unittest.mock import MagicMock
 
 
+import app.api.jt5_applications as jt5_api
+import pytest
 from app.models.application import (
     Application,
     ApplicationAutomationState,
@@ -17,8 +18,9 @@ from app.services.submission_integrity import (
     build_submission_identity_aliases,
     claim_submission_identity_aliases,
 )
-import app.api.jt5_applications as jt5_api
+from app.services.supervised_target_identity import verify_supervised_browser_target
 from app.tasks.jt5_execution import execute_reserved_application
+
 from tests.conftest import TestingSessionLocal
 
 
@@ -79,7 +81,7 @@ def test_second_reserve_while_queued_is_in_progress(db_session):
     )
     db_session.commit()
 
-    second_decision, second_attempt = reserve_jt5_attempt(
+    second_decision, _second_attempt = reserve_jt5_attempt(
         db_session,
         application_id=application.id,
         authenticated_user_id=user.id,
@@ -195,6 +197,28 @@ def test_api_apply_dispatches_without_approval(auth_client, db_session):
     assert attempt.attempt_metadata["broker_task_id"] == "test-task-id"
 
 
+def test_api_apply_requires_authentication(client, db_session):
+    user = _user(db_session, email="jt5-unauthenticated-owner@example.com")
+    application = _application(db_session, user, _job(db_session))
+    db_session.commit()
+
+    response = client.post(f"/api/applications/{application.id}/jt5/apply")
+
+    assert response.status_code == 401
+    assert db_session.query(SubmissionAttempt).count() == 0
+
+
+def test_api_apply_hides_non_owned_application(auth_client, db_session):
+    owner = _user(db_session, email="jt5-different-owner@example.com")
+    application = _application(db_session, owner, _job(db_session))
+    db_session.commit()
+
+    response = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
+
+    assert response.status_code == 404
+    assert db_session.query(SubmissionAttempt).count() == 0
+
+
 def test_worker_confirmed_outcome(monkeypatch, db_session):
     user = _user(db_session, email="jt5-worker-confirmed@example.com")
     application = _application(db_session, user, _job(db_session))
@@ -234,6 +258,127 @@ def test_worker_confirmed_outcome(monkeypatch, db_session):
     assert application.automation_state == ApplicationAutomationState.confirmed.value
     assert application.status == ApplicationStatus.applied
     assert attempt.status == SubmissionAttemptStatus.succeeded.value
+
+
+
+
+def test_worker_uses_resolved_target_with_supervised_metadata(monkeypatch, db_session):
+    user = _user(db_session, email="jt5-resolved-target@example.com")
+    job = _job(db_session)
+    application = _application(db_session, user, job)
+    target_url = application.application_target_url
+    job.url = "https://www.linkedin.com/jobs/view/123456"
+    job.raw_data = {
+        "supervised_target_metadata": {
+            "platform": "lever",
+            "verified": True,
+            "target_url": target_url,
+            "identity_hash": "bound-target",
+        }
+    }
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    db_session.commit()
+
+    calls = []
+
+    async def fake_fill(job_url, *args, **kwargs):
+        calls.append((job_url, kwargs))
+        return {
+            "success": False,
+            "error": "pre-submit test boundary",
+            "final_submit_attempted": False,
+            "pre_submit_failure_verified": True,
+            "log": [],
+        }
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", fake_fill)
+    monkeypatch.setattr("app.tasks.jt5_execution._record_result_evidence", lambda *args, **kwargs: None)
+
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert len(calls) == 1
+    assert calls[0][0] == target_url
+    assert calls[0][1]["supervised_target"]["identity_hash"] == "bound-target"
+    assert calls[0][1]["dry_run"] is False
+
+
+def test_worker_rejects_unverified_lever_target_before_browser(monkeypatch, db_session):
+    target_url = "https://jobs.lever.co/example/12345678-1234-1234-1234-123456789abc"
+    user = _user(db_session, email="jt5-unverified-lever@example.com")
+    job = _job(db_session, url=target_url)
+    job.raw_data = {
+        "supervised_target_metadata": {
+            "platform": "lever",
+            "verified": False,
+            "blockers": ["lever_role_metadata_mismatch"],
+            "target_url": target_url,
+        }
+    }
+    application = _application(db_session, user, job)
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    db_session.commit()
+
+    async def forbidden_fill(*args, **kwargs):
+        raise AssertionError("browser must not start with unverified target metadata")
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", forbidden_fill)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["error"] == "lever_target_identity_unverified"
+
+
+def test_worker_rejects_reservation_target_drift_before_browser(monkeypatch, db_session):
+    user = _user(db_session, email="jt5-target-drift@example.com")
+    application = _application(db_session, user, _job(db_session))
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    reserved_url = application.application_target_url
+    application.application_target_url = "https://boards.greenhouse.io/other/jobs/999"
+    db_session.commit()
+
+    async def forbidden_fill(*args, **kwargs):
+        raise AssertionError("browser must not start after target drift")
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", forbidden_fill)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["error"] == "reservation_target_changed"
+    assert reserved_url != application.application_target_url
+    db_session.expire_all()
+    saved_attempt = db_session.query(SubmissionAttempt).filter_by(id=attempt.id).one()
+    assert saved_attempt.status == SubmissionAttemptStatus.failed.value
+
+
+def test_worker_rejects_reservation_identity_drift_before_browser(monkeypatch, db_session):
+    user = _user(db_session, email="jt5-identity-drift@example.com")
+    application = _application(db_session, user, _job(db_session))
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    attempt.identity_digest = "stale-identity-digest"
+    db_session.commit()
+
+    async def forbidden_fill(*args, **kwargs):
+        raise AssertionError("browser must not start after reservation identity drift")
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", forbidden_fill)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["error"] == "reservation_identity_changed"
+    db_session.expire_all()
+    saved_attempt = db_session.query(SubmissionAttempt).filter_by(id=attempt.id).one()
+    saved_application = db_session.query(Application).filter_by(id=application.id).one()
+    assert saved_attempt.status == SubmissionAttemptStatus.failed.value
+    assert saved_application.automation_state == ApplicationAutomationState.ready_to_apply.value
 
 
 def test_worker_failed_pre_submit_is_retryable_state(monkeypatch, db_session):
@@ -291,7 +436,6 @@ def test_worker_failed_pre_submit_is_retryable_state(monkeypatch, db_session):
 
 
 def test_jt5_dispatch_failure_requires_reconciliation(auth_client, db_session, monkeypatch):
-    import app.api.jt5_applications as jt5_api
 
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
@@ -327,7 +471,6 @@ def test_dispatch_ack_after_worker_completion_does_not_reopen_attempt(
     auth_client, db_session, monkeypatch
 ):
     """Broker ACK can arrive after worker has completed its transaction."""
-    import app.api.jt5_applications as jt5_api
 
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
@@ -365,7 +508,6 @@ def test_dispatch_error_after_worker_completion_does_not_reopen_attempt(
     auth_client, db_session, monkeypatch
 ):
     """A lost ACK must not change a terminal worker outcome to queued."""
-    import app.api.jt5_applications as jt5_api
 
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
@@ -436,3 +578,108 @@ def test_worker_exception_after_confirmed_commit_does_not_demote_application(
     assert saved_application.automation_state == ApplicationAutomationState.confirmed.value
     assert saved_application.status == ApplicationStatus.applied
     assert saved_attempt.status == SubmissionAttemptStatus.succeeded.value
+
+
+def test_jt5_reservation_initializes_direct_greenhouse_target(db_session):
+    user = _user(db_session, email="jt5-init-greenhouse@example.com")
+    job = _job(db_session)
+    application = _application(db_session, user, job)
+    application.application_target_url = None
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    assert application.application_target_url == job.url
+    assert attempt.attempt_metadata["reserved_target_url"] == job.url
+
+
+def test_jt5_reservation_initializes_direct_lever_target(db_session):
+    user = _user(db_session, email="jt5-init-lever@example.com")
+    job = _job(db_session, url="https://jobs.lever.co/example/12345678-1234-1234-1234-123456789abc")
+    application = _application(db_session, user, job)
+    application.application_target_url = None
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    assert application.application_target_url == job.url
+    assert attempt.attempt_metadata["reserved_target_url"] == job.url
+
+
+def test_jt5_does_not_reserve_listing_as_application_target(db_session):
+    user = _user(db_session, email="jt5-listing-only@example.com")
+    job = _job(db_session, url="https://www.linkedin.com/jobs/view/123456")
+    application = _application(db_session, user, job)
+    application.application_target_url = None
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id
+    )
+    assert application.application_target_url is None
+    assert attempt.attempt_metadata["reserved_target_url"] == ""
+
+
+@pytest.mark.asyncio
+async def test_jt5_skips_legacy_worker_lease_but_keeps_target_verification(monkeypatch):
+    posting_id = "12345678-1234-1234-1234-123456789abc"
+    other_posting_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    target_url = f"https://jobs.lever.co/safeco/{posting_id}/apply"
+    other_url = f"https://jobs.lever.co/safeco/{other_posting_id}/apply"
+    expected = {
+        "platform": "lever",
+        "adapter": "lever",
+        "adapter_version": "1.1.0",
+        "verified": True,
+        "blockers": [],
+        "canonical_application_url": target_url,
+        "site": "safeco",
+        "posting_id": posting_id,
+        "region": "global",
+        "posting_metadata_hash": "a" * 64,
+        "identity_hash": "b" * 64,
+    }
+
+    async def fetch(*args, **kwargs):
+        return {
+            "id": posting_id,
+            "text": "Payments Risk Analyst",
+            "categories": {"team": "Risk", "location": "Remote"},
+            "description": "<p>Risk role</p>",
+            "descriptionPlain": "Risk role",
+            "hostedUrl": target_url.removesuffix("/apply"),
+            "applyUrl": target_url,
+        }
+
+    monkeypatch.setenv("JOBTOMATIK_RUNTIME_ROLE", "worker")
+    monkeypatch.setattr(
+        "app.services.supervised_target_identity.lever_supervised_runtime_lease_active",
+        lambda **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "app.services.supervised_target_identity.fetch_lever_posting", fetch
+    )
+
+    jt5 = await verify_supervised_browser_target(
+        current_url=target_url,
+        adapter_name="lever",
+        adapter_version="1.1.0",
+        expected_metadata={**expected, "execution_contract": "jt5"},
+        refresh_official_metadata=False,
+    )
+    legacy = await verify_supervised_browser_target(
+        current_url=target_url,
+        adapter_name="lever",
+        adapter_version="1.1.0",
+        expected_metadata=expected,
+        refresh_official_metadata=False,
+    )
+    drifted = await verify_supervised_browser_target(
+        current_url=other_url,
+        adapter_name="lever",
+        adapter_version="1.1.0",
+        expected_metadata={**expected, "execution_contract": "jt5"},
+        refresh_official_metadata=False,
+    )
+
+    assert jt5["verified"] is True
+    assert legacy["verified"] is False
+    assert "lever_supervised_runtime_lease_inactive" in legacy["blockers"]
+    assert drifted["verified"] is False
+    assert "lever_runtime_posting_mismatch" in drifted["blockers"]

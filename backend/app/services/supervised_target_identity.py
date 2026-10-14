@@ -312,7 +312,10 @@ async def verify_supervised_browser_target(
     # the pre-submit browser boundary. If the lease expires or either bound process is
     # replaced while the form is being filled, the final click is blocked. Unmanaged
     # test/dev executions keep the pre-existing explicitly configured behavior.
-    if str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "") == "worker":
+    if (
+        str(os.environ.get("JOBTOMATIK_RUNTIME_ROLE") or "") == "worker"
+        and expected.get("execution_contract") != "jt5"
+    ):
         if not lever_supervised_runtime_lease_active(required_role="worker"):
             blockers.append("lever_supervised_runtime_lease_inactive")
 
