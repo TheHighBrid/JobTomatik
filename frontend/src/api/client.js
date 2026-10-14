@@ -158,6 +158,8 @@ export const updateApplication = (id, data) => api.patch(`/applications/${id}`, 
 export const generateCoverLetter = (id) => api.post(`/applications/${id}/generate-cover-letter`)
 export const submitApplication = (id, dryRun = true) =>
   api.post(`/applications/${id}/submit?dry_run=${dryRun}`)
+export const applyJT5Application = (id) => api.post(`/applications/${id}/jt5/apply`)
+export const getJT5ApplicationStatus = (id) => api.get(`/applications/${id}/jt5/status`)
 export const bulkSubmitApplications = (params) => api.post('/applications/bulk-submit', null, { params })
 export const createFollowup = (appId, data) => api.post(`/applications/${appId}/followups`, data)
 export const listFollowups = (appId) => api.get(`/applications/${appId}/followups`)
