@@ -4,21 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   getApplication, updateApplication, generateCoverLetter,
-  submitApplication, createFollowup, getTaskStatus, getApiErrorMessage
+  applyJT5Application, getJT5ApplicationStatus, createFollowup, getApiErrorMessage
 } from '../api/client'
 import ManualHandoffPanel from '../components/ManualHandoffPanel'
-import OperatorAssistedSubmissionPanel from '../components/OperatorAssistedSubmissionPanel'
 import OperatorFinalSubmitHandoffPanel from '../components/OperatorFinalSubmitHandoffPanel'
-import SupervisedSubmissionPanel from '../components/SupervisedSubmissionPanel'
-import SupervisedPilotDossierPanel from '../components/SupervisedPilotDossierPanel'
 import SubmissionEvidenceReviewPanel from '../components/SubmissionEvidenceReviewPanel'
 import StatusBadge from '../components/StatusBadge'
-import {
-  TASK_START_ACK_TIMEOUT_MS,
-  applicationRuntimeBusy,
-  isApplicationTaskTerminal,
-  shouldReleaseUnacknowledgedTask,
-} from '../applicationTaskRuntime'
 import {
   HANDOFF_REVIEW_REASONS,
   canOpenManualReviewPage,
@@ -26,13 +17,11 @@ import {
 } from '../applicationManualReviewRouting'
 import {
   ArrowLeft, Loader2, RefreshCw, Send, Calendar,
-  FileText, ExternalLink, AlertCircle, CheckCircle2, LockKeyhole, Route
+  FileText, ExternalLink, AlertCircle, CheckCircle2, Route
 } from 'lucide-react'
 import { format, addDays } from 'date-fns'
-import {
-  detectSupervisedPlatform,
-  getSupervisedPlatformConfig,
-} from '../supervisedPlatforms'
+import { detectSupervisedPlatform } from '../supervisedPlatforms'
+import { jt5PollingInterval } from '../jt5StatusPolling'
 
 const STATUSES = ['pending', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn']
 
@@ -68,37 +57,42 @@ export default function ApplicationDetail() {
   const [newStatus, setNewStatus] = useState('')
   const [followupEmail, setFollowupEmail] = useState('')
   const [followupDate, setFollowupDate] = useState(format(addDays(new Date(), 7), "yyyy-MM-dd'T'HH:mm"))
-  const [submitting, setSubmitting] = useState(false)
-  const [submitTaskId, setSubmitTaskId] = useState('')
-  const [submitQueuedAt, setSubmitQueuedAt] = useState(0)
-
   const { data: app, isLoading } = useQuery({
     queryKey: ['application', id],
     queryFn: () => getApplication(id),
     select: (r) => r.data,
     refetchInterval: (query) => {
       const value = query.state.data?.data || query.state.data
-      return submitTaskId || value?.automation_state === 'applying' ? 1500 : false
+      return value?.automation_state === 'applying' ? 1500 : false
     },
     refetchIntervalInBackground: true,
   })
 
   const {
-    data: submitTask,
-    isError: submitTaskQueryFailed,
-    error: submitTaskQueryError,
+    data: jt5Status,
+    isPending: jt5StatusPending,
+    isError: jt5StatusFailed,
+    refetch: refreshJT5Status,
   } = useQuery({
-    queryKey: ['application-submit-task', submitTaskId],
-    queryFn: () => getTaskStatus(submitTaskId),
+    queryKey: ['jt5-application-status', id],
+    queryFn: () => getJT5ApplicationStatus(id),
     select: (response) => response.data,
-    enabled: Boolean(submitTaskId),
-    refetchInterval: (query) => {
-      const value = query.state.data?.data || query.state.data
-      return isApplicationTaskTerminal(value?.status) ? false : 1500
-    },
+    enabled: Boolean(app),
+    refetchInterval: (query) => jt5PollingInterval(query.state.data),
     refetchIntervalInBackground: true,
     retry: 2,
   })
+  const jt5Attempt = jt5Status?.latest_attempt || null
+  const jt5ReconciliationRequired = jt5Attempt?.dispatch_status === 'reconciliation_required'
+    || jt5Attempt?.status === 'uncertain'
+  const jt5AttemptActive = ['queued', 'in_progress'].includes(jt5Attempt?.status)
+    && !jt5ReconciliationRequired
+
+  useEffect(() => {
+    if (!jt5Attempt || jt5AttemptActive) return
+    qc.invalidateQueries({ queryKey: ['application', id] })
+    qc.invalidateQueries({ queryKey: ['applications'] })
+  }, [jt5Attempt?.reference, jt5Attempt?.status, jt5AttemptActive, id, qc])
 
   useEffect(() => {
     if (app) {
@@ -106,91 +100,6 @@ export default function ApplicationDetail() {
       setNewStatus(app.status)
     }
   }, [app?.id])
-
-  useEffect(() => {
-    if (!submitTaskId || !submitTask || !isApplicationTaskTerminal(submitTask.status)) return
-
-    setSubmitTaskId('')
-    setSubmitQueuedAt(0)
-    setSubmitting(false)
-
-    qc.invalidateQueries({ queryKey: ['application', id] })
-    qc.invalidateQueries({ queryKey: ['handoffs', Number(id)] })
-    qc.invalidateQueries({ queryKey: ['applications'] })
-
-    const result = submitTask.result || {}
-    const taskError = typeof result === 'string' ? result : result.error
-
-    if (submitTask.status !== 'SUCCESS') {
-      toast.error(taskError || `Application task ended with ${submitTask.status}`)
-      return
-    }
-
-    if (result.requires_manual_review) {
-      toast.error(result.error || 'Manual review is required before continuing.')
-      return
-    }
-
-    if (result.success) {
-      toast.success(
-        result.dry_run
-          ? 'Dry run completed successfully.'
-          : 'Application submission completed.'
-      )
-      return
-    }
-
-    toast.error(result.error || 'The application attempt finished without success.')
-  }, [submitTask, submitTaskId, id, qc])
-
-  useEffect(() => {
-    if (!submitTaskId || !submitTaskQueryFailed) return
-
-    setSubmitTaskId('')
-    setSubmitQueuedAt(0)
-    setSubmitting(false)
-    toast.error(getApiErrorMessage(
-      submitTaskQueryError,
-      'The application task status could not be loaded.'
-    ))
-  }, [
-    submitTaskId,
-    submitTaskQueryFailed,
-    submitTaskQueryError,
-  ])
-
-  useEffect(() => {
-    if (!submitTaskId || !submitQueuedAt || !submitTask) return undefined
-    if (String(submitTask.status || '').toUpperCase() !== 'PENDING') return undefined
-
-    const elapsed = Date.now() - submitQueuedAt
-    const waitMs = Math.max(0, TASK_START_ACK_TIMEOUT_MS - elapsed)
-    const timer = window.setTimeout(() => {
-      if (!shouldReleaseUnacknowledgedTask({
-        taskStatus: submitTask.status,
-        automationState: app?.automation_state,
-        queuedAt: submitQueuedAt,
-      })) return
-
-      setSubmitTaskId('')
-      setSubmitQueuedAt(0)
-      setSubmitting(false)
-      qc.invalidateQueries({ queryKey: ['application', id] })
-      qc.invalidateQueries({ queryKey: ['applications'] })
-      toast.error(
-        'The application worker did not acknowledge this task. The stale task was released instead of leaving this page stuck.'
-      )
-    }, waitMs + 25)
-
-    return () => window.clearTimeout(timer)
-  }, [
-    submitTaskId,
-    submitQueuedAt,
-    submitTask,
-    app?.automation_state,
-    id,
-    qc,
-  ])
 
   const updateMut = useMutation({
     mutationFn: (data) => updateApplication(id, data),
@@ -223,43 +132,38 @@ export default function ApplicationDetail() {
     },
   })
 
-  const handleSubmit = async (dry = false) => {
-    if (isFinishedApplication(app)) {
-      toast('This application is already recorded as submitted.')
-      return
-    }
-
-    setSubmitting(true)
-    try {
-      const response = await submitApplication(id, dry)
-      const taskId = response.data?.task_id
-
-      if (!taskId) {
-        if (response.data?.status === 'already_submitted') {
-          toast('This application is already recorded as submitted.')
-        } else {
-          toast.error('The backend did not return a submission task ID.')
-        }
-        return
+  const applyMutation = useMutation({
+    mutationFn: () => applyJT5Application(id),
+    retry: false,
+    onSuccess: async (response) => {
+      const result = response.data || {}
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['jt5-application-status', id] }),
+        qc.invalidateQueries({ queryKey: ['application', id] }),
+        qc.invalidateQueries({ queryKey: ['handoffs', Number(id)] }),
+        qc.invalidateQueries({ queryKey: ['applications'] }),
+      ])
+      if (result.status === 'queued') {
+        toast('Application attempt started. JobTomatik is preparing the selected employer target.')
+      } else if (result.status === 'already_confirmed') {
+        toast('This application is already recorded as submitted.')
+      } else if (result.status === 'in_progress') {
+        toast('An application attempt is already in progress. No duplicate attempt was started.')
+      } else if (result.status === 'reconcile') {
+        toast.error('The prior outcome is uncertain. Reconcile it before starting another attempt.')
+      } else {
+        toast.error('The backend returned an unrecognized application status.')
       }
-
-      setSubmitTaskId(taskId)
-      setSubmitQueuedAt(Date.now())
-
-      qc.invalidateQueries({ queryKey: ['application', id] })
-      qc.invalidateQueries({ queryKey: ['handoffs', Number(id)] })
-
-      toast(
-        dry
-          ? 'Dry run started. JobTomatik is resolving the employer application target.'
-          : 'Application submission started.'
-      )
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, 'Submission failed'))
-    } finally {
-      setSubmitting(false)
-    }
-  }
+    },
+    onError: async (error) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['jt5-application-status', id] }),
+        qc.invalidateQueries({ queryKey: ['application', id] }),
+        qc.invalidateQueries({ queryKey: ['applications'] }),
+      ])
+      toast.error(getApiErrorMessage(error, 'Application attempt could not be started.'))
+    },
+  })
 
   if (isLoading) {
     return (
@@ -273,9 +177,7 @@ export default function ApplicationDetail() {
   const job = app.job
   const effectiveTargetUrl = app.application_target_url || job?.url
   const supervisedPlatform = detectSupervisedPlatform(effectiveTargetUrl)
-  const supervisedPlatformConfig = getSupervisedPlatformConfig(supervisedPlatform)
-  const supervisedApplication = Boolean(supervisedPlatformConfig)
-  const applicationFinished = isFinishedApplication(app)
+  const applicationFinished = isFinishedApplication(app) || jt5Attempt?.status === 'succeeded'
   const {
     activeManualReview,
     operatorFinalSubmitReview,
@@ -292,11 +194,7 @@ export default function ApplicationDetail() {
     activeManualReview,
     supervisedPlatform,
   )
-  const submissionBusy = applicationRuntimeBusy({
-    submitting,
-    taskId: submitTaskId,
-    automationState: app.automation_state,
-  })
+  const submissionBusy = applyMutation.isPending || jt5AttemptActive || app.automation_state === 'applying'
   const targetStatus = app.application_target_status || 'unresolved'
 
   return (
@@ -433,20 +331,11 @@ export default function ApplicationDetail() {
         </section>
       )}
 
-      {!applicationFinished && supervisedPlatform === 'lever' && (
-        <OperatorAssistedSubmissionPanel application={app} />
-      )}
       {!applicationFinished && operatorFinalSubmitReview && (
         <OperatorFinalSubmitHandoffPanel applicationId={Number(id)} />
       )}
       {!applicationFinished && handoffExpected && (
         <ManualHandoffPanel applicationId={Number(id)} />
-      )}
-      {!applicationFinished && supervisedPlatform !== 'lever' && (
-        <SupervisedSubmissionPanel application={app} />
-      )}
-      {!applicationFinished && supervisedPlatform === 'lever' && (
-        <SupervisedPilotDossierPanel applicationId={Number(id)} />
       )}
       <SubmissionEvidenceReviewPanel application={app} />
 
@@ -483,14 +372,29 @@ export default function ApplicationDetail() {
         <div className="card p-5 space-y-3">
           <h2 className="font-semibold text-gray-900">Actions</h2>
 
-          {(submitTaskId || (app.automation_state === 'applying' && !operatorFinalSubmitReview)) && (
+          {jt5StatusFailed && (
+            <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+              The saved attempt status could not be loaded. Refresh it before applying again.
+              <button onClick={() => refreshJT5Status()} className="mt-2 block font-semibold underline">
+                Refresh attempt status
+              </button>
+            </div>
+          )}
+
+          {(jt5AttemptActive || (app.automation_state === 'applying' && !operatorFinalSubmitReview)) && (
             <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-800">
               <Loader2 className="w-4 h-4 animate-spin mt-0.5 flex-shrink-0" />
               <span>
                 {app.automation_state === 'applying'
-                  ? 'Application automation is running. This page is following the persisted application state and will update automatically.'
-                  : 'Application task is queued. JobTomatik is waiting for the managed worker to acknowledge it.'}
+                  ? 'Application automation is running. This page is following the reserved attempt and will update automatically.'
+                  : 'Application attempt is queued. JobTomatik is waiting for the managed worker to claim it.'}
               </span>
+            </div>
+          )}
+
+          {jt5ReconciliationRequired && !applicationFinished && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+              The prior attempt needs reconciliation. JobTomatik will not start another attempt automatically.
             </div>
           )}
 
@@ -503,41 +407,14 @@ export default function ApplicationDetail() {
             {app.cover_letter ? 'Regenerate Verified Cover Letter' : 'Generate Verified Cover Letter'}
           </button>
 
-          {!applicationFinished && supervisedPlatform !== 'lever' && (
+          {!applicationFinished && !jt5ReconciliationRequired && (
             <button
-              onClick={() => handleSubmit(true)}
-              disabled={submissionBusy}
-              className="btn-secondary w-full flex items-center gap-2 justify-center text-yellow-700 border-yellow-200 hover:bg-yellow-50"
-            >
-              {submissionBusy
-                ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <AlertCircle className="w-4 h-4" />}
-              Dry Run (Preview)
-            </button>
-          )}
-
-          {!applicationFinished && supervisedApplication && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-relaxed text-slate-600">
-              <div className="flex items-center gap-2 font-semibold text-slate-800">
-                <LockKeyhole className="h-4 w-4" />
-                Direct {supervisedPlatformConfig.displayName} live submit is locked
-              </div>
-              <p className="mt-1">
-                {supervisedPlatform === 'lever'
-                  ? 'Use the operator-assisted Phase B panel above. It prepares and retains the filled application while global live-submit, the Lever automated pilot, and autopilot stay off.'
-                  : 'Use the supervised panel above. It requires exact platform and target confirmation, payload hashes, feature flags, and a one-time approval.'}
-              </p>
-            </div>
-          )}
-
-          {!applicationFinished && !supervisedApplication && (
-            <button
-              onClick={() => handleSubmit(false)}
-              disabled={submissionBusy}
+              onClick={() => applyMutation.mutate()}
+              disabled={submissionBusy || jt5StatusPending || jt5StatusFailed || !jt5Status}
               className="btn-primary w-full flex items-center gap-2 justify-center"
             >
               {submissionBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              Submit Application
+              Apply with JobTomatik
             </button>
           )}
 
