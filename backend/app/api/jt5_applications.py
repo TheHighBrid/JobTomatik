@@ -68,50 +68,6 @@ def jt5_status(
     }
 
 
-@router.post("/{application_id}/jt5/reserve")
-def reserve_application(
-    application_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Reserve only (no dispatch). Useful for tests and staged rollout."""
-    try:
-        decision, attempt = reserve_jt5_attempt(
-            db,
-            application_id=application_id,
-            authenticated_user_id=current_user.id,
-        )
-        db.commit()
-    except LookupError:
-        db.rollback()
-        raise HTTPException(status_code=404, detail="Application not found") from None
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Concurrent reservation; reload application status",
-        ) from None
-
-    if decision.decision is ApplyDecision.FORBIDDEN:
-        raise HTTPException(status_code=404, detail="Application not found")
-    if decision.decision is ApplyDecision.AUTH_REQUIRED:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    if decision.decision is not ApplyDecision.EXECUTE:
-        return {
-            "status": decision.decision.value,
-            "reason": decision.reason,
-            "application_id": application_id,
-        }
-    return {
-        "status": "reserved",
-        "application_id": application_id,
-        "attempt_reference": attempt.reference,
-        "task_id": attempt.task_id,
-        "dispatch_status": "not_dispatched",
-        "execution_contract": "jt5",
-    }
-
-
 @router.post("/{application_id}/jt5/apply")
 def apply_application(
     application_id: int,
