@@ -49,8 +49,10 @@ Live submission is the product goal. Enable it only after the evidence above is 
 
 ## Release record
 
+- Draft notes: [JT5 release notes](../RELEASE_NOTES_JT5.md)
+
 - Candidate PR: #681
-- Candidate SHA: `c2752b1e07db86df9f0caff508cb846e055be3ef` (update if the branch advances)
+- Candidate SHA: `c2752b1e07db86df9f0caff508cb846e055be3ef` (code verification SHA; documentation commits follow)
 - Exact-head CI evidence: pending at time of writing
 - OneHost validation evidence: pending
 - Owner live-enable decision: pending
