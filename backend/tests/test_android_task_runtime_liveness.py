@@ -49,7 +49,9 @@ def test_application_page_tracks_jt5_attempts_without_restoring_old_celery_task_
     assert "applyJT5Application(id)" in source
     assert "getJT5ApplicationStatus(id)" in source
     assert "['jt5-application-status', id]" in source
-    assert "['queued', 'in_progress'].includes(attempt?.status)" in source
+    assert "jt5PollingInterval(query.state.data)" in source
+    assert "submissionBusy || jt5StatusPending || jt5StatusFailed || !jt5Status" in source
+    assert "retry: false" in source
     assert "if (app?.automation_state === 'applying') return undefined" not in source
     assert "obsolete navigation-only review" in source
 

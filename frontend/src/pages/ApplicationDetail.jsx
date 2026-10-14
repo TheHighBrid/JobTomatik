@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { format, addDays } from 'date-fns'
 import { detectSupervisedPlatform } from '../supervisedPlatforms'
+import { jt5PollingInterval } from '../jt5StatusPolling'
 
 const STATUSES = ['pending', 'applied', 'interviewing', 'offer', 'rejected', 'withdrawn']
 
@@ -67,17 +68,17 @@ export default function ApplicationDetail() {
     refetchIntervalInBackground: true,
   })
 
-  const { data: jt5Status } = useQuery({
+  const {
+    data: jt5Status,
+    isPending: jt5StatusPending,
+    isError: jt5StatusFailed,
+    refetch: refreshJT5Status,
+  } = useQuery({
     queryKey: ['jt5-application-status', id],
     queryFn: () => getJT5ApplicationStatus(id),
     select: (response) => response.data,
     enabled: Boolean(app),
-    refetchInterval: (query) => {
-      const attempt = query.state.data?.latest_attempt
-      const active = ['queued', 'in_progress'].includes(attempt?.status)
-        && attempt?.dispatch_status !== 'reconciliation_required'
-      return active ? 1500 : false
-    },
+    refetchInterval: (query) => jt5PollingInterval(query.state.data),
     refetchIntervalInBackground: true,
     retry: 2,
   })
@@ -133,6 +134,7 @@ export default function ApplicationDetail() {
 
   const applyMutation = useMutation({
     mutationFn: () => applyJT5Application(id),
+    retry: false,
     onSuccess: async (response) => {
       const result = response.data || {}
       await Promise.all([
@@ -370,6 +372,15 @@ export default function ApplicationDetail() {
         <div className="card p-5 space-y-3">
           <h2 className="font-semibold text-gray-900">Actions</h2>
 
+          {jt5StatusFailed && (
+            <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+              The saved attempt status could not be loaded. Refresh it before applying again.
+              <button onClick={() => refreshJT5Status()} className="mt-2 block font-semibold underline">
+                Refresh attempt status
+              </button>
+            </div>
+          )}
+
           {(jt5AttemptActive || (app.automation_state === 'applying' && !operatorFinalSubmitReview)) && (
             <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-800">
               <Loader2 className="w-4 h-4 animate-spin mt-0.5 flex-shrink-0" />
@@ -399,7 +410,7 @@ export default function ApplicationDetail() {
           {!applicationFinished && !jt5ReconciliationRequired && (
             <button
               onClick={() => applyMutation.mutate()}
-              disabled={submissionBusy}
+              disabled={submissionBusy || jt5StatusPending || jt5StatusFailed || !jt5Status}
               className="btn-primary w-full flex items-center gap-2 justify-center"
             >
               {submissionBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
