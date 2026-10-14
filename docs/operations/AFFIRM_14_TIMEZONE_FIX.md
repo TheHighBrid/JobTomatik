@@ -22,8 +22,20 @@ Every comparison `approval.expires_at <= now` raised:
 TypeError: can't compare offset-naive and offset-aware datetimes
 ```
 
-This stopped both the backend one-click handler and the Celery worker.
-Task `33a419ca-36ed-4be0-8e7e-60ce39ef64a1` failed. Application stayed `ready_to_apply`.
+The owner reported that this stopped the backend one-click handler and the
+Celery worker. The owner also reported task
+`33a419ca-36ed-4be0-8e7e-60ce39ef64a1` failed while the application stayed
+`ready_to_apply`.
+
+## Evidence status
+
+These incident details and the later backend/worker image-drift explanation
+are owner-reported, not independently verified from a retained runtime artifact
+in this repository. No sanitized log containing the target, runtime identity,
+image IDs, and task outcome is currently linked here. The timezone mismatch is
+covered by repository tests, but those synthetic tests do not establish the
+physical incident sequence or prove the image-drift explanation. Treat those
+runtime claims as unverified until a sanitized artifact is attached.
 
 ## Required code change
 

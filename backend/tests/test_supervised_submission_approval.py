@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -144,6 +144,12 @@ def test_preflight_fails_closed_until_both_feature_flags_are_enabled(
     assert ready.json()["platform"] == "greenhouse"
     assert ready.json()["resume_hash"]
     assert ready.json()["combined_payload_hash"]
+
+
+def test_approval_clock_is_timezone_aware():
+    now = approval_service._now()
+    assert now.tzinfo is not None
+    assert now.utcoffset() == timedelta(0)
 
 
 def test_approval_is_exact_short_lived_and_contains_hashes_not_answers(
@@ -296,7 +302,7 @@ def test_consumption_is_one_time_and_expired_approvals_fail_closed(
     approval = db.query(SubmissionApproval).filter(
         SubmissionApproval.reference == second_reference
     ).one()
-    approval.expires_at = datetime.utcnow() - timedelta(seconds=1)
+    approval.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     db.commit()
     db.close()
 

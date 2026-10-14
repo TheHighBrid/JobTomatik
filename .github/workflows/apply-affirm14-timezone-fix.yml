@@ -12,8 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: grok/fix-approval-timezone-v2
+          ref: ${{ github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Require a branch dispatch
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "branch" ]; then
+            echo "This workflow must be dispatched from a branch, not a tag." >&2
+            exit 1
+          fi
       - name: Apply fix
         run: python3 scripts/apply_affirm14_timezone_fix.py
       - name: Commit if changed
@@ -26,4 +32,4 @@ jobs:
             exit 0
           fi
           git commit -m "fix(supervised): apply timezone-aware _now() for Affirm #14"
-          git push origin HEAD:grok/fix-approval-timezone-v2
+          git push origin "HEAD:${GITHUB_REF}"

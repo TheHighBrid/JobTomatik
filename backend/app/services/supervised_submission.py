@@ -41,6 +41,7 @@ from app.services.supervised_platforms import (
     SupervisedPlatformPolicy,
     get_supervised_platform_policy,
 )
+from app.services.time_utils import utc_now
 from app.services.supervised_target_identity import (
     persisted_supervised_target_metadata,
     target_identity_hash,
@@ -70,12 +71,8 @@ class SupervisedSubmissionApprovalMismatch(SupervisedSubmissionApprovalError):
 
 
 def _now() -> datetime:
-    """Return timezone-aware UTC now.
-
-    SubmissionApproval timestamp columns are DateTime(timezone=True).
-    Naive utcnow() caused TypeError on Affirm #14.
-    """
-    return datetime.now(timezone.utc)
+    """Return the shared timezone-aware UTC clock for approval timestamps."""
+    return utc_now()
 
 
 def _as_utc(value: datetime) -> datetime:
