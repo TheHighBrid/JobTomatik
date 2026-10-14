@@ -158,20 +158,18 @@ def test_claim_is_single_owner(db_session):
     assert attempt.status == SubmissionAttemptStatus.in_progress.value
 
 
-def test_api_reserve_then_second_returns_in_progress(auth_client, db_session):
+def test_public_reserve_route_cannot_create_undispatched_attempt(auth_client, db_session):
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
     db_session.commit()
 
-    first = auth_client.post(f"/api/applications/{application.id}/jt5/reserve")
-    second = auth_client.post(f"/api/applications/{application.id}/jt5/reserve")
+    response = auth_client.post(f"/api/applications/{application.id}/jt5/reserve")
 
-    assert first.status_code == 200
-    assert first.json()["status"] == "reserved"
-    assert first.json()["execution_contract"] == "jt5"
-    assert second.status_code == 200
-    assert second.json()["status"] == "in_progress"
-    assert db_session.query(SubmissionAttempt).count() == 1
+    assert response.status_code == 404
+    assert db_session.query(SubmissionAttempt).filter_by(
+        application_id=application.id
+    ).count() == 0
+
 
 
 def test_api_apply_dispatches_without_approval(auth_client, db_session):
