@@ -61,54 +61,7 @@ def jt5_status(
         "application_id": application_id,
         "automation_state": application.automation_state,
         "status": application.status.value if hasattr(application.status, "value") else application.status,
-        "applied_at": application.applied_at.isoformat() if application.applied_at else None,
         "latest_attempt": attempt_payload,
-        "execution_contract": "jt5",
-        "automatic_retry_allowed": False,
-    }
-
-
-@router.post("/{application_id}/jt5/reserve")
-def reserve_application(
-    application_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Reserve only (no dispatch). Useful for tests and staged rollout."""
-    try:
-        decision, attempt = reserve_jt5_attempt(
-            db,
-            application_id=application_id,
-            authenticated_user_id=current_user.id,
-        )
-        db.commit()
-    except LookupError:
-        db.rollback()
-        raise HTTPException(status_code=404, detail="Application not found") from None
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Concurrent reservation; reload application status",
-        ) from None
-
-    if decision.decision is ApplyDecision.FORBIDDEN:
-        raise HTTPException(status_code=404, detail="Application not found")
-    if decision.decision is ApplyDecision.AUTH_REQUIRED:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    if decision.decision is not ApplyDecision.EXECUTE:
-        return {
-            "status": decision.decision.value,
-            "reason": decision.reason,
-            "application_id": application_id,
-        }
-    return {
-        "status": "reserved",
-        "application_id": application_id,
-        "attempt_reference": attempt.reference,
-        "task_id": attempt.task_id,
-        "dispatch_status": "not_dispatched",
-        "execution_contract": "jt5",
     }
 
 
@@ -126,13 +79,10 @@ def apply_application(
             authenticated_user_id=current_user.id,
         )
         if decision.decision is ApplyDecision.FORBIDDEN:
-            db.rollback()
             raise HTTPException(status_code=404, detail="Application not found")
         if decision.decision is ApplyDecision.AUTH_REQUIRED:
-            db.rollback()
             raise HTTPException(status_code=401, detail="Authentication required")
         if decision.decision is not ApplyDecision.EXECUTE:
-            db.commit()
             return {
                 "status": decision.decision.value,
                 "reason": decision.reason,
@@ -165,7 +115,7 @@ def apply_application(
         )
         if reserved is not None:
             # Preserve the immutable reservation task identity. A worker may
-            # already have claimed this row before broker acknowledgement.
+            # already have claimed the attempt before broker ack returns.
             if reserved.status == "queued":
                 reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "published", "published_at": datetime.utcnow().isoformat(), "broker_task_id": task_id}
             else:
@@ -173,8 +123,6 @@ def apply_application(
             db.commit()
     except Exception as exc:
         db.rollback()
-        # Broker publication may have succeeded before the client observed an error.
-        # Never auto-republish a potentially delivered final-submit task.
         try:
             reserved = db.query(SubmissionAttempt).filter(SubmissionAttempt.reference == attempt_reference).with_for_update().first()
             if reserved is not None:
@@ -189,8 +137,7 @@ def apply_application(
             status_code=503,
             detail=(
                 "Attempt was reserved but queue publication failed. "
-                "Do not re-apply until the attempt is reconciled. "
-                f"{type(exc).__name__}"
+                "Check status; do not retry automatically."
             ),
         ) from exc
 
