@@ -789,3 +789,26 @@ def test_worker_executes_lever_with_the_reserved_verified_identity(monkeypatch, 
     assert calls[0][1]["dry_run"] is False
     assert calls[0][1]["supervised_target"]["execution_contract"] == "jt5"
     assert calls[0][1]["supervised_target"]["identity_hash"] == "a" * 64
+
+
+@pytest.mark.parametrize("attempt_status", ["succeeded", "uncertain"])
+@pytest.mark.parametrize("action", ["apply", "reserve"])
+def test_jt5_hides_non_owned_terminal_attempt(
+    auth_client, db_session, attempt_status, action
+):
+    owner = _user(db_session, email="jt5-terminal-other-owner@example.com")
+    application = _application(db_session, owner, _job(db_session))
+    _, attempt = reserve_jt5_attempt(
+        db_session,
+        application_id=application.id,
+        authenticated_user_id=owner.id,
+    )
+    attempt.status = attempt_status
+    db_session.commit()
+
+    response = auth_client.post(f"/api/applications/{application.id}/jt5/{action}")
+
+    assert response.status_code == 404
+    assert db_session.query(SubmissionAttempt).count() == 1
+    db_session.refresh(attempt)
+    assert attempt.status == attempt_status
