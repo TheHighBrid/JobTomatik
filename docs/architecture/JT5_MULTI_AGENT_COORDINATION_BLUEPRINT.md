@@ -1,5 +1,12 @@
 # JobTomatik Multi-Agent Coordination Blueprint
 
+
+> **Current status — 2026-10-14**
+>
+> This block supersedes the dated phase queue and branch snapshot below. JT5 is integrated on #681 at `c2752b1e07db86df9f0caff508cb846e055be3ef`, including owner Apply UI, bound target execution, and removal of the reserve-only route. Authentication, owner isolation, atomic duplicate prevention, target identity, and uncertain-outcome handling remain required. Focused JT5 tests and short exact-head checks passed. Full backend suites were still running at this update; therefore the evidence gate is not yet complete and #681 remains draft. The last full run found a status-response contract regression; the fix restored `applied_at`, `execution_contract`, and `automatic_retry_allowed`.
+>
+> **Next steps:** finish all full-backend exact-head runs and address any failures; verify four-gate and Greenhouse/Lever evidence on that same head; run OneHost cutover validation; review [JT5 production cutover checklist](../operations/JT5_PRODUCTION_CUTOVER_CHECKLIST.md) and release notes before considering main landing. The owner retains control of production live-submit enablement. Never represent a draft or unverified branch as production-ready.
+
 **Status:** Active (objectives corrected 2026-10-13)  
 **Owner (primary engine):** Grok  
 **Date:** 2026-10-13  
