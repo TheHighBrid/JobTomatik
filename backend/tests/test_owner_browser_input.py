@@ -59,7 +59,7 @@ async def test_native_input_rejects_headless_or_reused_pid(monkeypatch):
 async def test_native_input_refuses_mismatched_window_geometry(monkeypatch):
     monkeypatch.setattr(owner, "require_owner_window", AsyncMock(return_value="123"))
     monkeypatch.setattr(owner, "_xdotool", AsyncMock(return_value="X=0\nY=0\nWIDTH=800\nHEIGHT=700"))
-    page = SimpleNamespace(evaluate=AsyncMock(return_value={"x": 0, "y": 0, "width": 1280, "height": 980, "viewportWidth": 1280, "viewportHeight": 900, "scale": 1}))
+    page = SimpleNamespace(bring_to_front=AsyncMock(), evaluate=AsyncMock(return_value={"x": 0, "y": 0, "width": 1280, "height": 980, "viewportWidth": 1280, "viewportHeight": 900, "scale": 1}))
     with pytest.raises(owner.OwnerBrowserInputUnavailable, match="geometry changed"):
         await owner.click_owner_viewport(page, object(), x=10, y=20)
     assert owner._xdotool.await_count == 1

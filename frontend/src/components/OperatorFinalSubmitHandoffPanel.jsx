@@ -85,7 +85,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     refetchInterval: (query) => query.state.error ? false : 4000,
   })
   const capabilities = capabilitiesQuery.data
-  const browserReady = interactive && !capabilitiesQuery.isError && capabilities?.browser_connected && !frameError
+  const browserReady = interactive && Boolean(frameUrl) && !capabilitiesQuery.isError && capabilities?.browser_connected && !frameError
 
   const approvalsQuery = useQuery({
     queryKey: ['supervised-approvals', applicationId],

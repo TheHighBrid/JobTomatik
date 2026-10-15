@@ -61,6 +61,7 @@ async def require_owner_window(session) -> str:
 async def click_owner_viewport(page, session, *, x: float, y: float) -> None:
     """Translate one owner pointer event from screenshot CSS pixels into X11."""
     window_id = await require_owner_window(session)
+    await page.bring_to_front()
     geometry = await page.evaluate("""() => ({
       x: window.screenX, y: window.screenY, width: window.outerWidth,
       height: window.outerHeight, viewportWidth: window.innerWidth,

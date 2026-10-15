@@ -57,6 +57,12 @@ dc up -d --wait --wait-timeout 180
 for phase in before after; do
     dc exec -T -e JT5_ISOLATED_SMOKE=1 backend python -m scripts.smoke_onehost_operational api "$phase" | tee "$evidence/api-$phase.json"
     dc exec -T -e JT5_ISOLATED_SMOKE=1 celery_worker python -m scripts.smoke_onehost_operational browser "$phase" | tee "$evidence/browser-$phase.json"
+    # Mandatory native-owner integration, including after the complete restart.
+    # All fixture URLs are intercepted; pytest uses its own synthetic test DB.
+    dc exec -T -e APP_ENV=test -e REQUIRE_OWNER_DISPLAY_TESTS=1 \
+        -e JT5_OWNER_EVIDENCE_DIR="/tmp/owner-handoff-$phase" \
+        backend python -m pytest -q tests/test_owner_handoff_runtime.py
+    dc cp "backend:/tmp/owner-handoff-$phase" "$evidence/owner-handoff-$phase"
     dc exec -T backend python -c '
 from app.celery_app import celery_app
 stats = celery_app.control.inspect(timeout=10).stats()

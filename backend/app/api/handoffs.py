@@ -19,6 +19,7 @@ from app.services.operator_assisted_final_action import finalize_operator_final_
 from app.tasks.applications import _record_result_evidence
 from app.tasks.handoffs import resume_handoff_session_task
 from app.services.owner_browser_input import owner_handoff_capabilities
+from app.services.handoff_session import handoff_utc
 
 router = APIRouter(prefix="/handoffs", tags=["handoffs"])
 
@@ -124,6 +125,8 @@ async def get_handoff_session(public_id: str, current_user: User = Depends(get_c
 @router.post("/{public_id}/bootstrap", response_model=HandoffIssuedOut)
 async def bootstrap_handoff(public_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = _get_owned_session(db, public_id, current_user.id, for_update=True)
+    if handoff_utc(session.expires_at) <= _utcnow():
+        raise HTTPException(status_code=410, detail="Handoff session has expired.")
     if session.status != HandoffSessionStatus.awaiting_user.value:
         raise HTTPException(status_code=409, detail="Handoff session is no longer awaiting bootstrap")
     if session.challenge_type == HandoffChallengeType.final_submit.value:
