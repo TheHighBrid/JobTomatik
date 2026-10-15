@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { handoffExpired, handoffPointer, handoffReadErrorMessage, retryableHandoffRead } from '../src/utils/handoffViewport.js'
+import { handoffExpired, handoffPointer, handoffReadErrorMessage, retryableHandoffRead, retryHandoffRead } from '../src/utils/handoffViewport.js'
 
 test('only transient read failures recover automatically; owner actions remain separate', () => {
   for (const error of [{ request: {}, code: 'ECONNABORTED' }, { response: { status: 503 } }, { response: { status: 429 } }]) {
@@ -26,4 +26,13 @@ test('aware and SQLite UTC expiry both disable interaction at the deadline', () 
   for (const value of ['2026-10-15T17:00:00', '2026-10-15T17:00:00+00:00', '2026-10-15T13:00:00-04:00']) assert.equal(handoffExpired({ expires_at: value }, now), true)
   assert.equal(handoffExpired({ expires_at: '2026-10-15T17:00:01Z' }, now), false)
   assert.equal(handoffExpired({ expires_at: 'invalid' }, now), true)
+})
+
+
+test('transient read retries stop after two while permanent errors stop immediately', () => {
+  const error = { response: { status: 503 } }
+  assert.equal(retryHandoffRead(0, error), true)
+  assert.equal(retryHandoffRead(1, error), true)
+  assert.equal(retryHandoffRead(2, error), false)
+  assert.equal(retryHandoffRead(0, { response: { status: 403 } }), false)
 })

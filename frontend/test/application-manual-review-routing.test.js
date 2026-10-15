@@ -5,6 +5,7 @@ import {
   canOpenManualReviewPage,
   duplicateOwnerApplicationId,
   routeApplicationManualReviews,
+  isFinishedApplication,
 } from '../src/applicationManualReviewRouting.js'
 
 function review(id, reason_code, created_at, blocking_url = 'https://jobs.lever.co/example/posting/apply', details = {}) {
@@ -129,4 +130,13 @@ test('persisted nested operator provenance preserves post-submit reconciliation'
     const other = { ...pending, details: { ...pending.details, questions } }
     assert.equal(routeApplicationManualReviews([other]).operatorFinalSubmitReview, null)
   }
+})
+
+
+test('manual Applied status cannot erase an unresolved submission outcome', () => {
+  assert.equal(isFinishedApplication({ status: 'applied', automation_state: 'submission_uncertain' }), false)
+  assert.equal(isFinishedApplication({ status: 'pending', automation_state: 'submission_uncertain' }), false)
+  assert.equal(isFinishedApplication({ status: 'applied', automation_state: 'confirmed' }), true)
+  assert.equal(isFinishedApplication({ status: 'pending', automation_state: 'submitted' }), true)
+  assert.equal(isFinishedApplication({ status: 'applied' }), true)
 })

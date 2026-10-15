@@ -5,6 +5,10 @@ export function retryableHandoffRead(error) {
     || status === 408 || status === 429 || status >= 500
 }
 
+export function retryHandoffRead(count, error) {
+  return count < 2 && retryableHandoffRead(error)
+}
+
 export function handoffReadErrorMessage(error, fallback) {
   if (retryableHandoffRead(error)) {
     return 'The live view was interrupted. Reconnecting automatically; no browser action or submission will be repeated.'

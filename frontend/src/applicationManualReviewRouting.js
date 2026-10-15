@@ -92,3 +92,10 @@ export function canOpenManualReviewPage(review, supervisedPlatform) {
   if (HANDOFF_REVIEW_REASONS.has(review.reason_code)) return false
   return true
 }
+
+
+export function isFinishedApplication(application) {
+  if (application?.automation_state === 'submission_uncertain') return false
+  return application?.status === 'applied'
+    || ['submitted', 'confirmed'].includes(application?.automation_state)
+}

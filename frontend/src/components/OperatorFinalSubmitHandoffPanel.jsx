@@ -29,7 +29,7 @@ import {
   authorizeOperatorFinalClick, createOperatorAssistedApproval,
   getOperatorAssistedPreflight, submitOperatorAssistedFinalAction,
 } from '../api/operatorAssisted'
-import { handoffExpired, handoffPointer, handoffReadErrorMessage, retryableHandoffRead } from '../utils/handoffViewport'
+import { handoffExpired, handoffPointer, handoffReadErrorMessage, retryableHandoffRead, retryHandoffRead } from '../utils/handoffViewport'
 
 const ACTIVE_STATUSES = new Set(['awaiting_user', 'claimed', 'ready_to_resume', 'resuming'])
 const OPERATOR_APPROVAL_SOURCE = 'authenticated_user_operator_assisted'
@@ -86,7 +86,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     queryKey: ['handoff-capabilities', session?.public_id, leaseToken],
     queryFn: async () => (await getHandoffCapabilities(session.public_id, leaseToken)).data,
     enabled: interactive,
-    retry: (count, error) => count < 2 && retryableHandoffRead(error),
+    retry: retryHandoffRead,
     refetchInterval: (query) => query.state.error && !retryableHandoffRead(query.state.error) ? false : 4000,
   })
   const capabilities = capabilitiesQuery.data

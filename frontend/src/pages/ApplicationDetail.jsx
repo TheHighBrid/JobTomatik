@@ -14,6 +14,7 @@ import {
   HANDOFF_REVIEW_REASONS,
   canOpenManualReviewPage,
   routeApplicationManualReviews,
+  isFinishedApplication,
 } from '../applicationManualReviewRouting'
 import {
   ArrowLeft, Loader2, RefreshCw, Send, Calendar,
@@ -31,11 +32,6 @@ function isLinkedInUrl(value) {
   } catch {
     return /linkedin\.com/i.test(String(value || ''))
   }
-}
-
-function isFinishedApplication(application) {
-  return application?.status === 'applied'
-    || ['submitted', 'confirmed'].includes(application?.automation_state)
 }
 
 function targetStatusLabel(status) {
@@ -177,7 +173,8 @@ export default function ApplicationDetail() {
   const job = app.job
   const effectiveTargetUrl = app.application_target_url || job?.url
   const supervisedPlatform = detectSupervisedPlatform(effectiveTargetUrl)
-  const applicationFinished = isFinishedApplication(app) || jt5Attempt?.status === 'succeeded'
+  const applicationFinished = app.automation_state !== 'submission_uncertain'
+    && (isFinishedApplication(app) || jt5Attempt?.status === 'succeeded')
   const {
     activeManualReview,
     operatorFinalSubmitReview,
