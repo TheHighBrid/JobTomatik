@@ -198,7 +198,7 @@ def _expire_or_revoke_prior_approvals(
         .all()
     )
     for approval in approvals:
-        if approval.expires_at <= now:
+        if _as_utc(approval.expires_at) <= _as_utc(now):
             approval.status = SubmissionApprovalStatus.expired.value
         else:
             approval.status = SubmissionApprovalStatus.revoked.value
