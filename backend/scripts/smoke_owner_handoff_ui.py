@@ -25,6 +25,7 @@ createRoot(document.getElementById('root')).render(React.createElement(QueryClie
 
 class SyntheticHandoffAPI:
     def __init__(self, origin):
+        """Create an isolated API fixture with no live credentials or employer requests."""
         self.origin = origin
         self.session = {
             "public_id": "owner-ui-synthetic", "application_id": 101,
