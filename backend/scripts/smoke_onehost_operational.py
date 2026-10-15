@@ -56,8 +56,13 @@ def database_probe(phase):
     assert engine.dialect.name == "postgresql"
     assert {"users", "applications", "submission_attempts"} <= set(inspect(engine).get_table_names())
     with engine.connect() as connection:
-        version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert version in ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
+        versions = set(connection.execute(text("SELECT version_num FROM alembic_version")).scalars())
+    heads = set(ScriptDirectory.from_config(Config("alembic.ini")).get_heads())
+    assert versions == heads
+    # This candidate has no Alembic revisions. Its actual schema boot path is
+    # FastAPI create_all plus additive compatibility migrations, not upgrade head.
+    columns = {column["name"] for column in inspect(engine).get_columns("applications")}
+    assert {"automation_state", "application_target_url", "submission_attempt_count"} <= columns
     with SessionLocal() as db:
         user = db.query(User).filter_by(email=EMAIL).first()
         if phase == "before":
