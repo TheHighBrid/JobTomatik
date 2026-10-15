@@ -117,7 +117,9 @@ async def owner_handoff_capabilities(session) -> dict:
 
     playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
     try:
-        browser_handoff._require_verified_session_target(await browser_handoff._verify_session_target(page, session))
+        confirmation = await browser_handoff._submission_confirmation_state(page)
+        confirmed = bool(confirmation.get("submission_confirmed"))
+        browser_handoff._require_verified_session_target(await browser_handoff._verify_session_target(page, session, allow_same_site_confirmation=confirmed))
         state = await passive_verification_state(page)
         native_ready, reason = False, None
         try:
@@ -131,7 +133,8 @@ async def owner_handoff_capabilities(session) -> dict:
             "browser_connected": True,
             "owner_pointer_enabled": native_ready,
             "manual_verification_required": needs_native,
-            "submit_available": (native_ready or not needs_native) and not reconcile,
+            "submit_available": (native_ready or not needs_native) and not reconcile and not confirmed,
+            "confirmation_visible": confirmed,
             "submit_action": "operator_native_submit" if native_ready else "operator_submit",
             "blocked_reason": "Review the retained outcome before any new submission." if reconcile else (reason if needs_native and not native_ready else None),
         }

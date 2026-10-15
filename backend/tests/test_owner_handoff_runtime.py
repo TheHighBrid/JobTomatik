@@ -25,12 +25,16 @@ PARENT = """<!doctype html><title>Synthetic owner handoff</title>
 <iframe src="https://fixture.hcaptcha.com/owner-fixture" style="width:400px;height:170px;margin:20px;border:0"></iframe>
 <button id="submit" type="button" style="display:block;margin:20px;height:50px" onclick="window.syntheticSubmits += 1">Submit Application</button>
 <div style="height:1500px">Synthetic fixture. No employer network request is permitted.</div>
-<script>window.syntheticSubmits=0; localStorage.setItem('owner-profile-proof','persistent');</script>"""
-WIDGET = """<!doctype html><button style="width:300px;height:100px" onclick="document.body.dataset.ownerClicks = Number(document.body.dataset.ownerClicks || 0) + 1">Synthetic owner pointer target, not a CAPTCHA</button>"""
+<script>window.syntheticSubmits=0; localStorage.setItem('owner-profile-proof','persistent');
+addEventListener('message', event => {if(event.data==='finish' && window.syntheticSubmits===1) {
+ document.body.innerHTML='<h1>Application submitted!</h1>'; history.replaceState(null,'',location.pathname.replace('/apply','/thanks'));
+}});</script>"""
+WIDGET = """<!doctype html><button style="width:300px;height:100px" onclick="document.body.dataset.ownerClicks = Number(document.body.dataset.ownerClicks || 0) + 1; if(document.body.dataset.ownerClicks==='2') parent.postMessage('finish','*');">Synthetic owner pointer target, not a CAPTCHA</button>"""
 
 
 @pytest.mark.asyncio
-async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_client, tmp_path, monkeypatch):
+@pytest.mark.parametrize("confirm_after_widget", [False, True])
+async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_client, tmp_path, monkeypatch, confirm_after_widget):
     _mock_metadata(monkeypatch)
     _keep_automation_off(monkeypatch)
     monkeypatch.setattr("app.database.SessionLocal", TestingSessionLocal)
@@ -110,7 +114,20 @@ async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_cli
             assert await page.evaluate("window.syntheticSubmits") == 1
             assert auth_client.post(endpoint, json=body).status_code == 409
             assert await page.evaluate("window.syntheticSubmits") == 1
-            evidence = Path(os.getenv("JT5_OWNER_EVIDENCE_DIR", str(tmp_path)))
+            if confirm_after_widget:
+                box = await page.frame_locator("iframe").locator("button").bounding_box()
+                response = auth_client.post(f"/api/handoffs/{public_id}/actions", json={**body, "action": "click", "x": box["x"] + 50, "y": box["y"] + 30})
+                assert response.status_code == 200, response.text
+                await page.wait_for_url("**/thanks")
+                assert auth_client.post(f"/api/handoffs/{public_id}/frame", json=body).status_code == 200
+                assert auth_client.post(f"/api/handoffs/{public_id}/capabilities", json=body).json()["submit_available"] is False
+                completed = auth_client.post(f"/api/handoffs/{public_id}/complete", json=body)
+                assert completed.status_code == 200, completed.text
+                assert completed.json()["status"] == "completed"
+                from app.models.application import Application
+                with TestingSessionLocal() as db:
+                    assert str(db.get(Application, app_id).status.value) == "applied"
+            evidence = Path(os.getenv("JT5_OWNER_EVIDENCE_DIR", str(tmp_path))) / ("confirmed" if confirm_after_widget else "unconfirmed")
             evidence.mkdir(parents=True, exist_ok=True)
             await page.screenshot(path=str(evidence / "owner-handoff-fixture.png"))
             await runtime.context.tracing.stop(path=str(evidence / "owner-handoff-trace.zip"))
@@ -120,9 +137,11 @@ async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_cli
             assert disconnected.status_code == 409, disconnected.text
             (evidence / "owner-handoff-outcome.json").write_text(json.dumps({
                 "synthetic_only": True, "real_employer_submission": False,
-                "native_widget_clicks": 1, "native_fixture_submits": 1,
+                "native_widget_clicks": 2 if confirm_after_widget else 1, "native_fixture_submits": 1,
                 "duplicate_submit_blocked": True, "answer_edit_blocked": True,
-                "wrong_lease_blocked": True, "stopped_browser_blocked": True,
+                "wrong_lease_blocked": True, "stopped_browser_blocked": not confirm_after_widget,
+                "stopped_or_completed_handoff_blocked": True,
+                "explicit_confirmation_recorded": confirm_after_widget,
                 "approval_reference": reference, "network_requests_intercepted": len(observed_requests),
             }, indent=2))
         finally:

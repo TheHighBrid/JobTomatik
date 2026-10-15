@@ -349,7 +349,8 @@ def install_operator_assisted_handoff_integration() -> None:
                         raise browser_handoff.BrowserHandoffError("Invalid review scroll distance.")
                     await page.mouse.wheel(float(delta_x), float(delta_y))
                 await page.wait_for_timeout(150)
-                browser_handoff._require_verified_session_target(await browser_handoff._verify_session_target(page, session))
+                confirmation = await browser_handoff._submission_confirmation_state(page)
+                browser_handoff._require_verified_session_target(await browser_handoff._verify_session_target(page, session, allow_same_site_confirmation=bool(confirmation.get("submission_confirmed"))))
                 return {"action": action, "current_url": page.url, "current_fingerprint": await browser_handoff.page_fingerprint(page), "sensitive_value_logged": False}
             except OwnerBrowserInputUnavailable as exc:
                 raise browser_handoff.BrowserHandoffError(str(exc)) from exc

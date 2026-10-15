@@ -322,7 +322,8 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       || session.status !== 'claimed'
       || !leaseToken
       || !handoffUnlocked
-      || !browserReady
+      || !interactive
+      || capabilitiesQuery.isError
     ) return undefined
 
     let cancelled = false
@@ -365,7 +366,8 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     leaseToken,
     session?.public_id,
     session?.status,
-    browserReady,
+    interactive,
+    capabilitiesQuery.isError,
   ])
 
   if (!session) return null
