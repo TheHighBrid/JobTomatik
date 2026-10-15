@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.models.handoff import HandoffSessionStatus, ManualHandoffSession
 from app.services.application_recovery import recover_interrupted_application_attempts
 from app.services.handoff_session import fail_handoff_resume
+from app.services.jt5_reconciliation import reconcile_stale_jt5_attempts
 
 
 WORKER_RESTART_HANDOFF_REASON = (
@@ -43,6 +44,18 @@ def reconcile_onehost_worker_restart(db: Session) -> Dict[str, Any]:
         )
         failed_handoffs.append(session.public_id)
 
+    # Beat is absent on OneHost. Drain JT5 recovery batches before accepting
+    # messages, including fresh claims owned by the worker that just stopped.
+    # Keep this in the caller's transaction so a later startup failure rolls back.
+    jt5_references: list[str] = []
+    while True:
+        batch = reconcile_stale_jt5_attempts(
+            db, worker_restarted=True, commit=False,
+        )
+        if not batch:
+            break
+        jt5_references.extend(batch)
+
     application_recovery = recover_interrupted_application_attempts(db)
 
     return {
@@ -51,6 +64,8 @@ def reconcile_onehost_worker_restart(db: Session) -> Dict[str, Any]:
         "resuming_handoffs_failed": len(failed_handoffs),
         "failed_handoff_public_ids": failed_handoffs,
         "application_recovery": application_recovery,
+        "jt5_attempts_reconciled": len(jt5_references),
+        "jt5_attempt_references": jt5_references,
         "automatic_live_retry_performed": False,
         "submission_authorized": False,
     }
