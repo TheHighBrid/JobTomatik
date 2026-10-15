@@ -251,7 +251,7 @@ async def capture_handoff_frame(session: ManualHandoffSession) -> bytes:
     try:
         verification = await _verify_session_target(page, session)
         _require_verified_session_target(verification)
-        return await page.screenshot(type="png", full_page=False)
+        return await page.screenshot(type="png", full_page=False, scale="css")
     finally:
         await _disconnect(playwright)
 

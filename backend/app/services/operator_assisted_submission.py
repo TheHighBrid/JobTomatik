@@ -120,6 +120,7 @@ def _active_final_submit_boundary(
         ManualHandoffSession.created_at.desc(),
         ManualHandoffSession.id.desc(),
     ).all()
+    sessions = [item for item in sessions if _as_utc(item.expires_at) > _as_utc(_now())]
     return sessions[0] if len(sessions) == 1 else None
 
 

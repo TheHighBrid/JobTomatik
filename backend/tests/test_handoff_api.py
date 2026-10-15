@@ -225,3 +225,14 @@ def test_application_handoff_listing_is_owner_scoped(auth_client, db_session):
     response = auth_client.get(f"/api/handoffs/application/{application_id}/sessions")
     assert response.status_code == 200
     assert [item["public_id"] for item in response.json()] == [public_id]
+
+
+def test_owner_recovers_lost_bootstrap_without_second_token_disclosure(auth_client, db_session):
+    public_id, _ = create_session_for_authenticated_user(db_session)
+    assert auth_client.post(f"/api/handoffs/{public_id}/bootstrap").status_code == 200
+    assert auth_client.post(f"/api/handoffs/{public_id}/bootstrap").status_code == 409
+    response = auth_client.post(f"/api/handoffs/{public_id}/recover")
+    assert response.status_code == 200
+    assert response.json()["session"]["status"] == "claimed"
+    assert response.json()["lease_token"]
+    assert "resume_token" not in response.json()

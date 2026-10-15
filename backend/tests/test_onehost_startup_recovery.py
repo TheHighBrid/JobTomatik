@@ -313,3 +313,21 @@ def test_worker_restart_preserves_user_owned_pre_resume_handoff(db_session):
     assert result["resuming_handoffs_checked"] == 0
     assert session.status == HandoffSessionStatus.claimed.value
     assert application.automation_state == ApplicationAutomationState.needs_review.value
+
+
+@pytest.mark.parametrize("status", ["awaiting_user", "claimed"])
+def test_restart_marks_dead_owner_browser_unavailable_without_replay(db_session, status):
+    user, application = _application(db_session, "dead-owner", dry_run=None, state="needs_review")
+    session = _handoff(db_session, user, application, "82", status)
+    session.challenge_type = "final_submit"
+    session.browser_provider = "local_cdp"
+    session.browser_process_id = 99999999
+    session.browser_profile_path = "/state/old-profile"
+    db_session.commit()
+    result = reconcile_onehost_worker_restart(db_session)
+    db_session.commit()
+    assert session.status == "failed"
+    assert session.public_id in result["unavailable_owner_handoffs"]
+    assert application.automation_state == "needs_review"
+    assert result["automatic_live_retry_performed"] is False
+    assert reconcile_onehost_worker_restart(db_session)["unavailable_owner_handoffs"] == []

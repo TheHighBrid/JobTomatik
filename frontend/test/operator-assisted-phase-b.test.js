@@ -98,14 +98,14 @@ test('legacy encrypted policy can be repaired only by explicit owner re-entry an
   assert.equal(operatorPanel.includes('return revalidateAnswerPolicyReview(applicationId, activePolicyReview.id)'), true)
 })
 
-test('final retained page exposes no generic browser mutation surface', () => {
+test('final retained page exposes bounded owner verification with a separate final action', () => {
   assert.equal(finalPanel.includes('submitOperatorAssistedFinalAction'), true)
-  assert.equal(finalPanel.includes('sendHandoffAction'), false)
+  assert.equal(finalPanel.includes('sendHandoffAction'), true)
   assert.equal(finalPanel.includes('cancelHandoff'), false)
-  assert.equal(finalPanel.includes("action: 'click'"), false)
+  assert.equal(finalPanel.includes("action: 'click'"), true)
   assert.equal(finalPanel.includes("action: 'type'"), false)
   assert.equal(finalPanel.includes('replace_and_submit'), false)
-  assert.equal(finalPanel.includes('onClick={handleFrameClick}'), false)
+  assert.equal(finalPanel.includes('onClick={handleFrameClick}'), true)
   assert.equal(finalPanel.includes('No typing, answer editing, navigation, arbitrary browser clicks, or automatic retry'), true)
   assert.equal(finalPanel.includes('Submit exact application once'), true)
 })

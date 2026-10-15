@@ -222,6 +222,8 @@ export const heartbeatHandoff = (publicId, leaseToken) =>
   api.post(`/handoffs/${publicId}/heartbeat`, { lease_token: leaseToken })
 export const getHandoffFrame = (publicId, leaseToken) =>
   api.post(`/handoffs/${publicId}/frame`, { lease_token: leaseToken }, { responseType: 'blob' })
+export const getHandoffCapabilities = (publicId, leaseToken) =>
+  api.post(`/handoffs/${publicId}/capabilities`, { lease_token: leaseToken })
 export const sendHandoffAction = (publicId, leaseToken, action) =>
   api.post(`/handoffs/${publicId}/actions`, { lease_token: leaseToken, ...action })
 export const completeHandoff = (publicId, leaseToken) =>

@@ -60,6 +60,11 @@ def _valid_metadata():
 
 
 def _mock_metadata(monkeypatch):
+    async def live_fixture(_session):
+        return {"browser_connected": True, "submit_available": True, "submit_action": "operator_submit"}
+
+    monkeypatch.setattr("app.api.supervised_submissions.owner_handoff_capabilities", live_fixture)
+
     async def resolved(_job):
         return _valid_metadata()
 
@@ -514,9 +519,7 @@ async def test_final_submit_handoff_rejects_generic_browser_actions():
     with pytest.raises(browser_handoff.BrowserHandoffError, match="review-only"):
         await browser_handoff.perform_handoff_action(
             session,
-            action="click",
-            x=10,
-            y=10,
+            action="reload",
         )
 
     with pytest.raises(browser_handoff.BrowserHandoffError, match="review-only"):
@@ -525,3 +528,52 @@ async def test_final_submit_handoff_rejects_generic_browser_actions():
             action="type",
             text="changed answer",
         )
+
+
+def test_dead_browser_does_not_consume_owner_approval(auth_client, tmp_path, monkeypatch):
+    app_id = _prepare_application(auth_client, tmp_path)
+    _mock_metadata(monkeypatch)
+    _keep_automation_off(monkeypatch)
+    handoff = _create_final_submit_boundary(app_id)
+    created = auth_client.post(f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals", json=_approval_payload(handoff))
+    reference = created.json()["reference"]
+
+    async def stopped(_session):
+        raise browser_handoff.BrowserHandoffUnavailable("stopped fixture browser")
+    monkeypatch.setattr("app.api.supervised_submissions.owner_handoff_capabilities", stopped)
+    response = auth_client.post(f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals/{reference}/authorize-final-click")
+    assert response.status_code == 409
+    with TestingSessionLocal() as db:
+        approval = db.query(SubmissionApproval).filter_by(reference=reference).one()
+        assert approval.status == "active"
+        assert approval.consumed_at is None
+
+
+def test_unavailable_owner_input_does_not_burn_final_action(auth_client, tmp_path, monkeypatch):
+    app_id = _prepare_application(auth_client, tmp_path)
+    _mock_metadata(monkeypatch)
+    _keep_automation_off(monkeypatch)
+    handoff = _create_final_submit_boundary(app_id)
+    reference, lease = _authorize_and_claim(auth_client, app_id, handoff)
+
+    async def unavailable(_session):
+        return {"submit_available": False, "blocked_reason": "Owner display unavailable"}
+    monkeypatch.setattr("app.api.supervised_submissions.owner_handoff_capabilities", unavailable)
+    response = auth_client.post(f"/api/supervised-submissions/applications/{app_id}/operator-assisted/handoffs/{handoff}/submit", json={"lease_token": lease})
+    assert response.status_code == 409
+    with TestingSessionLocal() as db:
+        approval = db.query(SubmissionApproval).filter_by(reference=reference).one()
+        assert not approval.approval_metadata.get("operator_submit_action_started_at")
+
+
+def test_expired_boundary_cannot_be_authorized(auth_client, tmp_path, monkeypatch):
+    app_id = _prepare_application(auth_client, tmp_path)
+    _mock_metadata(monkeypatch)
+    _keep_automation_off(monkeypatch)
+    handoff = _create_final_submit_boundary(app_id)
+    with TestingSessionLocal() as db:
+        session = db.query(ManualHandoffSession).filter_by(public_id=handoff).one()
+        session.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.commit()
+    response = auth_client.post(f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals", json=_approval_payload(handoff))
+    assert response.status_code == 409
