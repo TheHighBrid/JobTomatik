@@ -33,6 +33,7 @@ WIDGET = """<!doctype html><button style="width:300px;height:100px" onclick="doc
 async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_client, tmp_path, monkeypatch):
     _mock_metadata(monkeypatch)
     _keep_automation_off(monkeypatch)
+    monkeypatch.setattr("app.database.SessionLocal", TestingSessionLocal)
     monkeypatch.setattr("app.api.supervised_submissions.owner_handoff_capabilities", owner_browser_input.owner_handoff_capabilities)
     app_id = _prepare_application(auth_client, tmp_path)
     runtime = None
@@ -88,7 +89,7 @@ async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_cli
             assert await page.frame_locator("iframe").locator("body").get_attribute("data-owner-clicks") == "1"
             answer = await page.locator("#answer").bounding_box()
             blocked = auth_client.post(f"/api/handoffs/{public_id}/actions", json={**body, "action": "click", "x": answer["x"] + 10, "y": answer["y"] + 10})
-            assert blocked.status_code == 400, blocked.text
+            assert blocked.status_code == 422, blocked.text
             assert await page.locator("#answer").input_value() == "Verified synthetic candidate"
             assert await page.evaluate("window.syntheticSubmits") == 0
 

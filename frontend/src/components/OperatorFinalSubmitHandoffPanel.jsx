@@ -25,7 +25,10 @@ import {
   recoverHandoffLease,
   sendHandoffAction,
 } from '../api/client'
-import { submitOperatorAssistedFinalAction } from '../api/operatorAssisted'
+import {
+  authorizeOperatorFinalClick, createOperatorAssistedApproval,
+  getOperatorAssistedPreflight, submitOperatorAssistedFinalAction,
+} from '../api/operatorAssisted'
 import { handoffExpired, handoffPointer } from '../utils/handoffViewport'
 
 const ACTIVE_STATUSES = new Set(['awaiting_user', 'claimed', 'ready_to_resume', 'resuming'])
@@ -59,6 +62,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [submitActionSent, setSubmitActionSent] = useState(false)
   const [frameError, setFrameError] = useState('')
+  const [ownerConsent, setOwnerConsent] = useState(false)
   const frameInFlight = useRef(false)
   const activeSession = useRef(null)
   const passiveConfirmationCheck = useRef(false)
@@ -107,6 +111,13 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     boundApproval?.approval_metadata?.operator_submit_action_started_at,
   )
   const finalActionStarted = submitActionSent || serverFinalActionStarted
+  const preflightQuery = useQuery({
+    queryKey: ['operator-assisted-preflight', applicationId],
+    queryFn: async () => (await getOperatorAssistedPreflight(applicationId)).data,
+    enabled: Boolean(session) && !expired && !handoffUnlocked,
+    retry: false,
+  })
+  const preflight = preflightQuery.data
 
   const invalidate = useCallback(async () => {
     await Promise.all([
@@ -133,6 +144,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     setFrameUrl('')
     setFrameError('')
     setSubmitActionSent(false)
+    setOwnerConsent(false)
   }, [session?.public_id])
 
   useEffect(() => () => {
@@ -234,6 +246,26 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       error,
       'The prior review lease is still active. Reopen this screen after it expires.',
     )),
+  })
+
+  const approvalMutation = useMutation({
+    mutationFn: async () => {
+      if (!ownerConsent || !preflight?.ready || preflight.operator_handoff_public_id !== session.public_id) throw new Error('Review and authorize this exact application first.')
+      const issued = await createOperatorAssistedApproval(applicationId, {
+        handoff_public_id: session.public_id,
+        confirm_employer: preflight.employer,
+        confirm_role: preflight.role,
+        confirm_application_url: preflight.application_url,
+        confirm_operator_final_click: true,
+      })
+      return authorizeOperatorFinalClick(applicationId, issued.data.reference)
+    },
+    onSuccess: async () => {
+      setOwnerConsent(false)
+      await invalidate()
+      openMutation.mutate()
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, 'The exact application could not be approved.')),
   })
 
   const completeMutation = useMutation({
@@ -368,9 +400,16 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
         )}
         {session.status === 'completed' && <p className="text-sm text-emerald-800">Employer confirmation verified. This handoff is complete.</p>}
         {session.status === 'awaiting_user' && !expired && !leaseToken && !handoffUnlocked && (
-          <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-            <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <span>Retained browser access is locked. Complete the exact owner approval above first. The one-time handoff token has not been disclosed.</span>
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            <p className="font-semibold">Authorize this exact application</p>
+            {preflight && <div><p>{preflight.employer}</p><p className="font-semibold">{preflight.role}</p><p className="break-all text-xs">{preflight.application_url}</p></div>}
+            <p>Approval opens the retained form for review. The separate Submit button sends the application once.</p>
+            {preflightQuery.isError && <p role="alert">{getApiErrorMessage(preflightQuery.error, 'Could not verify this application.')}</p>}
+            {preflight?.blockers?.length > 0 && <p role="alert">{preflight.blockers.join(', ')}</p>}
+            <label className="flex items-start gap-2"><input type="checkbox" checked={ownerConsent} onChange={(event) => setOwnerConsent(event.target.checked)} disabled={!preflight?.ready || approvalMutation.isPending} /><span>I authorize one submission for this exact employer and role.</span></label>
+            <button type="button" className="btn-primary" disabled={!ownerConsent || !preflight?.ready || approvalMutation.isPending || openMutation.isPending} onClick={() => approvalMutation.mutate()}>
+              {approvalMutation.isPending || openMutation.isPending ? 'Opening approved application…' : 'Approve and open application'}
+            </button>
           </div>
         )}
 
