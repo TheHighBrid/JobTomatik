@@ -119,7 +119,8 @@ async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_cli
                 response = auth_client.post(f"/api/handoffs/{public_id}/actions", json={**body, "action": "click", "x": box["x"] + 50, "y": box["y"] + 30})
                 assert response.status_code == 200, response.text
                 await page.wait_for_url("**/thanks")
-                assert auth_client.post(f"/api/handoffs/{public_id}/frame", json=body).status_code == 200
+                frame = auth_client.post(f"/api/handoffs/{public_id}/frame", json=body)
+                assert frame.status_code == 200, frame.text
                 assert auth_client.post(f"/api/handoffs/{public_id}/capabilities", json=body).json()["submit_available"] is False
                 completed = auth_client.post(f"/api/handoffs/{public_id}/complete", json=body)
                 assert completed.status_code == 200, completed.text
