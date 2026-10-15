@@ -1,12 +1,16 @@
 import asyncio
 
 from app.models.application import (
+    Application,
     ApplicationAutomationState,
     ApplicationStatus,
     ManualReviewReason,
 )
+from app.models.job import Job
+from app.models.user import User
 from app.services import operator_assisted_auto_submit as auto_submit
 from app.tasks import operator_assisted as operator_task
+from tests.conftest import TestingSessionLocal
 
 
 def _final_boundary(handoff_public_id="handoff-final"):
@@ -98,3 +102,46 @@ def test_unconfirmed_click_moves_to_no_retry_review_state(monkeypatch):
 
 def test_submit_executor_is_async_contract():
     assert asyncio.iscoroutinefunction(auto_submit.submit_retained_lever_final_action)
+
+
+def test_prepare_task_returns_final_handoff_without_submitting(db_session, monkeypatch):
+    user = User(email="prepare-only@example.invalid", hashed_password="unused")
+    job = Job(title="Collections specialist", company="Fixture", url="https://jobs.lever.co/fixture/role")
+    db_session.add_all([user, job])
+    db_session.flush()
+    application = Application(
+        user_id=user.id, job_id=job.id, status=ApplicationStatus.pending,
+        automation_state=ApplicationAutomationState.ready_to_apply.value,
+    )
+    db_session.add(application)
+    db_session.commit()
+    application_id = application.id
+    calls = []
+
+    async def target_metadata(_job):
+        return {"verified": True}
+
+    def prepare(application_id, *, dry_run):
+        calls.append((application_id, dry_run))
+        return _final_boundary()
+
+    def forbidden_submit(*_args, **_kwargs):
+        raise AssertionError("Prepare must return to the owner before any final-action executor")
+
+    monkeypatch.setattr(operator_task, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(operator_task, "resolve_supervised_target_metadata", target_metadata)
+    monkeypatch.setattr(operator_task, "persist_supervised_target_metadata", lambda *_args: None)
+    monkeypatch.setattr(operator_task, "build_operator_assisted_preflight", lambda *_args, **_kwargs: {"ready": True})
+    monkeypatch.setattr(operator_task.submit_application_task, "run", prepare)
+    monkeypatch.setattr(operator_task, "_finish_retained_lever_boundary", forbidden_submit)
+    monkeypatch.setattr(auto_submit, "submit_retained_lever_final_action", forbidden_submit)
+
+    result = operator_task.prepare_operator_assisted_application_task.run(application_id)
+
+    assert calls == [(application_id, True)]
+    assert result["handoff_public_id"] == "handoff-final"
+    assert result["requires_manual_review"] is True
+    assert result["automated_submission_authorized"] is False
+    assert result["final_submit_clicked_by_jobtomatik"] is False
+    db_session.expire_all()
+    assert db_session.get(Application, application_id).status == ApplicationStatus.pending
