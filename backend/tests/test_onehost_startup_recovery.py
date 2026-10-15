@@ -144,6 +144,21 @@ def test_worker_restart_failure_rolls_back_jt5_and_handoff_recovery(db_session, 
     assert handoff.status == HandoffSessionStatus.resuming.value
 
 
+@pytest.mark.parametrize("state", ["needs_review", "withdrawn"])
+def test_worker_restart_preserves_jt5_review_or_withdrawal(db_session, state):
+    application, attempt = _jt5_attempt(db_session, "other-state", stale=True)
+    application.automation_state = state
+    db_session.commit()
+
+    reconcile_onehost_worker_restart(db_session)
+    db_session.commit()
+    db_session.refresh(application)
+    db_session.refresh(attempt)
+
+    assert attempt.status == "uncertain"
+    assert application.automation_state == state
+
+
 def _application(db, suffix: str, *, dry_run: bool | None, state: str):
     user = User(
         email=f"onehost-restart-{suffix}@example.test",

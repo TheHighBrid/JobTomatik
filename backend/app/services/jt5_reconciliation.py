@@ -11,7 +11,11 @@ from sqlalchemy import func
 
 from app.models.application import Application, ApplicationAutomationState
 from app.models.submission_integrity import SubmissionAttempt, SubmissionAttemptStatus
-from app.services.application_state import transition_application_state
+from app.services.application_state import (
+    application_state_transition_manifest,
+    normalize_state,
+    transition_application_state,
+)
 
 _RECOVERABLE_STATUSES = (
     SubmissionAttemptStatus.queued.value,
@@ -88,18 +92,26 @@ def _mark_uncertain(db, attempt, now, reason):
         .with_for_update()
         .first()
     )
-    if application is not None and str(
-        getattr(application.automation_state, "value", application.automation_state)
-    ) not in ("confirmed", "submitted"):
-        event = (
-            "jt5_worker_restart_requires_reconciliation"
-            if reason == "worker_restarted_in_progress"
-            else "jt5_stale_attempt_requires_reconciliation"
-        )
-        transition_application_state(
-            db, application, ApplicationAutomationState.submission_uncertain,
-            event, {"attempt_reference": attempt.reference},
-        )
+    if application is None:
+        return
+    state = normalize_state(application.automation_state)
+    if state in ("confirmed", "submitted"):
+        return
+    target_state = ApplicationAutomationState.submission_uncertain.value
+    allowed = application_state_transition_manifest()["allowed_transitions"].get(state, [])
+    # Reconcile the attempt without overwriting a review, withdrawal, or other
+    # state for which the canonical lifecycle does not allow this transition.
+    if state != target_state and target_state not in allowed:
+        return
+    event = (
+        "jt5_worker_restart_requires_reconciliation"
+        if reason == "worker_restarted_in_progress"
+        else "jt5_stale_attempt_requires_reconciliation"
+    )
+    transition_application_state(
+        db, application, ApplicationAutomationState.submission_uncertain,
+        event, {"attempt_reference": attempt.reference},
+    )
 
 
 def reconcile_stale_jt5_attempts(
