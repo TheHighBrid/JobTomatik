@@ -8,7 +8,7 @@ handoff that the authenticated owner will inspect and operate directly.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Mapping, Optional
 
 from sqlalchemy.orm import Session
@@ -66,7 +66,14 @@ class OperatorAssistedApprovalMismatch(OperatorAssistedSubmissionError):
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Normalize DB timestamps from both PostgreSQL and SQLite to aware UTC."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _operator_execution_blockers(preflight: Mapping[str, Any]) -> set[str]:
@@ -429,7 +436,7 @@ def validate_operator_assisted_approval(
         raise OperatorAssistedSubmissionError(
             f"Submission approval is {approval.status}, not active"
         )
-    if approval.expires_at <= now:
+    if _as_utc(approval.expires_at) <= _as_utc(now):
         approval.status = SubmissionApprovalStatus.expired.value
         raise OperatorAssistedApprovalExpired("Submission approval has expired")
 

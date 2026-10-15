@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -25,6 +26,16 @@ from tests.conftest import TestingSessionLocal
 
 POSTING_ID = "12345678-1234-1234-1234-123456789abc"
 LEVER_URL = f"https://jobs.lever.co/safeco/{POSTING_ID}/apply"
+
+
+def test_operator_approval_expiry_normalizes_postgres_and_sqlite_timestamps():
+    cutoff = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+    postgres_timestamp = cutoff + timedelta(minutes=1)
+    sqlite_timestamp = postgres_timestamp.replace(tzinfo=None)
+
+    assert operator_service._as_utc(postgres_timestamp) == postgres_timestamp
+    assert operator_service._as_utc(sqlite_timestamp) == postgres_timestamp
+    assert operator_service._as_utc(sqlite_timestamp) > operator_service._as_utc(cutoff)
 
 
 def _valid_metadata():
