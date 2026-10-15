@@ -1,13 +1,17 @@
 """Start the private owner display before API/worker browser operations."""
 import os
-import subprocess
+# fixed local display tools; no shell or owner-controlled executable.
+import subprocess  # nosec B404
 import time
 from pathlib import Path
 
 
 def display_ready():
     try:
-        return subprocess.run(["xdotool", "getdisplaygeometry"], capture_output=True, timeout=2).returncode == 0
+        # literal executable and arguments, no shell.
+        return subprocess.run(  # nosec B603
+            ["/usr/bin/xdotool", "getdisplaygeometry"], capture_output=True, timeout=2,
+        ).returncode == 0
     except subprocess.TimeoutExpired:
         return False
 
@@ -20,7 +24,14 @@ def is_display_process(pid):
         return False
 
 
-def remove_stale_display_files(lock=Path("/tmp/.X99-lock"), socket=Path("/tmp/.X11-unix/X99")):
+# X11 requires these exact protocol paths. Callers check the recorded server PID before unlinking.
+# X11 protocol location, not temporary data storage.
+DISPLAY_LOCK = Path("/tmp/.X99-lock")  # nosec B108
+# private X11 socket protocol location.
+DISPLAY_SOCKET = Path("/tmp/.X11-unix/X99")  # nosec B108
+
+
+def remove_stale_display_files(lock=DISPLAY_LOCK, socket=DISPLAY_SOCKET):
     try:
         pid = int(lock.read_text().strip())
     except (OSError, ValueError):
@@ -41,8 +52,9 @@ def main():
     if display_ready():
         return
     remove_stale_display_files()
-    process = subprocess.Popen(
-        ["Xvfb", display, "-screen", "0", "1920x1200x24", "-nolisten", "tcp"],
+    # executable is fixed and display is validated as :99 above.
+    process = subprocess.Popen(  # nosec B603
+        ["/usr/bin/Xvfb", display, "-screen", "0", "1920x1200x24", "-nolisten", "tcp"],
         start_new_session=True,
     )
     for _ in range(50):

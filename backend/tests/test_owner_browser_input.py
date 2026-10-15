@@ -59,7 +59,48 @@ async def test_native_input_rejects_headless_or_reused_pid(monkeypatch):
 async def test_native_input_refuses_mismatched_window_geometry(monkeypatch):
     monkeypatch.setattr(owner, "require_owner_window", AsyncMock(return_value="123"))
     monkeypatch.setattr(owner, "_xdotool", AsyncMock(return_value="X=0\nY=0\nWIDTH=800\nHEIGHT=700"))
-    page = SimpleNamespace(bring_to_front=AsyncMock(), evaluate=AsyncMock(return_value={"x": 0, "y": 0, "width": 1280, "height": 980, "viewportWidth": 1280, "viewportHeight": 900, "scale": 1}))
+    page = SimpleNamespace(
+        bring_to_front=AsyncMock(), evaluate=AsyncMock(return_value={
+            "x": 0, "y": 0, "width": 1280, "height": 980,
+            "viewportWidth": 1280, "viewportHeight": 900, "scale": 1,
+        }),
+    )
     with pytest.raises(owner.OwnerBrowserInputUnavailable, match="geometry changed"):
         await owner.click_owner_viewport(page, object(), x=10, y=20)
     assert owner._xdotool.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("native,manual,reconcile,confirmed,available", [
+    (False, False, False, False, True),
+    (False, True, False, False, False),
+    (True, True, False, False, True),
+    (True, True, True, False, False),
+    (True, False, False, True, False),
+])
+async def test_capabilities_preserve_review_and_confirmation_submit_boundaries(
+    monkeypatch, native, manual, reconcile, confirmed, available,
+):
+    from app.services import browser_handoff, operator_assisted_live_pilot_hardening as hardening
+
+    page = object()
+    connection = object()
+    monkeypatch.setattr(browser_handoff, "_connect_local_cdp", AsyncMock(return_value=(connection, None, None, page)))
+    monkeypatch.setattr(browser_handoff, "_disconnect", AsyncMock())
+    monkeypatch.setattr(browser_handoff, "_submission_confirmation_state", AsyncMock(return_value={"submission_confirmed": confirmed}))
+    monkeypatch.setattr(browser_handoff, "_verify_session_target", AsyncMock(return_value={"verified": True, "blockers": []}))
+    monkeypatch.setattr(hardening, "passive_verification_state", AsyncMock(return_value={"manual_browser_required": manual}))
+    window = AsyncMock(return_value="123") if native else AsyncMock(side_effect=owner.OwnerBrowserInputUnavailable("Display stopped"))
+    monkeypatch.setattr(owner, "require_owner_window", window)
+    session = SimpleNamespace(handoff_metadata={"confirmation_reconciliation_required": reconcile})
+
+    result = await owner.owner_handoff_capabilities(session)
+
+    assert result["submit_available"] is available
+    assert result["confirmation_visible"] is confirmed
+    assert result["owner_pointer_enabled"] is native
+    if reconcile:
+        assert result["blocked_reason"] == "Review the retained outcome before any new submission."
+    elif manual and not native:
+        assert result["blocked_reason"] == "Display stopped"
+    browser_handoff._disconnect.assert_awaited_once_with(connection)

@@ -29,7 +29,100 @@ PARENT = """<!doctype html><title>Synthetic owner handoff</title>
 addEventListener('message', event => {if(event.data==='finish' && window.syntheticSubmits===1) {
  document.body.innerHTML='<h1>Application submitted!</h1>'; history.replaceState(null,'',location.pathname.replace('/apply','/thanks'));
 }});</script>"""
-WIDGET = """<!doctype html><button style="width:300px;height:100px" onclick="document.body.dataset.ownerClicks = Number(document.body.dataset.ownerClicks || 0) + 1; if(document.body.dataset.ownerClicks==='2') parent.postMessage('finish','*');">Synthetic owner pointer target, not a CAPTCHA</button>"""
+WIDGET = """<!doctype html><button style="width:300px;height:100px" onclick="
+document.body.dataset.ownerClicks = Number(document.body.dataset.ownerClicks || 0) + 1;
+if(document.body.dataset.ownerClicks==='2') parent.postMessage('finish','*');">
+Synthetic owner pointer target, not a CAPTCHA</button>"""
+
+
+class FixtureLeverAdapter:
+    name, version = "lever", "1.1.0"
+
+    async def resolve_surface(self, current):
+        return current
+
+    async def step_fingerprint(self, surface):
+        return "synthetic-fixed-step"
+
+    async def find_submit_button(self, surface):
+        return surface.locator("#submit")
+
+    async def extract_validation_errors(self, surface):
+        return []
+
+    async def detect_confirmation(self, surface, **kwargs):
+        return []
+
+
+async def fixture_adapter(_page, _url):
+    return FixtureLeverAdapter()
+
+
+async def exercise_owner_review(auth_client, app_id, public_id, page):
+    reference, lease = _authorize_and_claim(auth_client, app_id, public_id)
+    body = {"lease_token": lease}
+    caps = auth_client.post(f"/api/handoffs/{public_id}/capabilities", json=body)
+    assert caps.status_code == 200, caps.text
+    assert caps.json()["owner_pointer_enabled"] is True
+    assert caps.json()["manual_verification_required"] is True
+    assert caps.json()["submit_action"] == "operator_native_submit"
+    assert auth_client.post(f"/api/handoffs/{public_id}/frame", json=body).headers["content-type"] == "image/png"
+    assert auth_client.post(f"/api/handoffs/{public_id}/capabilities", json={"lease_token": "wrong-token" * 4}).status_code == 403
+    box = await page.frame_locator("iframe").locator("button").bounding_box()
+    click = {**body, "action": "click", "x": box["x"] + 50, "y": box["y"] + 30}
+    response = auth_client.post(f"/api/handoffs/{public_id}/actions", json=click)
+    assert response.status_code == 200, response.text
+    assert await page.frame_locator("iframe").locator("body").get_attribute("data-owner-clicks") == "1"
+    answer = await page.locator("#answer").bounding_box()
+    blocked = auth_client.post(f"/api/handoffs/{public_id}/actions", json={**body, "action": "click", "x": answer["x"] + 10, "y": answer["y"] + 10})
+    assert blocked.status_code == 422, blocked.text
+    assert await page.locator("#answer").input_value() == "Verified synthetic candidate"
+    assert await page.evaluate("window.syntheticSubmits") == 0
+
+    return reference, body
+
+
+async def exercise_confirmation(auth_client, app_id, public_id, page, body):
+    box = await page.frame_locator("iframe").locator("button").bounding_box()
+    response = auth_client.post(f"/api/handoffs/{public_id}/actions", json={**body, "action": "click", "x": box["x"] + 50, "y": box["y"] + 30})
+    assert response.status_code == 200, response.text
+    await page.wait_for_url("**/thanks")
+    frame = auth_client.post(f"/api/handoffs/{public_id}/frame", json=body)
+    assert frame.status_code == 200, frame.text
+    assert auth_client.post(f"/api/handoffs/{public_id}/capabilities", json=body).json()["submit_available"] is False
+    completed = auth_client.post(f"/api/handoffs/{public_id}/complete", json=body)
+    assert completed.status_code == 200, completed.text
+    assert completed.json()["status"] == "completed"
+    from app.models.application import Application
+    with TestingSessionLocal() as db:
+        assert str(db.get(Application, app_id).status.value) == "applied"
+
+
+async def bind_retained_runtime(app_id, runtime):
+    page = runtime.page
+    public_id = _create_final_submit_boundary(app_id)
+    with TestingSessionLocal() as db:
+        session = db.query(ManualHandoffSession).filter_by(public_id=public_id).one()
+        session.browser_process_id = runtime.process.pid
+        session.browser_profile_path = runtime.browser_profile_path
+        session.browser_node_id = runtime.browser_node_id
+        session.encrypted_browser_endpoint = encrypt_handoff_secret(runtime.cdp_endpoint)
+        session.handoff_metadata = {**session.handoff_metadata, "controlled_page_target_id": await controlled_page_target_id(page)}
+        db.commit()
+
+    return public_id
+
+
+def write_outcome(evidence, confirm_after_widget, reference, observed_requests):
+    (evidence / "owner-handoff-outcome.json").write_text(json.dumps({
+        "synthetic_only": True, "real_employer_submission": False,
+        "native_widget_clicks": 2 if confirm_after_widget else 1, "native_fixture_submits": 1,
+        "duplicate_submit_blocked": True, "answer_edit_blocked": True,
+        "wrong_lease_blocked": True, "stopped_browser_blocked": not confirm_after_widget,
+        "stopped_or_completed_handoff_blocked": True,
+        "explicit_confirmation_recorded": confirm_after_widget,
+        "approval_reference": reference, "network_requests_intercepted": len(observed_requests),
+    }, indent=2))
 
 
 @pytest.mark.asyncio
@@ -67,45 +160,8 @@ async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_cli
             await page.goto(LEVER_URL)
             await page.frame_locator("iframe").locator("button").wait_for()
             await runtime.context.tracing.start(screenshots=True, snapshots=True)
-            public_id = _create_final_submit_boundary(app_id)
-            with TestingSessionLocal() as db:
-                session = db.query(ManualHandoffSession).filter_by(public_id=public_id).one()
-                session.browser_process_id = runtime.process.pid
-                session.browser_profile_path = runtime.browser_profile_path
-                session.browser_node_id = runtime.browser_node_id
-                session.encrypted_browser_endpoint = encrypt_handoff_secret(runtime.cdp_endpoint)
-                session.handoff_metadata = {**session.handoff_metadata, "controlled_page_target_id": await controlled_page_target_id(page)}
-                db.commit()
-
-            reference, lease = _authorize_and_claim(auth_client, app_id, public_id)
-            body = {"lease_token": lease}
-            caps = auth_client.post(f"/api/handoffs/{public_id}/capabilities", json=body)
-            assert caps.status_code == 200, caps.text
-            assert caps.json()["owner_pointer_enabled"] is True
-            assert caps.json()["manual_verification_required"] is True
-            assert caps.json()["submit_action"] == "operator_native_submit"
-            assert auth_client.post(f"/api/handoffs/{public_id}/frame", json=body).headers["content-type"] == "image/png"
-            assert auth_client.post(f"/api/handoffs/{public_id}/capabilities", json={"lease_token": "wrong-token" * 4}).status_code == 403
-            box = await page.frame_locator("iframe").locator("button").bounding_box()
-            click = {**body, "action": "click", "x": box["x"] + 50, "y": box["y"] + 30}
-            response = auth_client.post(f"/api/handoffs/{public_id}/actions", json=click)
-            assert response.status_code == 200, response.text
-            assert await page.frame_locator("iframe").locator("body").get_attribute("data-owner-clicks") == "1"
-            answer = await page.locator("#answer").bounding_box()
-            blocked = auth_client.post(f"/api/handoffs/{public_id}/actions", json={**body, "action": "click", "x": answer["x"] + 10, "y": answer["y"] + 10})
-            assert blocked.status_code == 422, blocked.text
-            assert await page.locator("#answer").input_value() == "Verified synthetic candidate"
-            assert await page.evaluate("window.syntheticSubmits") == 0
-
-            class FixtureLeverAdapter:
-                name, version = "lever", "1.1.0"
-                async def resolve_surface(self, current): return current
-                async def step_fingerprint(self, surface): return "synthetic-fixed-step"
-                async def find_submit_button(self, surface): return surface.locator("#submit")
-                async def extract_validation_errors(self, surface): return []
-                async def detect_confirmation(self, surface, **kwargs): return []
-
-            async def fixture_adapter(_page, _url): return FixtureLeverAdapter()
+            public_id = await bind_retained_runtime(app_id, runtime)
+            reference, body = await exercise_owner_review(auth_client, app_id, public_id, page)
             monkeypatch.setattr(browser_handoff, "detect_ats_adapter", fixture_adapter)
             endpoint = f"/api/supervised-submissions/applications/{app_id}/operator-assisted/handoffs/{public_id}/submit"
             first = auth_client.post(endpoint, json=body)
@@ -115,19 +171,7 @@ async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_cli
             assert auth_client.post(endpoint, json=body).status_code == 409
             assert await page.evaluate("window.syntheticSubmits") == 1
             if confirm_after_widget:
-                box = await page.frame_locator("iframe").locator("button").bounding_box()
-                response = auth_client.post(f"/api/handoffs/{public_id}/actions", json={**body, "action": "click", "x": box["x"] + 50, "y": box["y"] + 30})
-                assert response.status_code == 200, response.text
-                await page.wait_for_url("**/thanks")
-                frame = auth_client.post(f"/api/handoffs/{public_id}/frame", json=body)
-                assert frame.status_code == 200, frame.text
-                assert auth_client.post(f"/api/handoffs/{public_id}/capabilities", json=body).json()["submit_available"] is False
-                completed = auth_client.post(f"/api/handoffs/{public_id}/complete", json=body)
-                assert completed.status_code == 200, completed.text
-                assert completed.json()["status"] == "completed"
-                from app.models.application import Application
-                with TestingSessionLocal() as db:
-                    assert str(db.get(Application, app_id).status.value) == "applied"
+                await exercise_confirmation(auth_client, app_id, public_id, page, body)
             evidence = Path(os.getenv("JT5_OWNER_EVIDENCE_DIR", str(tmp_path))) / ("confirmed" if confirm_after_widget else "unconfirmed")
             evidence.mkdir(parents=True, exist_ok=True)
             await page.screenshot(path=str(evidence / "owner-handoff-fixture.png"))
@@ -136,15 +180,7 @@ async def test_owner_display_authenticated_handoff_and_once_only_submit(auth_cli
             runtime = None
             disconnected = auth_client.post(f"/api/handoffs/{public_id}/capabilities", json=body)
             assert disconnected.status_code == 409, disconnected.text
-            (evidence / "owner-handoff-outcome.json").write_text(json.dumps({
-                "synthetic_only": True, "real_employer_submission": False,
-                "native_widget_clicks": 2 if confirm_after_widget else 1, "native_fixture_submits": 1,
-                "duplicate_submit_blocked": True, "answer_edit_blocked": True,
-                "wrong_lease_blocked": True, "stopped_browser_blocked": not confirm_after_widget,
-                "stopped_or_completed_handoff_blocked": True,
-                "explicit_confirmation_recorded": confirm_after_widget,
-                "approval_reference": reference, "network_requests_intercepted": len(observed_requests),
-            }, indent=2))
+            write_outcome(evidence, confirm_after_widget, reference, observed_requests)
         finally:
             if runtime is not None:
                 runtime.terminate()

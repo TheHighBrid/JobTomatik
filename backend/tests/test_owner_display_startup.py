@@ -25,6 +25,7 @@ def test_reachable_display_is_reused_without_starting_another_server(monkeypatch
     monkeypatch.setenv("APPLICATION_BROWSER_HEADLESS", "false")
     monkeypatch.setenv("DISPLAY", ":99")
     monkeypatch.setattr(display, "display_ready", lambda: True)
-    def forbidden(*args, **kwargs): raise AssertionError("must not start a second display")
+    def forbidden(*args, **kwargs):
+        raise AssertionError("must not start a second display")
     monkeypatch.setattr(display.subprocess, "Popen", forbidden)
     display.main()

@@ -1,4 +1,5 @@
-"""Scoped retained-browser integration for operator-assisted final submission.
+"""
+Scoped retained-browser integration for operator-assisted final submission.
 
 Normal dry runs are unchanged. Only the dedicated operator-assisted preparation task
 activates this context. In that context, a successful dry run that reaches the exact
@@ -350,8 +351,15 @@ def install_operator_assisted_handoff_integration() -> None:
                     await page.mouse.wheel(float(delta_x), float(delta_y))
                 await page.wait_for_timeout(150)
                 confirmation = await browser_handoff._submission_confirmation_state(page)
-                browser_handoff._require_verified_session_target(await browser_handoff._verify_session_target(page, session, allow_same_site_confirmation=bool(confirmation.get("submission_confirmed"))))
-                return {"action": action, "current_url": page.url, "current_fingerprint": await browser_handoff.page_fingerprint(page), "sensitive_value_logged": False}
+                verified_target = await browser_handoff._verify_session_target(
+                    page, session, allow_same_site_confirmation=bool(confirmation.get("submission_confirmed")),
+                )
+                browser_handoff._require_verified_session_target(verified_target)
+                return {
+                    "action": action, "current_url": page.url,
+                    "current_fingerprint": await browser_handoff.page_fingerprint(page),
+                    "sensitive_value_logged": False,
+                }
             except OwnerBrowserInputUnavailable as exc:
                 raise browser_handoff.BrowserHandoffError(str(exc)) from exc
             finally:

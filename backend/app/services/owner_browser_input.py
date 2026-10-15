@@ -1,4 +1,5 @@
-"""Native display input relayed only from the authenticated owner handoff.
+"""
+Native display input relayed only from the authenticated owner handoff.
 
 Playwright still owns and verifies the browser. X11 supplies the owner's pointer
 events, never a CAPTCHA solver, token injection, or an automatic challenge loop.
@@ -36,10 +37,8 @@ async def _xdotool(*args: str) -> str:
     return stdout.decode().strip()
 
 
-async def require_owner_window(session) -> str:
-    """Reject headless, external, replaced and ambiguous browser processes."""
-    if os.getenv("HANDOFF_NATIVE_INPUT_ENABLED", "").lower() != "true" or not os.getenv("DISPLAY"):
-        raise OwnerBrowserInputUnavailable("An interactive owner browser is not configured.")
+def _require_owned_display_process(session) -> int:
+    """Validate the retained process before selecting its visible window."""
     pid = int(session.browser_process_id or 0)
     if session.browser_provider != "local_cdp" or pid <= 1 or not session.browser_profile_path:
         raise OwnerBrowserInputUnavailable("The retained browser is not owned by this OneHost display.")
@@ -52,6 +51,14 @@ async def require_owner_window(session) -> str:
         or any(arg.startswith("--headless") for arg in args)
     ):
         raise OwnerBrowserInputUnavailable("The retained process is headless or its profile identity changed.")
+    return pid
+
+
+async def require_owner_window(session) -> str:
+    """Reject headless, external, replaced and ambiguous browser processes."""
+    if os.getenv("HANDOFF_NATIVE_INPUT_ENABLED", "").lower() != "true" or not os.getenv("DISPLAY"):
+        raise OwnerBrowserInputUnavailable("An interactive owner browser is not configured.")
+    pid = _require_owned_display_process(session)
     windows = (await _xdotool("search", "--onlyvisible", "--pid", str(pid))).splitlines()
     if len(windows) != 1 or not windows[0].isdigit():
         raise OwnerBrowserInputUnavailable("The exact owner browser window cannot be selected safely.")
@@ -111,6 +118,22 @@ async def click_owner_submit(page, session, control) -> None:
     await click_owner_viewport(page, session, x=x, y=y)
 
 
+async def _native_display_readiness(session) -> tuple[bool, str | None]:
+    try:
+        await require_owner_window(session)
+        return True, None
+    except OwnerBrowserInputUnavailable as exc:
+        return False, str(exc)
+
+
+def _capability_blocked_reason(reconcile, needs_native, native_ready, reason):
+    if reconcile:
+        return "Review the retained outcome before any new submission."
+    if needs_native and not native_ready:
+        return reason
+    return None
+
+
 async def owner_handoff_capabilities(session) -> dict:
     from app.services import browser_handoff
     from app.services.operator_assisted_live_pilot_hardening import passive_verification_state
@@ -119,14 +142,12 @@ async def owner_handoff_capabilities(session) -> dict:
     try:
         confirmation = await browser_handoff._submission_confirmation_state(page)
         confirmed = bool(confirmation.get("submission_confirmed"))
-        browser_handoff._require_verified_session_target(await browser_handoff._verify_session_target(page, session, allow_same_site_confirmation=confirmed))
+        target = await browser_handoff._verify_session_target(
+            page, session, allow_same_site_confirmation=confirmed,
+        )
+        browser_handoff._require_verified_session_target(target)
         state = await passive_verification_state(page)
-        native_ready, reason = False, None
-        try:
-            await require_owner_window(session)
-            native_ready = True
-        except OwnerBrowserInputUnavailable as exc:
-            reason = str(exc)
+        native_ready, reason = await _native_display_readiness(session)
         needs_native = bool(state.get("manual_browser_required"))
         reconcile = bool((session.handoff_metadata or {}).get("confirmation_reconciliation_required"))
         return {
@@ -136,7 +157,7 @@ async def owner_handoff_capabilities(session) -> dict:
             "submit_available": (native_ready or not needs_native) and not reconcile and not confirmed,
             "confirmation_visible": confirmed,
             "submit_action": "operator_native_submit" if native_ready else "operator_submit",
-            "blocked_reason": "Review the retained outcome before any new submission." if reconcile else (reason if needs_native and not native_ready else None),
+            "blocked_reason": _capability_blocked_reason(reconcile, needs_native, native_ready, reason),
         }
     finally:
         await browser_handoff._disconnect(playwright)

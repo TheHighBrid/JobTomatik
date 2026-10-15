@@ -69,7 +69,10 @@ def reconcile_onehost_worker_restart(db: Session) -> Dict[str, Any]:
         if alive and not expired:
             continue
         session.status = "expired" if expired else "failed"
-        session.failure_reason = "The retained browser session expired or its process stopped. Preserve its evidence and reconcile before any new final action."
+        session.failure_reason = (
+            "The retained browser session expired or its process stopped. "
+            "Preserve its evidence and reconcile before any new final action."
+        )
         session.lease_expires_at = None
         session.lock_version = (session.lock_version or 0) + 1
         unavailable.append(session.public_id)
