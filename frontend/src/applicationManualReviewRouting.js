@@ -29,6 +29,16 @@ function normalizeReviewNavigation(review) {
   }
 }
 
+function hasOperatorFinalSubmitProvenance(details) {
+  if (details?.handoff_stage === 'operator_final_submit') return true
+  if (details?.operator_final_submit_checkpoint?.handoff_public_id === details?.handoff_public_id) return true
+  return Array.isArray(details?.questions) && details.questions.some((question) => (
+    question?.reason_code === 'operator_final_submit_required'
+    && question.details?.handoff_stage === 'operator_final_submit'
+    && question.details?.operator_final_click_required === true
+  ))
+}
+
 export function routeApplicationManualReviews(reviews = []) {
   const openManualReviews = [...(reviews || [])]
     .filter((review) => OPEN_REVIEW_STATUSES.has(review?.status))
@@ -40,8 +50,7 @@ export function routeApplicationManualReviews(reviews = []) {
       review.reason_code === 'submission_confirmation_uncertain'
       && review.details?.confirmation_reconciliation_required === true
       && Boolean(review.details?.handoff_public_id)
-      && (review.details?.handoff_stage === 'operator_final_submit'
-        || review.details?.operator_final_submit_checkpoint?.handoff_public_id === review.details.handoff_public_id)
+      && hasOperatorFinalSubmitProvenance(review.details)
     ),
   ) || null
   const activeHandoffReview = openManualReviews.find(

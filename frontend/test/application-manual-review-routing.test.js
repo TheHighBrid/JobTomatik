@@ -112,3 +112,21 @@ test('duplicate routing fails closed without a valid canonical application id', 
   assert.equal(routed.activeManualReview.blocking_url, 'https://jobs.lever.co/eqbank/posting/apply')
   assert.equal(canOpenManualReviewPage(routed.activeManualReview, 'lever'), false)
 })
+
+
+test('persisted nested operator provenance preserves post-submit reconciliation', () => {
+  const pending = review(13, 'submission_confirmation_uncertain', '2026-10-15T21:04:15Z', '', {
+    handoff_public_id: 'retained-one',
+    confirmation_reconciliation_required: true,
+    operator_final_action_outcome: 'awaiting_confirmation',
+    questions: [{ reason_code: 'operator_final_submit_required', details: {
+      handoff_stage: 'operator_final_submit', operator_final_click_required: true,
+    } }],
+  })
+  assert.equal(routeApplicationManualReviews([pending]).operatorFinalSubmitReview, pending)
+  assert.equal(routeApplicationManualReviews([pending]).handoffExpected, false)
+  for (const questions of [null, {}, [{ reason_code: 'ambiguous_question', details: { handoff_stage: 'operator_final_submit' } }]]) {
+    const other = { ...pending, details: { ...pending.details, questions } }
+    assert.equal(routeApplicationManualReviews([other]).operatorFinalSubmitReview, null)
+  }
+})

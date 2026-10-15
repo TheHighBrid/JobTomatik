@@ -409,7 +409,7 @@ export default function ApplicationDetail() {
             {app.cover_letter ? 'Regenerate Verified Cover Letter' : 'Generate Verified Cover Letter'}
           </button>
 
-          {!applicationFinished && !jt5ReconciliationRequired && (
+          {!applicationFinished && !jt5ReconciliationRequired && !operatorFinalSubmitReview && app.automation_state !== 'submission_uncertain' && (
             <button
               onClick={() => applyMutation.mutate()}
               disabled={submissionBusy || jt5StatusPending || jt5StatusFailed || !jt5Status}

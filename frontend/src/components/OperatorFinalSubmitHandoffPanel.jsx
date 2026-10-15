@@ -402,16 +402,26 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
               </span>
             </div>
             <p className="mt-1 text-sm leading-relaxed text-emerald-900/80">
-              Review the live application below. You can scroll and click verification widgets yourself. Answers remain locked; Submit is a separate, once-only action.
+              {finalActionStarted
+                ? 'Your once-only Submit request is recorded. Employer receipt must be verified before the application can be marked submitted.'
+                : 'Review the live application below. You can scroll and click verification widgets yourself. Answers remain locked; Submit is a separate, once-only action.'}
             </p>
           </div>
         </div>
       </div>
 
       <div className="space-y-4 p-5">
+        {finalActionStarted && session.status !== 'completed' && (
+          <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <p className="font-semibold">Submit requested once; employer receipt unconfirmed</p>
+            <p className="mt-1">Do not submit again. The consumed approval and attempt evidence are preserved for outcome verification.</p>
+          </div>
+        )}
         {(expired || !ACTIVE_STATUSES.has(session.status)) && session.status !== 'completed' && (
           <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-            {session.failure_reason || 'This handoff has expired or stopped. Its evidence and approval are preserved. Review the application recovery state before preparing a new session.'}
+            {finalActionStarted
+              ? 'The live review session has ended. The submission outcome remains unconfirmed; a new submission must stay blocked while the outcome is reconciled.'
+              : session.failure_reason || 'This handoff has expired or stopped. Its evidence and approval are preserved. Review the application recovery state before preparing a new session.'}
           </div>
         )}
         {session.status === 'completed' && <p className="text-sm text-emerald-800">Employer confirmation verified. This handoff is complete.</p>}

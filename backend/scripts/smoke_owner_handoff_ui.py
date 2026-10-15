@@ -139,7 +139,8 @@ async def exercise_submit_and_expiry(page, api, evidence):
     await page.screenshot(path=str(evidence / "owner-handoff-mobile-ui.png"), full_page=True)
     api.session["expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
     await page.reload()
-    await expect(page.get_by_role("alert")).to_contain_text("expired or stopped")
+    await expect(page.get_by_role("status")).to_contain_text("employer receipt unconfirmed")
+    await expect(page.get_by_role("alert")).to_contain_text("new submission must stay blocked")
     await expect(page.get_by_role("button", name="Submit exact application once")).to_have_count(0)
     assert not api.errors, api.errors
 
