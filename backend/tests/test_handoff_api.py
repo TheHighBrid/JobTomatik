@@ -1,4 +1,10 @@
 from datetime import datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi import HTTPException
+from sqlalchemy.exc import OperationalError
 
 from app.models.application import (
     Application,
@@ -13,6 +19,27 @@ from app.models.job import Job
 from app.models.user import User
 from app.services.browser_handoff import BrowserVerification
 from app.services.handoff_session import issue_handoff_session
+
+
+@pytest.mark.parametrize("code", ["55P03", "08006"])
+def test_busy_handoff_fails_without_waiting_or_masking_database_failures(code):
+    from app.api.handoffs import _get_owned_session
+
+    db = MagicMock()
+    query = db.query.return_value
+    query.filter.return_value = query
+    query.with_for_update.return_value = query
+    query.first.side_effect = OperationalError("SELECT", {}, SimpleNamespace(pgcode=code))
+    if code == "55P03":
+        with pytest.raises(HTTPException) as caught:
+            _get_owned_session(db, "synthetic-session", 1, for_update=True)
+        assert caught.value.status_code == 423
+        assert "No action was repeated" in caught.value.detail
+        db.rollback.assert_called_once()
+    else:
+        with pytest.raises(OperationalError):
+            _get_owned_session(db, "synthetic-session", 1, for_update=True)
+    query.with_for_update.assert_called_once_with(nowait=True)
 
 
 def create_session_for_authenticated_user(db):

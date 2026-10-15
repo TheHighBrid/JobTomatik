@@ -35,6 +35,8 @@ class SyntheticHandoffAPI:
         }
         self.approvals, self.actions, self.submissions, self.errors = [], [], [], []
         self.clicked = asyncio.Event()
+        self.frame_interrupted = False
+        self.capabilities_interrupted = False
         self.png = io.BytesIO()
         Image.new("RGB", (1280, 900), "#eef2f6").save(self.png, format="PNG")
 
@@ -93,7 +95,15 @@ class SyntheticHandoffAPI:
             return
         endpoint = path.rsplit("/", 1)[-1]
         if endpoint == "frame":
+            if self.actions and not self.frame_interrupted:
+                self.frame_interrupted = True
+                await route.abort()
+                return
             await route.fulfill(status=200, content_type="image/png", body=self.png.getvalue())
+            return
+        if endpoint == "capabilities" and self.actions and not self.capabilities_interrupted:
+            self.capabilities_interrupted = True
+            await route.abort()
             return
         status, result = 200, self.response(endpoint, request)
         if endpoint == "complete":
@@ -116,7 +126,10 @@ async def exercise_approval_and_pointer(page, api):
     await image.click()
     await asyncio.wait_for(api.clicked.wait(), 10)
     assert abs(api.actions[0]["x"] - 640) < 3 and abs(api.actions[0]["y"] - 450) < 3
-    await expect(submit).to_be_enabled()
+    await expect(page.get_by_role("alert")).to_contain_text("Reconnecting automatically")
+    await expect(submit).to_be_enabled(timeout=15000)
+    assert api.frame_interrupted and api.capabilities_interrupted
+    assert len(api.actions) == 1 and not api.submissions
 
 
 async def exercise_submit_and_expiry(page, api, evidence):
@@ -158,6 +171,7 @@ async def main(origin: str, evidence: Path):
             "synthetic_only": True, "mobile_viewport": "390x1000", "approval_to_claim": "passed",
             "scaled_owner_pointer": "passed", "no_implicit_submit": True, "final_action_requests": len(api.submissions),
             "expired_controls_hidden": True, "javascript_errors": api.errors,
+            "transient_frame_and_capability_recovery": api.frame_interrupted and api.capabilities_interrupted,
         }
         (evidence / "owner-handoff-ui-outcome.json").write_text(json.dumps(result, indent=2))
         print(json.dumps(result))

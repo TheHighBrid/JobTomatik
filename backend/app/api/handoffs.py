@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
@@ -34,8 +35,14 @@ def _get_owned_session(db: Session, public_id: str, user_id: int, *, include_eve
         query = query.options(joinedload(ManualHandoffSession.events))
     query = query.filter(ManualHandoffSession.public_id == public_id, ManualHandoffSession.user_id == user_id)
     if for_update:
-        query = query.with_for_update()
-    session = query.first()
+        query = query.with_for_update(nowait=True)
+    try:
+        session = query.first()
+    except OperationalError as exc:
+        if getattr(exc.orig, "pgcode", None) != "55P03":
+            raise
+        db.rollback()
+        raise HTTPException(status_code=423, detail="The retained browser is handling another request. No action was repeated.") from exc
     if not session:
         raise HTTPException(status_code=404, detail="Handoff session not found")
     return session

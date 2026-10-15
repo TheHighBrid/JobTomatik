@@ -29,7 +29,7 @@ import {
   authorizeOperatorFinalClick, createOperatorAssistedApproval,
   getOperatorAssistedPreflight, submitOperatorAssistedFinalAction,
 } from '../api/operatorAssisted'
-import { handoffExpired, handoffPointer } from '../utils/handoffViewport'
+import { handoffExpired, handoffPointer, handoffReadErrorMessage, retryableHandoffRead } from '../utils/handoffViewport'
 
 const ACTIVE_STATUSES = new Set(['awaiting_user', 'claimed', 'ready_to_resume', 'resuming'])
 const OPERATOR_APPROVAL_SOURCE = 'authenticated_user_operator_assisted'
@@ -62,6 +62,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [submitActionSent, setSubmitActionSent] = useState(false)
   const [frameError, setFrameError] = useState('')
+  const [frameReadCanRetry, setFrameReadCanRetry] = useState(true)
   const [ownerConsent, setOwnerConsent] = useState(false)
   const frameInFlight = useRef(false)
   const activeSession = useRef(null)
@@ -85,8 +86,8 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     queryKey: ['handoff-capabilities', session?.public_id, leaseToken],
     queryFn: async () => (await getHandoffCapabilities(session.public_id, leaseToken)).data,
     enabled: interactive,
-    retry: false,
-    refetchInterval: (query) => query.state.error ? false : 4000,
+    retry: (count, error) => count < 2 && retryableHandoffRead(error),
+    refetchInterval: (query) => query.state.error && !retryableHandoffRead(query.state.error) ? false : 4000,
   })
   const capabilities = capabilitiesQuery.data
   const browserReady = interactive && Boolean(frameUrl) && !capabilitiesQuery.isError && capabilities?.browser_connected && !frameError
@@ -137,12 +138,18 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       setSubmitActionSent(false)
       return
     }
+    if (session.status === 'claimed' && session.lease_expires_at && handoffExpired({ expires_at: session.lease_expires_at })) {
+      writeLease(session.public_id, '')
+      setLeaseToken('')
+      return
+    }
     setLeaseToken(readLease(session.public_id))
-  }, [session?.public_id, session?.status])
+  }, [session?.public_id, session?.status, session?.lease_expires_at])
 
   useEffect(() => {
     setFrameUrl('')
     setFrameError('')
+    setFrameReadCanRetry(true)
     setSubmitActionSent(false)
     setOwnerConsent(false)
   }, [session?.public_id])
@@ -165,8 +172,12 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
         return nextUrl
       })
       setFrameError('')
+      setFrameReadCanRetry(true)
     } catch (error) {
-      if (activeSession.current === publicId) setFrameError(getApiErrorMessage(error, 'The retained browser is unavailable. Preserve its evidence before recovery.'))
+      if (activeSession.current === publicId) {
+        setFrameReadCanRetry(retryableHandoffRead(error))
+        setFrameError(handoffReadErrorMessage(error, getApiErrorMessage(error, 'The retained browser is unavailable. Preserve its evidence before recovery.')))
+      }
     } finally {
       frameInFlight.current = false
       setIsRefreshing(false)
@@ -178,10 +189,10 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
   }, [leaseToken, session?.public_id, session?.status, refreshFrame])
 
   useEffect(() => {
-    if (!browserReady) return undefined
+    if (!interactive || !frameReadCanRetry) return undefined
     const timer = window.setInterval(() => refreshFrame(), 2000)
     return () => window.clearInterval(timer)
-  }, [browserReady, refreshFrame])
+  }, [interactive, frameReadCanRetry, refreshFrame])
 
   useEffect(() => {
     if (!leaseToken || !session || session.status !== 'claimed' || expired) return undefined
@@ -324,6 +335,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       || !handoffUnlocked
       || !interactive
       || capabilitiesQuery.isError
+      || (!finalActionStarted && !capabilities?.confirmation_visible)
     ) return undefined
 
     let cancelled = false
@@ -368,6 +380,8 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     session?.status,
     interactive,
     capabilitiesQuery.isError,
+    finalActionStarted,
+    capabilities?.confirmation_visible,
   ])
 
   if (!session) return null
@@ -465,7 +479,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
           <>
             {(frameError || capabilitiesQuery.isError || capabilities?.blocked_reason) && (
               <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-                {frameError || capabilities?.blocked_reason || getApiErrorMessage(capabilitiesQuery.error, 'The retained browser is unavailable. Review its recovery state.')}
+                {frameError || capabilities?.blocked_reason || handoffReadErrorMessage(capabilitiesQuery.error, getApiErrorMessage(capabilitiesQuery.error, 'The retained browser is unavailable. Review its recovery state.'))}
               </div>
             )}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950">

@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { handoffExpired, handoffPointer } from '../src/utils/handoffViewport.js'
+import { handoffExpired, handoffPointer, handoffReadErrorMessage, retryableHandoffRead } from '../src/utils/handoffViewport.js'
+
+test('only transient read failures recover automatically; owner actions remain separate', () => {
+  for (const error of [{ request: {}, code: 'ECONNABORTED' }, { response: { status: 503 } }, { response: { status: 429 } }]) {
+    assert.equal(retryableHandoffRead(error), true)
+    assert.match(handoffReadErrorMessage(error, 'fallback'), /Reconnecting automatically/)
+  }
+  for (const status of [401, 403, 409, 410, 422]) {
+    assert.equal(retryableHandoffRead({ response: { status } }), false)
+    assert.equal(handoffReadErrorMessage({ response: { status } }, 'Preserve the retained outcome'), 'Preserve the retained outcome')
+  }
+})
 
 test('owner taps map to screenshot pixels after mobile scaling', () => {
   const image = { naturalWidth: 1280, naturalHeight: 900, getBoundingClientRect: () => ({ left: 20, top: 100, width: 320, height: 225 }) }

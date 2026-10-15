@@ -1,4 +1,17 @@
 // The image is rendered at its aspect ratio, without object-fit letterboxing.
+export function retryableHandoffRead(error) {
+  const status = error?.response?.status
+  return Boolean(error?.request && !error?.response)
+    || status === 408 || status === 429 || status >= 500
+}
+
+export function handoffReadErrorMessage(error, fallback) {
+  if (retryableHandoffRead(error)) {
+    return 'The live view was interrupted. Reconnecting automatically; no browser action or submission will be repeated.'
+  }
+  return fallback
+}
+
 export function handoffPointer(image, clientX, clientY) {
   const rect = image.getBoundingClientRect()
   if (!rect.width || !rect.height || !image.naturalWidth || !image.naturalHeight) return null
