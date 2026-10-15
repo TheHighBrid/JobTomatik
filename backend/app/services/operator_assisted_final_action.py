@@ -135,6 +135,8 @@ def claim_operator_final_action(
             "The exact final submit action was already requested. Automatic retry is forbidden; "
             "verify the retained employer page instead."
         )
+    if normalize_state(application.automation_state) == ApplicationAutomationState.submission_uncertain.value:
+        raise OperatorAssistedSubmissionError("The prior application outcome requires reconciliation. Automatic retry is forbidden.")
 
     now = _now()
     approval.approval_metadata = {

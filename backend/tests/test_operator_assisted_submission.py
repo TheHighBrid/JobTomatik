@@ -577,3 +577,20 @@ def test_expired_boundary_cannot_be_authorized(auth_client, tmp_path, monkeypatc
         db.commit()
     response = auth_client.post(f"/api/supervised-submissions/applications/{app_id}/operator-assisted/approvals", json=_approval_payload(handoff))
     assert response.status_code == 409
+
+
+def test_reconciliation_cannot_start_a_new_final_action(auth_client, tmp_path, monkeypatch):
+    app_id = _prepare_application(auth_client, tmp_path)
+    _mock_metadata(monkeypatch)
+    _keep_automation_off(monkeypatch)
+    handoff = _create_final_submit_boundary(app_id)
+    reference, lease = _authorize_and_claim(auth_client, app_id, handoff)
+    with TestingSessionLocal() as db:
+        application = db.query(Application).filter_by(id=app_id).one()
+        application.automation_state = "submission_uncertain"
+        db.commit()
+    response = auth_client.post(f"/api/supervised-submissions/applications/{app_id}/operator-assisted/handoffs/{handoff}/submit", json={"lease_token": lease})
+    assert response.status_code == 409
+    assert "reconciliation" in response.json()["detail"]
+    with TestingSessionLocal() as db:
+        assert not db.query(SubmissionApproval).filter_by(reference=reference).one().approval_metadata.get("operator_submit_action_started_at")

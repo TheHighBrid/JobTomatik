@@ -42,6 +42,17 @@ test('operator final-submit boundary outranks older or newer review noise', () =
   assert.equal(routed.handoffExpected, false)
 })
 
+test('pending confirmation keeps the exact operator browser visible for human verification', () => {
+  const pending = review(12, 'submission_confirmation_uncertain', '2026-10-15T17:00:00Z', '', {
+    handoff_stage: 'operator_final_submit', handoff_public_id: 'retained-one',
+    confirmation_reconciliation_required: true,
+  })
+  assert.equal(routeApplicationManualReviews([pending]).operatorFinalSubmitReview, pending)
+  assert.equal(routeApplicationManualReviews([pending]).handoffExpected, false)
+  const generic = { ...pending, details: { confirmation_reconciliation_required: true } }
+  assert.equal(routeApplicationManualReviews([generic]).operatorFinalSubmitReview, null)
+})
+
 test('Lever supervised reviews never expose a direct employer-page escape', () => {
   assert.equal(
     canOpenManualReviewPage(review(1, 'ambiguous_question', '2026-09-07T17:00:00Z'), 'lever'),

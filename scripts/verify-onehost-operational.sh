@@ -16,6 +16,7 @@ import sys
 for name in ('POSTGRES_PASSWORD', 'SECRET_KEY', 'ANSWER_VAULT_KEY'):
     print(name + '=' + secrets.token_hex(32))
 print('JOBTOMATIK_RUNTIME_REVISION=' + sys.argv[1])
+print('ONEHOST_API_PORT=0')  # Docker allocates a private free port beside an existing deployment.
 for name in ('ALLOW_REAL_APPLICATION_SUBMIT', 'ALLOW_REAL_FOLLOWUP_SEND',
              'AUTOPILOT_ENABLED', 'GREENHOUSE_SUPERVISED_PILOT_ENABLED',
              'LEVER_SUPERVISED_PILOT_ENABLED'):

@@ -126,13 +126,14 @@ async def owner_handoff_capabilities(session) -> dict:
         except OwnerBrowserInputUnavailable as exc:
             reason = str(exc)
         needs_native = bool(state.get("manual_browser_required"))
+        reconcile = bool((session.handoff_metadata or {}).get("confirmation_reconciliation_required"))
         return {
             "browser_connected": True,
             "owner_pointer_enabled": native_ready,
             "manual_verification_required": needs_native,
-            "submit_available": native_ready or not needs_native,
+            "submit_available": (native_ready or not needs_native) and not reconcile,
             "submit_action": "operator_native_submit" if native_ready else "operator_submit",
-            "blocked_reason": reason if needs_native and not native_ready else None,
+            "blocked_reason": "Review the retained outcome before any new submission." if reconcile else (reason if needs_native and not native_ready else None),
         }
     finally:
         await browser_handoff._disconnect(playwright)

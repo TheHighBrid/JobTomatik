@@ -288,7 +288,7 @@ export default function ApplicationDetail() {
               <AlertCircle className="w-5 h-5 text-amber-700 mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
                 <h2 className="font-semibold text-gray-900">
-                  {operatorFinalSubmitReview ? 'Owner final action required' : 'Manual review required'}
+                  {operatorFinalSubmitReview?.reason_code === 'submission_confirmation_uncertain' ? 'Verify retained application outcome' : operatorFinalSubmitReview ? 'Owner final action required' : 'Manual review required'}
                 </h2>
                 <p className="text-sm text-gray-700 mt-1">
                   {activeManualReview.summary}
@@ -298,6 +298,8 @@ export default function ApplicationDetail() {
                     ? 'This is an obsolete navigation-only review from an older attempt. Start a new dry run so JobTomatik can resolve the Apply doorway automatically.'
                     : linkedInDiscoveryReview
                       ? 'This older attempt treated LinkedIn as an unsupported form. Start a new dry run to use the persistent target resolver.'
+                      : operatorFinalSubmitReview?.reason_code === 'submission_confirmation_uncertain'
+                        ? 'Review the retained browser below. Complete any verification opened by the prior action and check employer confirmation before any new submission.'
                       : operatorFinalSubmitReview
                         ? 'The exact employer form is already filled and retained. Use the operator-assisted approval and secure final-submit handoff below. Do not open a fresh application page.'
                         : leverCertificationLocked && activeHandoffReview?.id === activeManualReview.id

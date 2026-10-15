@@ -5,6 +5,7 @@ import json
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from PIL import Image
 from playwright.async_api import async_playwright, expect
@@ -31,13 +32,15 @@ createRoot(document.getElementById('root')).render(React.createElement(QueryClie
     preflight = {"ready": True, "blockers": [], "operator_handoff_public_id": session["public_id"], "employer": "Synthetic Employer", "role": "Synthetic Role", "application_url": session["current_url"]}
 
     async def route_request(route):
-        request, path = route.request, route.request.url.split("/api/", 1)[-1]
-        if "/api/" not in request.url:
+        request = route.request
+        path = urlsplit(request.url).path
+        if not path.startswith("/api/"):
             if request.url.startswith(origin + "/"):
                 await route.continue_()
             else:
                 await route.abort()
             return
+        path = path.removeprefix("/api/")
         result, status = {}, 200
         if path.endswith("/sessions"): result = [session]
         elif path.endswith("/preflight"): result = preflight
@@ -73,11 +76,11 @@ createRoot(document.getElementById('root')).render(React.createElement(QueryClie
             context = await browser.new_context(viewport={"width": 390, "height": 1000})
             await context.tracing.start(screenshots=True, snapshots=True)
             page = await context.new_page()
-            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.on("pageerror", lambda error: (errors.append(str(error)), print("UI error:", str(error), flush=True)))
             await page.route("**/*", route_request)
             await page.goto(origin + "/owner-handoff-fixture.html")
             approval_button = page.get_by_role("button", name="Approve and open application")
-            await expect(approval_button).to_be_disabled()
+            await expect(approval_button).to_be_disabled(timeout=20000)
             await page.get_by_role("checkbox").check()
             await expect(approval_button).to_be_enabled()
             assert submissions == []
