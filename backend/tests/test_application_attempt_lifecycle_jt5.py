@@ -1,4 +1,5 @@
-"""JT5 attempt outcome tests.
+"""
+JT5 attempt outcome tests.
 
 The final-action uncertainty rule is intentional: a browser error after the
 possible final click is never an automatic retry.

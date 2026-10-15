@@ -1,4 +1,5 @@
-"""JT5 owner-authenticated Apply endpoint.
+"""
+JT5 owner-authenticated Apply endpoint.
 
 One action: reserve an attempt and dispatch the JT5 worker. No approval reference,
 pilot flag, or secondary confirmation.
@@ -120,7 +121,12 @@ def apply_application(
             # Preserve the immutable reservation task identity. A worker may
             # already have claimed the attempt before broker ack returns.
             if reserved.status == "queued":
-                reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "published", "published_at": datetime.utcnow().isoformat(), "broker_task_id": task_id}
+                reserved.attempt_metadata = {
+                    **(reserved.attempt_metadata or {}),
+                    "dispatch_status": "published",
+                    "published_at": datetime.utcnow().isoformat(),
+                    "broker_task_id": task_id,
+                }
             else:
                 reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "broker_task_id": task_id}
             db.commit()
@@ -130,7 +136,11 @@ def apply_application(
             reserved = db.query(SubmissionAttempt).filter(SubmissionAttempt.reference == attempt_reference).with_for_update().first()
             if reserved is not None:
                 if reserved.status == "queued":
-                    reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_status": "reconciliation_required", "dispatch_error_type": type(exc).__name__}
+                    reserved.attempt_metadata = {
+                        **(reserved.attempt_metadata or {}),
+                        "dispatch_status": "reconciliation_required",
+                        "dispatch_error_type": type(exc).__name__,
+                    }
                 else:
                     reserved.attempt_metadata = {**(reserved.attempt_metadata or {}), "dispatch_error_type": type(exc).__name__}
                 db.commit()

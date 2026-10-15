@@ -1,4 +1,5 @@
-"""JT5 execution decision contract tests.
+"""
+JT5 execution decision contract tests.
 
 The decision layer is intentionally pure; concurrency safety is separately
 enforced by a transactional unique attempt reservation.

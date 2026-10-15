@@ -1,4 +1,5 @@
-"""JT5's four essential decisions, independent of approval references.
+"""
+JT5's four essential decisions, independent of approval references.
 
 This module deliberately does not publish tasks or click an ATS submit button.
 Callers must perform the authorization check and reserve an attempt in one
@@ -33,7 +34,8 @@ def decide_application_execution(
     application_state: str,
     has_active_attempt: bool,
 ) -> ApplyGateResult:
-    """Evaluate only authentication, ownership, duplicate and uncertainty gates.
+    """
+    Evaluate only authentication, ownership, duplicate and uncertainty gates.
 
     This pure decision is not a substitute for an atomic database reservation.
     """

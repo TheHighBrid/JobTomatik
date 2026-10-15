@@ -1,4 +1,5 @@
-"""JT5 task reservation claim and result reconciliation helpers.
+"""
+JT5 task reservation claim and result reconciliation helpers.
 
 This module keeps the state transition independent of legacy approval records.
 """

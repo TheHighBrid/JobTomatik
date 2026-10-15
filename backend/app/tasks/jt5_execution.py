@@ -1,4 +1,5 @@
-"""JT5 worker: execute a reserved attempt without approval or pilot gates.
+"""
+JT5 worker: execute a reserved attempt without approval or pilot gates.
 
 This task is intentionally separate from submit_application_task so the
 supervised_submission_integration wrapper never runs.
@@ -66,7 +67,8 @@ def _log_actions(result: Dict[str, Any]) -> set[str]:
 
 
 def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
-    """Map form_filler / ATS flow outputs onto the JT5 evidence contract.
+    """
+    Map form_filler / ATS flow outputs onto the JT5 evidence contract.
 
     Never invent confirmation. Only mark pre_submit_failure_verified when the
     failure is provably before any final-submit attempt.
@@ -119,7 +121,8 @@ def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
 
 
 def _classify_browser_result(result: Dict[str, Any]) -> str:
-    """Fail closed unless durable confirmation or explicit pre-submit proof exists.
+    """
+    Fail closed unless durable confirmation or explicit pre-submit proof exists.
 
     A missing timestamp or an error message alone cannot establish that the
     employer never received the final action.

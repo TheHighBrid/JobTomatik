@@ -469,7 +469,6 @@ def test_dispatch_ack_after_worker_completion_does_not_reopen_attempt(
     auth_client, db_session, monkeypatch
 ):
     """Broker ACK can arrive after worker has completed its transaction."""
-
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
     db_session.commit()
@@ -506,7 +505,6 @@ def test_dispatch_error_after_worker_completion_does_not_reopen_attempt(
     auth_client, db_session, monkeypatch
 ):
     """A lost ACK must not change a terminal worker outcome to queued."""
-
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user, _job(db_session))
     db_session.commit()
