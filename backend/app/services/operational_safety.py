@@ -163,7 +163,10 @@ def _posting_identity(url: str) -> str:
                 if part.lower() in {"jobs", "job"} and index + 1 < len(parts):
                     token = parts[index + 1]
             token = token or (parts[-1] if parts else "")
-    elif platform in {"lever", "ashby", "smartrecruiters"}:
+    elif platform == "lever":
+        # /apply and /thanks are steps of the same Lever posting, not IDs.
+        token = parts[-2] if len(parts) >= 3 and parts[-1].lower() in {"apply", "thanks"} else (parts[-1] if parts else "")
+    elif platform in {"ashby", "smartrecruiters"}:
         token = parts[-1] if parts else ""
     elif platform == "workday":
         # Workday URLs frequently end with the requisition token after /job/.
@@ -176,6 +179,17 @@ def _posting_identity(url: str) -> str:
 
     normalized_token = re.sub(r"[^a-z0-9._-]+", "", token.lower())
     return f"{platform}:{(parsed.hostname or '').lower()}:{normalized_token}"
+
+
+def _bound_posting_identity(binding: Mapping[str, Any]) -> str:
+    value = str(binding.get("posting_identity") or "")
+    # Old Lever bindings persisted the literal route suffix. Normalize from the
+    # already-bound exact URL without rebinding a browser or changing its target ID.
+    if binding.get("platform") == "lever" and value.endswith((":apply", ":thanks")):
+        expected_url = str(binding.get("expected_url") or "")
+        if platform_key_for_url(expected_url) == "lever":
+            return _posting_identity(expected_url)
+    return value
 
 
 def build_handoff_target_binding(
@@ -270,7 +284,7 @@ def validate_handoff_target_binding(
             },
         )
 
-    expected_posting = str(binding.get("posting_identity") or "")
+    expected_posting = _bound_posting_identity(binding)
     actual_posting = _posting_identity(active_url)
     if not target_resolution_only and expected_posting and actual_posting != expected_posting:
         return HandoffBindingDecision(
@@ -366,7 +380,7 @@ def require_bound_handoff_url(session, current_url: str) -> HandoffBindingDecisi
                 "operator_reason_code": "wrong_platform_resume",
             },
         )
-    expected_posting = str(binding.get("posting_identity") or "")
+    expected_posting = _bound_posting_identity(binding)
     actual_posting = _posting_identity(active_url)
     if expected_posting and actual_posting != expected_posting:
         raise OperationalSafetyViolation(

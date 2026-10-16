@@ -249,9 +249,10 @@ def _require_verified_session_target(verification: Dict[str, Any]) -> None:
 async def capture_handoff_frame(session: ManualHandoffSession) -> bytes:
     playwright, _, _, page = await _connect_local_cdp(session)
     try:
-        verification = await _verify_session_target(page, session)
+        confirmation = await _submission_confirmation_state(page)
+        verification = await _verify_session_target(page, session, allow_same_site_confirmation=bool(confirmation.get("submission_confirmed")))
         _require_verified_session_target(verification)
-        return await page.screenshot(type="png", full_page=False)
+        return await page.screenshot(type="png", full_page=False, scale="css")
     finally:
         await _disconnect(playwright)
 

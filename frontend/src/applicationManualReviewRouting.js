@@ -29,6 +29,16 @@ function normalizeReviewNavigation(review) {
   }
 }
 
+function hasOperatorFinalSubmitProvenance(details) {
+  if (details?.handoff_stage === 'operator_final_submit') return true
+  if (details?.operator_final_submit_checkpoint?.handoff_public_id === details?.handoff_public_id) return true
+  return Array.isArray(details?.questions) && details.questions.some((question) => (
+    question?.reason_code === 'operator_final_submit_required'
+    && question.details?.handoff_stage === 'operator_final_submit'
+    && question.details?.operator_final_click_required === true
+  ))
+}
+
 export function routeApplicationManualReviews(reviews = []) {
   const openManualReviews = [...(reviews || [])]
     .filter((review) => OPEN_REVIEW_STATUSES.has(review?.status))
@@ -36,7 +46,12 @@ export function routeApplicationManualReviews(reviews = []) {
     .sort((a, b) => createdAtMs(b) - createdAtMs(a))
 
   const operatorFinalSubmitReview = openManualReviews.find(
-    (review) => review.reason_code === 'operator_final_submit_required',
+    (review) => review.reason_code === 'operator_final_submit_required' || (
+      review.reason_code === 'submission_confirmation_uncertain'
+      && review.details?.confirmation_reconciliation_required === true
+      && Boolean(review.details?.handoff_public_id)
+      && hasOperatorFinalSubmitProvenance(review.details)
+    ),
   ) || null
   const activeHandoffReview = openManualReviews.find(
     (review) => HANDOFF_REVIEW_REASONS.has(review.reason_code),
@@ -76,4 +91,11 @@ export function canOpenManualReviewPage(review, supervisedPlatform) {
   if (review.reason_code === 'operator_final_submit_required') return false
   if (HANDOFF_REVIEW_REASONS.has(review.reason_code)) return false
   return true
+}
+
+
+export function isFinishedApplication(application) {
+  if (application?.automation_state === 'submission_uncertain') return false
+  return application?.status === 'applied'
+    || ['submitted', 'confirmed'].includes(application?.automation_state)
 }

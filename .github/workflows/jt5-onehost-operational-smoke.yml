@@ -1,0 +1,100 @@
+name: JT5 production OneHost operational smoke
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/jt5-onehost-operational-smoke.yml
+      - scripts/verify-onehost-operational.sh
+      - backend/scripts/smoke_onehost_operational.py
+      - backend/scripts/smoke_owner_handoff_ui.py
+      - backend/scripts/start_onehost_display.py
+      - backend/app/services/owner_browser_input.py
+      - backend/app/services/handoff_integration.py
+      - backend/app/api/handoffs.py
+      - backend/app/services/operator_assisted_handoff_integration.py
+      - backend/tests/test_owner_browser_input.py
+      - backend/tests/test_owner_display_startup.py
+      - backend/tests/test_owner_handoff_runtime.py
+      - backend/tests/test_handoff_integration.py
+      - backend/tests/test_handoff_api.py
+      - frontend/src/components/OperatorFinalSubmitHandoffPanel.jsx
+      - frontend/src/utils/handoffViewport.js
+      - docker-compose.onehost-production.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-owner-handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install synthetic UI harness dependencies
+        run: |
+          python -m pip install playwright==1.61.0 pillow==12.3.0
+          python -m playwright install chromium --with-deps
+          npm --prefix frontend ci
+      - name: Verify approval, owner pointer, once-only submit and expiry
+        shell: bash
+        run: |
+          mkdir -p verification-artifacts/owner-handoff-mobile
+          npm --prefix frontend run dev -- --host 127.0.0.1 --port 4318 > verification-artifacts/owner-handoff-mobile/vite.log 2>&1 &
+          vite_pid=$!
+          trap 'kill "$vite_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import time
+          import urllib.error
+          import urllib.request
+          for _ in range(40):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:4318", timeout=1) as response:
+                      if response.status == 200:
+                          break
+              except (urllib.error.URLError, TimeoutError):
+                  pass
+              time.sleep(0.5)
+          else:
+              raise SystemExit("Synthetic UI server did not become ready")
+          PY
+          python backend/scripts/smoke_owner_handoff_ui.py http://127.0.0.1:4318 verification-artifacts/owner-handoff-mobile
+      - name: Retain synthetic mobile viewer evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: owner-handoff-mobile-${{ github.event.pull_request.head.sha || github.sha }}
+          path: verification-artifacts/owner-handoff-mobile/
+          if-no-files-found: error
+          retention-days: 14
+
+  production-compose-restart:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Boot production Compose and verify controlled restart
+        run: bash scripts/verify-onehost-operational.sh
+      - name: Retain redacted isolated deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jt5-onehost-operational-${{ github.event.pull_request.head.sha || github.sha }}
+          path: verification-artifacts/jt5-onehost-operational/
+          if-no-files-found: error
+          retention-days: 14

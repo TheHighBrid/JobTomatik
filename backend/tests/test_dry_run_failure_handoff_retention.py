@@ -1,3 +1,4 @@
+successfully downloaded text file (SHA: 30c35fe10e33d47d7283bc86a7387a2296f1f796)
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -178,6 +179,8 @@ async def test_snapshot_failure_does_not_orphan_browser(monkeypatch):
 
     assert result["success"] is False
     assert result["handoff_snapshot"] is None
+    assert result["requires_manual_review"] is False
+    assert result["review_items"] == []
     assert runtime.capture_calls == 1
     assert release_calls == [False]
     assert any(

@@ -1,3 +1,4 @@
+successfully downloaded text file (SHA: 2261ec3e123eec0b6a7ae5cc5205bba51126db92)
 """Handoff-capable ATS runner backed by a retained localhost CDP browser."""
 
 from __future__ import annotations
@@ -112,6 +113,7 @@ _DIAGNOSTIC_STAGE = "dry_run_failure_diagnostic"
 
 
 def _add_diagnostic_review(result: Dict[str, Any]) -> None:
+    """Mark a failed dry run with an explicit diagnostic automation-error review."""
     result["requires_manual_review"] = True
     result.setdefault("review_items", []).append({
         "reason_code": _DIAGNOSTIC_REASON,
@@ -125,6 +127,7 @@ def _add_diagnostic_review(result: Dict[str, Any]) -> None:
 
 
 async def _diagnostic_snapshot_metadata(result: Dict[str, Any], runtime: Any) -> Dict[str, Any]:
+    """Build diagnostic snapshot metadata for the failed dry-run browser and target."""
     controlled_target_id = await controlled_page_target_id(runtime.page)
     metadata = {
         "dry_run": True,
@@ -149,6 +152,7 @@ async def _capture_diagnostic_snapshot(
     runtime: Any,
     log: List[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
+    """Capture the diagnostic snapshot, logging failures without raising."""
     try:
         metadata = await _diagnostic_snapshot_metadata(result, runtime)
         return await runtime.capture_snapshot(metadata=metadata)
@@ -173,17 +177,19 @@ async def _retain_dry_run_failure_handoff(
     Technical failures are classified as automation errors rather than security
     challenges. The browser is retained only after a snapshot is captured so the
     task layer can persist a durable navigation handoff and expiry lifecycle.
+    The diagnostic review item is added only after the snapshot exists, so a
+    failed capture never creates a browser-review task without browser evidence.
     """
     if runtime is None or result.get("success"):
         return False
     if result.get("handoff_snapshot"):
         return True
 
-    _add_diagnostic_review(result)
     snapshot = await _capture_diagnostic_snapshot(result, runtime, log)
     if snapshot is None:
         return False
 
+    _add_diagnostic_review(result)
     result["handoff_snapshot"] = snapshot
     log.append({
         "action": "dry_run_failure_handoff_retained",

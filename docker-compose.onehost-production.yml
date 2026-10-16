@@ -18,7 +18,9 @@ x-onehost-environment: &onehost-environment
   APPLICATION_BROWSER_CDP_ENDPOINT: ""
   APPLICATION_BROWSER_EXECUTABLE: ""
   APPLICATION_BROWSER_PROFILE_DIR: /state/browser-profile
-  APPLICATION_BROWSER_HEADLESS: ${APPLICATION_BROWSER_HEADLESS:-true}
+  APPLICATION_BROWSER_HEADLESS: ${APPLICATION_BROWSER_HEADLESS:-false}
+  DISPLAY: ":99"
+  HANDOFF_NATIVE_INPUT_ENABLED: "true"
   HANDOFF_STORAGE_DIR: /state/handoffs
   UPLOAD_DIR: /state/uploads
   JOBTOMATIK_BROWSER_NODE_ID: onehost-primary
@@ -65,12 +67,13 @@ services:
     command:
       - sh
       - -c
-      - python scripts/check_runtime_identity.py --require-sensitive && exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+      - python scripts/check_runtime_identity.py --require-sensitive && python scripts/start_onehost_display.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000
     environment:
       <<: *onehost-environment
       JOBTOMATIK_RUNTIME_ROLE: api
     volumes:
       - onehost_state:/state
+      - onehost_display:/tmp/.X11-unix
     ports:
       - "${ONEHOST_API_BIND_ADDRESS:-127.0.0.1}:${ONEHOST_API_PORT:-8000}:8000"
     healthcheck:
@@ -99,6 +102,7 @@ services:
       JOBTOMATIK_RUNTIME_ROLE: worker
     volumes:
       - onehost_state:/state
+      - onehost_display:/tmp/.X11-unix
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.celery_app inspect ping --timeout=3 | grep -q pong"]
       interval: 30s
@@ -113,3 +117,4 @@ volumes:
   onehost_postgres:
   onehost_redis:
   onehost_state:
+  onehost_display:

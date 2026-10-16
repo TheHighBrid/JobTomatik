@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -62,6 +62,13 @@ class ClaimedHandoffSession:
 
 def _now() -> datetime:
     return datetime.utcnow()
+
+
+def handoff_utc(value: datetime) -> datetime:
+    """Compare SQLite-naive and PostgreSQL-aware timestamps on the same UTC clock."""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _setting(name: str, default: Any) -> Any:
@@ -138,8 +145,8 @@ def _event(
 
 
 def _expire_if_needed(db: Session, session: ManualHandoffSession, now: Optional[datetime] = None) -> None:
-    current = now or _now()
-    if session.status in ACTIVE_HANDOFF_STATUSES and session.expires_at <= current:
+    current = handoff_utc(now or _now())
+    if session.status in ACTIVE_HANDOFF_STATUSES and handoff_utc(session.expires_at) <= current:
         session.status = HandoffSessionStatus.expired.value
         session.failure_reason = "The manual handoff session expired before completion."
         session.lock_version = (session.lock_version or 0) + 1
@@ -266,7 +273,7 @@ def claim_handoff_session(
 
     lease_token = _new_secret()
     lease_minutes = int(_setting("handoff_lease_ttl_minutes", 5))
-    lease_expires_at = min(session.expires_at, now + timedelta(minutes=lease_minutes))
+    lease_expires_at = min(handoff_utc(session.expires_at), now + timedelta(minutes=lease_minutes))
     session.status = HandoffSessionStatus.claimed.value
     session.resume_token_consumed_at = now
     session.claimed_at = now
@@ -301,7 +308,7 @@ def verify_handoff_lease(
         raise HandoffSessionExpired("Handoff session has expired.")
     if session.status not in allowed_statuses:
         raise HandoffSessionConflict("Handoff session is not in an interactive state.")
-    if not session.lease_expires_at or session.lease_expires_at <= now:
+    if not session.lease_expires_at or handoff_utc(session.lease_expires_at) <= now:
         raise HandoffSessionExpired("Interaction lease has expired.")
     if not _verify_secret(lease_token, session.lease_token_hash):
         raise HandoffTokenInvalid("Interaction lease token is invalid.")
@@ -318,7 +325,7 @@ def heartbeat_handoff_session(
     now = _now()
     lease_minutes = int(_setting("handoff_lease_ttl_minutes", 5))
     session.last_heartbeat_at = now
-    session.lease_expires_at = min(session.expires_at, now + timedelta(minutes=lease_minutes))
+    session.lease_expires_at = min(handoff_utc(session.expires_at), now + timedelta(minutes=lease_minutes))
     session.lock_version = (session.lock_version or 0) + 1
     _event(
         db,
