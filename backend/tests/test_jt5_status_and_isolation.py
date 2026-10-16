@@ -1,3 +1,4 @@
+import pytest
 """JT5 status endpoint and isolation from supervised worker wrappers."""
 from app.models.application import (
     Application,
@@ -142,3 +143,9 @@ def test_worker_skips_browser_when_application_already_closed(monkeypatch, db_se
     assert result["already_submitted"] is True
     assert result["outcome"] == "confirmed"
     assert called["browser"] is False
+
+
+@pytest.fixture(autouse=True)
+def enable_live_submission_for_synthetic_jt5_tests(monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "allow_real_application_submit", True)

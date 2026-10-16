@@ -10,9 +10,10 @@ from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.auth import get_current_user
 from app.database import get_db
-from app.models.application import Application
+from app.models.application import Application, ApplicationStatus
 from app.models.submission_integrity import SubmissionAttempt
 from app.models.user import User
 from app.services.application_attempt_jt5 import reserve_jt5_attempt
@@ -75,6 +76,16 @@ def apply_application(
     db: Session = Depends(get_db),
 ):
     """Owner Apply: reserve + dispatch JT5 worker in one request."""
+    application = db.query(Application).filter(
+        Application.id == application_id,
+        Application.user_id == current_user.id,
+    ).first()
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if application.status == ApplicationStatus.withdrawn:
+        raise HTTPException(status_code=409, detail="Application is withdrawn")
+    if not get_settings().allow_real_application_submit:
+        raise HTTPException(status_code=503, detail="Live application submission is disabled")
     try:
         decision, attempt = reserve_jt5_attempt(
             db,

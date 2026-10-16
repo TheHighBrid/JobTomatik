@@ -810,3 +810,50 @@ def test_jt5_hides_non_owned_terminal_attempt(
     assert db_session.query(SubmissionAttempt).count() == 1
     db_session.refresh(attempt)
     assert attempt.status == attempt_status
+
+
+@pytest.fixture(autouse=True)
+def enable_live_submission_for_synthetic_jt5_tests(monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "allow_real_application_submit", True)
+
+
+@pytest.mark.parametrize("withdrawn", [False, True])
+def test_disabled_or_withdrawn_apply_reserves_and_dispatches_nothing(auth_client, db_session, monkeypatch, withdrawn):
+    from app.config import get_settings
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    application = _application(db_session, user, _job(db_session))
+    db_session.commit()
+    if withdrawn:
+        application.status = ApplicationStatus.withdrawn
+        db_session.commit()
+    monkeypatch.setattr(get_settings(), "allow_real_application_submit", withdrawn)
+    def unexpected_dispatch(*args, **kwargs):
+        raise AssertionError("Disabled release must never dispatch")
+    monkeypatch.setattr(execute_reserved_application, "apply_async", unexpected_dispatch)
+    response = auth_client.post(f"/api/applications/{application.id}/jt5/apply")
+    assert response.status_code == (409 if withdrawn else 503)
+    assert db_session.query(SubmissionAttempt).count() == 0
+
+
+@pytest.mark.parametrize("blocker", ["release_disabled", "withdrawn"])
+def test_worker_blocks_before_browser_without_claiming_confirmation(db_session, monkeypatch, blocker):
+    from app.config import get_settings
+    user = _user(db_session)
+    application = _application(db_session, user, _job(db_session))
+    _, attempt = reserve_jt5_attempt(db_session, application_id=application.id, authenticated_user_id=user.id)
+    db_session.commit()
+    if blocker == "release_disabled":
+        monkeypatch.setattr(get_settings(), "allow_real_application_submit", False)
+    else:
+        application.status = ApplicationStatus.withdrawn
+        db_session.commit()
+    async def unexpected_browser(*args, **kwargs):
+        raise AssertionError("Blocked attempt must never open browser")
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", unexpected_browser)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["success"] is False
+    db_session.expire_all()
+    assert db_session.get(SubmissionAttempt, attempt.id).status == "failed"
+    assert db_session.get(Application, application.id).automation_state != "confirmed"
