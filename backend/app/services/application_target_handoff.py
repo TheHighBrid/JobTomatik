@@ -1,4 +1,3 @@
-successfully downloaded text file (SHA: f11793adf5f59994ee88cbfef4b737db37d01fc5)
 from __future__ import annotations
 
 from typing import Any, Dict
