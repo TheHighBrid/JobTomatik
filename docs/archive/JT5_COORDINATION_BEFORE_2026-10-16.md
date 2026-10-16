@@ -9,10 +9,10 @@
 >
 > **Next steps:** finish all full-backend exact-head runs and address any failures; verify four-gate and Greenhouse/Lever evidence on that same head; run OneHost cutover validation; review [JT5 production cutover checklist](../operations/JT5_PRODUCTION_CUTOVER_CHECKLIST.md) and release notes before considering main landing. The owner retains control of production live-submit enablement. Never represent a draft or unverified branch as production-ready.
 
-**Status:** Active (objectives corrected 2026-10-13)  
-**Owner (primary engine):** Grok  
-**Date:** 2026-10-13  
-**Scope:** JT5 cutover, OneHost reliability, approval safety, agent workflow  
+**Status:** Active (objectives corrected 2026-10-13)
+**Owner (primary engine):** Grok
+**Date:** 2026-10-13
+**Scope:** JT5 cutover, OneHost reliability, approval safety, agent workflow
 **Authority:** Owner-directed; Grok is primary operator for continuity. Sol/Astra/Terra are delegated engines under this plan.
 
 ---
@@ -156,19 +156,19 @@ Next exact step: (one sentence)
 
 ### 6.3 Conflict resolution
 
-1. Grok published status wins over stale agent memory  
-2. Inventory (`JT5_CALLER_INVENTORY.md`) wins over ad-hoc gate deletion  
-3. Fail-closed security wins over convenience in tests  
+1. Grok published status wins over stale agent memory
+2. Inventory (`JT5_CALLER_INVENTORY.md`) wins over ad-hoc gate deletion
+3. Fail-closed security wins over convenience in tests
 
 ---
 
 ## 7. Immediate task queue (execute in order)
 
-1. **Grok:** Diagnose and fix #675 `test_approved_submit_endpoint_queues_reference_without_consuming_it` (409 vs 200).  
-2. **Grok:** Re-check #681 `backend-full` segfault — isolate or quarantine flaky concurrent SQLite assault if it is environmental.  
-3. **Sol 6.1/Astra (when available):** Drive #690 to green four-gate + exact-head; emit HANDOFF.  
-4. **Grok:** Audit #690 head against issues #688/#689 and #686 review threads; list residual gaps.  
-5. **Grok:** After #690 green, integrate onto JT5 tip; refresh #686.  
+1. **Grok:** Diagnose and fix #675 `test_approved_submit_endpoint_queues_reference_without_consuming_it` (409 vs 200).
+2. **Grok:** Re-check #681 `backend-full` segfault — isolate or quarantine flaky concurrent SQLite assault if it is environmental.
+3. **Sol 6.1/Astra (when available):** Drive #690 to green four-gate + exact-head; emit HANDOFF.
+4. **Grok:** Audit #690 head against issues #688/#689 and #686 review threads; list residual gaps.
+5. **Grok:** After #690 green, integrate onto JT5 tip; refresh #686.
 6. **Deferred:** Merge #673/#674/#683/#675 to main only per Phase C.
 
 ---
@@ -186,23 +186,23 @@ Next exact step: (one sentence)
 
 ## 9. Explicit non-goals (this cycle)
 
-- Treating “block all submits forever” as a feature; justified gates only  
-- Merging draft #681 to main as if production-ready  
-- Full legacy approval path deletion before JT5 four-gate proof  
-- Rewriting OneHost and JT5 in one PR  
+- Treating “block all submits forever” as a feature; justified gates only
+- Merging draft #681 to main as if production-ready
+- Full legacy approval path deletion before JT5 four-gate proof
+- Rewriting OneHost and JT5 in one PR
 
 ---
 
 ## 10. Document control
 
-- Path: `docs/architecture/JT5_MULTI_AGENT_COORDINATION_BLUEPRINT.md`  
-- Updated by: Grok (primary); other agents append dated HANDOFF sections only under `## Handoff log`  
-- Related: `JT5_SIMPLIFIED_APPLICATION_EXECUTION.md`, `JT5_CALLER_INVENTORY.md`, issues #688 #689, PRs #681 #686 #690  
+- Path: `docs/architecture/JT5_MULTI_AGENT_COORDINATION_BLUEPRINT.md`
+- Updated by: Grok (primary); other agents append dated HANDOFF sections only under `## Handoff log`
+- Related: `JT5_SIMPLIFIED_APPLICATION_EXECUTION.md`, `JT5_CALLER_INVENTORY.md`, issues #688 #689, PRs #681 #686 #690
 
 ## Handoff log
 
 ### 2026-10-13 — Grok
-- Published this blueprint.  
+- Published this blueprint.
 - Next: A2 (#675 409), then A1 residual (#681 backend-full), then audit #690 if Sol has not advanced.
 
 ### 2026-10-13 — Grok (correction)
