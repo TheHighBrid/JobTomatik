@@ -40,6 +40,7 @@ from app.services.application_state import (
     transition_application_state,
 )
 from app.services.handoff_session import verify_handoff_lease
+from app.services.owner_browser_input import owner_handoff_capabilities
 from app.services.operator_assisted_final_action import (
     claim_operator_final_action,
     finalize_operator_final_action,
@@ -319,6 +320,19 @@ async def authorize_operator_final_click(
     if target_metadata:
         persist_supervised_target_metadata(job, target_metadata)
     try:
+        # Verify the exact live browser before consuming the owner's approval.
+        # Container restarts must never authorize a stale database-only handoff.
+        checked = validate_operator_assisted_approval(
+            db, application, user, job, reference=reference,
+            consume=False, target_metadata=target_metadata,
+        )
+        boundary = get_operator_final_submit_boundary(db, application)
+        if boundary is None or boundary.public_id != (checked.approval_metadata or {}).get("handoff_public_id"):
+            raise OperatorAssistedSubmissionError("The exact retained handoff is no longer active.")
+        try:
+            await owner_handoff_capabilities(boundary)
+        except Exception as exc:
+            raise OperatorAssistedSubmissionError("The retained browser is unavailable. Preserve the application and review its recovery state.") from exc
         approval = validate_operator_assisted_approval(
             db,
             application,
@@ -395,6 +409,10 @@ async def submit_operator_assisted_final_action(
             session,
             user_id=current_user.id,
         )
+        capabilities = await owner_handoff_capabilities(session)
+        if not capabilities["submit_available"]:
+            raise OperatorAssistedSubmissionError(capabilities["blocked_reason"] or "The interactive owner browser is unavailable.")
+        submit_action = capabilities["submit_action"]
         approval_reference = approval.reference
         db.commit()
     except OperatorAssistedSubmissionError as exc:
@@ -407,7 +425,7 @@ async def submit_operator_assisted_final_action(
     try:
         result = await browser_handoff_service.perform_handoff_action(
             session,
-            action="operator_submit",
+            action=submit_action,
         )
     except Exception as exc:
         db.rollback()

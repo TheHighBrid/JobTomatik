@@ -13,6 +13,7 @@ from app.services.handoff_session import (
     _secret_hash,
     _setting,
     encrypt_handoff_secret,
+    handoff_utc,
 )
 
 
@@ -30,14 +31,14 @@ def recover_handoff_lease(
     now = datetime.utcnow()
     if session.user_id != user_id:
         raise HandoffTokenInvalid("Handoff session does not belong to the authenticated user.")
-    if session.expires_at <= now:
+    if handoff_utc(session.expires_at) <= now:
         session.status = HandoffSessionStatus.expired.value
         session.failure_reason = "The manual handoff session expired before lease recovery."
         _event(db, session, "handoff_expired", payload={"expires_at": session.expires_at.isoformat()})
         raise HandoffSessionExpired("Handoff session has expired.")
     if session.status != HandoffSessionStatus.claimed.value:
         raise HandoffSessionConflict("Only a claimed handoff session can recover its lease.")
-    if session.lease_expires_at and session.lease_expires_at > now:
+    if session.lease_expires_at and handoff_utc(session.lease_expires_at) > now:
         raise HandoffSessionConflict("The existing interaction lease is still active.")
 
     lease_token = _new_secret()
@@ -45,7 +46,7 @@ def recover_handoff_lease(
     session.lease_token_hash = _secret_hash(lease_token)
     session.encrypted_lease_token = encrypt_handoff_secret(lease_token)
     session.lease_expires_at = min(
-        session.expires_at,
+        handoff_utc(session.expires_at),
         now + timedelta(minutes=lease_minutes),
     )
     session.last_heartbeat_at = now

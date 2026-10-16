@@ -52,7 +52,7 @@
       "version": "1.1.0",
       "digests": {
         "adapter_source_sha256": "c6355f06e9b00e5911d7f34d8eca84aeb2e50bc7a869fc430931e0e1b6651e9d",
-        "fixture_regression_sha256": "1e7a56eb765e4e00932af751f874615efe09718871f3e70ad6c8d8d0ea580454",
+        "fixture_regression_sha256": "ebae09060c13ee7d21ff942d21d1ca9d574fef9725852d854aadd09e84754ba4",
         "legacy_day28_fixture_regression_sha256": "0fb5113489771b59d5b31cf60c694bd2a8d95fd7e5b42a53a34e6136093d8678",
         "retained_evidence_sha256": "8733329ee1a28c81b831a46a688dee9bf931ef8a49ae7d7e68abbf9e727a9fbe",
         "manifest_live_evidence_sha256": "e4e5ba427d4477621fa976c3b65b8d0c33c90f0d52bf6a04100dd7548e43ba31"
@@ -259,5 +259,27 @@
     "real_submission_enablement_changed": false,
     "autopilot_enablement_changed": false,
     "legacy_day28_fixture_hashes_preserved": true
+  },
+  "october15_owner_handoff_fixture_regate": {
+    "date": "2026-10-15",
+    "validation_source_commit": "8b89a0e799a56698383b475c785e972657961f82",
+    "validation_workflow_run_id": 38781876200,
+    "validation_artifact_sha256": "fbdf7e0ce09d681fe28f8d814cf143a69edc156a052fa570e356145a9d33e53b",
+    "reason": "PR #698 adds test_lever_handoff_posting_routes.py to the Lever fixture corpus. Both local evaluation and completed exact-head CI report only lever:fixture_regression_sha256_drift. Removing that single added path from the digest calculation exactly reproduces the previous frozen digest. All adapter source, retained evidence and manifest live-evidence digests, versions and maturity match the prior freeze. The referenced failed gate artifact records the drift; it is not a passing certification receipt.",
+    "previous_fixture_regression_sha256": "1e7a56eb765e4e00932af751f874615efe09718871f3e70ad6c8d8d0ea580454",
+    "current_fixture_regression_sha256": "ebae09060c13ee7d21ff942d21d1ca9d574fef9725852d854aadd09e84754ba4",
+    "added_fixture_paths": [
+      "backend/tests/test_lever_handoff_posting_routes.py"
+    ],
+    "fixture_only_drift_verified": true,
+    "adapter_source_drift_observed": false,
+    "retained_evidence_drift_observed": false,
+    "manifest_live_evidence_drift_observed": false,
+    "adapter_version_change_observed": false,
+    "adapter_maturity_change_observed": false,
+    "real_submission_enablement_changed": false,
+    "autopilot_enablement_changed": false,
+    "legacy_day28_fixture_hashes_preserved": true,
+    "scope_note": "The operational_safety posting-identity repair is outside the frozen ATS adapter-source corpus and has separate handoff tests. This is fixture provenance only; real employer challenge acceptance and submission remain uncertified."
   }
 }

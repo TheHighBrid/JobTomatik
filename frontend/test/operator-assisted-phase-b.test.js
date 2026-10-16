@@ -19,18 +19,23 @@ const operatorApi = readFileSync(
   'utf8',
 )
 
-test('Lever application detail uses the operator-assisted lane instead of automated live submit', () => {
-  assert.equal(applicationDetail.includes('OperatorAssistedSubmissionPanel'), true)
-  assert.equal(applicationDetail.includes("supervisedPlatform === 'lever'"), true)
-  assert.equal(
-    applicationDetail.includes("supervisedPlatform !== 'lever' && (\n        <SupervisedSubmissionPanel"),
-    true,
-  )
-  assert.equal(
-    applicationDetail.includes("!applicationFinished && supervisedPlatform !== 'lever' && (\n            <button"),
-    true,
-  )
-  assert.equal(applicationDetail.includes('global live-submit, the Lever automated pilot, and autopilot stay off'), true)
+test('application detail routes the owner Apply action through JT5 for every target', () => {
+  assert.equal(applicationDetail.includes('applyJT5Application'), true)
+  assert.equal(applicationDetail.includes('getJT5ApplicationStatus'), true)
+  assert.equal(applicationDetail.includes('onClick={() => applyMutation.mutate()}'), true)
+  assert.equal(applicationDetail.includes('OperatorAssistedSubmissionPanel'), false)
+  assert.equal(applicationDetail.includes('SupervisedSubmissionPanel'), false)
+  assert.equal(applicationDetail.includes('SupervisedPilotDossierPanel'), false)
+  assert.equal(applicationDetail.includes('submitApplication(id'), false)
+  assert.equal(applicationDetail.includes('operatorFinalSubmitReview && (\n        <OperatorFinalSubmitHandoffPanel'), true)
+  assert.equal(applicationDetail.includes('ManualHandoffPanel applicationId={Number(id)}'), true)
+  assert.equal(applicationDetail.includes('dispatch_status') && applicationDetail.includes('reconciliation_required'), true)
+})
+
+test('JT5 client uses the authenticated Apply and status endpoints', () => {
+  const apiClient = readFileSync(new URL('../src/api/client.js', import.meta.url), 'utf8')
+  assert.equal(apiClient.includes("api.post(`/applications/${id}/jt5/apply`)") , true)
+  assert.equal(apiClient.includes("api.get(`/applications/${id}/jt5/status`)") , true)
 })
 
 test('operator approval is bound to one exact retained form and typed exact target phrase', () => {
@@ -93,14 +98,14 @@ test('legacy encrypted policy can be repaired only by explicit owner re-entry an
   assert.equal(operatorPanel.includes('return revalidateAnswerPolicyReview(applicationId, activePolicyReview.id)'), true)
 })
 
-test('final retained page exposes no generic browser mutation surface', () => {
+test('final retained page exposes bounded owner verification with a separate final action', () => {
   assert.equal(finalPanel.includes('submitOperatorAssistedFinalAction'), true)
-  assert.equal(finalPanel.includes('sendHandoffAction'), false)
+  assert.equal(finalPanel.includes('sendHandoffAction'), true)
   assert.equal(finalPanel.includes('cancelHandoff'), false)
-  assert.equal(finalPanel.includes("action: 'click'"), false)
+  assert.equal(finalPanel.includes("action: 'click'"), true)
   assert.equal(finalPanel.includes("action: 'type'"), false)
   assert.equal(finalPanel.includes('replace_and_submit'), false)
-  assert.equal(finalPanel.includes('onClick={handleFrameClick}'), false)
+  assert.equal(finalPanel.includes('onClick={handleFrameClick}'), true)
   assert.equal(finalPanel.includes('No typing, answer editing, navigation, arbitrary browser clicks, or automatic retry'), true)
   assert.equal(finalPanel.includes('Submit exact application once'), true)
 })

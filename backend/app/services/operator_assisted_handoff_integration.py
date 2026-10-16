@@ -1,4 +1,5 @@
-"""Scoped retained-browser integration for operator-assisted final submission.
+"""
+Scoped retained-browser integration for operator-assisted final submission.
 
 Normal dry runs are unchanged. Only the dedicated operator-assisted preparation task
 activates this context. In that context, a successful dry run that reaches the exact
@@ -313,7 +314,7 @@ def install_operator_assisted_handoff_integration() -> None:
         delta_y: float = 0,
     ):
         if _challenge_type(session) != HandoffChallengeType.final_submit.value:
-            if action == "operator_submit":
+            if action in {"operator_submit", "operator_native_submit"}:
                 raise browser_handoff.BrowserHandoffError(
                     "Operator-submit is valid only for an approved final-submit handoff."
                 )
@@ -328,7 +329,43 @@ def install_operator_assisted_handoff_integration() -> None:
                 delta_y=delta_y,
             )
 
-        if action != "operator_submit":
+        if action in {"click", "scroll"}:
+            from app.services.owner_browser_input import (
+                OwnerBrowserInputUnavailable, click_owner_verification,
+            )
+            with operator_final_action_scope():
+                blockers = _operator_final_action_blockers(str(session.current_url or ""))
+            if blockers:
+                raise browser_handoff.BrowserHandoffError("Owner interaction blocked: " + ", ".join(blockers))
+            playwright, _, _, page = await browser_handoff._connect_local_cdp(session)
+            try:
+                browser_handoff._require_verified_session_target(await browser_handoff._verify_session_target(page, session))
+                if action == "click":
+                    if x is None or y is None:
+                        raise browser_handoff.BrowserHandoffError("Owner pointer coordinates are required.")
+                    await click_owner_verification(page, session, x=x, y=y)
+                else:
+                    import math
+                    if not all(math.isfinite(float(value)) and abs(value) <= 1000 for value in (delta_x, delta_y)):
+                        raise browser_handoff.BrowserHandoffError("Invalid review scroll distance.")
+                    await page.mouse.wheel(float(delta_x), float(delta_y))
+                await page.wait_for_timeout(150)
+                confirmation = await browser_handoff._submission_confirmation_state(page)
+                verified_target = await browser_handoff._verify_session_target(
+                    page, session, allow_same_site_confirmation=bool(confirmation.get("submission_confirmed")),
+                )
+                browser_handoff._require_verified_session_target(verified_target)
+                return {
+                    "action": action, "current_url": page.url,
+                    "current_fingerprint": await browser_handoff.page_fingerprint(page),
+                    "sensitive_value_logged": False,
+                }
+            except OwnerBrowserInputUnavailable as exc:
+                raise browser_handoff.BrowserHandoffError(str(exc)) from exc
+            finally:
+                await browser_handoff._disconnect(playwright)
+
+        if action not in {"operator_submit", "operator_native_submit"}:
             raise browser_handoff.BrowserHandoffError(
                 "The approved final-submit handoff is review-only except for the "
                 "single explicit Submit action."
@@ -358,7 +395,11 @@ def install_operator_assisted_handoff_integration() -> None:
             )
 
             verification_state = await passive_verification_state(page)
-            if passive_verification_requires_manual_browser(verification_state):
+            native_owner_action = action == "operator_native_submit"
+            if native_owner_action:
+                from app.services.owner_browser_input import require_owner_window
+                await require_owner_window(session)
+            if passive_verification_requires_manual_browser(verification_state) and not native_owner_action:
                 raise browser_handoff.BrowserHandoffError(
                     "Lever loaded passive hCaptcha verification without a completed "
                     "response. JobTomatik will not click Submit after hCaptcha. Use "
@@ -502,7 +543,7 @@ def install_operator_assisted_handoff_integration() -> None:
                 )
 
             final_verification_state = await passive_verification_state(page)
-            if passive_verification_requires_manual_browser(final_verification_state):
+            if passive_verification_requires_manual_browser(final_verification_state) and not native_owner_action:
                 raise browser_handoff.BrowserHandoffError(
                     "Lever passive hCaptcha verification is incomplete at the final "
                     "action boundary. JobTomatik will not click Submit after hCaptcha. "
@@ -514,7 +555,11 @@ def install_operator_assisted_handoff_integration() -> None:
                 "JT_LEVER_FINAL stage=click_start target=%s",
                 _log_target_ref(before_url),
             )
-            await submit_control.click()
+            if native_owner_action:
+                from app.services.owner_browser_input import click_owner_submit
+                await click_owner_submit(page, session, submit_control)
+            else:
+                await submit_control.click()
             logger.info(
                 "JT_LEVER_FINAL stage=click_complete target=%s",
                 _log_target_ref(str(page.url or "")),
