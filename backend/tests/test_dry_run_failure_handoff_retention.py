@@ -6,7 +6,12 @@ import pytest
 
 from app.models.application import ManualReviewReason
 from app.models.handoff import HandoffChallengeType
-from app.services import form_filler_handoff, handoff_integration, handoff_session
+from app.services import (
+    application_target_handoff,
+    form_filler_handoff,
+    handoff_integration,
+    handoff_session,
+)
 from app.tasks.applications import _manual_reason_code
 
 
@@ -99,8 +104,13 @@ async def test_failed_dry_run_retains_explicit_automation_error_handoff(monkeypa
         cover_letter="",
         resume_path="",
         dry_run=True,
+        supervised_target={"platform": "lever", "posting_id": "posting"},
     )
 
+    assert result["handoff_snapshot"]["metadata"]["supervised_target"] == {
+        "platform": "lever",
+        "posting_id": "posting",
+    }
     assert result["success"] is False
     assert result["requires_manual_review"] is True
     assert result["handoff_snapshot"]["browser_session_id"] == "dry-run-failure-session"
@@ -205,3 +215,90 @@ def test_automation_error_has_durable_navigation_handoff_route():
         result,
         ManualReviewReason.unsupported_control,
     ) == ManualReviewReason.automation_error.value
+
+
+def test_diagnostic_review_preserves_original_blocker_without_sibling():
+    result = {
+        "error": "Field could not be verified",
+        "review_items": [{
+            "reason_code": "unsupported_control",
+            "summary": "Review employer field",
+            "details": {"control_type": "text"},
+        }],
+    }
+    form_filler_handoff._add_diagnostic_review(result)
+    assert len(result["review_items"]) == 1
+    review = result["review_items"][0]
+    assert review["reason_code"] == "automation_error"
+    assert review["details"]["original_review_items"][0]["reason_code"] == "unsupported_control"
+
+
+def test_diagnostic_navigation_challenge_uses_same_page_ats_resume():
+    session = SimpleNamespace(
+        challenge_type=HandoffChallengeType.navigation.value,
+        handoff_metadata={
+            "handoff_stage": "dry_run_failure_diagnostic",
+            "target_resolution_only": False,
+        },
+    )
+    assert application_target_handoff._is_target_navigation_session(session) is False
+
+
+@pytest.mark.asyncio
+async def test_classified_account_boundary_keeps_original_review():
+    runtime = _Runtime()
+    result = {
+        "success": False,
+        "error": "Candidate account required",
+        "review_items": [{
+            "reason_code": "account_creation_required",
+            "summary": "Complete account creation manually",
+            "details": {"handoff_boundary": "pre_form"},
+        }],
+    }
+    retained = await form_filler_handoff._retain_dry_run_failure_handoff(
+        result=result, runtime=runtime, log=[], supervised_target=None
+    )
+    assert retained is False
+    assert runtime.capture_calls == 0
+    assert [item["reason_code"] for item in result["review_items"]] == [
+        "account_creation_required"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_workday_field_review_keeps_its_certified_boundary():
+    runtime = _Runtime()
+    result = {
+        "success": False,
+        "ats_adapter": "workday",
+        "error": "No next-step control was found",
+        "review_items": [{
+            "reason_code": "unsupported_control",
+            "summary": "Review the Workday field",
+        }],
+    }
+    retained = await form_filler_handoff._retain_dry_run_failure_handoff(
+        result=result, runtime=runtime, log=[], supervised_target=None
+    )
+    assert retained is False
+    assert runtime.capture_calls == 0
+    assert result["review_items"][0]["reason_code"] == "unsupported_control"
+
+
+
+@pytest.mark.asyncio
+async def test_workday_technical_failure_without_review_releases_shared_profile():
+    runtime = _Runtime()
+    result = {
+        "success": False,
+        "ats_adapter": "workday",
+        "error": "No next-step or final-submit control was found.",
+        "review_items": [],
+    }
+    retained = await form_filler_handoff._retain_dry_run_failure_handoff(
+        result=result, runtime=runtime, log=[], supervised_target=None
+    )
+    assert retained is False
+    assert runtime.capture_calls == 0
+    assert result["review_items"] == []
