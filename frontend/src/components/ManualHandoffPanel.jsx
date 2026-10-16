@@ -50,6 +50,7 @@ export default function ManualHandoffPanel({ applicationId }) {
   const [frameUrl, setFrameUrl] = useState('')
   const [secretInput, setSecretInput] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [frameStaleAfterFailure, setFrameStaleAfterFailure] = useState(false)
 
   const { data: sessions = [] } = useQuery({
     queryKey: ['handoffs', applicationId],
@@ -93,6 +94,7 @@ export default function ManualHandoffPanel({ applicationId }) {
         if (previous) URL.revokeObjectURL(previous)
         return nextUrl
       })
+      setFrameStaleAfterFailure(false)
     } catch (error) {
       const message = getApiErrorMessage(error, 'Could not load the retained browser')
       if ([403, 409, 410].includes(error?.response?.status)) {
@@ -251,7 +253,7 @@ export default function ManualHandoffPanel({ applicationId }) {
   }
 
   const typeDiagnosticText = () => {
-    if (!secretInput || !claimed || actionMutation.isPending) return
+    if (!secretInput || !claimed || actionMutation.isPending || isRefreshing || frameStaleAfterFailure) return
     const submitted = secretInput
     actionMutation.mutate({ action: 'type', text: submitted }, {
       onSuccess: () => {
@@ -259,9 +261,10 @@ export default function ManualHandoffPanel({ applicationId }) {
         toast.success('Text entered in the focused browser field')
       },
       onError: () => {
+        setFrameStaleAfterFailure(true)
         refreshFrame()
         toast.error(
-          'Browser action failed. Check the screenshot before retrying — the text may already be in the field.'
+          'Browser action failed. A fresh screenshot is loading — review it before retrying, the text may already be in the field.'
         )
       },
     })
@@ -463,7 +466,7 @@ export default function ManualHandoffPanel({ applicationId }) {
                   <button
                     className="btn-primary flex items-center gap-2"
                     onClick={typeDiagnosticText}
-                    disabled={!secretInput || actionMutation.isPending}
+                    disabled={!secretInput || actionMutation.isPending || isRefreshing || frameStaleAfterFailure}
                   >
                     <Keyboard className="w-4 h-4" />
                     Type text
