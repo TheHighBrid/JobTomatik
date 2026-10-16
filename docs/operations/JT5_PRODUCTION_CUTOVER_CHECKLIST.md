@@ -42,7 +42,9 @@ Use [OneHost production deployment](ONEHOST_PRODUCTION_DEPLOYMENT.md). Do not re
 ## Owner-controlled live acceptance
 
 - [ ] Review corrected candidate identity, known limitations and retained evidence.
-- [ ] Record the exact production configuration/real-action authorization when applicable.
+- [ ] Obtain explicit owner approval for the exact candidate revision and reviewed production configuration before any real application action.
+- [ ] Record the exact employer/application/payload authorization and its once-only scope; never reuse a consumed approval.
+- [ ] Apply any live-submit flag transition only within that reviewed owner authorization, retain before/after values, and restore the closed setting after the scoped action.
 - [ ] Verify employer, role, canonical target, application identity and materials before an authorized action.
 - [ ] Observe an actual outcome and retain confirmation evidence or explicit uncertainty.
 - [ ] Verify no duplicate attempt or automatic retry occurs.

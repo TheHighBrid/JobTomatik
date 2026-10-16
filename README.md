@@ -73,9 +73,14 @@ The default API bind is localhost. Use approved TLS ingress for remote clients. 
 
 **Release controls:** #706 added API rejection before reservation/dispatch and a worker recheck, including withdrawal handling. Its deployed source and exact-image tests are recorded in [the evidence ledger](docs/EVIDENCE.md). Preserve these controls when updating. Documentation does not enable production submission or authorize a real application.
 
+Use Gradle 9.5.1 and Android Gradle Plugin 8.13.2. Run `bash scripts/verify.sh full` for the canonical full verification entry point. Platform pilot settings remain available to configuration regression tests; they do not grant real-action authority.
+
 Build tooling is pinned in [.jobtomatik-toolchain.env](.jobtomatik-toolchain.env). Use the repository's existing verification workflows and scripts; historical commands do not certify a new source revision.
 
 ## Android and release identity
+
+Current repository candidate: `2.1.1`.
+Current Android version code: `211`.
 
 | Identity | Current source / publication |
 |---|---|
