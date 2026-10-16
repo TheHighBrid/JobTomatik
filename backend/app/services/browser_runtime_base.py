@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import hashlib
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -23,6 +26,11 @@ from app.services.browser_handoff import current_browser_node_id
 CDP_STARTUP_TIMEOUT_SECONDS = 120
 PLAYWRIGHT_ATTACH_TIMEOUT_SECONDS = 120
 EXTERNAL_CDP_CONNECT_TIMEOUT_SECONDS = 20
+CHROMIUM_TRANSIENT_SINGLETON_NAMES = (
+    "SingletonLock",
+    "SingletonSocket",
+    "SingletonCookie",
+)
 
 
 class BrowserRuntimeError(RuntimeError):
@@ -65,11 +73,135 @@ def handoff_storage_root() -> Path:
 
 
 def _reserve_port() -> int:
+    """Find an available loopback TCP port and release the temporary socket."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     port = int(sock.getsockname()[1])
     sock.close()
     return port
+
+
+def _owned_profile_processes(profile_dir: Path) -> Optional[list[int]]:
+    """Return exact profile owners, or None when ownership cannot be determined."""
+    expected = os.fsencode(profile_dir)
+    owners: list[int] = []
+    proc_root = Path("/proc")
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError:
+        return None
+
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes()
+        except (FileNotFoundError, ProcessLookupError):
+            # Only a vanished PID is harmless; a missing cmdline for an existing
+            # PID leaves ownership unknown.
+            try:
+                entry.stat()
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            except OSError:
+                return None
+            return None
+        except OSError:
+            return None
+        if not raw:
+            continue
+        arguments = raw.split(b"\x00")
+        if not any(
+            argument == b"--user-data-dir=" + expected
+            or (
+                argument == b"--user-data-dir"
+                and index + 1 < len(arguments)
+                and arguments[index + 1] == expected
+            )
+            for index, argument in enumerate(arguments)
+        ):
+            continue
+        if b"chrom" not in raw.lower():
+            continue
+        try:
+            pid = int(entry.name)
+        except ValueError:
+            continue
+        if pid != os.getpid():
+            owners.append(pid)
+    return owners
+
+
+def _prepare_owned_profile(profile_dir: Path) -> None:
+    """Clear only stale Chromium singleton markers before an owned launch.
+
+    Never remove profile locks while a live Chromium process advertises the exact
+    user-data-dir. That state may be a deliberate retained human handoff.
+    """
+    owners = _owned_profile_processes(profile_dir)
+    if owners is None:
+        raise BrowserRuntimeError(
+            "APPLICATION_BROWSER_PROFILE_OWNERSHIP_UNKNOWN: could not fully scan "
+            "process ownership; refusing to remove browser ownership markers."
+        )
+    if owners:
+        raise BrowserRuntimeError(
+            "APPLICATION_BROWSER_PROFILE_IN_USE: JobTomatik's persistent Chromium "
+            f"profile is still owned by live process(es) {owners}; refusing to "
+            "remove browser ownership markers."
+        )
+
+    for name in CHROMIUM_TRANSIENT_SINGLETON_NAMES:
+        marker = profile_dir / name
+        try:
+            marker.unlink(missing_ok=True)
+        except OSError as exc:
+            raise BrowserRuntimeError(
+                f"APPLICATION_BROWSER_PROFILE_CLEANUP_FAILED: could not remove {marker}"
+            ) from exc
+
+
+@contextmanager
+def _owned_profile_startup_lock(profile_dir: Path):
+    """Serialize cooperating launches through CDP readiness without blocking asyncio."""
+    # Keep the file in place: unlinking a flock file can create competing locks
+    # on different inodes for the same profile.
+    with (profile_dir / ".jobtomatik-startup.lock").open("a+b") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise BrowserRuntimeError(
+                "APPLICATION_BROWSER_PROFILE_IN_USE: another launch is preparing "
+                "this Chromium profile."
+            ) from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def _terminate_owned_process(process: subprocess.Popen, timeout: float = 5.0) -> None:
+    """Stop a Chromium group created with start_new_session, including orphans."""
+    # The PGID remains the launch PID even after the leader exits and is reaped.
+    process_group = process.pid
+
+    try:
+        os.killpg(process_group, signal.SIGTERM)
+    except ProcessLookupError:
+        process.wait(timeout=timeout)
+        return
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        pass
+
+    try:
+        # Waiting for the leader alone says nothing about surviving renderers.
+        os.killpg(process_group, 0)
+        os.killpg(process_group, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.wait(timeout=timeout)
 
 
 def _chromium_environment() -> Dict[str, str]:
@@ -144,7 +276,7 @@ async def _wait_for_cdp_endpoint(
             last_error = str(exc)
         await asyncio.sleep(0.25)
 
-    process.terminate()
+    _terminate_owned_process(process)
     log_handle.close()
     raise BrowserRuntimeError(
         "Chromium CDP endpoint did not become ready within "
@@ -204,7 +336,7 @@ async def _connect_playwright_over_cdp(
             attach_error = str(exc)
             await asyncio.sleep(1)
 
-    process.terminate()
+    _terminate_owned_process(process)
     log_handle.close()
     raise BrowserRuntimeError(
         "Playwright could not attach to the Chromium CDP websocket within "
@@ -308,6 +440,7 @@ class RetainableBrowserRuntime:
     session_dir: Path
 
     async def capture_snapshot(self, *, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Save page and storage snapshots and return handoff metadata and hashes."""
         self.session_dir.mkdir(parents=True, exist_ok=True)
         screenshot_path = self.session_dir / "handoff.png"
         storage_state_path = self.session_dir / "storage-state.json"
@@ -340,13 +473,12 @@ class RetainableBrowserRuntime:
         }
 
     def terminate(self, *, remove_profile: bool = False) -> None:
-        if self.owns_process and self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=5)
+        """Stop owned Chromium and optionally remove session artifacts.
+
+        Profile cleanup is limited to owned profiles within the session directory.
+        """
+        if self.owns_process:
+            _terminate_owned_process(self.process)
         if remove_profile and self.owns_process and self.browser_profile_path:
             profile = Path(self.browser_profile_path)
             try:
@@ -370,14 +502,13 @@ async def launch_retainable_browser(
 ) -> RetainableBrowserRuntime:
     """Launch Playwright-owned Chromium; legacy executable overrides are ignored."""
     session_id = str(uuid4())
-    session_dir = handoff_storage_root() / session_id
-    resolved_profile_dir = Path(profile_dir) if profile_dir else session_dir / "profile"
+    session_dir = (handoff_storage_root() / session_id).resolve()
+    resolved_profile_dir = (Path(profile_dir) if profile_dir else session_dir / "profile").resolve()
     session_dir.mkdir(parents=True, exist_ok=True)
     resolved_profile_dir.mkdir(parents=True, exist_ok=True)
     port = _reserve_port()
     executable = playwright.chromium.executable_path
     log_path = session_dir / "chromium.log"
-    log_handle = log_path.open("ab")
 
     args = [
         executable,
@@ -395,20 +526,30 @@ async def launch_retainable_browser(
     if headless:
         args.insert(1, "--headless=new")
 
-    process = subprocess.Popen(
-        args,
-        stdout=log_handle,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-        close_fds=True,
-        env=_chromium_environment(),
-    )
-    endpoint = f"http://127.0.0.1:{port}"
+    process = None
+    with _owned_profile_startup_lock(resolved_profile_dir):
+        log_handle = log_path.open("ab")
+        try:
+            _prepare_owned_profile(resolved_profile_dir)
+            process = subprocess.Popen(
+                args,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                close_fds=True,
+                env=_chromium_environment(),
+            )
+            endpoint = f"http://127.0.0.1:{port}"
 
-    # Android + Ubuntu PRoot can take substantially longer than desktop Linux
-    # to expose the CDP websocket. Give readiness and Playwright attachment
-    # independent retry budgets so a slow first stage cannot starve the second.
-    await _wait_for_cdp_endpoint(process, endpoint, log_handle, log_path)
+            # Android + Ubuntu PRoot can take substantially longer than desktop Linux
+            # to expose the CDP websocket. Give readiness and Playwright attachment
+            # independent retry budgets so a slow first stage cannot starve the second.
+            await _wait_for_cdp_endpoint(process, endpoint, log_handle, log_path)
+        except BaseException:
+            if process is not None:
+                _terminate_owned_process(process)
+            log_handle.close()
+            raise
     browser = await _connect_playwright_over_cdp(
         playwright,
         process,
@@ -423,7 +564,7 @@ async def launch_retainable_browser(
             viewport=viewport,
         )
     except Exception:
-        process.terminate()
+        _terminate_owned_process(process)
         log_handle.close()
         raise
 
