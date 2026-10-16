@@ -828,6 +828,7 @@ def test_disabled_or_withdrawn_apply_reserves_and_dispatches_nothing(auth_client
         application.status = ApplicationStatus.withdrawn
         db_session.commit()
     monkeypatch.setattr(get_settings(), "allow_real_application_submit", withdrawn)
+
     def unexpected_dispatch(*args, **kwargs):
         raise AssertionError("Disabled release must never dispatch")
     monkeypatch.setattr(execute_reserved_application, "apply_async", unexpected_dispatch)
@@ -848,6 +849,7 @@ def test_worker_blocks_before_browser_without_claiming_confirmation(db_session, 
     else:
         application.status = ApplicationStatus.withdrawn
         db_session.commit()
+
     async def unexpected_browser(*args, **kwargs):
         raise AssertionError("Blocked attempt must never open browser")
     monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", unexpected_browser)
