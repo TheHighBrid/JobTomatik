@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -19,8 +19,50 @@ from app.models.user import User
 from app.services.application_attempt_jt5 import reserve_jt5_attempt
 from app.services.application_execution_gate import ApplyDecision
 from app.tasks.jt5_execution import execute_reserved_application
+from app.schemas.jt5_reconciliation import JT5OutcomeResolution
+from app.services.jt5_outcome_resolution import JT5ResolutionError, resolution_context, resolve_jt5_outcome
 
 router = APIRouter(prefix="/applications", tags=["applications-jt5"])
+
+
+@router.get("/{application_id}/jt5/reconciliation")
+def get_jt5_reconciliation(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Read saved outcome evidence without starting any external action."""
+    application = db.query(Application).filter(
+        Application.id == application_id, Application.user_id == current_user.id,
+    ).first()
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return resolution_context(db, application)
+
+
+@router.post("/{application_id}/jt5/reconcile")
+def reconcile_jt5_application(
+    application_id: int,
+    data: JT5OutcomeResolution,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record a reviewed outcome; never submit or queue another attempt."""
+    try:
+        result = resolve_jt5_outcome(db, application_id=application_id, user_id=current_user.id, data=data)
+        db.commit()
+        return result
+    except LookupError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except JT5ResolutionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except OperationalError as exc:
+        db.rollback()
+        if getattr(exc.orig, "pgcode", None) != "55P03":
+            raise
+        raise HTTPException(status_code=423, detail="This attempt is busy; no resolution was recorded") from exc
 
 
 @router.get("/{application_id}/jt5/status")
