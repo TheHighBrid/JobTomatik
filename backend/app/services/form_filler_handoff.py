@@ -182,8 +182,7 @@ async def _retain_dry_run_failure_handoff(
     log: List[Dict[str, Any]],
     supervised_target: Optional[Mapping[str, Any]],
 ) -> bool:
-    """
-    Retain a failed dry-run browser through an explicit diagnostic handoff.
+    """Retain a failed dry-run browser through an explicit diagnostic handoff.
 
     Technical failures are classified as automation errors rather than security
     challenges. The browser is retained only after a snapshot is captured so the
