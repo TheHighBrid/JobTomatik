@@ -156,3 +156,86 @@ def test_current_result_keeps_observed_binding_and_adds_worker_provenance(
     assert receipt.evidence_metadata["attempt_reference"] == "conflicting-observed-binding"
     assert receipt.evidence_metadata["jt5_worker_attempt_reference"] == reference
     assert receipt.evidence_metadata["jt5_late_result"] is False
+
+
+def test_postgres_reconciliation_race_retains_late_receipt(db_session, monkeypatch, reserved):
+    """Use real row locks and the reconciler to exercise simultaneous recovery."""
+    from threading import Event, Thread, get_ident
+
+    from sqlalchemy import event, text
+
+    from app.services.jt5_reconciliation import _mark_uncertain
+
+    engine = db_session.get_bind()
+    if engine.dialect.name != "postgresql":
+        pytest.skip("Real PostgreSQL row locks are required for this race")
+
+    application_id, reference = reserved
+    reconciler_locked = Event()
+    worker_lock_requested = Event()
+    failures = []
+    worker_thread_id = get_ident()
+
+    def observe_worker_lock(conn, cursor, statement, parameters, context, executemany):
+        if (get_ident() == worker_thread_id and reconciler_locked.is_set()
+                and "submission_attempts" in statement and "FOR UPDATE" in statement):
+            worker_lock_requested.set()
+
+    def recover_checkpoint():
+        session = TestingSessionLocal()
+        try:
+            session.execute(text("SET lock_timeout = '2s'"))
+            attempt = session.query(SubmissionAttempt).filter_by(
+                reference=reference,
+            ).with_for_update().one()
+            reconciler_locked.set()
+            assert worker_lock_requested.wait(10), "Worker never requested its final attempt lock"
+            _mark_uncertain(session, attempt, datetime.now(timezone.utc), "worker_restarted_in_progress")
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            failures.append(exc)
+        finally:
+            session.close()
+
+    reconciler = Thread(target=recover_checkpoint, daemon=True)
+
+    async def delayed_receipt(*args, **kwargs):
+        reconciler.start()
+        assert reconciler_locked.wait(10), "Reconciler did not acquire the attempt lock"
+        return {
+            "success": True,
+            "confirmation_evidence": {
+                "evidence_type": "confirmation_page", "is_sufficient": True,
+                "confirmation_text": "Employer received the application during recovery",
+                "external_application_id": "concurrent-receipt-42",
+            },
+        }
+
+    event.listen(engine, "before_cursor_execute", observe_worker_lock)
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", delayed_receipt)
+    try:
+        result = execute_reserved_application.run(application_id, reference)
+    finally:
+        worker_lock_requested.set()
+        if reconciler.ident is not None:
+            reconciler.join(10)
+        event.remove(engine, "before_cursor_execute", observe_worker_lock)
+
+    assert not reconciler.is_alive(), "Reconciler did not complete"
+    assert not failures, repr(failures)
+    assert result["outcome"] == "reconciliation_required"
+    assert result["automatic_retry_allowed"] is False
+    db_session.expire_all()
+    assert db_session.get(Application, application_id).automation_state == "submission_uncertain"
+    attempt = db_session.query(SubmissionAttempt).filter_by(reference=reference).one()
+    assert attempt.status == "uncertain"
+    assert attempt.attempt_metadata["reconciliation_reason"] == "worker_restarted_in_progress"
+    receipt = db_session.query(SubmissionEvidence).filter_by(application_id=application_id).one()
+    assert receipt.confirmation_text == "Employer received the application during recovery"
+    assert receipt.external_application_id == "concurrent-receipt-42"
+    assert receipt.evidence_metadata["jt5_late_result"] is True
+    saved_event = db_session.query(ApplicationEvent).filter_by(
+        application_id=application_id, event_type="jt5_late_browser_result_retained",
+    ).one()
+    assert saved_event.payload["retained_evidence_count"] == 1

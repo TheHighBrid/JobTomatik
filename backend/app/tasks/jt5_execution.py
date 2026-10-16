@@ -338,19 +338,20 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
         result = normalize_jt5_browser_result(result)
         outcome = _classify_browser_result(result)
 
-        application = (
-            db.query(Application)
-            .filter(Application.id == application_id)
-            .with_for_update()
-            .populate_existing()
-            .first()
-        )
+        # Match claim and stale recovery: attempt first, then application.
         attempt = (
             db.query(SubmissionAttempt)
             .filter(
                 SubmissionAttempt.application_id == application_id,
                 SubmissionAttempt.reference == attempt_reference,
             )
+            .with_for_update()
+            .populate_existing()
+            .first()
+        )
+        application = (
+            db.query(Application)
+            .filter(Application.id == application_id)
             .with_for_update()
             .populate_existing()
             .first()
