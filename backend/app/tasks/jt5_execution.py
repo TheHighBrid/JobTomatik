@@ -16,6 +16,7 @@ from app.models.application import (
     Application,
     ApplicationAutomationState,
     ApplicationStatus,
+    ApplicationEvent,
 )
 from app.models.job import Job
 from app.models.submission_integrity import SubmissionAttempt
@@ -324,6 +325,7 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                 SubmissionAttempt.reference == attempt_reference,
             )
             .with_for_update()
+            .populate_existing()
             .first()
         )
         if application is None or attempt is None:
@@ -331,6 +333,33 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                 "success": False,
                 "error": "application_or_attempt_missing_after_browser",
                 "automatic_retry_allowed": False,
+            }
+
+        if attempt.status != "in_progress":
+            # Recovery may have closed the checkpoint while browser work was
+            # outside the transaction. A late result cannot rewrite its outcome.
+            db.add(ApplicationEvent(
+                application_id=application_id,
+                event_type="jt5_late_browser_result_ignored",
+                from_state=application.automation_state,
+                to_state=application.automation_state,
+                payload={
+                    "attempt_reference": attempt_reference, "attempt_status": attempt.status,
+                    "observed_outcome": outcome,
+                    "artifact_references": [
+                        {key: item.get(key) for key in ("evidence_type", "screenshot_path", "html_snapshot_path", "payload_hash")}
+                        for item in (
+                            [result["confirmation_evidence"]] if isinstance(result.get("confirmation_evidence"), dict)
+                            else (result.get("confirmation_evidence") or [])
+                        ) if isinstance(item, dict)
+                    ],
+                },
+            ))
+            db.commit()
+            return {
+                "success": False, "application_id": application_id,
+                "attempt_reference": attempt_reference, "outcome": "reconciliation_required",
+                "error": "attempt_checkpoint_changed", "automatic_retry_allowed": False,
             }
 
         _record_result_evidence(db, application, result)
