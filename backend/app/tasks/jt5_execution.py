@@ -16,6 +16,7 @@ from app.models.application import (
     Application,
     ApplicationAutomationState,
     ApplicationStatus,
+    ApplicationEvent,
 )
 from app.models.job import Job
 from app.models.submission_integrity import SubmissionAttempt
@@ -143,6 +144,27 @@ def _classify_browser_result(result: Dict[str, Any]) -> str:
     ):
         return "failed_pre_submit"
     return "submission_uncertain"
+
+
+def _retain_attempt_evidence(db, application, result, attempt_reference, *, late):
+    """Persist complete browser receipts with trusted worker provenance."""
+    evidence = result.get("confirmation_evidence") or []
+    if isinstance(evidence, dict):
+        evidence = [evidence]
+    retained = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        metadata = dict(item.get("metadata") or {})
+        # Preserve observed bindings, including conflicts, for independent review.
+        metadata.setdefault("attempt_reference", attempt_reference)
+        metadata.update({
+            "jt5_worker_attempt_reference": attempt_reference,
+            "jt5_late_result": late,
+        })
+        retained.append({**item, "metadata": metadata})
+    _record_result_evidence(db, application, {**result, "confirmation_evidence": retained})
+    return len(retained)
 
 
 @celery_app.task(
@@ -316,7 +338,13 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
         result = normalize_jt5_browser_result(result)
         outcome = _classify_browser_result(result)
 
-        application = db.query(Application).filter(Application.id == application_id).first()
+        application = (
+            db.query(Application)
+            .filter(Application.id == application_id)
+            .with_for_update()
+            .populate_existing()
+            .first()
+        )
         attempt = (
             db.query(SubmissionAttempt)
             .filter(
@@ -324,6 +352,7 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                 SubmissionAttempt.reference == attempt_reference,
             )
             .with_for_update()
+            .populate_existing()
             .first()
         )
         if application is None or attempt is None:
@@ -333,7 +362,34 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                 "automatic_retry_allowed": False,
             }
 
-        _record_result_evidence(db, application, result)
+        late = attempt.status != "in_progress"
+        retained_count = _retain_attempt_evidence(
+            db, application, result, attempt_reference, late=late,
+        )
+        if late:
+            # Browser work runs outside the checkpoint transaction. Recovery owns
+            # the saved outcome; preserve new evidence without rewriting it.
+            db.add(ApplicationEvent(
+                application_id=application_id,
+                event_type="jt5_late_browser_result_retained",
+                from_state=application.automation_state,
+                to_state=application.automation_state,
+                payload={
+                    "attempt_reference": attempt_reference,
+                    "attempt_status": attempt.status,
+                    "observed_outcome": outcome,
+                    "retained_evidence_count": retained_count,
+                },
+            ))
+            db.commit()
+            return {
+                "success": False, "application_id": application_id,
+                "attempt_reference": attempt_reference,
+                "outcome": "reconciliation_required",
+                "error": "attempt_checkpoint_changed",
+                "automatic_retry_allowed": False,
+            }
+
         application.automation_log = list(result.get("log") or [])
 
         if outcome == "confirmed":
