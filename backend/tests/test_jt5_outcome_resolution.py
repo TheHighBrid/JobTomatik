@@ -26,7 +26,7 @@ def recovery(auth_client, db_session):
     evidence = SubmissionEvidence(
         application_id=application.id, evidence_type="confirmation_page", is_sufficient=True,
         confirmation_text="Application received for the exact posting", final_url=application.application_target_url,
-        captured_at=datetime.utcnow(), evidence_metadata={"attempt_reference": attempt.reference},
+        captured_at=datetime.utcnow(), evidence_metadata={"attempt_reference": attempt.reference, "jt5_worker_attempt_reference": attempt.reference},
     )
     db_session.add(evidence)
     db_session.commit()
@@ -121,7 +121,7 @@ def test_active_handoff_blocks_confirmation_without_mutation(auth_client, db_ses
 
 
 @pytest.mark.parametrize("mutation", ["changed", "old", "unbound", "wrong_attempt", "wrong_worker", "insufficient",
-                                       "blank", "artifact_only", "wrong_reference", "rejected"])
+                                       "blank", "artifact_only", "rejected"])
 def test_unreviewable_confirmation_cannot_resolve(auth_client, db_session, recovery, mutation):
     application, attempt, evidence, data = recovery
     if mutation == "changed":
@@ -139,8 +139,6 @@ def test_unreviewable_confirmation_cannot_resolve(auth_client, db_session, recov
     elif mutation in {"blank", "artifact_only"}:
         evidence.confirmation_text = "  "
         evidence.screenshot_path = "/synthetic/receipt.png" if mutation == "artifact_only" else None
-    elif mutation == "wrong_reference":
-        data["evidence_reference"] = "some-other-evidence"
     else:
         db_session.add(SubmissionEvidenceReview(
             application_id=application.id, evidence_id=evidence.id, reviewer_user_id=application.user_id,
@@ -148,7 +146,7 @@ def test_unreviewable_confirmation_cannot_resolve(auth_client, db_session, recov
         ))
     db_session.commit()
     # Recompute hash to prove the signal/binding checks work independently of drift.
-    if mutation not in {"changed", "wrong_reference", "rejected"}:
+    if mutation not in {"changed", "rejected"}:
         data["evidence_snapshot_hash"] = build_evidence_snapshot(evidence)["evidence_snapshot_hash"]
     assert _resolve(auth_client, application, data).status_code == 409
     db_session.refresh(attempt)
@@ -244,3 +242,44 @@ def test_unrelated_records_are_not_resolved(auth_client, db_session, recovery, m
     assert _resolve(auth_client, application, data).status_code == expected
     db_session.refresh(attempt)
     assert attempt.status == "uncertain"
+
+
+def test_missing_trusted_worker_binding_is_not_offered_or_accepted(auth_client, db_session, recovery):
+    application, attempt, evidence, data = recovery
+    evidence.evidence_metadata = {"attempt_reference": attempt.reference}
+    db_session.commit()
+    data["evidence_snapshot_hash"] = build_evidence_snapshot(evidence)["evidence_snapshot_hash"]
+    context = auth_client.get(f"/api/applications/{application.id}/jt5/reconciliation").json()
+    assert context["confirmation_evidence"] == []
+    assert _resolve(auth_client, application, data).status_code == 409
+
+
+def test_rejected_snapshot_is_excluded_from_recovery_choices(auth_client, db_session, recovery):
+    application, _, evidence, data = recovery
+    db_session.add(SubmissionEvidenceReview(
+        application_id=application.id, evidence_id=evidence.id, reviewer_user_id=application.user_id,
+        decision="rejected", evidence_snapshot_hash=data["evidence_snapshot_hash"],
+    ))
+    db_session.commit()
+    context = auth_client.get(f"/api/applications/{application.id}/jt5/reconciliation").json()
+    assert context["confirmation_evidence"] == []
+    assert _resolve(auth_client, application, data).status_code == 409
+
+
+@pytest.mark.parametrize("state", ["needs_review", "failed"])
+def test_incompatible_state_exposes_blocker_instead_of_action(auth_client, db_session, recovery, state):
+    application, _, _, data = recovery
+    application.automation_state = state
+    db_session.commit()
+    context = auth_client.get(f"/api/applications/{application.id}/jt5/reconciliation").json()
+    assert context["resolution_required"] is True
+    assert context["confirmation_evidence"] == []
+    assert context["resolution_available"] is False
+    assert context["blockers"]
+    assert _resolve(auth_client, application, data).status_code == 409
+
+
+def test_reference_must_identify_selected_evidence(auth_client, recovery):
+    application, _, _, data = recovery
+    data["evidence_reference"] = "some-other-evidence"
+    assert _resolve(auth_client, application, data).status_code == 409

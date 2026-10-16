@@ -1,5 +1,4 @@
-"""
-Audited owner resolution of uncertain JT5 attempts without automatic replay.
+"""Audited owner resolution of uncertain JT5 attempts without automatic replay.
 
 Confirmation requires readable, retained, attempt-bound evidence and closed
 handoffs. Non-submission requests remain blocked until a durable employer-evidence
@@ -32,26 +31,31 @@ def _utc(value):
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
+def _readable_signal(evidence):
+    signals = (evidence.confirmation_text, evidence.external_application_id)
+    return any(str(value or "").strip() for value in signals)
+
+
 def _confirmation_snapshot(evidence, attempt):
     if not evidence.is_sufficient or evidence.evidence_type not in STRONG_EVIDENCE_TYPES:
         raise JT5ResolutionError("Retained sufficient confirmation evidence is required")
-    if not any(str(value or "").strip() for value in (
-        evidence.confirmation_text, evidence.external_application_id,
-        evidence.screenshot_path, evidence.html_snapshot_path,
-    )):
-        raise JT5ResolutionError("The evidence has no concrete confirmation signal")
     if not evidence.captured_at or _utc(evidence.captured_at) < _utc(attempt.queued_at):
         raise JT5ResolutionError("The evidence predates this attempt")
     metadata = evidence.evidence_metadata or {}
-    bound = metadata.get("attempt_reference")
-    worker_bound = metadata.get("jt5_worker_attempt_reference", attempt.reference)
-    if bound != attempt.reference or worker_bound != attempt.reference:
-        raise JT5ResolutionError("The evidence belongs to a different attempt")
-    if not any(str(value or "").strip() for value in (
-        evidence.confirmation_text, evidence.external_application_id,
-    )):
+    bindings = ("attempt_reference", "jt5_worker_attempt_reference")
+    if any(metadata.get(key) != attempt.reference for key in bindings):
+        raise JT5ResolutionError("The evidence lacks matching trusted worker and attempt bindings")
+    if not _readable_signal(evidence):
         raise JT5ResolutionError("Readable confirmation text or an employer receipt ID is required")
     return build_evidence_snapshot(evidence)
+
+
+def _evidence_rejected(db, evidence_id, snapshot_hash):
+    return db.query(SubmissionEvidenceReview.id).filter(
+        SubmissionEvidenceReview.evidence_id == evidence_id,
+        SubmissionEvidenceReview.evidence_snapshot_hash == snapshot_hash,
+        SubmissionEvidenceReview.decision == "rejected",
+    ).first() is not None
 
 
 def _pending_resolution(attempt):
@@ -62,30 +66,49 @@ def _pending_resolution(attempt):
     )
 
 
+def _confirmation_choices(db, application, attempt):
+    options = []
+    evidence_rows = db.query(SubmissionEvidence).filter(
+        SubmissionEvidence.application_id == application.id,
+    ).order_by(SubmissionEvidence.id.desc()).all()
+    for evidence in evidence_rows:
+        try:
+            snapshot = _confirmation_snapshot(evidence, attempt)
+        except JT5ResolutionError:
+            continue
+        snapshot_hash = snapshot["evidence_snapshot_hash"]
+        if _evidence_rejected(db, evidence.id, snapshot_hash):
+            continue
+        options.append({
+            "id": evidence.id, "evidence_type": evidence.evidence_type,
+            "snapshot_hash": snapshot_hash, "confirmation_text": evidence.confirmation_text,
+            "final_url": evidence.final_url, "external_application_id": evidence.external_application_id,
+        })
+    return options
+
+
+def _context_blockers(db, application, attempt):
+    try:
+        _require_resolvable_attempt(db, application, attempt)
+        _require_closed_handoffs(db, application, lock=False)
+    except JT5ResolutionError as exc:
+        return [str(exc)]
+    return []
+
+
 def resolution_context(db, application):
     """Read-only recovery context; does not inspect or contact the browser/worker."""
     attempt = db.query(SubmissionAttempt).filter(
         SubmissionAttempt.application_id == application.id,
     ).order_by(SubmissionAttempt.id.desc()).first()
-    options = []
-    if attempt and _pending_resolution(attempt):
-        for evidence in db.query(SubmissionEvidence).filter(
-            SubmissionEvidence.application_id == application.id,
-        ).order_by(SubmissionEvidence.id.desc()).all():
-            try:
-                snapshot = _confirmation_snapshot(evidence, attempt)
-            except JT5ResolutionError:
-                continue
-            options.append({
-                "id": evidence.id, "evidence_type": evidence.evidence_type,
-                "snapshot_hash": snapshot["evidence_snapshot_hash"],
-                "confirmation_text": evidence.confirmation_text,
-                "final_url": evidence.final_url,
-                "external_application_id": evidence.external_application_id,
-            })
+    required = bool(attempt and _pending_resolution(attempt))
+    blockers = _context_blockers(db, application, attempt) if required else []
+    options = _confirmation_choices(db, application, attempt) if required and not blockers else []
     return {
         "attempt_reference": attempt.reference if attempt else None,
-        "resolution_required": bool(attempt and _pending_resolution(attempt)),
+        "resolution_required": required,
+        "resolution_available": bool(options),
+        "blockers": blockers,
         "confirmation_evidence": options,
         "resolution": (attempt.attempt_metadata or {}).get("owner_resolution") if attempt else None,
         "automatic_retry_allowed": False,
@@ -107,21 +130,19 @@ def _verify_confirmation(db, application, attempt, data):
     snapshot = _confirmation_snapshot(evidence, attempt)
     if data.evidence_snapshot_hash != snapshot["evidence_snapshot_hash"]:
         raise JT5ResolutionError("The evidence changed; reload it before recording a decision")
-    if db.query(SubmissionEvidenceReview.id).filter(
-        SubmissionEvidenceReview.evidence_id == evidence.id,
-        SubmissionEvidenceReview.evidence_snapshot_hash == snapshot["evidence_snapshot_hash"],
-        SubmissionEvidenceReview.decision == "rejected",
-    ).first():
+    if _evidence_rejected(db, evidence.id, snapshot["evidence_snapshot_hash"]):
         raise JT5ResolutionError("This confirmation evidence was rejected during review")
     return snapshot
 
 
-def _require_closed_handoffs(db, application):
-    active = db.query(ManualHandoffSession).filter(
+def _require_closed_handoffs(db, application, *, lock=True):
+    query = db.query(ManualHandoffSession).filter(
         ManualHandoffSession.application_id == application.id,
         ManualHandoffSession.status.in_(ACTIVE_HANDOFF_STATUSES),
-    ).with_for_update(nowait=True).populate_existing().first()
-    if active is not None:
+    )
+    if lock:
+        query = query.with_for_update(nowait=True).populate_existing()
+    if query.first() is not None:
         raise JT5ResolutionError("Close the retained handoff before recording confirmation")
 
 

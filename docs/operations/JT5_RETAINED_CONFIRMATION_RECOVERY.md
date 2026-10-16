@@ -42,6 +42,11 @@ recovery order. Busy PostgreSQL rows return HTTP 423 with no resolution recorded
 
 The response always declares automatic_retry_allowed=false.
 The read context declares non_submission_resolution_available=false.
+It also exposes resolution_available and blockers. Rejected snapshots and
+incompatible application states never produce actionable confirmation choices.
+Both the original attempt binding and the explicit trusted worker binding must
+match; legacy evidence without the trusted field remains unavailable.
+Whitespace-only text falls back to the retained employer receipt ID in the UI.
 
 ## Verification
 

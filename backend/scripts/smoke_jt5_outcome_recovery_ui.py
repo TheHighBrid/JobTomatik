@@ -22,12 +22,18 @@ React.createElement(Routes,null,React.createElement(Route,{path:'/applications/:
 
 
 class SyntheticRecoveryAPI:
-    def __init__(self, origin, *, confirmation=False, rejected=False, unavailable=False, applied=False):
+    def __init__(self, origin, *, confirmation=False, rejected=False, unavailable=False, applied=False,
+                 receipt_only=False, incompatible=False, previously_rejected=False):
+        """Initialize isolated synthetic API state without contacting an employer."""
         self.origin, self.rejected, self.unavailable = origin, rejected, unavailable
         self.posts, self.forbidden, self.errors = [], [], []
         self.state, self.attempt_status, self.snapshot = "submission_uncertain", "uncertain", "a" * 64
         self.status = "applied" if applied else "pending"
         self.confirmation = confirmation
+        self.receipt_only, self.incompatible = receipt_only, incompatible
+        self.previously_rejected = previously_rejected
+        if incompatible:
+            self.state = "needs_review"
 
     def application(self):
         return {
@@ -47,8 +53,14 @@ class SyntheticRecoveryAPI:
             "confirmation_text": ("Updated " if self.snapshot.startswith("b") else "") + "Synthetic application received for posting 101",
             "final_url": "https://employer.example.test/jobs/101/thanks",
         }] if self.confirmation else []
-        return {"attempt_reference": "jt5-synthetic", "resolution_required": self.state == "submission_uncertain",
-                "confirmation_evidence": evidence, "automatic_retry_allowed": False}
+        if evidence and self.receipt_only:
+            evidence[0].update(confirmation_text="   ", external_application_id="synthetic-receipt-101")
+        if self.previously_rejected or self.incompatible:
+            evidence = []
+        return {"attempt_reference": "jt5-synthetic", "resolution_required": self.attempt_status == "uncertain",
+                "resolution_available": bool(evidence), "confirmation_evidence": evidence,
+                "blockers": ["Application state changed; reload before resolving the outcome"] if self.incompatible else [],
+                "automatic_retry_allowed": False}
 
     async def route(self, route):
         request = route.request
@@ -65,26 +77,26 @@ class SyntheticRecoveryAPI:
 
     def response(self, path, request):
         if request.method == "POST":
-            if not path.endswith("/jt5/reconcile"):
-                self.forbidden.append(path)
-                return 500, {"detail": "Apply and Submit are forbidden in this fixture"}
-            self.posts.append(request.post_data_json)
-            if self.rejected:
-                self.snapshot = "b" * 64
-                return 409, {"detail": "Synthetic worker busy or evidence snapshot changed"}
-            confirmed = request.post_data_json["outcome"] == "confirmed"
-            self.state = "confirmed" if confirmed else "ready_to_apply"
-            self.attempt_status = "succeeded" if confirmed else "failed"
-            self.status = "applied" if confirmed else "pending"
-            return 200, {"automatic_retry_allowed": False, "idempotent": False}
+            return self.post_response(path, request)
         if path.endswith("/jt5/reconciliation"):
             return (503, {"detail": "Synthetic read failure"}) if self.unavailable else (200, self.recovery())
         if path.endswith("/jt5/status"):
             return 200, {"latest_attempt": {"reference": "jt5-synthetic", "status": self.attempt_status,
-                        "dispatch_status": "reconciliation_required" if self.state == "submission_uncertain" else "reconciled"}}
+                        "dispatch_status": "reconciliation_required" if self.attempt_status == "uncertain" else "reconciled"}}
         if path == "/api/applications/101":
             return 200, self.application()
         return 200, []
+
+    def post_response(self, path, request):
+        if not path.endswith("/jt5/reconcile"):
+            self.forbidden.append(path)
+            return 500, {"detail": "Apply and Submit are forbidden in this fixture"}
+        self.posts.append(request.post_data_json)
+        if self.rejected:
+            self.snapshot = "b" * 64
+            return 409, {"detail": "Synthetic worker busy or evidence snapshot changed"}
+        self.state, self.attempt_status, self.status = "confirmed", "succeeded", "applied"
+        return 200, {"automatic_retry_allowed": False, "idempotent": False}
 
 
 async def open_fixture(browser, origin, **options):
@@ -106,7 +118,7 @@ async def assert_no_replay(page, api):
 
 async def exercise_unknown_and_read_failure(browser, origin, evidence):
     api, context, page = await open_fixture(browser, origin)
-    await expect(page.get_by_text("No readable sufficient confirmation", exact=False)).to_be_visible()
+    await expect(page.get_by_text("Recovery is unavailable.", exact=False)).to_be_visible()
     await expect(page.get_by_role("button", name="Record verified outcome")).to_have_count(0)
     await assert_no_replay(page, api)
     assert not api.posts
@@ -151,6 +163,22 @@ async def exercise_owner_history(browser, origin):
     await context.close()
 
 
+async def exercise_review_findings(browser, origin):
+    api, context, page = await open_fixture(browser, origin, confirmation=True, receipt_only=True)
+    await page.get_by_label("Retained confirmation").select_option("7")
+    await expect(page.get_by_text("synthetic-receipt-101", exact=True)).to_be_visible()
+    assert not api.posts and not api.errors
+    await context.close()
+    for options in ({"incompatible": True}, {"previously_rejected": True}):
+        api, context, page = await open_fixture(browser, origin, confirmation=True, **options)
+        await expect(page.get_by_text("Recovery is unavailable.", exact=False)).to_be_visible()
+        await expect(page.get_by_role("button", name="Record verified outcome")).to_have_count(0)
+        await expect(page.get_by_label("Retained confirmation")).to_have_count(0)
+        await assert_no_replay(page, api)
+        assert not api.posts
+        await context.close()
+
+
 async def main(origin, evidence):
     harness = Path(__file__).resolve().parents[2] / "frontend" / "jt5-outcome-fixture.html"
     harness.write_text(HARNESS)
@@ -161,10 +189,12 @@ async def main(origin, evidence):
             await exercise_unknown_and_read_failure(browser, origin, evidence)
             await exercise_confirmation(browser, origin, evidence)
             await exercise_owner_history(browser, origin)
+            await exercise_review_findings(browser, origin)
             await browser.close()
         result = {"synthetic_only": True, "real_react_application_page": True, "mobile_viewport": "390x1000",
                   "unverified_non_submission_unavailable": True, "confirmation_and_snapshot_drift": "passed",
                   "unknown_read_failure_and_rejected_resolution": "passed", "owner_history_preserved": True,
+                  "receipt_id_fallback_and_unavailable_choices": "passed",
                   "automatic_apply_or_submit_requests": 0, "javascript_errors": 0}
         (evidence / "outcome-recovery-ui.json").write_text(json.dumps(result, indent=2))
         print(json.dumps(result))
