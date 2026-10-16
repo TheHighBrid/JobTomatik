@@ -1,4 +1,3 @@
-successfully downloaded text file (SHA: 2261ec3e123eec0b6a7ae5cc5205bba51126db92)
 """Handoff-capable ATS runner backed by a retained localhost CDP browser."""
 
 from __future__ import annotations

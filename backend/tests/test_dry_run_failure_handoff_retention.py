@@ -1,4 +1,3 @@
-successfully downloaded text file (SHA: 30c35fe10e33d47d7283bc86a7387a2296f1f796)
 from __future__ import annotations
 
 from types import SimpleNamespace
