@@ -77,7 +77,7 @@ Flag: `allow_real_application_submit` / `ALLOW_REAL_APPLICATION_SUBMIT`.
 | `backend/app/tasks/applications.py` | `LIVE_SUBMIT_BLOCKED_REASON` when false |
 | `backend/app/services/supervised_submission.py` | Preflight `global_live_submit_disabled` |
 | `backend/app/api/applications.py` | `_require_live_submit_enabled` on legacy submit |
-| Plus operations_policy, operator-assisted, scraping/handoffs/unattended tasks |
+| Plus operations_policy, operator-assisted, scraping/handoffs/unattended tasks | |
 
 ## JT5 path (this branch) — must not call the above
 

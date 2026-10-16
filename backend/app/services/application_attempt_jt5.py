@@ -1,4 +1,5 @@
-"""JT5 transactional attempt reservation without a human approval ceremony.
+"""
+JT5 transactional attempt reservation without a human approval ceremony.
 
 The legacy schema requires approval_reference, binding_hash and payload_hash.
 For compatibility until a schema migration, these fields receive internal
@@ -39,7 +40,8 @@ def reserve_jt5_attempt(
     application_id: int,
     authenticated_user_id: int,
 ) -> tuple[ApplyGateResult, SubmissionAttempt | None]:
-    """Reserve while holding the application row lock; caller commits transaction.
+    """
+    Reserve while holding the application row lock; caller commits transaction.
 
     A worker must claim the returned attempt before browser execution. Do not
     publish before commit. Reconcile uncertain outcomes rather than retrying.
