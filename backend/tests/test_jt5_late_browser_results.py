@@ -1,6 +1,6 @@
 """Synthetic browser/checkpoint races retain receipts without rewriting history."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -93,7 +93,10 @@ def test_late_confirmation_keeps_complete_receipt_and_closed_outcome(
     assert attempt.attempt_metadata["result"] == {"outcome": "independent_recovery"}
     assert attempt.attempt_metadata["owner_resolution"] == {"request_hash": "saved-receipt"}
     assert application.status == ApplicationStatus.interviewing
-    assert application.applied_at == datetime(2026, 10, 1, 12)
+    saved_time = application.applied_at
+    if saved_time.tzinfo is None:
+        saved_time = saved_time.replace(tzinfo=timezone.utc)
+    assert saved_time == datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
     assert application.automation_log == [{"action": "independent_recovery_saved"}]
     receipt = db_session.query(SubmissionEvidence).filter_by(application_id=application_id).one()
     for key, value in signal.items():
