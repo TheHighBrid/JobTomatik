@@ -123,6 +123,9 @@ def _attach_handoff_session(
         })
         return
 
+    # Worker sessions disable autoflush. Persist the pending review in this same
+    # transaction before querying it, so the retained browser can be attached.
+    db.flush()
     review = (
         db.query(ManualReviewTask)
         .filter(

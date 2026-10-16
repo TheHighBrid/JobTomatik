@@ -1,4 +1,10 @@
 from datetime import datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi import HTTPException
+from sqlalchemy.exc import OperationalError
 
 from app.models.application import (
     Application,
@@ -13,6 +19,27 @@ from app.models.job import Job
 from app.models.user import User
 from app.services.browser_handoff import BrowserVerification
 from app.services.handoff_session import issue_handoff_session
+
+
+@pytest.mark.parametrize("code", ["55P03", "08006"])
+def test_busy_handoff_fails_without_waiting_or_masking_database_failures(code):
+    from app.api.handoffs import _get_owned_session
+
+    db = MagicMock()
+    query = db.query.return_value
+    query.filter.return_value = query
+    query.with_for_update.return_value = query
+    query.first.side_effect = OperationalError("SELECT", {}, SimpleNamespace(pgcode=code))
+    if code == "55P03":
+        with pytest.raises(HTTPException) as caught:
+            _get_owned_session(db, "synthetic-session", 1, for_update=True)
+        assert caught.value.status_code == 423
+        assert "No action was repeated" in caught.value.detail
+        db.rollback.assert_called_once()
+    else:
+        with pytest.raises(OperationalError):
+            _get_owned_session(db, "synthetic-session", 1, for_update=True)
+    query.with_for_update.assert_called_once_with(nowait=True)
 
 
 def create_session_for_authenticated_user(db):
@@ -225,3 +252,14 @@ def test_application_handoff_listing_is_owner_scoped(auth_client, db_session):
     response = auth_client.get(f"/api/handoffs/application/{application_id}/sessions")
     assert response.status_code == 200
     assert [item["public_id"] for item in response.json()] == [public_id]
+
+
+def test_owner_recovers_lost_bootstrap_without_second_token_disclosure(auth_client, db_session):
+    public_id, _ = create_session_for_authenticated_user(db_session)
+    assert auth_client.post(f"/api/handoffs/{public_id}/bootstrap").status_code == 200
+    assert auth_client.post(f"/api/handoffs/{public_id}/bootstrap").status_code == 409
+    response = auth_client.post(f"/api/handoffs/{public_id}/recover")
+    assert response.status_code == 200
+    assert response.json()["session"]["status"] == "claimed"
+    assert response.json()["lease_token"]
+    assert "resume_token" not in response.json()

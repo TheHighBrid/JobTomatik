@@ -212,6 +212,7 @@ def _apply_operator_final_submit_reconciliation(
     review.details = {
         **dict(review.details or {}),
         **details,
+        "handoff_public_id": handoff_public_id,
         "confirmation_reconciliation_required": True,
         "automatic_retry_allowed": False,
     }

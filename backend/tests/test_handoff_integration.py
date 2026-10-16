@@ -1,3 +1,5 @@
+import pytest
+
 from app.models.application import (
     Application,
     ApplicationAutomationState,
@@ -18,7 +20,8 @@ from app.services.handoff_notifications import (
 from app.services.handoff_session import decrypt_handoff_secret
 
 
-def test_review_integration_extracts_browser_secrets_from_result(db_session):
+@pytest.mark.parametrize("flush_review", [False, True])
+def test_review_integration_extracts_browser_secrets_from_result(db_session, flush_review):
     user = User(
         email="handoff-integration@example.com",
         hashed_password="not-used",
@@ -47,7 +50,8 @@ def test_review_integration_extracts_browser_secrets_from_result(db_session):
         blocking_url=job.url,
     )
     db_session.add(review)
-    db_session.flush()
+    if flush_review:
+        db_session.flush()
 
     result = {
         "dry_run": True,
