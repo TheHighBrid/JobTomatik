@@ -1,334 +1,132 @@
-# JobTomatik v2.1.1 candidate
+# JobTomatik
 
-**An AI-powered job-search and application system built toward fully autonomous, evidence-backed real submission.**
+**Autonomous job hunting. Truthful applications. Evidence-backed outcomes.**
 
-JobTomatik searches and scores roles, organizes an application queue, prepares tailored materials, fills supported application forms, handles retained-browser sessions, records submission evidence, and tracks follow-ups.
+[![Latest release](https://img.shields.io/github/v/release/TheHighBrid/JobTomatik)](https://github.com/TheHighBrid/JobTomatik/releases/latest)
+[![Open issues](https://img.shields.io/github/issues/TheHighBrid/JobTomatik)](https://github.com/TheHighBrid/JobTomatik/issues)
 
-## Product direction
+JobTomatik discovers and ranks jobs, prepares tailored materials, resolves employer application targets, fills supported forms and tracks the outcome. Its final goal is policy-bounded autonomous submission, confirmation, recovery and follow-up. Android and the web provide the owner interface; a Linux OneHost server owns execution.
 
-The final product goal is a fully autonomous job-hunt agent that can:
+**Current position, 2026-10-16:** JT5 execution and owner handoff are integrated through [#704](https://github.com/TheHighBrid/JobTomatik/pull/704). The implementation has recorded OVH deployment evidence. General autonomous operation is not certified. [#706](https://github.com/TheHighBrid/JobTomatik/pull/706) fixes an outstanding live-submit flag defect and remains an undeployed draft with a Codacy action required.
 
-- discover and rank suitable roles;
-- prepare truthful, tailored application materials;
-- resolve job-board listings into employer or ATS application targets;
-- complete supported forms and upload the correct documents;
-- make policy-bounded decisions using the applicant's approved profile and answer rules;
-- submit real applications without routine human operation;
-- verify employer confirmation before recording an application as submitted;
-- recover from failures, prevent duplicates, and continue operating within configured limits.
+[Status](docs/PROJECT_STATUS.md) · [Product](docs/PRODUCT.md) · [Roadmap](docs/ROADMAP.md) · [Evidence](docs/EVIDENCE.md) · [Costs](docs/COSTS_AND_INFRASTRUCTURE.md) · [The Famiglia](docs/GOVERNANCE.md)
 
-JobTomatik v1 established the supervised foundation of that system. The current v2.1.1 candidate keeps those safety boundaries while advancing exact-head evidence, Android release identity, retained-browser reliability, and release controls. Adapter maturity still progresses through detection, dry-run, reviewed submission, and autonomous certification as implementation evidence matures.
+## What JT5 delivers
 
-JobTomatik does not attempt to evade CAPTCHA, MFA, identity verification, or other third-party security controls. When a site explicitly requires a human action, the system may pause, request that action, and resume afterward.
+One authenticated **Apply** action reserves and dispatches a target-bound attempt. Read-only status follows its progress. Authentication, ownership, atomic duplicate prevention and honest uncertain-outcome reconciliation are the four core protections. Target integrity, privacy and deployment release controls remain part of reliable execution.
 
-## Download and candidate identity
+- Discover, score and queue suitable jobs using the owner's approved preferences.
+- Prepare truthful application materials and reuse approved answer policies.
+- Resolve discovery listings into employer/ATS targets and bind execution to that identity.
+- Complete supported forms and retain the original browser for genuine human-only steps.
+- Record evidence, prevent duplicate execution and preserve uncertainty when confirmation is missing.
+- Recover interrupted work and advance toward bounded unattended operation, adapter by adapter.
 
-The Android client is published on the repository's **Releases** page:
+Current features and final expectations are mapped separately in [the product contract](docs/PRODUCT.md). Unsupported sites and sensitive unanswered questions require a clear review boundary.
 
-- [Download the latest published JobTomatik APK](https://github.com/TheHighBrid/JobTomatik/releases/latest)
-- Current repository candidate: `2.1.1`
-- Current Android version code: `211`
-- Current Android version name: `2.1.1`
-- Android application ID: `ca.jobtomatik.app`
-- Minimum Android SDK: 23
-- Target Android SDK: 35
+## Status at a glance
 
-The root `VERSION` file and backend product metadata identify the current repository candidate as `2.1.1`. A successful CI APK build does **not** publish it. Public release publication remains a separate explicit owner-authorized action, so the Releases page may still point to an earlier immutable release until that action occurs.
-
-The APK is the user interface. The FastAPI backend, Redis, Celery worker, database, and Playwright browser runtime run locally or on a trusted server.
-
-> Check `BUILD-INFO.txt` in a published release before upgrading. When permanent Android signing secrets are not configured, an owner-authorized release build may be development-signed for personal or local installation. A differently signed future APK may require uninstalling the previous build first.
-
-## Current capabilities
-
-| Area | Current state |
-|---|---|
-| Authentication, profile, résumé | Working |
-| Job search and scoring | Working with best-effort public sources |
-| Review and application queue | Working |
-| Cover-letter generation | Local template by default; optional Anthropic provider |
-| Answer Policy Vault | Working, encrypted at rest |
-| Listing-to-employer target resolution | In active development |
-| Greenhouse form filling | Dry-run and retained-handoff verified |
-| Retained browser handoff | CAPTCHA, anti-bot, login, MFA, and navigation interaction supported |
-| Expired-code recovery | Replace-and-submit, request new code, back, reload, and restart controls |
-| Submission confirmation | Explicit confirmation evidence closes successful applications |
-| Duplicate protection | Confirmed records hide further submission controls |
-| Adapter health and notifications | Working |
-| Follow-up scheduling | Working; SendGrid optional |
-| Fully autonomous real submission | Product target, promoted adapter by adapter through release evidence |
-
-## Adapter maturity and autonomy roadmap
-
-Adapter maturity is an operational progression, not a permanent restriction:
-
-```text
-unsupported
-→ detect_only
-→ dry_run
-→ human_reviewed_submit
-→ certified_autonomous
-```
-
-The current evidence boundary is:
-
-| Adapter | Current maturity | Current operating boundary |
+| Area | Verified position | Remaining boundary |
 |---|---|---|
-| Greenhouse | `dry_run` | Form preparation, retained handoff, and confirmation evidence |
-| Lever | `dry_run` | Form preparation through pre-submit or manual challenge |
-| Ashby | `dry_run` | Form preparation through pre-submit or manual challenge |
-| SmartRecruiters | `detect_only` | Metadata detection and handoff |
-| Workday | `detect_only` | Account and login handoff |
-| Generic sites | `unsupported` | Target resolution or manual review |
+| Main integration | #704 merged as `6aac5b3`; tested implementation `1a8a0c7` | Merge is not a new published APK release |
+| Exact-head checks | #704 implementation: 25 success, 2 skipped | Evidence applies to that exact head |
+| OneHost | Startup, queue, browser, native handoff and restart checks recorded | Host administration offline at documentation refresh |
+| Owner handoff | Retained browser, transient read recovery and once-only final action integrated | A click is not employer confirmation |
+| Live release control | #706 implements API/worker flag enforcement and withdrawal fixes | Open draft, Codacy action required, not deployed |
+| Latest real outcome | One final action recorded; no employer receipt | User Applied status and uncertain automation remain distinct |
+| Unattended operation | Final product objective | Not generally certified |
+| Costs | No new infrastructure purchased by this refresh | Actual monthly/cumulative totals need invoices and usage |
 
-Each adapter is intended to advance toward `certified_autonomous` after its real-world reliability, duplicate prevention, confirmation evidence, recovery behavior, and incident controls meet the repository's release criteria.
+See [completed tasks and the prioritized to-do list](docs/PROJECT_STATUS.md) for closure evidence and outstanding work. No completion percentage or final delivery date is presented as established fact.
 
 ## Architecture
 
-```text
-Android / Browser UI
-        │
-        ▼
-React + Capacitor client
-        │  HTTP API
-        ▼
-FastAPI backend ─── SQLite/PostgreSQL
-        │
-        ├── Redis
-        ├── Celery worker
-        └── Playwright Chromium retained-browser sessions
+```mermaid
+flowchart TD
+  Client["Android / web owner client"] --> API["FastAPI API"]
+  API --> DB["PostgreSQL"]
+  API --> Redis["Redis queue"]
+  Redis --> Worker["One Celery worker"]
+  Worker --> Browser["Owned persistent Chromium"]
+  Worker --> DB
+  API --> Browser
 ```
 
-The application-target architecture keeps the original discovery listing separate from the real employer or ATS form:
+The API and worker share browser state, network/PID namespaces and a private native display on one Linux host. Celery uses a solo pool with concurrency 1. Beat is absent. Worker startup reconciles interrupted attempts before consuming new work.
 
-```text
-source listing
-→ target resolution
-→ employer application target
-→ ATS adapter or bounded browser agent
-→ confirmation evidence
-```
+**Supported production path:** OVH Linux VPS plus Docker Compose, PostgreSQL, Redis, FastAPI, Celery and Playwright-owned Chromium. Android is a thin client. Termux, PRoot, ADB and native Android Chrome instructions remain historical; they are not the current production boot path.
 
-## Fast Android / Termux start
+## Deploy and develop
 
-The complete guide is in **[docs/SETUP_TUTORIAL.md](docs/SETUP_TUTORIAL.md)**.
-
-- Regular Termux runs the React development client when needed.
-- Ubuntu PRoot runs Python, Redis, FastAPI, Celery, and Playwright.
-- The installed APK connects to `http://127.0.0.1:8010`.
-- Do not append `/api` to the URL entered in JobTomatik.
-
-### Ubuntu backend terminal
+Start with [OneHost production deployment](docs/operations/ONEHOST_PRODUCTION_DEPLOYMENT.md) and its [environment template](docs/operations/onehost-production.env.example). Configure stable secrets and the exact runtime revision before starting services:
 
 ```bash
-proot-distro login ubuntu
-cd /root/JobTomatik/backend
-source .venv/bin/activate
-redis-server --daemonize yes 2>/dev/null || true
-redis-cli ping
-uvicorn app.main:app --host 127.0.0.1 --port 8010 --log-level info
+git clone https://github.com/TheHighBrid/JobTomatik.git
+cd JobTomatik
+# Configure required secrets and revision as described in the deployment guide.
+docker compose -f docker-compose.onehost-production.yml config
+docker compose -f docker-compose.onehost-production.yml up -d --build
 ```
 
-### Ubuntu Celery terminal
+The default API bind is localhost. Use approved TLS ingress for remote clients. Never commit populated environment files, browser profiles, applicant records or credentials.
 
-```bash
-proot-distro login ubuntu
-cd /root/JobTomatik/backend
-source .venv/bin/activate
-celery -A app.celery_app worker \
-  --loglevel=info \
-  --pool=solo \
-  -Q applications,celery,scraping,followup
-```
+**Known release-control issue:** on the documented main snapshot, `ALLOW_REAL_APPLICATION_SUBMIT=false` is not sufficient evidence that JT5 Apply is blocked. Complete #706 integration and deployed verification before relying on that control. Documentation does not enable production submission or authorize a real application.
 
-`--pool=solo` is recommended on Android/PRoot because one retained Chromium controller is more reliable than multiple forked workers.
+Build tooling is pinned in [.jobtomatik-toolchain.env](.jobtomatik-toolchain.env). Use the repository's existing verification workflows and scripts; historical commands do not certify a new source revision.
 
-### Optional browser frontend
+## Android and release identity
 
-Run outside Ubuntu in regular Termux:
+| Identity | Current source / publication |
+|---|---|
+| Repository candidate | `2.1.1` in [VERSION](VERSION) |
+| Android defaults | version name `2.1.1`, version code `211` |
+| Application ID | `ca.jobtomatik.app` |
+| Minimum / target SDK | 23 / 35 |
+| Latest published GitHub release observed | [v2.1.0](https://github.com/TheHighBrid/JobTomatik/releases/tag/v2.1.0), 2026-09-05 |
+| JT5 | Execution architecture name; not an Android version |
 
-```bash
-cd ~/JobTomatik/frontend
-npm ci
-VITE_API_URL=http://127.0.0.1:8010 npm run dev
-```
+[Download published artifacts](https://github.com/TheHighBrid/JobTomatik/releases/latest). A successful build is not publication. Check the exact release artifact, signing identity and upgrade compatibility before installation. See [APK build instructions](BUILDING_APK.md) and [release notes](docs/RELEASE_NOTES_JT5.md).
 
-Open `http://127.0.0.1:3000`.
+## Roadmap
 
-## Current workflow
+1. Close release-control and outcome-semantics defects with exact-head evidence.
+2. Verify the deployed correction and complete supported-host operational acceptance.
+3. Reconcile remaining PRs, platform acceptance and Android release provenance.
+4. Certify supported application paths and then run a bounded unattended pilot.
+5. Expand ATS coverage without weakening reliable shared execution.
 
-1. Register or sign in.
-2. Complete **Profile** and upload the current résumé PDF.
-3. Review the **Answer Policy Vault** and approve truthful reusable answers.
-4. Search for jobs and approve an exact posting.
-5. Open its application record and review the generated material.
-6. Press **Dry Run (Preview)**.
-7. Review filled answers and uploaded files.
-8. Complete any unavoidable third-party verification through **Open secure handoff**.
-9. Allow JobTomatik to resume and verify the employer confirmation page.
-10. JobTomatik records the evidence and updates the application state.
+[Milestones, dependencies, planning ranges and alternatives](docs/ROADMAP.md) explain what completes each stage. Historical campaign dates do not guarantee delivery.
 
-Do not repeat an application after the employer has displayed a received or thank-you confirmation.
+## The Famiglia
 
-## Development and rollout controls
-
-The repository ships conservative development defaults while autonomous capabilities are being tested and promoted:
-
-```env
-ALLOW_REAL_APPLICATION_SUBMIT=false
-GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
-AUTOPILOT_ENABLED=false
-ENABLE_RESUMABLE_HANDOFFS=false
-DEV_MOCK_JOBS=false
-```
-
-These are configurable release gates, not a statement that the product must remain supervised. An autonomous release can enable the relevant controls after its adapters, policies, duplicate protection, recovery paths, and confirmation evidence satisfy the operator's chosen readiness criteria.
-
-Dry runs may retain human-verification sessions automatically. `ENABLE_RESUMABLE_HANDOFFS` extends that capability to approved non-dry runs; it does not bypass a third-party challenge.
-
-## Configuration
-
-Copy the example file and use a strong secret:
-
-```bash
-cp .env.example backend/.env
-```
-
-Recommended Android/Termux development values:
-
-```env
-DATABASE_URL=sqlite:///./jobtomatik.db
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=replace-with-a-long-random-value
-ANSWER_VAULT_KEY=
-AI_PROVIDER=template
-SENDGRID_API_KEY=
-UPLOAD_DIR=uploads
-DEV_MOCK_JOBS=false
-ALLOW_REAL_APPLICATION_SUBMIT=false
-GREENHOUSE_SUPERVISED_PILOT_ENABLED=false
-AUTOPILOT_ENABLED=false
-ENABLE_RESUMABLE_HANDOFFS=false
-CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://localhost,http://localhost,capacitor://localhost
-```
-
-Keep `SECRET_KEY` and `ANSWER_VAULT_KEY` stable after encrypted answer policies are created.
-
-## Docker quick start
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:8000`
-- API docs: `http://localhost:8000/docs`
-
-Local-CDP retained-browser handoffs require the API and browser worker to share reachable browser-session affinity. The Android/Ubuntu single-node setup is the reference same-device configuration.
-
-## Build the Android APK
-
-```bash
-cd frontend
-npm ci
-npm run build:apk:debug
-```
-
-Output:
-
-```text
-frontend/android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-A release build requires a private keystore supplied outside source control:
-
-```bash
-export JOBTOMATIK_KEYSTORE_PATH=/secure/path/jobtomatik-release.jks
-export JOBTOMATIK_KEYSTORE_PASSWORD='...'
-export JOBTOMATIK_KEY_ALIAS='jobtomatik'
-export JOBTOMATIK_KEY_PASSWORD='...'
-npm run build:apk:release
-```
-
-No keystore path, key, or password is committed to this repository.
-
-## Test and verify
-
-The canonical toolchain is declared in `.jobtomatik-toolchain.env` and enforced by `scripts/verify.sh`.
-
-From a clean checkout, install dependencies once:
-
-```bash
-bash scripts/verify.sh bootstrap
-```
-
-Run the fast pre-commit gate:
-
-```bash
-bash scripts/verify.sh fast
-```
-
-Run one subsystem:
-
-```bash
-bash scripts/verify.sh backend
-bash scripts/verify.sh frontend
-bash scripts/verify.sh dependencies
-bash scripts/verify.sh deployment
-bash scripts/verify.sh android
-```
-
-Run the complete release verification path in deterministic dependency order:
-
-```bash
-bash scripts/verify.sh full
-```
-
-Use `--install` to install dependencies immediately before a selected mode, for example:
-
-```bash
-bash scripts/verify.sh full --install
-```
-
-The reproducible CI gate runs the same subsystem modes independently and requires every lane to pass. The canonical contract is Python 3.11, Node.js 20, Temurin Java 21, Gradle 9.5.1, Android Gradle Plugin 8.13.2, Android API 35, and Build Tools 35.0.0.
-
-Verification keeps real submission, scheduled autopilot, and live resumable handoffs disabled. Platform pilot settings remain available to configuration regression tests, then the dedicated safety gate explicitly verifies both pilots are off. Android verification also confirms application ID `ca.jobtomatik.app`, version code `211`, and version name `2.1.1`.
-
-The repository root `VERSION` now identifies the current candidate as `2.1.1`. APK CI remains build-only. Existing release tags and assets are immutable, and public v2.1.0 publication requires a separate owner-issued authorization bound to the exact source used to build the release artifact.
-
-## Repository guide
-
-```text
-backend/                 FastAPI, Celery, Playwright, policies, evidence, tests
-frontend/                React client and Capacitor Android project
-scripts/verify.sh        Canonical local and CI verification entry point
-docs/SETUP_TUTORIAL.md   Complete installation and operating tutorial
-evidence/                Pilot and certification records
-.github/workflows/       CI, Android build, stabilization, and release automation
-CHANGELOG.md              Version history
-SECURITY.md               Secrets, local-data, and vulnerability guidance
-```
-
-## API reference
-
-Interactive OpenAPI documentation is available at `/docs` on the running backend. Common routes include:
-
-| Method | Route | Purpose |
+| Title | Participant | Function |
 |---|---|---|
-| POST | `/api/auth/register` | Create an account |
-| POST | `/api/auth/login` | Receive an access token |
-| GET/PATCH | `/api/profile` | Read or update the applicant profile |
-| POST | `/api/profile/resume` | Upload the résumé |
-| POST | `/api/jobs/search` | Queue a job search |
-| GET | `/api/jobs/queue` | Review job candidates |
-| POST | `/api/applications` | Create an application record |
-| POST | `/api/applications/{id}/submit?dry_run=true` | Start a preview application attempt |
-| GET | `/api/handoffs/application/{id}/sessions` | List retained handoffs |
-| POST | `/api/handoffs/{public_id}/complete` | Verify and resume a completed handoff |
-| GET | `/api/applications/{id}/evidence` | Read submission evidence |
-| GET | `/api/system/operations-readiness` | Inspect current automation and release gates |
+| Don | `TheHighBrid` | Founder, product owner, final authority and repository administration |
+| Underboss | Sol 5.6 | Standing integration and verification lead |
+| Caporegime | Sol 6.1 | Assigned critical-path implementation/review |
+| Consigliere | Advisory seat, unappointed | Independent advice when assigned |
+| Caporegime / Soldatos | Manus, Claude and other assigned contributors | Bounded workstreams and engineering |
+| Associates | Dependency, CI and review automation | Proposals and evidence, no release authority |
 
-## Release history
+The [full roster](docs/GOVERNANCE.md) maps aliases to known identities, distinguishes active from historical participation and retains Grok's inactive status. Titles are creative project names and do not change GitHub accounts or permissions.
 
-See **[CHANGELOG.md](CHANGELOG.md)**. JobTomatik v1.00 established the supervised foundation and retained-browser recovery architecture. Later release lines add stronger certification, runtime attestation, Android artifact provenance, and immutable publication controls while preserving the historical evidence trail.
+## Contributing, security and attribution
+
+Read [AGENTS.md](AGENTS.md), [the coordination board](docs/operations/AI_COOPERATION_BOARD.md) and [issue #252](https://github.com/TheHighBrid/JobTomatik/issues/252) before claiming a lane. Use a dedicated branch, exact-head verification and a clear handoff. Preserve existing source authorship when using project aliases.
+
+Security reporting is described in [SECURITY.md](SECURITY.md). Authorship and copyright/disclaimer scope are in [AUTHORS.md](AUTHORS.md) and [NOTICE.md](NOTICE.md). No root software license is currently established; public visibility is not an unrestricted reuse grant.
+
+## Documentation map
+
+| Document | Purpose |
+|---|---|
+| [Project status](docs/PROJECT_STATUS.md) | Completed work, blockers, operational matrix and prioritized to-do list |
+| [Product contract](docs/PRODUCT.md) | Goals, features, robustness and final delivery expectations |
+| [Roadmap](docs/ROADMAP.md) | Milestones, dependencies, estimates and alternatives |
+| [Evidence ledger](docs/EVIDENCE.md) | Exact SHAs, checks, artifacts and confidence boundaries |
+| [Costs and infrastructure](docs/COSTS_AND_INFRASTRUCTURE.md) | Machine observations, actual-cost gaps and future cost model |
+| [Governance](docs/GOVERNANCE.md) | Famiglia aliases, authority, authorship and professional working rules |
+| [JT5 coordination blueprint](docs/architecture/JT5_MULTI_AGENT_COORDINATION_BLUEPRINT.md) | Current execution sequence and lane rules |
+| [Production cutover](docs/operations/JT5_PRODUCTION_CUTOVER_CHECKLIST.md) | Recorded integration versus remaining release acceptance |
+
+Historical snapshots are retained under `docs/archive/` for provenance. Current status and explicit owner instructions take precedence over their outdated runtime, authority or schedule claims.

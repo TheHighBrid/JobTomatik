@@ -1,45 +1,45 @@
-# JT5 simplified application execution: implementation contract
+# JT5 simplified application execution
 
-Status: migration in progress; no production behavior changes in this commit.
+**Updated:** 2026-10-16. **Implementation:** integrated through #704. **Outstanding correction:** #706 release-control and withdrawal handling, not yet deployed.
 
-## Owner-approved product contract
-One authenticated Apply action for a selected application. No extra approval reference, approval expiration ceremony, platform pilot flag, or second confirmation step. Preserve four protections: authentication, ownership, atomic duplicate prevention, and uncertain-outcome reconciliation.
+## Product contract
 
-## Findings from current main
-- `backend/app/api/supervised_submissions.py` exposes a separate supervised approval/queue API.
-- `backend/app/services/supervised_submission.py` creates exact-payload one-time approvals and validates expiration.
-- `backend/app/services/supervised_submission_integration.py` revalidates approval in the worker.
-- `backend/app/services/submission_integrity_integration.py` patches validation and reservation functions.
-- `backend/app/tasks/applications.py` contains `LIVE_SUBMIT_BLOCKED_REASON` and the real-submit setting.
-- `backend/app/config.py` defines release/pilot controls.
-- `backend/app/services/supervised_platforms.py` defines platform pilot policies.
-- `OPERATIONS_GUIDE.md` documents global kill switch, autopilot and handoff switches.
-- `scripts/verify.sh` and `scripts/verify-onehost-handoff.sh` explicitly disable live submission in test environments.
+One authenticated Apply action for a selected application reserves and dispatches a target-bound attempt. No additional legacy approval reference or pilot-lease ceremony is required for the ordinary JT5 path. Preserve authentication, ownership, atomic duplicate prevention and honest uncertain-outcome reconciliation.
 
-## Migration phases (avoid partial deletion)
-1. Trace every caller of the supervised approval and platform pilot interfaces, including Android UI, tests, workers and scheduled flows.
-2. Add one authenticated application execution endpoint using the existing user ownership check and durable submission-attempt records.
-3. Atomically reserve the attempt using database locking/uniqueness. A confirmed application returns the existing receipt; an uncertain attempt returns the existing uncertain status, never a second submission.
-4. Adapt the existing Greenhouse and Lever browser executors to accept the reserved attempt without an approval reference. Retain form validation, real site limitations, evidence capture and browser resource isolation as ordinary implementation behavior.
-5. Remove the approval issue/revoke/expiry dependency, pilot enablement gates, redundant runtime flag gates and UI double-confirmation after all callers migrate.
-6. Remove owner-facing autopilot/scheduling/concurrency/browser-ownership switches as requested; do not delete essential queue scheduling infrastructure or OS/browser resource isolation blindly. If scheduling is removed as a feature, retire scheduled dispatch jobs and related endpoints with tests.
-7. Rewrite verification to use mocked ATS submissions in tests without depending on live-submit environment flags.
-8. Update API schemas, migrations, Android client, docs and CI together; prove exact-head tests before merge.
+Operational release controls, target identity, privacy and browser resource isolation still apply. In particular, `ALLOW_REAL_APPLICATION_SUBMIT` is a real release control. The current integrated path has an enforcement defect; #706 adds API rejection before reservation/dispatch and a worker recheck. The phrase “four protections” must not be interpreted as authorization to ignore this flag.
 
-## Acceptance tests
-- Unauthenticated request: rejected.
-- Authenticated non-owner: rejected.
-- First valid request: one attempt reserved and one browser execution dispatched.
-- Simultaneous duplicate requests: at most one attempt executes.
-- Confirmed previous attempt: returns receipt, no new execution.
-- Uncertain previous attempt: returns uncertain state, no retry until reconciliation.
-- Failed-before-submit attempt: retry can be authorized without extra approval ceremony.
-- Browser fails after possible submit: classify uncertain, never claim confirmed.
-- Greenhouse/Lever fill and upload behavior unchanged.
-- No references to deprecated approval/pilot toggles in the active execution path.
-- Backend and worker use identical code revision.
+## Implemented path
 
-## Explicit non-goals
-- Do not infer that a queued task or DOM click is an employer receipt.
-- Do not hardcode applicant answers or remove authentication.
-- Do not merge a documentation-only change as if the implementation were complete.
+| Component | Source |
+|---|---|
+| API Apply / read-only status | `backend/app/api/jt5_applications.py` |
+| Decision gate | `backend/app/services/application_execution_gate.py` |
+| Reservation | `backend/app/services/application_attempt_jt5.py` |
+| Atomic claim / finalization | `backend/app/services/application_attempt_lifecycle_jt5.py` |
+| Worker | `backend/app/tasks/jt5_execution.py` |
+| Owner application UI | `frontend/src/pages/ApplicationDetail.jsx` |
+
+The public reserve-only route was removed. Owner Apply and status polling use JT5. Legacy helpers still serve bounded operator/recovery callers; the ordinary Apply migration is not permission to delete every approval, handoff or scheduled-work component.
+
+## Required behavior
+
+- Authenticate and check ownership before disclosing outcomes or creating attempts.
+- Reject disabled live submission before reservation/dispatch and recheck in the worker. This remains pending #706 integration/deployment.
+- Preserve the resolved URL and application identity at reservation; reject target drift.
+- Atomically claim at most one execution despite duplicate requests or queue delivery.
+- Return retained confirmed or uncertain outcomes without automatic resubmission.
+- Distinguish proven pre-submit failure from a possible final-action outcome. Preserve uncertainty when evidence is incomplete.
+- Never treat withdrawal or a user-selected Applied status as employer confirmation.
+- Keep retained owner handoff separate from the ordinary Apply action. Final human action remains explicit and durably checkpointed.
+- Reconcile interrupted attempts at worker startup before new consumption, without replay.
+- Run API and worker from the same verified implementation revision.
+
+## Acceptance and remaining work
+
+Integrated evidence includes auth/owner isolation, target binding, atomic claims, status contracts, Greenhouse/Lever controlled execution, queue and restart behavior, and native/mobile owner handoff. See [the evidence ledger](../EVIDENCE.md) for exact heads and check links.
+
+Remaining acceptance includes the #706 quality gate and deployed flag behavior, evidence-backed same-attempt reconciliation, accurate known pre-browser failure classification, remaining branch delta review and supported-host/platform release evidence. See [current status](../PROJECT_STATUS.md).
+
+## Migration discipline
+
+Re-run repository-wide caller searches before any deletion. [The caller inventory](JT5_CALLER_INVENTORY.md) is a migration aid, not proof that a call site is unused. Preserve legacy operator/recovery paths until their current callers migrate and regression evidence supports removal. Historical plans to remove redundant UI ceremonies do not override a justified global release control.

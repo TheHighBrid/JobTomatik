@@ -1,32 +1,32 @@
-# JT5 release notes (draft)
+# JT5 integration notes
 
-**Release state:** Candidate documentation only. Version and release date remain unset until JT5 verification, OneHost validation, main landing, and owner review are complete.
+**As of:** 2026-10-16. **Main integration:** #704, commit `6aac5b33701db6d13952f86c1faaeca76d66810f`.
 
-JT5 advances JobTomatik toward its product goal: live submission of real applications through a reliable, target-bound Apply flow.
+JT5 provides a simplified, target-bound owner Apply flow and advances the fully autonomous job-hunt product. Integration is complete for the recorded implementation, but a new public JT5 release and general autonomous certification are not established by that merge.
 
-## What changes
+## Integrated changes
 
-- Adds an owner-authenticated Apply action that reserves one attempt and dispatches the JT5 worker.
-- Adds read-only status reporting for the latest attempt and application result.
-- Uses durable attempt identity and atomic duplicate prevention.
-- Keeps execution bound to the resolved employer target and application identity; invalid or drifting targets fail closed.
-- Reports uncertain outcomes for reconciliation and does not retry them automatically.
-- Removes the reserve-only API path so reservation and dispatch are not exposed as separate user actions.
-- Keeps live-submit configuration under owner control while verification and production cutover are completed.
+- Owner-authenticated Apply reserves and dispatches a durable attempt; read-only status follows progress.
+- Atomic claims, target identity and retained outcomes prevent blind duplicate execution.
+- Public reserve-only execution was removed.
+- OneHost startup reconciles interrupted attempts before worker consumption.
+- Retained owner browser interaction, UTC leases, private native input and once-only final-action checkpoints are integrated.
+- Pending-review persistence, transient viewer recovery and nonblocking database locks are repaired.
+- Uncertainty remains visible after a final action or manual Applied selection.
 
-## Verification required before release
+## Verification and deployment
 
-This draft does not certify that the release gates have passed. Complete and record:
+The #704 implementation head `1a8a0c7be8476894c51dfba5e62ea7a8b936d5fd` has 25 successful checks and two skipped checks. The merge tree matches that head. OVH deployment of the implementation is recorded; host administration was offline during the documentation refresh. See [evidence](EVIDENCE.md).
 
-- Exact-head focused and full backend verification.
-- Four-gate regression coverage for authentication, ownership, atomic duplicate prevention, and uncertain outcomes.
-- Greenhouse and Lever fixture execution on the JT5 path.
-- Invalid-target and target-drift fail-closed checks.
-- Frontend and Android checks.
-- OneHost deployment, startup recovery, and retained-browser validation.
+## Known limitations
 
-Use [the JT5 production cutover checklist](operations/JT5_PRODUCTION_CUTOVER_CHECKLIST.md) to record the candidate SHA, verification evidence, OneHost results, and owner decision.
+- #706 corrects the JT5 bypass of `ALLOW_REAL_APPLICATION_SUBMIT` and withdrawn-state handling. It is an undeployed draft with Codacy action required at this snapshot.
+- Evidence-backed reconciliation of uncertain attempts and known pre-browser exception classification remain follow-up work.
+- One recorded owner final action remains without employer confirmation. Manual Applied status is not receipt evidence.
+- General unattended operation and universal ATS coverage are not certified.
 
-## Production operation
+## Version and publication
 
-Production live-submit enablement remains an explicit owner decision. After evidence review, use the approved production configuration process and verify the employer, role, target URL, and application identity before the first live Apply. Reconcile any uncertain result before attempting another submission.
+Repository/Android defaults remain 2.1.1, code 211. Latest published GitHub release observed is v2.1.0. JT5 is an architecture name, not a new version assignment. This documentation does not create a tag, sign an APK or publish a release.
+
+Complete the [current cutover checklist](operations/JT5_PRODUCTION_CUTOVER_CHECKLIST.md) before promoting a corrected build. Real-world actions and production enablement remain within exact owner authorization.
