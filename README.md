@@ -7,7 +7,7 @@
 
 JobTomatik discovers and ranks jobs, prepares tailored materials, resolves employer application targets, fills supported forms and tracks the outcome. Its final goal is policy-bounded autonomous submission, confirmation, recovery and follow-up. Android and the web provide the owner interface; a Linux OneHost server owns execution.
 
-**Current position, 2026-10-16:** JT5 execution and owner handoff are integrated through [#704](https://github.com/TheHighBrid/JobTomatik/pull/704). The implementation has recorded OVH deployment evidence. General autonomous operation is not certified. [#706](https://github.com/TheHighBrid/JobTomatik/pull/706) fixes an outstanding live-submit flag defect and remains an undeployed draft with a Codacy action required.
+**Current position, 2026-10-16:** JT5 execution and owner handoff are integrated through [#704](https://github.com/TheHighBrid/JobTomatik/pull/704). The release-control correction [#706](https://github.com/TheHighBrid/JobTomatik/pull/706) is merged and deployed on OVH as `28b70d5`; API, worker, PostgreSQL and Redis were freshly verified healthy. Current main is `0c169a67`. [#711](https://github.com/TheHighBrid/JobTomatik/pull/711) repairs late-result evidence retention and a PostgreSQL recovery race; its final CI is running. General autonomous operation and the uncertain employer outcome remain unresolved.
 
 [Status](docs/PROJECT_STATUS.md) · [Product](docs/PRODUCT.md) · [Roadmap](docs/ROADMAP.md) · [Evidence](docs/EVIDENCE.md) · [Costs](docs/COSTS_AND_INFRASTRUCTURE.md) · [The Famiglia](docs/GOVERNANCE.md)
 
@@ -28,11 +28,12 @@ Current features and final expectations are mapped separately in [the product co
 
 | Area | Verified position | Remaining boundary |
 |---|---|---|
-| Main integration | #704 merged as `6aac5b3`; tested implementation `1a8a0c7` | Merge is not a new published APK release |
+| Main integration | #704 and #706 integrated; current main `0c169a67` | Source, running image and APK publication are separate identities |
 | Exact-head checks | #704 implementation: 25 success, 2 skipped | Evidence applies to that exact head |
-| OneHost | Startup, queue, browser, native handoff and restart checks recorded | Host administration offline at documentation refresh |
+| OneHost | OVH administration online; API/worker/db/Redis freshly healthy | Restore drill and sustained operation still need acceptance evidence |
 | Owner handoff | Retained browser, transient read recovery and once-only final action integrated | A click is not employer confirmation |
-| Live release control | #706 implements API/worker flag enforcement and withdrawal fixes | Open draft, Codacy action required, not deployed |
+| Live release control | #706 merged; running image `28b70d5`; disabled-path regressions verified | Production real-submit and follow-up remain disabled |
+| Outcome retention | #711 candidate `4c9914a`; concurrent PostgreSQL regression and image proof pass | Full final-head CI and integration still pending |
 | Latest real outcome | One final action recorded; no employer receipt | User Applied status and uncertain automation remain distinct |
 | Unattended operation | Final product objective | Not generally certified |
 | Costs | No new infrastructure purchased by this refresh | Actual monthly/cumulative totals need invoices and usage |
@@ -70,7 +71,7 @@ docker compose -f docker-compose.onehost-production.yml up -d --build
 
 The default API bind is localhost. Use approved TLS ingress for remote clients. Never commit populated environment files, browser profiles, applicant records or credentials.
 
-**Known release-control issue:** on the documented main snapshot, `ALLOW_REAL_APPLICATION_SUBMIT=false` is not sufficient evidence that JT5 Apply is blocked. Complete #706 integration and deployed verification before relying on that control. Documentation does not enable production submission or authorize a real application.
+**Release controls:** #706 added API rejection before reservation/dispatch and a worker recheck, including withdrawal handling. Its deployed source and exact-image tests are recorded in [the evidence ledger](docs/EVIDENCE.md). Preserve these controls when updating. Documentation does not enable production submission or authorize a real application.
 
 Build tooling is pinned in [.jobtomatik-toolchain.env](.jobtomatik-toolchain.env). Use the repository's existing verification workflows and scripts; historical commands do not certify a new source revision.
 
@@ -89,8 +90,8 @@ Build tooling is pinned in [.jobtomatik-toolchain.env](.jobtomatik-toolchain.env
 
 ## Roadmap
 
-1. Close release-control and outcome-semantics defects with exact-head evidence.
-2. Verify the deployed correction and complete supported-host operational acceptance.
+1. Complete #711 final-head verification and independent integration of the late-result repair.
+2. Finish evidence-backed outcome recovery and supported-host operational acceptance.
 3. Reconcile remaining PRs, platform acceptance and Android release provenance.
 4. Certify supported application paths and then run a bounded unattended pilot.
 5. Expand ATS coverage without weakening reliable shared execution.

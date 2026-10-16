@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -403,6 +403,18 @@ def register_submission_evidence_receipt(
     return receipt
 
 
+def _stable_utc_timestamp(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return str(value)
+
+
 def approval_submission_binding_hash(approval: SubmissionApproval) -> str:
     metadata = dict(approval.approval_metadata or {})
     return _hash_value({
@@ -421,8 +433,8 @@ def approval_submission_binding_hash(approval: SubmissionApproval) -> str:
         "combined_payload_hash": approval.combined_payload_hash,
         "adapter_version": metadata.get("adapter_version"),
         "target_identity_hash": metadata.get("target_identity_hash"),
-        "approved_at": approval.approved_at,
-        "expires_at": approval.expires_at,
+        "approved_at": _stable_utc_timestamp(approval.approved_at),
+        "expires_at": _stable_utc_timestamp(approval.expires_at),
     })
 
 

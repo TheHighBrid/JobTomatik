@@ -1,61 +1,62 @@
 # Evidence ledger
 
-**Collected:** 2026-10-16. This ledger distinguishes freshly retrieved GitHub metadata from prior operational reports and unknowns. Tests are not employer receipts.
+**Collected:** 2026-10-16. GitHub metadata, fresh host observations, synthetic tests and employer receipts are distinct evidence classes. The timestamped [machine-readable snapshot](evidence/2026-10-16-project-snapshot.json) retains both this update and the initial historical snapshot.
 
-## Source identity
+## Current source and runtime identity
 
-| Item | Exact identity | Evidence type |
+| Item | Exact identity | Supported claim |
 |---|---|---|
-| Main at refresh | `6aac5b33701db6d13952f86c1faaeca76d66810f` | Fresh Git checkout and #704 merge metadata |
-| Integrated implementation | `1a8a0c7be8476894c51dfba5e62ea7a8b936d5fd` | Fresh #704 head/check metadata |
-| Implementation / merge tree | `81ce6d286e7f94dedeb2db388c1c7c35b6873024` | Git tree equivalence, also recorded in coordination receipt |
-| Pending #706 correction | `f3ac627a60a33ca1e5f49cf06b3a48492cf7aba2` | Fresh PR metadata; draft, open, not deployed per record |
-| Machine-readable check snapshot | [2026-10-16-project-snapshot.json](evidence/2026-10-16-project-snapshot.json) | Retrieved check names, conclusions and URLs |
+| Current main | `0c169a673ca0feb8cbbb806dcd6b5d532fb71c06` | Includes #704, #706 and timezone correction #675 |
+| Running API / worker | `28b70d530055d3c37e0c57364f1428900bee48ac`, image `jobtomatik:28b70d5` | Fresh Docker inspection: both healthy on the prior verified release |
+| Late-result candidate #711 | `4c9914a21aafb46efca051236ec7a403762f5733` | Source candidate only; not merged or deployed |
+| Candidate tree | `cb4a91b9c52b7a6ff99eb5e0f8259fd0ab8a88e8` | Published source fetched back and compared with tested worktree |
+| Candidate image | `jobtomatik:4c9914a`; image ID `sha256:49a612a2e17584d7dd73b7d34ec3e48f3a6cf08f7d44f8721c822830e93d4784` | Built on OVH; revision label and all three changed Python file hashes verified |
+| Latest published release | [v2.1.0](https://github.com/TheHighBrid/JobTomatik/releases/tag/v2.1.0), 2026-09-05 | Fresh GitHub release metadata; a built image is not a published APK |
 
-## Integration and regression evidence
+## Release-control closure
 
-At the integrated #704 implementation head, the freshly retrieved check collection contains **25 successful checks, two skipped, zero failed or running**. This is an exact-head check count, not a number of unique test cases or workflows.
+[#706](https://github.com/TheHighBrid/JobTomatik/pull/706) is merged and deployed, superseding the initial pre-deployment documentation snapshot. The retained [cutover receipt](https://github.com/TheHighBrid/JobTomatik/issues/252#issuecomment-6210255597) records 22 successful exact-head checks, a 40-test network-disabled production-image proof, matching source/container hashes, rollback snapshots, healthy reads and unchanged application/attempt/evidence counts.
 
-| Evidence | Link | Claim it supports |
+Its API rejects disabled Apply before reservation or dispatch, and its worker rechecks release state and withdrawal before browser entry. Fresh inspection found real-submit, follow-up and Greenhouse/Lever pilot settings false. No real application was executed to verify these controls.
+
+## Late-result retention and PostgreSQL race
+
+[#711](https://github.com/TheHighBrid/JobTomatik/pull/711) retains full confirmation text, receipt IDs and artifact references when browser work returns after recovery has closed its attempt. It refreshes locked rows and preserves the independently saved outcome and owner history.
+
+The original candidate's opposite lock order was a real defect: a concurrent PostgreSQL regression reproduced `DeadlockDetected` with the worker as victim. Final candidate `4c9914a` locks the attempt before the application, matching the stale reconciler.
+
+| Verification | Result | Boundary |
 |---|---|---|
-| JT5 focused / full backend | [run 38825519326](https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519326) | Execution regressions on the implementation head |
-| Production Compose / mobile handoff | [run 38825519351](https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519351) | Controlled startup/restart and synthetic native/mobile behavior |
-| Queue round trip | [run 38825519357](https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519357) | Applications queue canary path |
-| Owned browser proof | [run 38825519213](https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519213) | Fixture browser execution on Compose |
-| Backend / frontend / Android / release gate | [run 38825519338](https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519338) | Build, migration and configured gate results |
-| Exact-head acceptance | [run 38825519071](https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519071) | Candidate acceptance check |
-| Codacy | [check 116732307582](https://github.com/TheHighBrid/JobTomatik/runs/116732307582) | Successful quality result on that head |
+| Source worker/reservation/status suites, network disabled | 54 passed, 1 PostgreSQL-specific skip | Synthetic tests using production image dependencies |
+| PostgreSQL receipt suite | 15 passed | Includes simultaneous stale recovery and browser completion |
+| Exact new PostgreSQL CI configuration | 21 passed | Receipt and stale-recovery suites on disposable PostgreSQL15 |
+| Built candidate image on isolated PostgreSQL | 21 passed | No source mount or test-fixture rebinding |
+| [PostgreSQL CI job](https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353643) | Successful | Runs the concurrency regression permanently in CI |
+| Independent code review | No major issues on final head | Prior lock-order thread resolved after reproduction and repair |
+| Final-head aggregate CI at snapshot | 17 success, 4 full backend checks running | Not yet an all-green integration or release claim |
 
-The two skipped checks are `public-proof` and `publish-static-runtime (main only)`. Neither is presented as a passing production proof.
+The earlier [handoff receipt](https://github.com/TheHighBrid/JobTomatik/issues/252#issuecomment-6217141159) describes the first candidate. The newer review correction and exact final-head CI supersede its lock-order and source-identity claims.
 
-## Pending correction
+## Fresh OVH observations
 
-[#706](https://github.com/TheHighBrid/JobTomatik/pull/706) reports 40 focused regressions passing for release flag enforcement and withdrawal. Fresh GitHub checks show 21 successes, Codacy `action_required`, and one skipped `public-proof` check. See [the Codacy result](https://github.com/TheHighBrid/JobTomatik/runs/116798332314). It is not all green and is not in the deployed implementation. Do not infer that a false production flag currently blocks the integrated JT5 path.
+On 2026-10-16, Desktop Commander was online for `vps-10618f0e`. Fresh inspection found API, worker, PostgreSQL and Redis healthy; Caddy running. The candidate image was built without restarting production services.
 
-## Operational evidence on OVH
+At 14:46 UTC the guest reported Ubuntu 26.04.1 LTS, x86_64, 4 virtual CPUs, 7,746 MiB RAM and root disk `72G` total / `56G` available. These are guest observations, not a provider plan or physical-host attestation. [Infrastructure details and billing limits](COSTS_AND_INFRASTRUCTURE.md) remain explicit.
 
-The following are **reported host observations**, retained in [#704](https://github.com/TheHighBrid/JobTomatik/pull/704) and [coordination receipt 6205074007](https://github.com/TheHighBrid/JobTomatik/issues/252#issuecomment-6205074007):
-
-- API and worker image/source attestation matched implementation `1a8a0c7`; static UI matched the candidate.
-- Public health/readiness returned 200; authenticated application, JT5 status and handoff reads returned 200.
-- PostgreSQL contention returned 423 in 24 ms with zero writes or browser actions.
-- The temporary global database lock timeout was removed after the NOWAIT deployment.
-- Before restart, all four queues and active application/open handoff counts were zero.
-- Database/configuration snapshots and rollback images were retained on the host.
-- Live submission, autopilot, follow-up and pilot flags were recorded false.
-
-The subsequent [integration receipt](https://github.com/TheHighBrid/JobTomatik/issues/252#issuecomment-6207500359) records #704 merged after 25 successful/two skipped checks and confirms tree equivalence. Earlier PR descriptions that say integration was pending are superseded by actual merge metadata.
-
-Desktop Commander freshly reported all three recorded devices offline during this refresh. Container health, current environment, invoices, backup contents and host hardware were not freshly inspected. Offline administration does not by itself prove the application is down.
+Prior #704/#706 operational receipts retain public health/readiness and authenticated-read results, bounded PostgreSQL contention, source attestation, database/configuration snapshots and rollback images. This refresh did not execute a backup restore or certify sustained unattended operation.
 
 ## Employer outcome boundary
 
-The latest application record has one consumed once-only final action and zero explicit employer confirmation evidence. The owner's manual Applied selection does not change automation uncertainty. This refresh performed no employer action or retry.
+The Daniels Health application was freshly read as user status Applied and automation state `submission_uncertain`. No outcome was resolved or retried. A narrow search of the connected personal inbox found no matching receipt; the application used the Melato address, so that search is not conclusive.
 
-Historical confirmed Android submissions are not current OneHost certification. Fixture final actions and intercepted synthetic pages do not count as real applications.
+A button click, manual status, missing email, fixture page or green test does not prove employer receipt or non-submission. #708 was merged into a feature parent, not current main. #710's proposed recovery API remains unintegrated and has outstanding review findings.
 
-## Retention and future receipts
+## Historical implementation evidence
 
-Keep code revision, image identity, runtime, time, target scope, command/result, artifact hash/reference, observed outcome and unresolved limits in every acceptance receipt. Link existing canonical artifacts rather than rewriting their hashes or maturity claims. CI artifact retention may expire; a link's presence is not proof that its bytes were inspected in this refresh.
+#704 merged as `6aac5b33701db6d13952f86c1faaeca76d66810f`; its tree matched tested implementation `1a8a0c7be8476894c51dfba5e62ea7a8b936d5fd`, tree `81ce6d286e7f94dedeb2db388c1c7c35b6873024`. That implementation had 25 successful and two skipped checks. The skipped `public-proof` and `publish-static-runtime (main only)` checks were not passing production proof.
 
-Never publish tokens, secrets, raw browser profiles or applicant records to improve an evidence score. Use redacted operational summaries and controlled storage for sensitive evidence.
+Historical Android confirmations establish that earlier runtime's behavior. They do not certify current OVH Chromium or a different employer target.
+
+## Retention
+
+Keep revision, image, runtime, timestamp, target scope, command/result, artifact hash, observed outcome and unresolved limits in every receipt. Preserve original evidence and append corrections. Never commit secrets, applicant payloads, browser profiles or payment details. A CI artifact link alone does not establish that its bytes were inspected.

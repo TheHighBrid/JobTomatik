@@ -15,8 +15,8 @@ rename accounts, change the hierarchy below or grant permissions.
 
 JT5's four core protections do not authorize bypassing operational release
 controls. In particular, preserve `ALLOW_REAL_APPLICATION_SUBMIT` enforcement;
-the integrated-path defect is tracked by #706. A false flag without enforcement
-is not a verified blocked execution path.
+the integrated-path defect was corrected and deployed through #706. Preserve
+its API/worker rejection tests; a flag value alone is not enforcement evidence.
 
 ## Ownership and authority
 

@@ -3,7 +3,7 @@
 **2026-10-16 correction:** the table below is a dated migration inventory, not
 a current authorization to delete release controls. Ordinary JT5 Apply is
 integrated through #704. Preserve `ALLOW_REAL_APPLICATION_SUBMIT` as an operational
-release control; #706 corrects its missing API/worker enforcement. Re-run current
+release control; #706 corrected its missing API/worker enforcement and is deployed. Re-run current
 caller searches before deletion. Operator/recovery callers remain separately
 scoped. See [current execution contract](JT5_SIMPLIFIED_APPLICATION_EXECUTION.md).
 
@@ -90,7 +90,7 @@ Flag: `allow_real_application_submit` / `ALLOW_REAL_APPLICATION_SUBMIT`.
 
 Do not call redundant legacy approval ceremonies from ordinary JT5 Apply.
 The global live-submit setting still applies at API reservation and worker entry;
-that correction is pending #706. This is distinct from reactivating a pilot lease.
+that correction is merged and deployed through #706. This is distinct from reactivating a pilot lease.
 
 | Component | File |
 |-----------|------|

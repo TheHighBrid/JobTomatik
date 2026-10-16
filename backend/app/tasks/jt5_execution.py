@@ -11,6 +11,7 @@ from typing import Any, Dict
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
+from app.config import get_settings
 from app.models.application import (
     Application,
     ApplicationAutomationState,
@@ -185,6 +186,19 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
                 "application_id": application_id,
                 "error": "missing_application_job_or_user",
                 "automatic_retry_allowed": False,
+            }
+
+        if application.status == ApplicationStatus.withdrawn or not get_settings().allow_real_application_submit:
+            reason = (
+                "application_withdrawn" if application.status == ApplicationStatus.withdrawn
+                else "live_submission_disabled"
+            )
+            complete_jt5_attempt(db, attempt, outcome="failed_pre_submit", details={"reason": reason})
+            db.commit()
+            return {
+                "success": False, "application_id": application_id,
+                "attempt_reference": attempt_reference, "outcome": "failed_pre_submit",
+                "error": reason, "automatic_retry_allowed": False,
             }
 
         if submission_is_closed(application):

@@ -6,24 +6,26 @@ This is the current project briefing. Historical campaign days, closed child PRs
 
 ## Executive assessment
 
-JT5 application execution and the OneHost owner-handoff stack are integrated into `main` through [#704](https://github.com/TheHighBrid/JobTomatik/pull/704). The merged commit is `6aac5b33701db6d13952f86c1faaeca76d66810f`; its tree matches tested implementation `1a8a0c7be8476894c51dfba5e62ea7a8b936d5fd`.
+JT5 execution and owner handoff are integrated through [#704](https://github.com/TheHighBrid/JobTomatik/pull/704). Release-control correction [#706](https://github.com/TheHighBrid/JobTomatik/pull/706) is merged as `f7c2f6f7`; current main is `0c169a673ca0feb8cbbb806dcd6b5d532fb71c06`, including timezone correction #675.
 
-The operational record reports that implementation deployed on the existing OVH host, with healthy services, authenticated reads and retained rollback snapshots. This documentation refresh could inspect GitHub and CI, but could not independently inspect the current host: all Desktop Commander devices were offline. Reported deployment evidence is distinguished from fresh host verification throughout these documents.
+OVH administration is online. Fresh inspection on 2026-10-16 found API and worker healthy on `jobtomatik:28b70d5`, with PostgreSQL and Redis healthy. Release-control enforcement has exact-source image tests and a retained cutover receipt. The effective real-submit, follow-up and Greenhouse/Lever pilot flags were freshly read as false. This is a healthy deployment, not general autonomous certification.
 
-A known release-control defect remains: the integrated JT5 path can bypass `ALLOW_REAL_APPLICATION_SUBMIT`. [#706](https://github.com/TheHighBrid/JobTomatik/pull/706) adds API and worker enforcement and corrects withdrawn-state handling. It is an open draft, not merged or deployed. Its exact head has 21 successful checks, one Codacy `action_required`, and one skipped check at this snapshot. Successful test checks do not make that gate clear.
+The immediate code candidate is [#711](https://github.com/TheHighBrid/JobTomatik/pull/711), head `4c9914a21aafb46efca051236ec7a403762f5733`. It preserves complete late confirmation receipts without rewriting a closed checkpoint and fixes a reproducible PostgreSQL lock-order deadlock. Local source tests, the built-image PostgreSQL proof and the new PostgreSQL CI job pass. Independent final-head code review found no major issues. Full backend CI and integration remain pending at this snapshot. The image is built but not deployed.
+
+#708 was merged into a feature parent rather than current main. #710 remains a separate recovery candidate with unresolved review findings. Neither is described here as a deployed recovery API.
 
 ## Operational matrix
 
 | Component | Latest supported finding | Limit / next verification |
 |---|---|---|
-| API / authentication | Deployment record: public health/readiness and authenticated application/status/handoff reads returned 200 | Current process and revision require host access |
-| PostgreSQL | Deployment record: healthy; contended handoff returned 423 in 24 ms without writes | Backup restore and sustained operation need retained evidence |
-| Redis | Deployment record: healthy; queues inspected before cutover | Current queue depth not reverified |
+| API / authentication | Fresh container health passes on deployed image `28b70d5`; prior cutover verified authenticated reads | Repeat supported-flow acceptance after a new deployment |
+| PostgreSQL | Freshly healthy; #711 concurrent row-lock regression and 21-case recovery suite pass on isolated PostgreSQL15 | Backup restore and sustained operation still need retained evidence |
+| Redis | Freshly healthy; queues inspected in prior cutover receipt | Current queue depth not reverified by this documentation refresh |
 | Celery | One worker, solo pool, concurrency 1; restart reconciliation tested | Do not add workers against the shared browser profile |
 | Browser | Playwright-owned Chromium; shared persistent state and private native display | Profile lifecycle candidate #674 remains open; reconcile remaining delta |
 | Owner UI | JT5 Apply, status polling, retained handoff, post-action uncertainty display integrated | Do not treat a manual Applied selection as employer confirmation |
-| Host administration | OVH Desktop Commander offline at refresh | Blocks fresh administrative inspection and deployment of #706 |
-| Live release control | Compose defaults false; #706 fixes missing JT5 enforcement | False configuration alone does not prove the current code blocks Apply |
+| Host administration | OVH Desktop Commander online and inspected | No owner copy/paste was required for this refresh |
+| Live release control | #706 merged/deployed; API and worker rejection tested; effective real-submit false | Do not enable real-world actions from documentation or general continuation instructions |
 | Unattended operation | Final product objective | Not certified for general autonomous use |
 
 ## Completed engineering
@@ -40,16 +42,19 @@ These are implementation or recorded validation milestones, not blanket producti
 - [x] Keep uncertain outcomes visible after final action and after manual application-status changes.
 - [x] Verify #704's implementation head: 25 successful checks, two skipped, none failed or running.
 - [x] Record deployment attestation, rollback images and database/configuration snapshots for that implementation.
+- [x] Merge and deploy #706 release-control/withdrawal correction; retain its exact-image 40-test proof and cutover receipt.
+- [x] Reproduce #711 lock-order failure on PostgreSQL, then pass the corrected 21-case recovery proof and add a permanent PostgreSQL CI job.
+- [x] Reverify online OVH administration, healthy containers and current hardware without owner troubleshooting.
 
 ## Remaining work in priority order
 
 | Priority | Work | Evidence needed to close | Owner role |
 |---|---|---|---|
-| P0 | Finish #706 quality review, integrate and deploy | Clear exact-head checks including Codacy; owner/non-owner, disabled API/worker and withdrawal regressions; matching API/worker revision | Underboss integration; assigned Caporegime implementation |
-| P0 | Prove live-release control on deployed build | Controlled no-employer test rejects disabled Apply before reservation/dispatch; worker recheck prevents browser entry | Assigned Soldato; independent review |
+| P0 | Complete #711 final-head checks and integration | All required final-head checks; independent review; retained image/source and regression evidence | Underboss integration; assigned Caporegime implementation |
+| P0 | Promote a verified late-result repair after integration | Matching API/worker source, unchanged release flags and application outcomes, retained rollback | Assigned operations lane; independent review |
 | P1 | Evidence-backed reconciliation of uncertain attempts | Audited same-attempt operation; preserve consumed final-action checkpoint; no replay or false confirmation | Assigned Caporegime |
 | P1 | Classify proven pre-browser safety failures accurately | Regression distinguishes `failed_pre_submit` from genuinely uncertain browser outcomes | Assigned Soldato |
-| P1 | Reconcile #674 / #675 and diagnostic remnants | Compare each remaining delta against merged main; retain necessary fixes, close superseded work with evidence | Underboss |
+| P1 | Reconcile #674 and diagnostic remnants | #675 is now merged; compare remaining deltas against current main without reopening completed work | Underboss |
 | P1 | Reconcile stale tracker items | #688/#689 still open despite implementation; review #676-#680 individually; do not close from title alone | Consigliere review lane |
 | P1 | Finish OneHost acceptance / recovery record | Current host identity, restore evidence, resource observations, retained-page and unknown-outcome recovery | Underboss plus assigned operations lane |
 | P2 | Reconcile Android release/signing status | Exact APK source, signer, upgrade compatibility and published artifact provenance; #485 remains open | Assigned release lane |

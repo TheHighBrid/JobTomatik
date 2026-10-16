@@ -10,13 +10,13 @@ Deliver autonomous job hunting with truthful materials, real employer submission
 
 ## Current baseline
 
-- Main: `6aac5b33701db6d13952f86c1faaeca76d66810f`, merged via #704.
-- Tested/deployed implementation per record: `1a8a0c7be8476894c51dfba5e62ea7a8b936d5fd`.
-- Merge and implementation tree: `81ce6d286e7f94dedeb2db388c1c7c35b6873024`.
-- Implementation checks: 25 success, 2 skipped. This is not general autonomous certification.
+- Main: `0c169a673ca0feb8cbbb806dcd6b5d532fb71c06`, including #704, #706 and #675.
+- Running API/worker: `28b70d530055d3c37e0c57364f1428900bee48ac`, image `jobtomatik:28b70d5`.
+- #711 candidate: `4c9914a21aafb46efca051236ec7a403762f5733`; concurrent PostgreSQL and image proof pass, full CI pending.
+- Build/test/deployment identity and employer confirmation remain separate claims.
 - #681 and the #697-#703 chain are integrated through #704; do not restart their old merge queue.
-- #706 is an open draft correcting release-flag enforcement and withdrawal. Codacy requires action; it is not deployed.
-- OVH administration is offline at this refresh. Existing deployment observations remain dated records.
+- #706 is merged and deployed; its quality findings are closed.
+- OVH administration is online; services, source image, release flags and hardware were freshly inspected.
 
 See [status](../PROJECT_STATUS.md) and [evidence](../EVIDENCE.md) for exact claims and confidence boundaries.
 
@@ -24,14 +24,14 @@ See [status](../PROJECT_STATUS.md) and [evidence](../EVIDENCE.md) for exact clai
 
 | Order | Bounded lane | Closure |
 |---|---|---|
-| 1 | Release-control correction #706 | Review quality findings, exact-head checks, independent verification, integration and deployed disabled-path proof |
+| 1 | Late-result repair #711 | Final-head checks and independent integration, then guarded promotion with retained outcome/flag invariants |
 | 2 | Outcome reconciliation / classification | Same-attempt evidence reconciliation, no replay; known pre-browser failures classified accurately |
-| 3 | Remaining branch and tracker deltas | Review #674/#675 and diagnostics against current main; close only verified superseded scope |
+| 3 | Remaining branch and tracker deltas | Review #674 and diagnostics; #675 is merged against current main; close only verified superseded scope |
 | 4 | Host and release acceptance | Current host attestation, restore/recovery evidence, resource/cost record and exact Android artifact provenance |
 | 5 | Supported-platform certification | Representative live evidence within exact authorization, truthful outcomes and incident controls |
 | 6 | Bounded unattended operation | Approved policies, certified adapters, caps, monitoring and tested rollback |
 
-[The roadmap](../ROADMAP.md) defines milestone dependencies and planning estimates. Work on unavailable-host-independent checks should continue while deployment is blocked.
+[The roadmap](../ROADMAP.md) defines milestone dependencies and planning estimates. Use independent checks while long CI runs; host administration is currently available.
 
 ## Participant model
 

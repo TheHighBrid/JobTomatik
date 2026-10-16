@@ -15,22 +15,24 @@ Sources: [evidence ledger](../EVIDENCE.md), [#704](https://github.com/TheHighBri
 
 ## Corrected candidate and release controls
 
-- [ ] Clear #706's Codacy action-required result and complete independent exact-head review.
-- [ ] Integrate release-flag enforcement and withdrawal handling after required checks pass.
-- [ ] Deploy matching API/worker images with recorded source/build identity once administration is available.
-- [ ] Verify disabled Apply rejects before reservation/dispatch without employer traffic.
-- [ ] Verify the worker rechecks disablement and withdrawal without browser entry or false confirmation.
+- [x] Clear #706 quality findings and complete its exact-head checks.
+- [x] Merge release-flag enforcement and withdrawal handling through #706.
+- [x] Deploy matching API/worker `28b70d5` images with source/build identity and rollback receipt.
+- [x] Verify disabled Apply rejects before reservation/dispatch without employer traffic.
+- [x] Verify worker disablement/withdrawal rejection without browser entry or false confirmation.
+- [ ] Complete #711 final-head gates and integration before promoting its late-result repair.
 - [ ] Preserve retained uncertain attempts, consumed final-action checkpoints and existing user history.
 - [ ] Complete same-attempt evidence reconciliation and pre-browser failure-classification follow-ups.
 
-Compose's false default alone is not proof of enforcement on the current main implementation. This is the defect #706 addresses.
+Compose's false default alone is not enforcement proof. Preserve the API/worker correction and regressions delivered in #706.
 
 ## Current OneHost acceptance
 
 Use [OneHost production deployment](ONEHOST_PRODUCTION_DEPLOYMENT.md). Do not restart a live retained owner session casually to collect a checklist result.
 
 - [ ] Reinspect the authorized host: exact source/image, effective environment, services, queues and retained sessions.
-- [ ] Record current CPU/vCPU, RAM, disk and persistent-volume usage.
+- [x] Record current OS, CPU/vCPU, total RAM and root-disk observations; see the costs/infrastructure document.
+- [ ] Measure persistent-volume and evidence growth separately.
 - [ ] Retain restore/rollback evidence and document the actual observation window.
 - [ ] Verify authenticated owner reads, transient viewer recovery and contended-lock behavior on the corrected build.
 - [ ] Recheck startup recovery: unknown/interrupted possible submissions become uncertain without replay.

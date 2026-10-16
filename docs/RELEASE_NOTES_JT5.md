@@ -16,11 +16,11 @@ JT5 provides a simplified, target-bound owner Apply flow and advances the fully 
 
 ## Verification and deployment
 
-The #704 implementation head `1a8a0c7be8476894c51dfba5e62ea7a8b936d5fd` has 25 successful checks and two skipped checks. The merge tree matches that head. OVH deployment of the implementation is recorded; host administration was offline during the documentation refresh. See [evidence](EVIDENCE.md).
+The #704 implementation head `1a8a0c7be8476894c51dfba5e62ea7a8b936d5fd` has 25 successful checks and two skipped checks. The merge tree matches that head. OVH now runs the later #706 release-control correction as `28b70d5`; host administration and container health were freshly verified. See [evidence](EVIDENCE.md).
 
 ## Known limitations
 
-- #706 corrects the JT5 bypass of `ALLOW_REAL_APPLICATION_SUBMIT` and withdrawn-state handling. It is an undeployed draft with Codacy action required at this snapshot.
+- #706 release-control and withdrawal handling is merged and deployed. #711 adds late-result receipt retention and a PostgreSQL lock-order repair; its candidate is verified locally and under final CI, but is not deployed.
 - Evidence-backed reconciliation of uncertain attempts and known pre-browser exception classification remain follow-up work.
 - One recorded owner final action remains without employer confirmation. Manual Applied status is not receipt evidence.
 - General unattended operation and universal ATS coverage are not certified.

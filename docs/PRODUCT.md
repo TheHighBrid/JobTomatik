@@ -17,7 +17,7 @@ JT5 names the simplified execution contract. It is not an APK version number. On
 | Materials | Correct tailored résumé and cover letter, bound to the application | Existing generation and review surfaces; quality depends on supplied facts |
 | Target resolution | Separate listing URL from canonical employer/ATS target | JT5 target initialization and identity checks integrated |
 | Form completion | Text, uploads and supported conditional controls with verified values | Adapter-specific capability; unsupported questions route to review |
-| Execution | One attempt per approved action, durable queue and exact target | Integrated; release flag correction pending #706 |
+| Execution | One attempt per approved action, durable queue and exact target | Integrated; #706 release flag correction merged and deployed |
 | Human handoff | Secure same-browser continuity, useful blocker details and separate final action | Integrated owner viewer; site/runtime limits still apply |
 | Confirmation | Record success only from explicit employer evidence | Uncertain outcomes retained; reconciliation follow-up outstanding |
 | Recovery | Resume safe work; never replay a potentially submitted application | Startup recovery integrated; remaining classification/reconciliation work tracked |

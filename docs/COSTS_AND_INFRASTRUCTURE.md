@@ -6,17 +6,17 @@
 
 | Item | Last available observation | Evidence confidence |
 |---|---|---|
-| Provider | OVHcloud VPS | Deployment record in #698/#704 |
+| Provider | Existing OVHcloud VPS | Fresh authorized host inspection, 2026-10-16 14:46 UTC |
 | Host identity | `vps-10618f0e` | Recorded deployment and Desktop Commander inventory |
-| OS / architecture | Linux, x86_64 | Prior operational report, 2026-10-15; not freshly inspected |
-| RAM | 7.6 GiB total; 6.4 GiB available in prior report | Historical observation, not current free memory |
-| Disk | Approximately 72 GB total; 64 GB free in prior report | Historical observation, not current free disk |
-| CPU | Exact model and vCPU count not established in this refresh | Capture from authorized host inspection |
-| Docker / Git | Installed per operational report | Container deployment also recorded |
-| Administration | Desktop Commander device offline at refresh | Fresh connector inventory |
+| OS / architecture | Ubuntu 26.04.1 LTS, x86_64 | Fresh /etc/os-release and uname observation |
+| RAM | 7,746 MiB total; 6,349 MiB available at inspection; no swap | Fresh free -m observation; transient availability |
+| Root disk | df -h: 72G total, 17G used, 56G available | Fresh OS-reported filesystem values, rounded |
+| CPU | 4 virtual CPUs; guest model Intel Core Processor (Haswell, no TSX); KVM | Fresh lscpu; virtual guest identity, not physical-host attestation |
+| Docker / Git | Installed and used during this refresh | Fresh inspection and isolated test/image builds |
+| Administration | Desktop Commander online and operational | Fresh connector inventory and host commands |
 | Client | Android phone/tablet or web browser | Thin client; does not host the production browser |
 
-The memory and disk figures above come from the earlier owner-session operational report. They are not a provider plan specification, benchmark or new hardware attestation. Do not infer the VPS plan or its price from them.
+These are timestamped guest-OS observations, not a provider plan specification, performance benchmark or physical-host attestation. Available memory and disk change with workload and image/evidence growth. Do not infer the VPS plan or price from these figures.
 
 ## Production topology
 
@@ -81,7 +81,7 @@ Use a consistent currency and billing period. Let:
 
 ## Resource and recovery evidence still needed
 
-- Current CPU/vCPU, OS release, RAM, disk and volume usage with timestamps.
+- Persistent-volume and evidence-directory usage with timestamps; guest CPU/OS/RAM/root-disk observations are now recorded above.
 - Browser/API/worker memory under the actual supported workflow, including retained sessions.
 - Evidence growth, retention limits, free-disk alarms and backup storage usage.
 - An isolated restore and rollback result bound to source/image identity.

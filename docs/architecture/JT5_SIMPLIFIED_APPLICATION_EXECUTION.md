@@ -1,12 +1,12 @@
 # JT5 simplified application execution
 
-**Updated:** 2026-10-16. **Implementation:** integrated through #704. **Outstanding correction:** #706 release-control and withdrawal handling, not yet deployed.
+**Updated:** 2026-10-16. **Implementation:** integrated through #704. **Release control:** #706 merged and deployed. **Current candidate:** #711 late-result retention and PostgreSQL recovery locking.
 
 ## Product contract
 
 One authenticated Apply action for a selected application reserves and dispatches a target-bound attempt. No additional legacy approval reference or pilot-lease ceremony is required for the ordinary JT5 path. Preserve authentication, ownership, atomic duplicate prevention and honest uncertain-outcome reconciliation.
 
-Operational release controls, target identity, privacy and browser resource isolation still apply. In particular, `ALLOW_REAL_APPLICATION_SUBMIT` is a real release control. The current integrated path has an enforcement defect; #706 adds API rejection before reservation/dispatch and a worker recheck. The phrase “four protections” must not be interpreted as authorization to ignore this flag.
+Operational release controls, target identity, privacy and browser resource isolation still apply. In particular, `ALLOW_REAL_APPLICATION_SUBMIT` is a real release control. The #706 correction enforces API rejection before reservation/dispatch and a worker recheck; it is merged and deployed. The phrase “four protections” must not be interpreted as authorization to ignore this flag.
 
 ## Implemented path
 
@@ -24,7 +24,7 @@ The public reserve-only route was removed. Owner Apply and status polling use JT
 ## Required behavior
 
 - Authenticate and check ownership before disclosing outcomes or creating attempts.
-- Reject disabled live submission before reservation/dispatch and recheck in the worker. This remains pending #706 integration/deployment.
+- Reject disabled live submission before reservation/dispatch and recheck in the worker. This is implemented and deployed through #706; preserve the regression coverage.
 - Preserve the resolved URL and application identity at reservation; reject target drift.
 - Atomically claim at most one execution despite duplicate requests or queue delivery.
 - Return retained confirmed or uncertain outcomes without automatic resubmission.
@@ -38,7 +38,7 @@ The public reserve-only route was removed. Owner Apply and status polling use JT
 
 Integrated evidence includes auth/owner isolation, target binding, atomic claims, status contracts, Greenhouse/Lever controlled execution, queue and restart behavior, and native/mobile owner handoff. See [the evidence ledger](../EVIDENCE.md) for exact heads and check links.
 
-Remaining acceptance includes the #706 quality gate and deployed flag behavior, evidence-backed same-attempt reconciliation, accurate known pre-browser failure classification, remaining branch delta review and supported-host/platform release evidence. See [current status](../PROJECT_STATUS.md).
+Remaining acceptance includes final #711 verification/integration, evidence-backed same-attempt reconciliation, accurate known pre-browser failure classification, remaining branch delta review and supported-host/platform release evidence. See [current status](../PROJECT_STATUS.md).
 
 ## Migration discipline
 
