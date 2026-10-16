@@ -1,3 +1,4 @@
+successfully downloaded text file (SHA: 8e35e30f23f5405a126d7411a23f25ab7d68c321)
 successfully downloaded text file (SHA: 2261ec3e123eec0b6a7ae5cc5205bba51126db92)
 """Handoff-capable ATS runner backed by a retained localhost CDP browser."""
 
@@ -110,23 +111,32 @@ def _apply_challenge_result(result: Dict[str, Any], challenge: Dict[str, Any]) -
 
 _DIAGNOSTIC_REASON = "automation_error"
 _DIAGNOSTIC_STAGE = "dry_run_failure_diagnostic"
+_DIAGNOSTIC_REPAIR_REASONS = {"unsupported_control", "validation_error", "automation_error"}
 
 
 def _add_diagnostic_review(result: Dict[str, Any]) -> None:
     """Mark a failed dry run with an explicit diagnostic automation-error review."""
     result["requires_manual_review"] = True
-    result.setdefault("review_items", []).append({
+    # One session owns one review. Preserve original blockers inside the
+    # diagnostic review so a successful resume closes the same review record.
+    original_items = list(result.get("review_items") or [])
+    result["review_items"] = [{
         "reason_code": _DIAGNOSTIC_REASON,
         "summary": result.get("error") or "Dry-run browser automation failed before completion.",
         "details": {
             "handoff_stage": _DIAGNOSTIC_STAGE,
             "diagnostic_only": True,
             "submit_clicked": False,
+            "original_review_items": original_items,
         },
-    })
+    }]
 
 
-async def _diagnostic_snapshot_metadata(result: Dict[str, Any], runtime: Any) -> Dict[str, Any]:
+async def _diagnostic_snapshot_metadata(
+    result: Dict[str, Any],
+    runtime: Any,
+    supervised_target: Optional[Mapping[str, Any]],
+) -> Dict[str, Any]:
     """Build diagnostic snapshot metadata for the failed dry-run browser and target."""
     controlled_target_id = await controlled_page_target_id(runtime.page)
     metadata = {
@@ -136,6 +146,7 @@ async def _diagnostic_snapshot_metadata(result: Dict[str, Any], runtime: Any) ->
         "fields_filled": int(result.get("fields_filled") or 0),
         "steps_completed": int(result.get("steps_completed") or 0),
         "handoff_stage": _DIAGNOSTIC_STAGE,
+        "supervised_target": dict(supervised_target or {}),
         "failure_error": str(result.get("error") or "")[:500],
         "application_browser_identity": retainable_application_browser_identity(
             runtime,
@@ -151,10 +162,11 @@ async def _capture_diagnostic_snapshot(
     result: Dict[str, Any],
     runtime: Any,
     log: List[Dict[str, Any]],
+    supervised_target: Optional[Mapping[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     """Capture the diagnostic snapshot, logging failures without raising."""
     try:
-        metadata = await _diagnostic_snapshot_metadata(result, runtime)
+        metadata = await _diagnostic_snapshot_metadata(result, runtime, supervised_target)
         return await runtime.capture_snapshot(metadata=metadata)
     except Exception as exc:
         log.append({
@@ -170,6 +182,7 @@ async def _retain_dry_run_failure_handoff(
     result: Dict[str, Any],
     runtime: Any,
     log: List[Dict[str, Any]],
+    supervised_target: Optional[Mapping[str, Any]],
 ) -> bool:
     """
     Retain a failed dry-run browser through an explicit diagnostic handoff.
@@ -185,10 +198,30 @@ async def _retain_dry_run_failure_handoff(
     if result.get("handoff_snapshot"):
         return True
 
-    snapshot = await _capture_diagnostic_snapshot(result, runtime, log)
+    # A classified account, assessment, or other human boundary retains its
+    # own review meaning. Do not recast it as a technical failure.
+    original_reasons = {
+        str(item.get("reason_code") or "")
+        for item in result.get("review_items") or []
+    }
+    if original_reasons - _DIAGNOSTIC_REPAIR_REASONS:
+        return False
+    # Existing non-Lever/Greenhouse adapter reviews already own their human
+    # boundary. Do not change their certification outcome or hold the shared
+    # profile while another candidate is exercised.
+    if result.get("ats_adapter") == "workday":
+        return False
+    if original_reasons and result.get("ats_adapter") not in {"lever", "greenhouse"}:
+        return False
+
+    snapshot = await _capture_diagnostic_snapshot(
+        result, runtime, log, supervised_target
+    )
     if snapshot is None:
         return False
 
+    # Add the diagnostic review only after the snapshot exists so a failed
+    # capture cannot create a browser-review task without browser evidence.
     _add_diagnostic_review(result)
     result["handoff_snapshot"] = snapshot
     log.append({
@@ -319,6 +352,7 @@ async def fill_and_submit_application_with_handoff(
                                 result=result,
                                 runtime=runtime,
                                 log=log,
+                                supervised_target=supervised_target,
                             )
                         return result
 
@@ -400,6 +434,7 @@ async def fill_and_submit_application_with_handoff(
                         result=result,
                         runtime=runtime,
                         log=log,
+                        supervised_target=supervised_target,
                     )
             except Exception as exc:
                 result["error"] = str(exc)
@@ -409,6 +444,7 @@ async def fill_and_submit_application_with_handoff(
                         result=result,
                         runtime=runtime,
                         log=log,
+                        supervised_target=supervised_target,
                     )
             finally:
                 if runtime is not None:
