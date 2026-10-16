@@ -27,6 +27,7 @@ _ALLOWED_TRANSITIONS = {
     ApplicationAutomationState.ready_to_apply.value: {
         ApplicationAutomationState.applying.value,
         ApplicationAutomationState.needs_review.value,
+        ApplicationAutomationState.submission_uncertain.value,
         ApplicationAutomationState.failed.value,
         ApplicationAutomationState.withdrawn.value,
     },

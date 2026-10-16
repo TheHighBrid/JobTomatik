@@ -18,12 +18,18 @@ import {
   completeHandoff,
   getApiErrorMessage,
   getHandoffFrame,
+  getHandoffCapabilities,
   heartbeatHandoff,
   listApplicationHandoffs,
   listSupervisedSubmissionApprovals,
   recoverHandoffLease,
+  sendHandoffAction,
 } from '../api/client'
-import { submitOperatorAssistedFinalAction } from '../api/operatorAssisted'
+import {
+  authorizeOperatorFinalClick, createOperatorAssistedApproval,
+  getOperatorAssistedPreflight, submitOperatorAssistedFinalAction,
+} from '../api/operatorAssisted'
+import { handoffExpired, handoffPointer, handoffReadErrorMessage, retryableHandoffRead, retryHandoffRead } from '../utils/handoffViewport'
 
 const ACTIVE_STATUSES = new Set(['awaiting_user', 'claimed', 'ready_to_resume', 'resuming'])
 const OPERATOR_APPROVAL_SOURCE = 'authenticated_user_operator_assisted'
@@ -55,6 +61,11 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
   const [frameUrl, setFrameUrl] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [submitActionSent, setSubmitActionSent] = useState(false)
+  const [frameError, setFrameError] = useState('')
+  const [frameReadCanRetry, setFrameReadCanRetry] = useState(true)
+  const [ownerConsent, setOwnerConsent] = useState(false)
+  const frameInFlight = useRef(false)
+  const activeSession = useRef(null)
   const passiveConfirmationCheck = useRef(false)
 
   const sessionsQuery = useQuery({
@@ -65,11 +76,21 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
   })
 
   const session = useMemo(
-    () => (sessionsQuery.data || []).find(
-      (item) => item.challenge_type === 'final_submit' && ACTIVE_STATUSES.has(item.status),
-    ) || null,
+    () => (sessionsQuery.data || []).find((item) => item.challenge_type === 'final_submit') || null,
     [sessionsQuery.data],
   )
+  activeSession.current = session?.public_id
+  const expired = handoffExpired(session)
+  const interactive = session?.status === 'claimed' && !expired && Boolean(leaseToken)
+  const capabilitiesQuery = useQuery({
+    queryKey: ['handoff-capabilities', session?.public_id, leaseToken],
+    queryFn: async () => (await getHandoffCapabilities(session.public_id, leaseToken)).data,
+    enabled: interactive,
+    retry: retryHandoffRead,
+    refetchInterval: (query) => query.state.error && !retryableHandoffRead(query.state.error) ? false : 4000,
+  })
+  const capabilities = capabilitiesQuery.data
+  const browserReady = interactive && Boolean(frameUrl) && !capabilitiesQuery.isError && capabilities?.browser_connected && !frameError
 
   const approvalsQuery = useQuery({
     queryKey: ['supervised-approvals', applicationId],
@@ -91,6 +112,13 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     boundApproval?.approval_metadata?.operator_submit_action_started_at,
   )
   const finalActionStarted = submitActionSent || serverFinalActionStarted
+  const preflightQuery = useQuery({
+    queryKey: ['operator-assisted-preflight', applicationId],
+    queryFn: async () => (await getOperatorAssistedPreflight(applicationId)).data,
+    enabled: Boolean(session) && !expired && !handoffUnlocked,
+    retry: false,
+  })
+  const preflight = preflightQuery.data
 
   const invalidate = useCallback(async () => {
     await Promise.all([
@@ -110,36 +138,64 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       setSubmitActionSent(false)
       return
     }
+    if (session.status === 'claimed' && session.lease_expires_at && handoffExpired({ expires_at: session.lease_expires_at })) {
+      writeLease(session.public_id, '')
+      setLeaseToken('')
+      return
+    }
     setLeaseToken(readLease(session.public_id))
-  }, [session?.public_id, session?.status])
+  }, [session?.public_id, session?.status, session?.lease_expires_at])
+
+  useEffect(() => {
+    setFrameUrl('')
+    setFrameError('')
+    setFrameReadCanRetry(true)
+    setSubmitActionSent(false)
+    setOwnerConsent(false)
+  }, [session?.public_id])
 
   useEffect(() => () => {
     if (frameUrl) URL.revokeObjectURL(frameUrl)
   }, [frameUrl])
 
   const refreshFrame = useCallback(async (token = leaseToken) => {
-    if (!session || !token || session.status !== 'claimed') return
+    if (!session || !token || session.status !== 'claimed' || expired || frameInFlight.current) return
+    const publicId = session.public_id
+    frameInFlight.current = true
     setIsRefreshing(true)
     try {
       const response = await getHandoffFrame(session.public_id, token)
+      if (activeSession.current !== publicId) return
       const nextUrl = URL.createObjectURL(response.data)
       setFrameUrl((previous) => {
         if (previous) URL.revokeObjectURL(previous)
         return nextUrl
       })
+      setFrameError('')
+      setFrameReadCanRetry(true)
     } catch (error) {
-      toast.error(getApiErrorMessage(error, 'Could not load the retained application.'))
+      if (activeSession.current === publicId) {
+        setFrameReadCanRetry(retryableHandoffRead(error))
+        setFrameError(handoffReadErrorMessage(error, getApiErrorMessage(error, 'The retained browser is unavailable. Preserve its evidence before recovery.')))
+      }
     } finally {
+      frameInFlight.current = false
       setIsRefreshing(false)
     }
-  }, [leaseToken, session])
+  }, [leaseToken, session?.public_id, session?.status, expired])
 
   useEffect(() => {
     if (leaseToken && session?.status === 'claimed') refreshFrame(leaseToken)
   }, [leaseToken, session?.public_id, session?.status, refreshFrame])
 
   useEffect(() => {
-    if (!leaseToken || !session || session.status !== 'claimed') return undefined
+    if (!interactive || !frameReadCanRetry) return undefined
+    const timer = window.setInterval(() => refreshFrame(), 2000)
+    return () => window.clearInterval(timer)
+  }, [interactive, frameReadCanRetry, refreshFrame])
+
+  useEffect(() => {
+    if (!leaseToken || !session || session.status !== 'claimed' || expired) return undefined
     const timer = window.setInterval(async () => {
       try {
         await heartbeatHandoff(session.public_id, leaseToken)
@@ -151,11 +207,28 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       }
     }, 30000)
     return () => window.clearInterval(timer)
-  }, [leaseToken, session])
+  }, [leaseToken, session?.public_id, session?.status, expired])
+
+  const actionMutation = useMutation({
+    mutationFn: (action) => sendHandoffAction(session.public_id, leaseToken, action),
+    onSuccess: async () => { await refreshFrame(); await capabilitiesQuery.refetch() },
+    onError: (error) => toast.error(getApiErrorMessage(error, 'The owner browser action was blocked.')),
+  })
+  const handleFrameClick = (event) => {
+    if (!browserReady || !capabilities?.owner_pointer_enabled || actionMutation.isPending || submitMutation.isPending) return
+    const point = handoffPointer(event.currentTarget, event.clientX, event.clientY)
+    if (point) actionMutation.mutate({ action: 'click', ...point })
+  }
 
   const openMutation = useMutation({
     mutationFn: async () => {
-      const bootstrapped = await bootstrapHandoff(session.public_id)
+      let bootstrapped
+      try {
+        bootstrapped = await bootstrapHandoff(session.public_id)
+      } catch (error) {
+        if (error?.response?.status === 409 && /already been disclosed/i.test(getApiErrorMessage(error, ''))) return recoverHandoffLease(session.public_id)
+        throw error
+      }
       return claimHandoff(session.public_id, bootstrapped.data.resume_token)
     },
     onSuccess: async (response) => {
@@ -163,7 +236,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       writeLease(session.public_id, token)
       setLeaseToken(token)
       await invalidate()
-      toast.success('Exact retained application opened in review-only mode.')
+      toast.success('Exact retained application opened for owner verification.')
     },
     onError: (error) => toast.error(getApiErrorMessage(
       error,
@@ -184,6 +257,26 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       error,
       'The prior review lease is still active. Reopen this screen after it expires.',
     )),
+  })
+
+  const approvalMutation = useMutation({
+    mutationFn: async () => {
+      if (!ownerConsent || !preflight?.ready || preflight.operator_handoff_public_id !== session.public_id) throw new Error('Review and authorize this exact application first.')
+      const issued = await createOperatorAssistedApproval(applicationId, {
+        handoff_public_id: session.public_id,
+        confirm_employer: preflight.employer,
+        confirm_role: preflight.role,
+        confirm_application_url: preflight.application_url,
+        confirm_operator_final_click: true,
+      })
+      return authorizeOperatorFinalClick(applicationId, issued.data.reference)
+    },
+    onSuccess: async () => {
+      setOwnerConsent(false)
+      await invalidate()
+      openMutation.mutate()
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, 'The exact application could not be approved.')),
   })
 
   const completeMutation = useMutation({
@@ -240,6 +333,9 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       || session.status !== 'claimed'
       || !leaseToken
       || !handoffUnlocked
+      || !interactive
+      || capabilitiesQuery.isError
+      || (!finalActionStarted && !capabilities?.confirmation_visible)
     ) return undefined
 
     let cancelled = false
@@ -282,11 +378,15 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     leaseToken,
     session?.public_id,
     session?.status,
+    interactive,
+    capabilitiesQuery.isError,
+    finalActionStarted,
+    capabilities?.confirmation_visible,
   ])
 
   if (!session) return null
 
-  const claimed = session.status === 'claimed' && Boolean(leaseToken)
+  const claimed = interactive
   const waitingForEvidence = ['ready_to_resume', 'resuming'].includes(session.status)
 
   return (
@@ -302,25 +402,48 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
               </span>
             </div>
             <p className="mt-1 text-sm leading-relaxed text-emerald-900/80">
-              This page is locked against answer editing. After exact approval, you may review the filled form and trigger only its verified final Submit control.
+              {finalActionStarted
+                ? 'Your once-only Submit request is recorded. Employer receipt must be verified before the application can be marked submitted.'
+                : 'Review the live application below. You can scroll and click verification widgets yourself. Answers remain locked; Submit is a separate, once-only action.'}
             </p>
           </div>
         </div>
       </div>
 
       <div className="space-y-4 p-5">
-        {session.status === 'awaiting_user' && !leaseToken && !handoffUnlocked && (
-          <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-            <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <span>Retained browser access is locked. Complete the exact owner approval above first. The one-time handoff token has not been disclosed.</span>
+        {finalActionStarted && session.status !== 'completed' && (
+          <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <p className="font-semibold">Submit requested once; employer receipt unconfirmed</p>
+            <p className="mt-1">Do not submit again. The consumed approval and attempt evidence are preserved for outcome verification.</p>
+          </div>
+        )}
+        {(expired || !ACTIVE_STATUSES.has(session.status)) && session.status !== 'completed' && (
+          <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            {finalActionStarted
+              ? 'The live review session has ended. The submission outcome remains unconfirmed; a new submission must stay blocked while the outcome is reconciled.'
+              : session.failure_reason || 'This handoff has expired or stopped. Its evidence and approval are preserved. Review the application recovery state before preparing a new session.'}
+          </div>
+        )}
+        {session.status === 'completed' && <p className="text-sm text-emerald-800">Employer confirmation verified. This handoff is complete.</p>}
+        {session.status === 'awaiting_user' && !expired && !leaseToken && !handoffUnlocked && (
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            <p className="font-semibold">Authorize this exact application</p>
+            {preflight && <div><p>{preflight.employer}</p><p className="font-semibold">{preflight.role}</p><p className="break-all text-xs">{preflight.application_url}</p></div>}
+            <p>Approval opens the retained form for review. The separate Submit button sends the application once.</p>
+            {preflightQuery.isError && <p role="alert">{getApiErrorMessage(preflightQuery.error, 'Could not verify this application.')}</p>}
+            {preflight?.blockers?.length > 0 && <p role="alert">{preflight.blockers.join(', ')}</p>}
+            <label className="flex items-start gap-2"><input type="checkbox" checked={ownerConsent} onChange={(event) => setOwnerConsent(event.target.checked)} disabled={!preflight?.ready || approvalMutation.isPending} /><span>I authorize one submission for this exact employer and role.</span></label>
+            <button type="button" className="btn-primary" disabled={!ownerConsent || !preflight?.ready || approvalMutation.isPending || openMutation.isPending} onClick={() => approvalMutation.mutate()}>
+              {approvalMutation.isPending || openMutation.isPending ? 'Opening approved application…' : 'Approve and open application'}
+            </button>
           </div>
         )}
 
-        {session.status === 'awaiting_user' && !leaseToken && handoffUnlocked && (
+        {session.status === 'awaiting_user' && !expired && !leaseToken && handoffUnlocked && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-2 text-sm text-slate-600">
               <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-700" />
-              <span>The exact approval is consumed. Open the retained application in review-only mode.</span>
+              <span>Open the approved application in its retained browser session.</span>
             </div>
             <button
               type="button"
@@ -334,7 +457,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
           </div>
         )}
 
-        {session.status === 'claimed' && !leaseToken && (
+        {session.status === 'claimed' && !expired && !leaseToken && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex items-start gap-2 text-sm text-amber-900">
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
@@ -364,12 +487,17 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
 
         {claimed && (
           <>
+            {(frameError || capabilitiesQuery.isError || capabilities?.blocked_reason) && (
+              <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                {frameError || capabilities?.blocked_reason || handoffReadErrorMessage(capabilitiesQuery.error, getApiErrorMessage(capabilitiesQuery.error, 'The retained browser is unavailable. Review its recovery state.'))}
+              </div>
+            )}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
               <div className="flex items-center justify-between gap-2 bg-slate-900 px-3 py-2 text-xs text-slate-300">
                 <span className="truncate">{session.current_url || 'Exact retained employer form'}</span>
                 <button
                   type="button"
-                  onClick={() => refreshFrame()}
+                  onClick={() => { refreshFrame(); capabilitiesQuery.refetch() }}
                   disabled={isRefreshing}
                   className="inline-flex items-center gap-1.5 hover:text-white disabled:opacity-50"
                 >
@@ -381,8 +509,9 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
                 {frameUrl ? (
                   <img
                     src={frameUrl}
-                    alt="Review-only retained application"
-                    className="block max-h-[620px] w-full select-none object-contain"
+                    alt="Live retained application. Click verification widgets to interact."
+                    onClick={handleFrameClick}
+                    className="block h-auto max-h-[620px] max-w-full select-none object-contain"
                     draggable="false"
                   />
                 ) : (
@@ -394,11 +523,16 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-start gap-2 text-xs leading-relaxed text-slate-700">
                 <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                <span>No typing, answer editing, navigation, arbitrary browser clicks, or automatic retry are exposed here. The backend durably records the one final-action request before touching the employer Submit control.</span>
+                <span>Only verification widgets accept owner clicks. No typing, answer editing, navigation, arbitrary browser clicks, or automatic retry are allowed. Submit is recorded once before touching the employer control.</span>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
+              {[-450, 450].map((delta) => (
+                <button type="button" key={delta} className="btn-secondary" disabled={!browserReady || actionMutation.isPending || submitMutation.isPending} onClick={() => actionMutation.mutate({ action: 'scroll', delta_y: delta })}>
+                  {delta < 0 ? 'Scroll up' : 'Scroll down'}
+                </button>
+              ))}
               {finalActionStarted && (
                 <button
                   type="button"
@@ -413,7 +547,7 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
               <button
                 type="button"
                 onClick={() => submitMutation.mutate()}
-                disabled={submitMutation.isPending || completeMutation.isPending || finalActionStarted}
+                disabled={!browserReady || !capabilities?.submit_available || actionMutation.isPending || submitMutation.isPending || completeMutation.isPending || finalActionStarted}
                 className="btn-primary inline-flex items-center gap-2"
               >
                 {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

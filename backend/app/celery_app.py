@@ -30,6 +30,7 @@ celery_app = Celery(
         "app.tasks.scraping",
         "app.tasks.discovery",
         "app.tasks.applications",
+        "app.tasks.jt5_execution",
         "app.tasks.handoffs",
         "app.tasks.operator_assisted",
         "app.tasks.unattended",
@@ -54,6 +55,7 @@ celery_app.conf.update(
         "app.tasks.discovery.*": {"queue": "scraping"},
         "app.tasks.shadow_runs.*": {"queue": "scraping"},
         "app.tasks.applications.*": {"queue": "applications"},
+        "app.tasks.jt5_execution.*": {"queue": "applications"},
         "app.tasks.handoffs.*": {"queue": "applications"},
         "app.tasks.operator_assisted.*": {"queue": "applications"},
         "app.tasks.unattended.*": {"queue": "applications"},
@@ -62,6 +64,10 @@ celery_app.conf.update(
         "app.tasks.runtime.*": {"queue": "applications"},
     },
     beat_schedule={
+        "reconcile-stale-jt5-reservations": {
+            "task": "app.tasks.jt5_execution.reconcile_stale_reserved_applications",
+            "schedule": crontab(minute="*/15"),
+        },
         "check-followups-every-hour": {
             "task": "app.tasks.followup.send_pending_followups",
             "schedule": crontab(minute=0),

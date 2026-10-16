@@ -86,6 +86,15 @@ def test_application_task_attaches_retained_handoff_without_worker_bootstrap(
         fake_fill_and_submit_application,
     )
 
+    # The app startup installs the legacy attachment wrapper. This regression
+    # deliberately tests the direct task path without that bootstrap extension.
+    from app.services import handoff_integration
+
+    monkeypatch.setattr(
+        "app.tasks.applications._create_result_review_tasks",
+        handoff_integration._ORIGINAL,
+    )
+
     calls = []
 
     def fake_attach(db, app, result, reason_code):

@@ -21,6 +21,7 @@ from app.api import (
     handoffs,
     intelligence,
     jobs,
+    jt5_applications,
     lever_pilot_ledger,
     manual_review_policies,
     materials,
@@ -278,6 +279,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(controller.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
+app.include_router(jt5_applications.router, prefix="/api")
 app.include_router(manual_review_policies.router, prefix="/api")
 app.include_router(supervised_submissions.router, prefix="/api")
 app.include_router(supervised_pilot_roster.router, prefix="/api")

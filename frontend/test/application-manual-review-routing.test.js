@@ -5,6 +5,7 @@ import {
   canOpenManualReviewPage,
   duplicateOwnerApplicationId,
   routeApplicationManualReviews,
+  isFinishedApplication,
 } from '../src/applicationManualReviewRouting.js'
 
 function review(id, reason_code, created_at, blocking_url = 'https://jobs.lever.co/example/posting/apply', details = {}) {
@@ -40,6 +41,17 @@ test('operator final-submit boundary outranks older or newer review noise', () =
   assert.equal(routed.activeManualReview.reason_code, 'operator_final_submit_required')
   assert.equal(routed.operatorFinalSubmitReview.reason_code, 'operator_final_submit_required')
   assert.equal(routed.handoffExpected, false)
+})
+
+test('pending confirmation keeps the exact operator browser visible for human verification', () => {
+  const pending = review(12, 'submission_confirmation_uncertain', '2026-10-15T17:00:00Z', '', {
+    handoff_stage: 'operator_final_submit', handoff_public_id: 'retained-one',
+    confirmation_reconciliation_required: true,
+  })
+  assert.equal(routeApplicationManualReviews([pending]).operatorFinalSubmitReview, pending)
+  assert.equal(routeApplicationManualReviews([pending]).handoffExpected, false)
+  const generic = { ...pending, details: { confirmation_reconciliation_required: true } }
+  assert.equal(routeApplicationManualReviews([generic]).operatorFinalSubmitReview, null)
 })
 
 test('Lever supervised reviews never expose a direct employer-page escape', () => {
@@ -100,4 +112,31 @@ test('duplicate routing fails closed without a valid canonical application id', 
   assert.equal(duplicateOwnerApplicationId(malformed), null)
   assert.equal(routed.activeManualReview.blocking_url, 'https://jobs.lever.co/eqbank/posting/apply')
   assert.equal(canOpenManualReviewPage(routed.activeManualReview, 'lever'), false)
+})
+
+
+test('persisted nested operator provenance preserves post-submit reconciliation', () => {
+  const pending = review(13, 'submission_confirmation_uncertain', '2026-10-15T21:04:15Z', '', {
+    handoff_public_id: 'retained-one',
+    confirmation_reconciliation_required: true,
+    operator_final_action_outcome: 'awaiting_confirmation',
+    questions: [{ reason_code: 'operator_final_submit_required', details: {
+      handoff_stage: 'operator_final_submit', operator_final_click_required: true,
+    } }],
+  })
+  assert.equal(routeApplicationManualReviews([pending]).operatorFinalSubmitReview, pending)
+  assert.equal(routeApplicationManualReviews([pending]).handoffExpected, false)
+  for (const questions of [null, {}, [{ reason_code: 'ambiguous_question', details: { handoff_stage: 'operator_final_submit' } }]]) {
+    const other = { ...pending, details: { ...pending.details, questions } }
+    assert.equal(routeApplicationManualReviews([other]).operatorFinalSubmitReview, null)
+  }
+})
+
+
+test('manual Applied status cannot erase an unresolved submission outcome', () => {
+  assert.equal(isFinishedApplication({ status: 'applied', automation_state: 'submission_uncertain' }), false)
+  assert.equal(isFinishedApplication({ status: 'pending', automation_state: 'submission_uncertain' }), false)
+  assert.equal(isFinishedApplication({ status: 'applied', automation_state: 'confirmed' }), true)
+  assert.equal(isFinishedApplication({ status: 'pending', automation_state: 'submitted' }), true)
+  assert.equal(isFinishedApplication({ status: 'applied' }), true)
 })
