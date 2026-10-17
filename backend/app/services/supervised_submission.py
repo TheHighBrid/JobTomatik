@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 from urllib.parse import parse_qs, urlsplit
@@ -41,6 +41,7 @@ from app.services.supervised_platforms import (
     SupervisedPlatformPolicy,
     get_supervised_platform_policy,
 )
+from app.services.time_utils import utc_now
 from app.services.supervised_target_identity import (
     persisted_supervised_target_metadata,
     target_identity_hash,
@@ -70,7 +71,14 @@ class SupervisedSubmissionApprovalMismatch(SupervisedSubmissionApprovalError):
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    """Return the shared timezone-aware UTC clock for approval timestamps."""
+    return utc_now()
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _canonical_json(value: Any) -> str:
@@ -576,7 +584,7 @@ def _expire_or_revoke_prior_approvals(
         .all()
     )
     for approval in approvals:
-        if approval.expires_at <= now:
+        if _as_utc(approval.expires_at) <= _as_utc(now):
             approval.status = SubmissionApprovalStatus.expired.value
         else:
             approval.status = SubmissionApprovalStatus.revoked.value
@@ -753,7 +761,7 @@ def validate_supervised_approval(
         raise SupervisedSubmissionApprovalError(
             f"Submission approval is {approval.status}, not active"
         )
-    if approval.expires_at <= now:
+    if _as_utc(approval.expires_at) <= _as_utc(now):
         approval.status = SubmissionApprovalStatus.expired.value
         raise SupervisedSubmissionApprovalExpired("Submission approval has expired")
 
