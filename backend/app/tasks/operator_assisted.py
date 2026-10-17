@@ -354,7 +354,7 @@ def _finish_retained_lever_boundary(
     queue="applications",
 )
 def prepare_operator_assisted_application_task(self, application_id: int):
-    """Fill first; submit only after the exact retained final boundary is proven."""
+    """Fill and retain the form for owner review without authorizing submission."""
 
     db = SessionLocal()
     try:
@@ -409,7 +409,9 @@ def prepare_operator_assisted_application_task(self, application_id: int):
     except Exception as exc:
         raise self.retry(exc=exc, countdown=30, max_retries=1)
 
-    return _finish_retained_lever_boundary(application_id, result)
+    # Preparation is not final-action authorization. The authenticated owner must
+    # review the retained application and use the separate final-action endpoint.
+    return result
 
 
 __all__ = ["prepare_operator_assisted_application_task"]

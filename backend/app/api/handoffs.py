@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
@@ -18,6 +19,8 @@ from app.services.handoff_session import HandoffSessionConflict, HandoffSessionE
 from app.services.operator_assisted_final_action import finalize_operator_final_action
 from app.tasks.applications import _record_result_evidence
 from app.tasks.handoffs import resume_handoff_session_task
+from app.services.owner_browser_input import owner_handoff_capabilities
+from app.services.handoff_session import handoff_utc
 
 router = APIRouter(prefix="/handoffs", tags=["handoffs"])
 
@@ -32,8 +35,14 @@ def _get_owned_session(db: Session, public_id: str, user_id: int, *, include_eve
         query = query.options(joinedload(ManualHandoffSession.events))
     query = query.filter(ManualHandoffSession.public_id == public_id, ManualHandoffSession.user_id == user_id)
     if for_update:
-        query = query.with_for_update()
-    session = query.first()
+        query = query.with_for_update(nowait=True)
+    try:
+        session = query.first()
+    except OperationalError as exc:
+        if getattr(exc.orig, "pgcode", None) != "55P03":
+            raise
+        db.rollback()
+        raise HTTPException(status_code=423, detail="The retained browser is handling another request. No action was repeated.") from exc
     if not session:
         raise HTTPException(status_code=404, detail="Handoff session not found")
     return session
@@ -123,6 +132,8 @@ async def get_handoff_session(public_id: str, current_user: User = Depends(get_c
 @router.post("/{public_id}/bootstrap", response_model=HandoffIssuedOut)
 async def bootstrap_handoff(public_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = _get_owned_session(db, public_id, current_user.id, for_update=True)
+    if handoff_utc(session.expires_at) <= _utcnow():
+        raise HTTPException(status_code=410, detail="Handoff session has expired.")
     if session.status != HandoffSessionStatus.awaiting_user.value:
         raise HTTPException(status_code=409, detail="Handoff session is no longer awaiting bootstrap")
     if session.challenge_type == HandoffChallengeType.final_submit.value:
@@ -156,7 +167,11 @@ async def claim_handoff(public_id: str, data: HandoffClaimRequest, current_user:
 async def recover_handoff(public_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = _get_owned_session(db, public_id, current_user.id, for_update=True)
     try:
-        recovered = recover_handoff_lease(db, session, user_id=current_user.id)
+        if session.status == HandoffSessionStatus.awaiting_user.value and session.resume_token_disclosed_at is not None:
+            # Recover a lost bootstrap response without disclosing its token again.
+            recovered = claim_handoff_session(db, session, user_id=current_user.id, resume_token=decrypt_handoff_secret(session.encrypted_resume_token) or "")
+        else:
+            recovered = recover_handoff_lease(db, session, user_id=current_user.id)
         db.commit(); db.refresh(session)
         return {"session": session, "lease_token": recovered.lease_token}
     except Exception as exc:
@@ -183,11 +198,25 @@ async def get_handoff_frame(public_id: str, data: HandoffLeaseRequest, current_u
         db.rollback(); raise _translate_error(exc)
 
 
+@router.post("/{public_id}/capabilities")
+async def handoff_capabilities(public_id: str, data: HandoffLeaseRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    session = _get_owned_session(db, public_id, current_user.id)
+    try:
+        verify_handoff_lease(db, session, user_id=current_user.id, lease_token=data.lease_token)
+        return await owner_handoff_capabilities(session)
+    except Exception as exc:
+        db.rollback(); raise _translate_error(exc)
+
+
 @router.post("/{public_id}/actions", response_model=HandoffBrowserActionOut)
 async def act_on_handoff_browser(public_id: str, data: HandoffBrowserActionRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = _get_owned_session(db, public_id, current_user.id, for_update=True)
     try:
         verify_handoff_lease(db, session, user_id=current_user.id, lease_token=data.lease_token)
+        if session.challenge_type == HandoffChallengeType.final_submit.value:
+            from app.services.operator_assisted_submission import operator_final_click_authorized
+            if not operator_final_click_authorized(db, session, user_id=current_user.id):
+                raise HandoffSessionConflict("The exact owner approval is no longer valid.")
         result = await perform_handoff_action(session, action=data.action, x=data.x, y=data.y, text=data.text, key=data.key, delta_x=data.delta_x, delta_y=data.delta_y)
         session.current_url = result["current_url"]; session.current_fingerprint = result["current_fingerprint"]; session.lock_version = (session.lock_version or 0) + 1
         db.add(HandoffSessionEvent(handoff_session_id=session.id, application_id=session.application_id, event_type="handoff_browser_action", actor_type=HandoffActorType.user.value, payload={"action": data.action, "current_url": session.current_url, "current_fingerprint": session.current_fingerprint, "sensitive_value_logged": False}))

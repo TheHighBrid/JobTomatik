@@ -40,12 +40,18 @@ def test_android_status_requires_managed_worker_identity_and_startup_round_trip_
     assert "application_queue_canary.apply_async" not in managed_worker
 
 
-def test_application_page_does_not_restore_old_celery_task_ids_after_runtime_restart():
+def test_application_page_tracks_jt5_attempts_without_restoring_old_celery_task_ids():
     source = FRONTEND_DETAIL.read_text(encoding="utf-8")
 
     assert "sessionStorage" not in source
-    assert "setSubmitQueuedAt(Date.now())" in source
-    assert "shouldReleaseUnacknowledgedTask" in source
+    assert "setSubmitTaskId" not in source
+    assert "setSubmitQueuedAt" not in source
+    assert "applyJT5Application(id)" in source
+    assert "getJT5ApplicationStatus(id)" in source
+    assert "['jt5-application-status', id]" in source
+    assert "jt5PollingInterval(query.state.data)" in source
+    assert "submissionBusy || jt5StatusPending || jt5StatusFailed || !jt5Status" in source
+    assert "retry: false" in source
     assert "if (app?.automation_state === 'applying') return undefined" not in source
     assert "obsolete navigation-only review" in source
 
