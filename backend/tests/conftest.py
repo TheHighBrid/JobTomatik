@@ -1,3 +1,4 @@
+import os
 import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
@@ -6,10 +7,13 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.database import Base, get_db
 
-# In-memory SQLite for tests
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+# SQLite remains the default; dedicated CI can opt into a disposable PostgreSQL DB.
+SQLALCHEMY_DATABASE_URL = os.environ.get("JT5_TEST_DATABASE_URL", "sqlite:///./test.db")
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite:") else {},
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 _LEGACY_SYNTHETIC_POLICY_TESTS = {
