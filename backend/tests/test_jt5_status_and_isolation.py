@@ -73,6 +73,78 @@ def test_status_endpoint_reports_latest_attempt(auth_client, db_session):
     assert body["latest_attempt"]["execution_contract"] == "jt5"
 
 
+
+def test_status_endpoint_reports_bounded_reconciliation_details(auth_client, db_session):
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    application = _application(db_session, user)
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id,
+    )
+    attempt.status = "uncertain"
+    attempt.attempt_metadata = {
+        **(attempt.attempt_metadata or {}),
+        "dispatch_status": "reconciliation_required",
+        "reconciliation_reason": "worker_restarted_in_progress",
+        "dispatch_error_type": "OperationalError",
+        "sensitive_token": "must_not_appear",
+        "automatic_retry_allowed": True,
+    }
+    db_session.commit()
+
+    response = auth_client.get(f"/api/applications/{application.id}/jt5/status")
+    assert response.status_code == 200
+    details = response.json()["latest_attempt"]
+    assert details["status"] == "uncertain"
+    assert details["reconciliation_reason"] == "worker_restarted_in_progress"
+    assert details["dispatch_error_type"] == "OperationalError"
+    assert details["automatic_retry_allowed"] is False
+    assert "sensitive_token" not in details
+    assert "must_not_appear" not in str(details)
+
+
+def test_status_endpoint_does_not_echo_untrusted_diagnostic_metadata(auth_client, db_session):
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    application = _application(db_session, user)
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id,
+    )
+    attempt.attempt_metadata = {
+        **(attempt.attempt_metadata or {}),
+        "dispatch_status": "reconciliation_required",
+        "reconciliation_reason": "secret:recovery-internal",
+        "dispatch_error_type": "RuntimeError: credentials leaked",
+        "secret_key": "must_not_appear",
+    }
+    db_session.commit()
+
+    response = auth_client.get(f"/api/applications/{application.id}/jt5/status")
+    assert response.status_code == 200
+    details = response.json()["latest_attempt"]
+    assert details["reconciliation_reason"] is None
+    assert details["dispatch_error_type"] is None
+    assert "must_not_appear" not in str(details)
+
+
+
+def test_status_endpoint_handles_non_mapping_metadata_safely(auth_client, db_session):
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    application = _application(db_session, user)
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id,
+    )
+    attempt.attempt_metadata = ["unexpected-metadata", "must_not_appear"]
+    db_session.commit()
+
+    response = auth_client.get(f"/api/applications/{application.id}/jt5/status")
+    assert response.status_code == 200
+    details = response.json()["latest_attempt"]
+    assert details["dispatch_status"] == "unknown"
+    assert details["reconciliation_reason"] is None
+    assert details["dispatch_error_type"] is None
+    assert details["automatic_retry_allowed"] is False
+    assert "must_not_appear" not in str(details)
+
+
 def test_status_endpoint_hides_other_users_application(auth_client, db_session):
     other = User(
         email="other-jt5@example.com",
