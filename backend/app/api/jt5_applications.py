@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
+import re
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,45 @@ from app.services.application_execution_gate import ApplyDecision
 from app.tasks.jt5_execution import execute_reserved_application
 
 router = APIRouter(prefix="/applications", tags=["applications-jt5"])
+
+# Public owner status exposes enumerated operational codes, not raw metadata.
+# Never echo arbitrary browser errors, internal exception messages, or secrets.
+_RECONCILIATION_REASONS = frozenset({
+    "stale_queued",
+    "stale_in_progress",
+    "worker_restarted_in_progress",
+})
+
+
+def _safe_jt5_attempt_diagnostics(attempt: SubmissionAttempt) -> dict:
+    """Return owner-readable diagnostic identifiers without raw attempt metadata."""
+    metadata = attempt.attempt_metadata
+    if not isinstance(metadata, dict):
+        metadata = {}
+    dispatch_status = metadata.get("dispatch_status")
+    if dispatch_status not in ("published", "reconciliation_required"):
+        dispatch_status = "unknown"
+    if dispatch_status != "reconciliation_required":
+        return {
+            "dispatch_status": dispatch_status,
+            "reconciliation_reason": None,
+            "dispatch_error_type": None,
+            "automatic_retry_allowed": False,
+        }
+
+    reason = metadata.get("reconciliation_reason")
+    exception_type = metadata.get("dispatch_error_type")
+    return {
+        "dispatch_status": dispatch_status,
+        "reconciliation_reason": reason if (
+            isinstance(reason, str) and reason in _RECONCILIATION_REASONS
+        ) else None,
+        "dispatch_error_type": exception_type if (
+            isinstance(exception_type, str)
+            and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", exception_type)
+        ) else None,
+        "automatic_retry_allowed": False,
+    }
 
 
 @router.get("/{application_id}/jt5/status")
@@ -50,9 +90,13 @@ def jt5_status(
             "reference": attempt.reference,
             "status": attempt.status,
             "task_id": attempt.task_id,
-            "dispatch_status": (attempt.attempt_metadata or {}).get("dispatch_status", "unknown"),
+            **_safe_jt5_attempt_diagnostics(attempt),
             "attempt_number": attempt.attempt_number,
-            "execution_contract": (attempt.attempt_metadata or {}).get("execution_contract"),
+            "execution_contract": (
+                "jt5" if isinstance(attempt.attempt_metadata, dict)
+                and attempt.attempt_metadata.get("execution_contract") == "jt5"
+                else None
+            ),
             "queued_at": attempt.queued_at.isoformat() if attempt.queued_at else None,
             "started_at": attempt.started_at.isoformat() if attempt.started_at else None,
             "completed_at": attempt.completed_at.isoformat() if attempt.completed_at else None,
