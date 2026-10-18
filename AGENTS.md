@@ -1,5 +1,23 @@
 # AI Contributor Instructions
 
+## Current project briefing and participant aliases
+
+The 2026-10-16 documentation refresh is indexed in `README.md`,
+`docs/PROJECT_STATUS.md`, `docs/PRODUCT.md`, `docs/ROADMAP.md`,
+`docs/EVIDENCE.md`, `docs/COSTS_AND_INFRASTRUCTURE.md` and `docs/GOVERNANCE.md`.
+Use these for current status; archived campaign predictions are historical.
+
+Owner-requested Cosa Nostra aliases are presentation names: **Don TheHighBrid**,
+**Underboss Sol 5.6**, **Caporegime Sol 6.1**, assigned **Consigliere** advisory
+seats, **Caporegime / Soldatos** implementation lanes and **Associates** automation.
+The full roster preserves real identities and inactive status. Aliases do not
+rename accounts, change the hierarchy below or grant permissions.
+
+JT5's four core protections do not authorize bypassing operational release
+controls. In particular, preserve `ALLOW_REAL_APPLICATION_SUBMIT` enforcement;
+the integrated-path defect was corrected and deployed through #706. Preserve
+its API/worker rejection tests; a flag value alone is not enforcement evidence.
+
 ## Ownership and authority
 
 JobTomatik is owned and directed by **TheHighBrid**. The repository owner is the final product, release, real-world-action, and governance authority.

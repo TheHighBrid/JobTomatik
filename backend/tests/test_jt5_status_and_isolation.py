@@ -126,6 +126,51 @@ def test_status_endpoint_does_not_echo_untrusted_diagnostic_metadata(auth_client
 
 
 
+
+def test_status_preserves_worker_completed_dispatch_contract(auth_client, db_session):
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    application = _application(db_session, user)
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id,
+    )
+    attempt.status = "succeeded"
+    attempt.attempt_metadata = {
+        **(attempt.attempt_metadata or {}),
+        "dispatch_status": "worker_completed",
+        "reconciliation_reason": "stale_in_progress",
+        "dispatch_error_type": "OperationalError",
+    }
+    db_session.commit()
+    status = auth_client.get(f"/api/applications/{application.id}/jt5/status")
+    assert status.status_code == 200
+    details = status.json()["latest_attempt"]
+    assert details["dispatch_status"] == "worker_completed"
+    assert details["reconciliation_reason"] is None
+    assert details["dispatch_error_type"] is None
+    assert details["automatic_retry_allowed"] is False
+
+
+def test_status_rejects_secret_shaped_dispatch_error_type(auth_client, db_session):
+    user = db_session.query(User).filter(User.email == "test@example.com").one()
+    application = _application(db_session, user)
+    _, attempt = reserve_jt5_attempt(
+        db_session, application_id=application.id, authenticated_user_id=user.id,
+    )
+    attempt.attempt_metadata = {
+        **(attempt.attempt_metadata or {}),
+        "dispatch_status": "reconciliation_required",
+        "dispatch_error_type": "SecretToken_ABC123",
+        "reconciliation_reason": "stale_in_progress",
+    }
+    db_session.commit()
+    status = auth_client.get(f"/api/applications/{application.id}/jt5/status")
+    assert status.status_code == 200
+    details = status.json()["latest_attempt"]
+    assert details["dispatch_error_type"] is None
+    assert details["reconciliation_reason"] == "stale_in_progress"
+    assert "SecretToken_ABC123" not in str(details)
+
+
 def test_status_endpoint_handles_non_mapping_metadata_safely(auth_client, db_session):
     user = db_session.query(User).filter(User.email == "test@example.com").one()
     application = _application(db_session, user)

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
-import re
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -31,6 +30,16 @@ _RECONCILIATION_REASONS = frozenset({
     "worker_restarted_in_progress",
 })
 
+# The broker publish boundary stores type(exc).__name__, never its text.
+# Only known operational exception categories are safe to surface to owners.
+_DISPATCH_ERROR_TYPES = frozenset({
+    "OperationalError",
+    "ConnectionError",
+    "TimeoutError",
+    "OSError",
+    "RuntimeError",
+})
+
 
 def _safe_jt5_attempt_diagnostics(attempt: SubmissionAttempt) -> dict:
     """Return owner-readable diagnostic identifiers without raw attempt metadata."""
@@ -38,7 +47,7 @@ def _safe_jt5_attempt_diagnostics(attempt: SubmissionAttempt) -> dict:
     if not isinstance(metadata, dict):
         metadata = {}
     dispatch_status = metadata.get("dispatch_status")
-    if dispatch_status not in ("published", "reconciliation_required"):
+    if dispatch_status not in ("published", "worker_completed", "reconciliation_required"):
         dispatch_status = "unknown"
     if dispatch_status != "reconciliation_required":
         return {
@@ -56,8 +65,7 @@ def _safe_jt5_attempt_diagnostics(attempt: SubmissionAttempt) -> dict:
             isinstance(reason, str) and reason in _RECONCILIATION_REASONS
         ) else None,
         "dispatch_error_type": exception_type if (
-            isinstance(exception_type, str)
-            and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", exception_type)
+            isinstance(exception_type, str) and exception_type in _DISPATCH_ERROR_TYPES
         ) else None,
         "automatic_retry_allowed": False,
     }

@@ -64,6 +64,8 @@ Do not use the Android tablet as this host.
 
 ## Secrets and revision
 
+**Minimum JT5 release-control revision:** deploy a revision containing [#706](https://github.com/TheHighBrid/JobTomatik/pull/706), which enforces `ALLOW_REAL_APPLICATION_SUBMIT` at API reservation and worker entry and handles withdrawal. Older JT5 builds can bypass a false flag; do not expose their Apply path believing the configuration blocks execution. Current main includes the correction; the recorded running release is `28b70d5`. Verify the exact source/image and preserved rejection tests before startup. This does not authorize a real application or a flag transition.
+
 Use `docs/operations/onehost-production.env.example` as the non-secret deployment template. Populate the values through the host environment or an approved secret manager, never by committing a filled copy.
 
 From an exact checked-out revision:

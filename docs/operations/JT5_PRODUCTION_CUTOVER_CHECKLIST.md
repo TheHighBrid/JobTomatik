@@ -1,59 +1,60 @@
 # JT5 production cutover checklist
 
-**Purpose:** prepare JobTomatik to live-submit real applications through the JT5 Apply path, with evidence for every required protection. This checklist is for the JT5 release and OneHost cutover; it does not replace the owner’s final production enablement decision.
+**Updated:** 2026-10-16. Integration, deployment records and release acceptance are separate. Checked entries below apply to the exact recorded implementation, not to an untested successor.
 
-## Release candidate
+## Recorded integration
 
-- [ ] Record the JT5 branch, PR, and exact candidate commit SHA.
-- [ ] Confirm the candidate contains the owner Apply UI, target-bound execution, and no reserve-only API.
-- [ ] Confirm the candidate keeps the existing target identity and fail-closed classification checks.
-- [ ] Keep #681 in draft until the exact candidate satisfies every evidence gate below.
+- [x] #704 merged to main as `6aac5b33701db6d13952f86c1faaeca76d66810f`.
+- [x] Owner Apply/status, target-bound execution and removal of reserve-only API are included.
+- [x] Implementation `1a8a0c7be8476894c51dfba5e62ea7a8b936d5fd` has 25 successful/two skipped checks.
+- [x] Merge and tested implementation trees match `81ce6d286e7f94dedeb2db388c1c7c35b6873024`.
+- [x] Backend, frontend, Android, queue, controlled browser, native/mobile handoff and production Compose restart evidence recorded.
+- [x] API/worker deployment attestation, healthy reads, bounded contention and rollback snapshots recorded for that implementation.
 
-## Verification evidence
+Sources: [evidence ledger](../EVIDENCE.md), [#704](https://github.com/TheHighBrid/JobTomatik/pull/704), [integration receipt](https://github.com/TheHighBrid/JobTomatik/issues/252#issuecomment-6207500359).
 
-Record links to the exact commit’s workflow runs and retain their logs/artifacts.
+## Corrected candidate and release controls
 
-- [ ] Exact-head JT5 focused tests and full backend suite pass.
-- [ ] Full backend, post-merge stabilization, and reproducible verification runs pass on the same exact head. Resolve failures and rerun after each code change.
-- [ ] Four-gate regression evidence passes: authentication, owner isolation, atomic duplicate prevention, and uncertain-outcome handling.
-- [ ] Invalid targets and target identity drift fail closed.
-- [ ] Greenhouse and Lever fixture execution reaches the JT5 worker without restoring removed pilot or approval ceremonies.
-- [ ] Confirmed success cannot be automatically replayed; uncertain outcomes require reconciliation and are not retried automatically.
-- [ ] Frontend and Android checks pass for the same candidate.
-- [ ] Security, dependency, and deployment configuration checks pass.
+- [x] Clear #706 quality findings and complete its exact-head checks.
+- [x] Merge release-flag enforcement and withdrawal handling through #706.
+- [x] Deploy matching API/worker `28b70d5` images with source/build identity and rollback receipt.
+- [x] Verify disabled Apply rejects before reservation/dispatch without employer traffic.
+- [x] Verify worker disablement/withdrawal rejection without browser entry or false confirmation.
+- [ ] Complete #711 final-head gates and integration before promoting its late-result repair.
+- [ ] Preserve retained uncertain attempts, consumed final-action checkpoints and existing user history.
+- [ ] Complete same-attempt evidence reconciliation and pre-browser failure-classification follow-ups.
 
-## OneHost validation
+Compose's false default alone is not enforcement proof. Preserve the API/worker correction and regressions delivered in #706.
 
-Use the supported topology in [OneHost production deployment](ONEHOST_PRODUCTION_DEPLOYMENT.md). Capture the exact tested revision and artifacts for each result.
+## Current OneHost acceptance
 
-- [ ] Validate Docker Compose configuration and safe defaults.
-- [ ] Confirm API, PostgreSQL, Redis, single Celery worker, and persistent browser state start healthy on the target host.
-- [ ] Run startup recovery checks and verify interrupted live or unknown attempts become uncertain without replay.
-- [ ] Run the documented OneHost cutover, startup recovery, and retained-browser handoff checks.
-- [ ] Verify authenticated owner Apply and read-only status polling against controlled test fixtures on OneHost.
-- [ ] Verify the final effective environment keeps global live submit and autopilot disabled until the owner’s cutover decision.
-- [ ] Record host revision, image/build identifiers, check results, and any unresolved issue.
+Use [OneHost production deployment](ONEHOST_PRODUCTION_DEPLOYMENT.md). Do not restart a live retained owner session casually to collect a checklist result.
 
-## Owner-controlled live enablement
+- [ ] Reinspect the authorized host: exact source/image, effective environment, services, queues and retained sessions.
+- [x] Record current OS, CPU/vCPU, total RAM and root-disk observations; see the costs/infrastructure document.
+- [ ] Measure persistent-volume and evidence growth separately.
+- [ ] Retain restore/rollback evidence and document the actual observation window.
+- [ ] Verify authenticated owner reads, transient viewer recovery and contended-lock behavior on the corrected build.
+- [ ] Recheck startup recovery: unknown/interrupted possible submissions become uncertain without replay.
+- [ ] Confirm single-worker concurrency, same-browser identity and private display boundaries.
+- [ ] Capture redacted invoices and optional-service usage for an actual cost total.
 
-Live submission is the product goal. Enable it only after the evidence above is complete and the owner selects the production target and time.
+## Owner-controlled live acceptance
 
-- [ ] Owner reviews the exact candidate SHA and evidence links.
-- [ ] Owner approves production configuration changes for the intended target.
-- [ ] Enable the live-submit flag through the approved secret/configuration process; do not commit secrets.
-- [ ] Keep unrelated automation flags at their reviewed values.
-- [ ] For the first live Apply, verify the employer, role, canonical target URL, and application identity before dispatch.
-- [ ] Observe the returned attempt reference and status through confirmation or explicit uncertain reconciliation.
-- [ ] Preserve execution evidence and verify no duplicate attempt was created.
-- [ ] If the outcome is uncertain, stop automatic retries and reconcile the same attempt before another action.
+- [ ] Review corrected candidate identity, known limitations and retained evidence.
+- [ ] Obtain explicit owner approval for the exact candidate revision and reviewed production configuration before any real application action.
+- [ ] Record the exact employer/application/payload authorization and its once-only scope; never reuse a consumed approval.
+- [ ] Apply any live-submit flag transition only within that reviewed owner authorization, retain before/after values, and restore the closed setting after the scoped action.
+- [ ] Verify employer, role, canonical target, application identity and materials before an authorized action.
+- [ ] Observe an actual outcome and retain confirmation evidence or explicit uncertainty.
+- [ ] Verify no duplicate attempt or automatic retry occurs.
+- [ ] Reconcile uncertainty on the same attempt before considering another action.
 
-## Release record
+## Distribution and final release
 
-- Draft notes: [JT5 release notes](../RELEASE_NOTES_JT5.md)
+- [ ] Record exact APK source, signer, upgrade compatibility, artifact hash and rollback path.
+- [ ] Reconcile #485 and current release evidence; do not infer signing completion from a build.
+- [ ] Confirm supported-platform scope and operational limits.
+- [ ] Publish a version/tag/release only through the owner's authorized release process.
 
-- Candidate PR: #681
-- Candidate SHA: `c2752b1e07db86df9f0caff508cb846e055be3ef` (code verification SHA; documentation commits follow)
-- Exact-head CI evidence: pending at time of writing
-- OneHost validation evidence: pending
-- Owner live-enable decision: pending
-- Release notes / version / tag: pending until verification and main landing
+Current candidate/public release identities and milestone status are in [the README](../../README.md), [roadmap](../ROADMAP.md) and [integration notes](../RELEASE_NOTES_JT5.md).
