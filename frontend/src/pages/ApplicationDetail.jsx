@@ -9,6 +9,7 @@ import {
 import ManualHandoffPanel from '../components/ManualHandoffPanel'
 import OperatorFinalSubmitHandoffPanel from '../components/OperatorFinalSubmitHandoffPanel'
 import SubmissionEvidenceReviewPanel from '../components/SubmissionEvidenceReviewPanel'
+import JT5OutcomeRecoveryPanel from '../components/JT5OutcomeRecoveryPanel'
 import StatusBadge from '../components/StatusBadge'
 import {
   HANDOFF_REVIEW_REASONS,
@@ -392,9 +393,7 @@ export default function ApplicationDetail() {
           )}
 
           {jt5ReconciliationRequired && !applicationFinished && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-              The prior attempt needs reconciliation. JobTomatik will not start another attempt automatically.
-            </div>
+            <JT5OutcomeRecoveryPanel key={`${id}:${jt5Attempt.reference}`} application={app} />
           )}
 
           <button

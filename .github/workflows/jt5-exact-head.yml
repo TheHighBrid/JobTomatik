@@ -113,4 +113,5 @@ jobs:
           git -C .. rev-parse HEAD
           python -m pytest -q --tb=short -ra \
             tests/test_jt5_late_browser_results.py \
+            tests/test_jt5_outcome_resolution.py \
             tests/test_jt5_reconciliation.py
