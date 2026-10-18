@@ -100,6 +100,23 @@ jobs:
           sha256sum release/JobTomatik-v2.1.1-debug.apk > release/JobTomatik-v2.1.1-debug.sha256
           printf '%s\n' "$GITHUB_SHA" > release/SOURCE-COMMIT.txt
           grep -Fxq "$GITHUB_SHA" release/SOURCE-COMMIT.txt
+          cat > release/BUILD-INFO.txt <<EOF
+          JobTomatik CI debug APK
+          Version: 2.1.1-debug (versionCode 211)
+          Signing: ephemeral debug keystore; NOT production signing
+          Source commit: $GITHUB_SHA
+          This is an Android/Termux development artifact, not the OneHost
+          production-signed 4.x release. The default URL is 127.0.0.1:8010.
+          On a remote OneHost use the HTTPS API origin via API connection.
+          For in-place Android upgrades, use the separate production-signed
+          workflow artifact after its signing/certificate verification.
+          EOF
+          {
+            echo "### Development APK only"
+            echo "This workflow produces **2.1.1 debug-signed**, not the production 4.x APK."
+            echo "It defaults to the historical local Termux API (127.0.0.1:8010)."
+            echo "Use the **Build JobTomatik Android production-signed release** workflow for in-place upgrades."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload APK and reports
         if: always()
