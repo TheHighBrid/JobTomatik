@@ -14,6 +14,7 @@ from app.models.user import User
 from app.services.application_attempt_jt5 import reserve_jt5_attempt
 from app.services.application_attempt_lifecycle_jt5 import claim_jt5_attempt
 from app.services.application_execution_gate import ApplyDecision
+from app.services.operations_settings import get_operations_settings
 from app.services.submission_integrity import (
     build_submission_identity_aliases,
     claim_submission_identity_aliases,
@@ -787,6 +788,40 @@ def test_worker_executes_lever_with_the_reserved_verified_identity(monkeypatch, 
     assert calls[0][1]["dry_run"] is False
     assert calls[0][1]["supervised_target"]["execution_contract"] == "jt5"
     assert calls[0][1]["supervised_target"]["identity_hash"] == "a" * 64
+
+
+@pytest.mark.parametrize(
+    ("switch_name", "switch_value", "expected_error"),
+    [
+        ("AUTOMATION_GLOBAL_KILL_SWITCH", "true", "global_kill_switch_active"),
+        ("AUTOPILOT_DISABLED_PLATFORMS", "lever", "platform_disabled"),
+    ],
+)
+def test_worker_operational_safety_gate_fails_pre_submit_not_uncertain(
+    monkeypatch, db_session, switch_name, switch_value, expected_error
+):
+    application, _, attempt = _reserved_lever_attempt(
+        db_session, email=f"jt5-safety-gate-{expected_error}@example.com"
+    )
+    monkeypatch.setenv("JOBTOMATIK_OPERATIONS_ENV_FILE", "/nonexistent/jobtomatik-operations.env")
+    monkeypatch.setenv("AUTOMATION_GLOBAL_KILL_SWITCH", "false")
+    monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "")
+    monkeypatch.setenv(switch_name, switch_value)
+    get_operations_settings.cache_clear()
+
+    from app.services.form_filler import fill_and_submit_application
+
+    monkeypatch.setattr("app.tasks.jt5_execution.fill_and_submit_application", fill_and_submit_application)
+    result = execute_reserved_application.run(application.id, attempt.reference)
+    get_operations_settings.cache_clear()
+
+    assert result["outcome"] == "failed_pre_submit"
+    assert result["automatic_retry_allowed"] is False
+    db_session.refresh(attempt)
+    db_session.refresh(application)
+    assert attempt.status == SubmissionAttemptStatus.failed.value
+    assert attempt.attempt_metadata["result"]["error"] == expected_error
+    assert application.automation_state == ApplicationAutomationState.ready_to_apply.value
 
 
 @pytest.mark.parametrize("attempt_status", ["succeeded", "uncertain"])
