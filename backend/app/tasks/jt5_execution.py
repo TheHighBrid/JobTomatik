@@ -63,11 +63,12 @@ _PRE_BROWSER_ERRORS = frozenset({
 
 def _log_actions(result: Dict[str, Any]) -> set[str]:
     actions: set[str] = set()
-    for item in result.get("log") or []:
-        if isinstance(item, dict):
-            action = str(item.get("action") or "").strip().lower()
-            if action:
-                actions.add(action)
+    for key in ("log", "step_log"):
+        for item in result.get(key) or []:
+            if isinstance(item, dict):
+                action = str(item.get("action") or "").strip().lower()
+                if action:
+                    actions.add(action)
     return actions
 
 
@@ -79,16 +80,37 @@ def _has_browser_activity(result: Dict[str, Any], actions: set[str]) -> bool:
     activity evidence.
     """
     adapter = str(result.get("ats_adapter") or "").strip().lower()
+    runtime_adapter = str(result.get("adapter_name") or "").strip().lower()
+    evidence_fields = (
+        "handoff_snapshot",
+        "step_evidence",
+        "control_evidence",
+        "upload_evidence",
+        "validation_errors",
+        "confirmation_evidence",
+        "form_evidence",
+        "application_url",
+        "application_entry_method",
+        "final_url",
+        "steps_completed",
+    )
     return bool(
-        "navigate" in actions
-        or bool(actions & _SUBMIT_LOG_ACTIONS)
+        actions
+        or result.get("log")
+        or result.get("step_log")
         or (adapter and adapter != "generic")
+        or (runtime_adapter and runtime_adapter != "generic")
         or result.get("submit_clicked") is True
         or result.get("browser_started") is True
+        or result.get("submission_confirmed") is True
+        or result.get("submitted_at")
         or result.get("fields_filled_count")
         or result.get("fields_filled")
         or result.get("screenshot")
         or result.get("handoff_required")
+        or result.get("application_form_detected") is True
+        or result.get("ready_to_submit") is True
+        or any(result.get(key) for key in evidence_fields)
     )
 
 
@@ -111,18 +133,27 @@ def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
     browser_activity = _has_browser_activity(normalized, actions)
     submit_clicked = bool(normalized.get("submit_clicked"))
     submit_from_log = bool(actions & _SUBMIT_LOG_ACTIONS)
+    final_action_evidence = bool(
+        submit_clicked
+        or submit_from_log
+        or normalized.get("submitted_at")
+        or normalized.get("submission_confirmed") is True
+    )
 
     if "final_submit_attempted" not in normalized or normalized.get("final_submit_attempted") is None:
-        if submit_clicked or submit_from_log:
+        if final_action_evidence:
             normalized["final_submit_attempted"] = True
-        elif normalized.get("submit_clicked") is False and not submit_from_log:
+        elif normalized.get("submit_clicked") is False and not browser_activity:
             normalized["final_submit_attempted"] = False
         else:
             # No explicit signal: treat as unknown until other evidence appears.
-            if not actions and not browser_activity:
+            if not browser_activity:
                 normalized["final_submit_attempted"] = False
             else:
                 normalized["final_submit_attempted"] = None
+    elif normalized.get("final_submit_attempted") is False and final_action_evidence:
+        # Positive final-action evidence overrides stale negative metadata.
+        normalized["final_submit_attempted"] = True
 
     # Conflicting final-action evidence invalidates pre-submit proof.
     if normalized.get("pre_submit_failure_verified") is True:
