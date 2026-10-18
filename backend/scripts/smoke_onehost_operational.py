@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -59,8 +60,6 @@ def database_probe(phase):
         versions = set(connection.execute(text("SELECT version_num FROM alembic_version")).scalars())
     heads = set(ScriptDirectory.from_config(Config("alembic.ini")).get_heads())
     assert versions == heads
-    # This candidate has no Alembic revisions. Its actual schema boot path is
-    # FastAPI create_all plus additive compatibility migrations, not upgrade head.
     columns = {column["name"] for column in inspect(engine).get_columns("applications")}
     assert {"automation_state", "application_target_url", "submission_attempt_count"} <= columns
     with SessionLocal() as db:
@@ -147,19 +146,23 @@ async def browser_probe(phase):
                 await runtime.page.get_by_label("Synthetic name").fill("Synthetic OneHost")
                 marker = os.environ["JOBTOMATIK_RUNTIME_REVISION"]
                 if phase == "before":
-                    await runtime.page.evaluate("value => localStorage.setItem('jt5-smoke', value)", marker)
+                    await runtime.page.evaluate(
+                        "value => localStorage.setItem('jt5-smoke', value)", marker
+                    )
+                    await runtime.context.storage_state()
                 else:
                     assert await runtime.page.evaluate("localStorage.getItem('jt5-smoke')") == marker
                 assert Path(runtime.browser_profile_path).is_dir()
-                # Graceful Chromium shutdown flushes storage before container restart.
                 await runtime.browser.close()
+                deadline = time.monotonic() + 15
+                while runtime.process.poll() is None and time.monotonic() < deadline:
+                    await asyncio.sleep(0.25)
             finally:
                 runtime.terminate(remove_profile=False)
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
-    # Executed inside the worker container, through the shared API namespace.
     assert httpx.get("http://127.0.0.1:8000/api/system/ready", timeout=10).status_code == 200
 
 
