@@ -2,9 +2,9 @@
   "artifact_type": "jobtomatik-static-frontend",
   "build_api_url": "http://127.0.0.1:8010",
   "build_platform": "linux-arm64-ci",
-  "built_at": "2026-10-18T04:49:50+00:00",
+  "built_at": "2026-10-18T07:15:31+00:00",
   "dist_tree_sha256": "2a1f50738307edec4c4f27a2617925b40b04a40cb424f2c9582ee4618d819d01",
   "package_lock_sha256": "67f100cf250b27851bed8425168fdf54c2f65967b6ecbf51baf37349589f8390",
-  "revision": "4f3f3ee2794b1ea9bebd802542404a522c27b2ae",
+  "revision": "4cfc35abb17c39c52c48bf15807b1019579fc4bd",
   "version": 1
 }
