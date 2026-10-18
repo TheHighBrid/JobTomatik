@@ -86,6 +86,7 @@ def test_pre_browser_error_string_after_browser_activity_stays_uncertain(post_la
         "error": "Placeholder URL; manual application required",
         "ats_adapter": "generic",
         "final_submit_attempted": False,
+        "pre_submit_failure_verified": True,
         **post_launch_signal,
     }
 
