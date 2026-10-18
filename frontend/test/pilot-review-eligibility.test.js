@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isSupervisedPilotReviewEligible } from '../src/pilotReviewEligibility.js'
+import isSupervisedPilotReviewEligible from '../src/pilotReviewEligibility.js'
 
 const approved = {
   decision: 'accepted', valid_for_current_evidence: true,

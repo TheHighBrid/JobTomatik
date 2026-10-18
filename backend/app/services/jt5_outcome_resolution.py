@@ -1,11 +1,7 @@
-"""Audited owner resolution of uncertain JT5 attempts without automatic replay.
+"""Audited owner resolution of uncertain JT5 attempts without automatic replay."""
 
-Confirmation requires readable, retained, attempt-bound evidence and closed
-handoffs. Non-submission requests remain blocked until a durable employer-evidence
-intake and verification contract exists. Notes never release a retry block.
-No browser, employer request, approval, queue publication, or release flag change
-is performed here.
-"""
+# Confirmation requires trusted evidence and closed handoffs; unsupported
+# non-submission cannot unlock retries. This module performs no external action.
 
 import hashlib
 import json
@@ -137,13 +133,9 @@ def _verify_confirmation(db, application, attempt, data):
 
 
 def _consume_confirmation_review(db, application, attempt, user_id, evidence_id, snapshot_hash, request_hash):
-    """
-    Atomically consume the verified snapshot so later rejection conflicts.
-
-    The unique (evidence_id, evidence_snapshot_hash) constraint serializes
-    simultaneous owner recovery and independent evidence-review decisions.
-    This runs after locking attempt, application and the exact evidence row.
-    """
+    """Consume an exact accepted snapshot to prevent contradictory later rejection."""
+    # Existing snapshot uniqueness serializes competing review decisions.
+    # The attempt, application and evidence are already locked in that order.
     existing = db.query(SubmissionEvidenceReview).filter(
         SubmissionEvidenceReview.evidence_id == evidence_id,
         SubmissionEvidenceReview.evidence_snapshot_hash == snapshot_hash,

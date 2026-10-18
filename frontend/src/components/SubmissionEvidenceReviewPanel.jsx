@@ -24,7 +24,7 @@ import {
   listSubmissionEvidence,
   listSubmissionEvidenceReviews,
 } from '../api/client'
-import { isSupervisedPilotReviewEligible } from '../pilotReviewEligibility'
+import isSupervisedPilotReviewEligible from '../pilotReviewEligibility'
 
 function compactHash(value) {
   if (!value) return 'Not available'
