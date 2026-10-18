@@ -73,20 +73,42 @@ def test_real_form_filler_pre_browser_rejections_classify_as_failed_pre_submit(j
 
 @pytest.mark.parametrize("post_launch_signal", [
     {"log": [{"action": "navigate"}]},
+    {"log": [{"action": "ats_adapter_detected", "adapter": "generic"}]},
+    {"step_log": [{"action": "application_form_not_reached"}]},
     {"ats_adapter": "greenhouse"},
+    {"adapter_name": "greenhouse"},
     {"fields_filled_count": 1},
+    {"fields_filled": 1},
     {"screenshot": "capture.png"},
     {"handoff_required": True},
+    {"handoff_snapshot": {"browser_session_id": "session-1"}},
+    {"step_evidence": [{"action": "step_evaluated", "step": 1}]},
+    {"steps_completed": 1},
+    {"control_evidence": [{"control_id": "control-1"}]},
+    {"upload_evidence": [{"field": "resume"}]},
+    {"validation_errors": [{"field": "email"}]},
+    {"confirmation_evidence": [{"is_sufficient": False, "evidence_type": "url_change"}]},
+    {"form_evidence": {"present": True}},
+    {"application_url": "https://jobs.example/apply"},
+    {"application_entry_method": "apply_button"},
+    {"application_form_detected": True},
+    {"final_url": "https://jobs.example/apply"},
+    {"ready_to_submit": True},
+    {"submitted_at": "2026-10-18T12:00:00Z"},
+    {"submission_confirmed": True},
     {"submit_clicked": True},
     {"browser_started": True},
 ])
-def test_pre_browser_error_string_after_browser_activity_stays_uncertain(post_launch_signal):
+@pytest.mark.parametrize("preverified", [False, True])
+def test_pre_browser_error_string_after_browser_activity_stays_uncertain(
+    post_launch_signal, preverified
+):
     result = {
         "success": False,
         "error": "Placeholder URL; manual application required",
         "ats_adapter": "generic",
         "final_submit_attempted": False,
-        "pre_submit_failure_verified": True,
+        "pre_submit_failure_verified": preverified,
         **post_launch_signal,
     }
 
@@ -104,7 +126,7 @@ def test_normalize_captcha_after_navigate_stays_uncertain():
         "log": [{"action": "navigate"}, {"action": "captcha_detected"}],
         "ats_adapter": "greenhouse",
     })
-    assert normalized["final_submit_attempted"] is False
+    assert normalized["final_submit_attempted"] is None
     assert normalized["pre_submit_failure_verified"] is False
     assert _classify_browser_result(normalized) == "submission_uncertain"
 
