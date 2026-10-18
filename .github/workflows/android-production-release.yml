@@ -22,6 +22,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     environment: android-production-release
+    env:
+      # Public OneHost origin, never credentials. Override with the protected
+      # environment variable when the deployment hostname changes.
+      VITE_API_URL: ${{ vars.JOBTOMATIK_PRODUCTION_API_URL || 'https://vps-10618f0e.vps.ovh.ca' }}
     defaults:
       run:
         working-directory: frontend
@@ -114,8 +118,39 @@ jobs:
       - name: Run frontend tests
         run: npm test
 
+      - name: Verify production API origin and backend identity
+        shell: bash
+        run: |
+          python3 - <<'PYVERIFY'
+          import json
+          import os
+          from urllib.parse import urlsplit
+          from urllib.request import urlopen
+
+          base = os.environ["VITE_API_URL"]
+          parsed = urlsplit(base)
+          if (
+              parsed.scheme != "https"
+              or not parsed.hostname
+              or parsed.username
+              or parsed.password
+              or parsed.path not in ("", "/")
+              or parsed.query
+              or parsed.fragment
+          ):
+              raise SystemExit("Android production API URL must be a bare HTTPS origin.")
+          with urlopen(base.rstrip("/") + "/api/system/health", timeout=12) as response:
+              health = json.load(response)
+          if health.get("status") != "ok" or health.get("service") != "JobTomatik API":
+              raise SystemExit("Android production backend identity check failed.")
+          print("Android production API endpoint identity verified:", parsed.hostname)
+          PYVERIFY
+
       - name: Build frontend and synchronize Capacitor
-        run: npm run android:prepare
+        run: |
+          npm run android:prepare
+          # Ensure Vite actually embedded the vetted production origin.
+          grep -RFq -- "$VITE_API_URL" dist/assets
 
       - name: Assemble production APK with protected signing material
         uses: ./.github/actions/android-signing-material
@@ -165,6 +200,7 @@ jobs:
           Signing mode: persistent_release_signed
           Signing certificate SHA-256: $SIGNING_CERT_SHA256
           Source commit: $SOURCE_COMMIT
+          Bundled default API URL: $VITE_API_URL
           Intended release tag: $RELEASE_TAG
           Built by: GitHub Actions
           Publication: not performed by this workflow
