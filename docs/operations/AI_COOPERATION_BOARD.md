@@ -1,5 +1,12 @@
 # AI Cooperation Board
 
+**Current briefing:** [project status](../PROJECT_STATUS.md),
+[roadmap](../ROADMAP.md), [evidence](../EVIDENCE.md).
+**Participant aliases:** [the Famiglia roster](../GOVERNANCE.md): Don TheHighBrid,
+Underboss Sol 5.6, Caporegime Sol 6.1, assigned Consigliere / Soldatos and Associates.
+These owner-requested presentation names preserve the existing authority below.
+Grok remains inactive. Historical assignments do not reactivate a lane.
+
 **Authoritative coordination issue:** #252  
 **Repository owner:** TheHighBrid  
 **Integration lead:** GPT-5.6 Sol  

@@ -1,0 +1,549 @@
+{
+  "date": "2026-10-16",
+  "timezone": "America/Toronto",
+  "current": {
+    "observed_at": "2026-10-16T14:48:27.073Z",
+    "main": "0c169a673ca0feb8cbbb806dcd6b5d532fb71c06",
+    "deployed": {
+      "revision": "28b70d530055d3c37e0c57364f1428900bee48ac",
+      "image": "jobtomatik:28b70d5",
+      "api_worker_db_redis": "healthy; freshly inspected",
+      "admin": "online",
+      "source": "OVH read-only container/spec inspections; #706 cutover receipt"
+    },
+    "candidate": {
+      "pr": 711,
+      "revision": "4c9914a21aafb46efca051236ec7a403762f5733",
+      "tree": "cb4a91b9c52b7a6ff99eb5e0f8259fd0ab8a88e8",
+      "image": "jobtomatik:4c9914a",
+      "image_id": "sha256:49a612a2e17584d7dd73b7d34ec3e48f3a6cf08f7d44f8721c822830e93d4784",
+      "deployed": false,
+      "local_source_tests": {
+        "passed": 54,
+        "skipped": 1
+      },
+      "postgres_tests_passed": 21,
+      "exact_image_postgres_tests_passed": 21,
+      "independent_code_review": "No major issues on exact final head",
+      "checks": [
+        {
+          "name": "Codacy Static Code Analysis",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/runs/117028840896"
+        },
+        {
+          "name": "CodeQL",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/runs/117028504727"
+        },
+        {
+          "name": "jt5-focused",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353643/job/117028138166"
+        },
+        {
+          "name": "frontend-build",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353659/job/117028137639"
+        },
+        {
+          "name": "fast-gate",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353659/job/117028137397"
+        },
+        {
+          "name": "deployment-config",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353659/job/117028137281"
+        },
+        {
+          "name": "dependency-audit",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353659/job/117028137102"
+        },
+        {
+          "name": "owned-browser-compose-proof",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353649/job/117028137059"
+        },
+        {
+          "name": "backend-full",
+          "status": "in_progress",
+          "conclusion": null,
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353643/job/117028137006"
+        },
+        {
+          "name": "android",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353659/job/117028136995"
+        },
+        {
+          "name": "phase0-fastapi-celery-proof",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353548/job/117028136889"
+        },
+        {
+          "name": "frontend-build",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353566/job/117028136884"
+        },
+        {
+          "name": "jt5-postgres-recovery",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353643/job/117028136725"
+        },
+        {
+          "name": "backend-browser-migration",
+          "status": "in_progress",
+          "conclusion": null,
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353659/job/117028136662"
+        },
+        {
+          "name": "deployment-config",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353566/job/117028136540"
+        },
+        {
+          "name": "exact-head-acceptance",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353641/job/117028136348"
+        },
+        {
+          "name": "integrated-backend",
+          "status": "in_progress",
+          "conclusion": null,
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353566/job/117028136279"
+        },
+        {
+          "name": "Analyze python",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353537/job/117028136149"
+        },
+        {
+          "name": "Analyze javascript-typescript",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353537/job/117028136079"
+        },
+        {
+          "name": "pytest",
+          "status": "in_progress",
+          "conclusion": null,
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353555/job/117028135893"
+        },
+        {
+          "name": "synthetic-controls",
+          "status": "completed",
+          "conclusion": "success",
+          "head_sha": "4c9914a21aafb46efca051236ec7a403762f5733",
+          "html_url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38917353506/job/117028135809"
+        }
+      ]
+    },
+    "pr706": {
+      "state": "merged",
+      "merged_into_main": "f7c2f6f7",
+      "deployed": true,
+      "focused_image_tests_passed": 40,
+      "source": "https://github.com/TheHighBrid/JobTomatik/pull/706"
+    },
+    "pr675": {
+      "state": "merged",
+      "main_commit": "0c169a67"
+    },
+    "pr708": {
+      "state": "merged into feature parent; not current main"
+    },
+    "pr710": {
+      "state": "open; unresolved recovery findings; not deployed"
+    },
+    "host": {
+      "observed_at": "2026-10-16T14:46:19Z",
+      "os": "Ubuntu 26.04.1 LTS",
+      "architecture": "x86_64",
+      "vcpus": 4,
+      "guest_cpu_model": "Intel Core Processor (Haswell, no TSX)",
+      "hypervisor": "KVM",
+      "ram_mib": 7746,
+      "available_ram_mib": 6349,
+      "swap_mib": 0,
+      "root_disk_df_h": {
+        "size": "72G",
+        "used": "17G",
+        "available": "56G"
+      },
+      "confidence": "fresh guest OS observations; rounded disk values; availability is transient"
+    },
+    "billing": {
+      "monthly_total": null,
+      "cumulative_total": null,
+      "status": "Invoices and complete usage evidence unavailable; unknown is not zero"
+    },
+    "publication": {
+      "tag": "v2.1.0",
+      "published_at": "2026-09-05T03:22:44Z",
+      "url": "https://github.com/TheHighBrid/JobTomatik/releases/tag/v2.1.0"
+    },
+    "production_outcome": "Daniels Health remains submission_uncertain; manual Applied is not confirmation; no action/retry/resolution performed"
+  },
+  "initial_snapshot_historical": {
+    "date": "2026-10-16",
+    "timezone": "America/Toronto",
+    "main": "6aac5b33701db6d13952f86c1faaeca76d66810f",
+    "implementation": "1a8a0c7be8476894c51dfba5e62ea7a8b936d5fd",
+    "tree": "81ce6d286e7f94dedeb2db388c1c7c35b6873024",
+    "pr704": [
+      {
+        "name": "release-gate",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519338/job/116745750044"
+      },
+      {
+        "name": "release-gate",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519295/job/116737758086"
+      },
+      {
+        "name": "Codacy Static Code Analysis",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/runs/116732307582"
+      },
+      {
+        "name": "publish-static-runtime (main only)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519299/job/116732121762"
+      },
+      {
+        "name": "owned-browser-compose-proof",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519213/job/116731963357"
+      },
+      {
+        "name": "frontend-build",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519338/job/116731959111"
+      },
+      {
+        "name": "backend-browser-migration",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519338/job/116731958987"
+      },
+      {
+        "name": "dependency-audit",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519338/job/116731958984"
+      },
+      {
+        "name": "android",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519338/job/116731958934"
+      },
+      {
+        "name": "deployment-config",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519338/job/116731958929"
+      },
+      {
+        "name": "backend-full",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519326/job/116731958833"
+      },
+      {
+        "name": "build-apk",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519457/job/116731958732"
+      },
+      {
+        "name": "applications-queue-round-trip",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519357/job/116731958697"
+      },
+      {
+        "name": "jt5-focused",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519326/job/116731958691"
+      },
+      {
+        "name": "mobile-owner-handoff",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519351/job/116731958686"
+      },
+      {
+        "name": "deployment-config",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519295/job/116731958591"
+      },
+      {
+        "name": "fast-gate",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519338/job/116731958570"
+      },
+      {
+        "name": "build",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519373/job/116731958569"
+      },
+      {
+        "name": "integrated-backend",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519295/job/116731958516"
+      },
+      {
+        "name": "synthetic-controls",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519364/job/116731958499"
+      },
+      {
+        "name": "production-compose-restart",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519351/job/116731958463"
+      },
+      {
+        "name": "frontend-build",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519295/job/116731958318"
+      },
+      {
+        "name": "build-static-frontend (linux-arm64)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519299/job/116731958245"
+      },
+      {
+        "name": "pytest",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519397/job/116731958168"
+      },
+      {
+        "name": "phase0-fastapi-celery-proof",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519214/job/116731957790"
+      },
+      {
+        "name": "exact-head-acceptance",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825519071/job/116731957586"
+      },
+      {
+        "name": "public-proof",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38825514844/job/116731946518"
+      }
+    ],
+    "pr706": {
+      "head": "f3ac627a60a33ca1e5f49cf06b3a48492cf7aba2",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "release-gate",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492566/job/116804147481"
+        },
+        {
+          "name": "release-gate",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492522/job/116803834307"
+        },
+        {
+          "name": "CodeQL",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/runs/116798514367"
+        },
+        {
+          "name": "Codacy Static Code Analysis",
+          "status": "completed",
+          "conclusion": "action_required",
+          "url": "https://github.com/TheHighBrid/JobTomatik/runs/116798332314"
+        },
+        {
+          "name": "exact-head-acceptance",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492637/job/116798103659"
+        },
+        {
+          "name": "backend-full",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492671/job/116798103631"
+        },
+        {
+          "name": "owned-browser-compose-proof",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492679/job/116798103480"
+        },
+        {
+          "name": "phase0-fastapi-celery-proof",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492644/job/116798103399"
+        },
+        {
+          "name": "Analyze python",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492579/job/116798103396"
+        },
+        {
+          "name": "frontend-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492566/job/116798103336"
+        },
+        {
+          "name": "jt5-focused",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492671/job/116798103335"
+        },
+        {
+          "name": "dependency-audit",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492522/job/116798103301"
+        },
+        {
+          "name": "pytest",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492634/job/116798103246"
+        },
+        {
+          "name": "deployment-config",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492522/job/116798103238"
+        },
+        {
+          "name": "fast-gate",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492522/job/116798103233"
+        },
+        {
+          "name": "android",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492522/job/116798103209"
+        },
+        {
+          "name": "backend-browser-migration",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492522/job/116798103205"
+        },
+        {
+          "name": "integrated-backend",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492566/job/116798103186"
+        },
+        {
+          "name": "Analyze javascript-typescript",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492579/job/116798103160"
+        },
+        {
+          "name": "synthetic-controls",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492636/job/116798103117"
+        },
+        {
+          "name": "frontend-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492522/job/116798103000"
+        },
+        {
+          "name": "deployment-config",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846492566/job/116798102972"
+        },
+        {
+          "name": "public-proof",
+          "status": "completed",
+          "conclusion": "skipped",
+          "url": "https://github.com/TheHighBrid/JobTomatik/actions/runs/38846488668/job/116798092544"
+        }
+      ]
+    },
+    "host": {
+      "fresh_admin_verification": false,
+      "reason": "Desktop Commander devices offline"
+    },
+    "billing": {
+      "monthly_total": null,
+      "cumulative_total": null,
+      "reason": "Invoices and usage records unavailable"
+    }
+  }
+}
