@@ -1,4 +1,5 @@
-"""Synthetic Lever prepare proof using the production filler, adapter and retention.
+"""
+Synthetic Lever prepare proof using the production filler, adapter and retention.
 
 Only browser launch is supplied by the fixture to install a deny-all network route
 before navigation. This does not certify employer metadata, API/Celery dispatch,
@@ -38,6 +39,55 @@ document.querySelector('form').addEventListener('submit', event => {
  event.preventDefault(); window.fixtureActions.submits++;
 });
 </script>"""
+
+
+def _assert_prepared_boundary(result, target):
+    """Check upload evidence and the exact final-owner snapshot binding."""
+    assert result["success"] is True, result
+    assert result["ready_to_submit"] is True
+    assert result["requires_manual_review"] is True
+    assert result["ats_adapter"] == "lever"
+    assert result["submitted_at"] is None
+    assert result["upload_evidence"][0]["verification"] == "passed"
+    assert any(item["reason_code"] == "operator_final_submit_required" for item in result["review_items"])
+    assert not any(item.get("action") == "ats_submit_clicked" for item in result["log"])
+    snapshot = result["handoff_snapshot"]
+    assert snapshot["current_url"] == FIXTURE_URL
+    assert snapshot["metadata"]["supervised_target"] == target
+    assert snapshot["metadata"]["operator_target_identity_hash"] == target["identity_hash"]
+    assert snapshot["metadata"]["operator_assisted_final_submit"] is True
+    assert snapshot["metadata"]["automated_submission_authorized"] is False
+    target_id = snapshot["metadata"]["controlled_page_target_id"]
+    assert target_id
+
+    return snapshot
+
+
+async def _reconnect_and_observe(snapshot, resume, evidence_dir):
+    """Observe the same filled target after the original controller exits."""
+    target_id = snapshot["metadata"]["controlled_page_target_id"]
+    # The production wrapper's Playwright manager has stopped. Reconnect with
+    # an independent manager and locate the retained page by its CDP identity.
+    async with async_playwright() as reconnect:
+        browser = await reconnect.chromium.connect_over_cdp(snapshot["browser_endpoint"])
+        pages = [page for context in browser.contexts for page in context.pages]
+        retained = [page for page in pages if page.url == FIXTURE_URL]
+        assert len(retained) == 1
+        page = retained[0]
+        session = await page.context.new_cdp_session(page)
+        try:
+            info = await session.send("Target.getTargetInfo")
+            assert info["targetInfo"]["targetId"] == target_id
+        finally:
+            await session.detach()
+        assert await page.locator("#name").input_value() == "Synthetic Candidate"
+        assert await page.locator("#email").input_value() == "candidate@example.test"
+        assert await page.locator("#resume").evaluate("el => el.files[0].name") == resume.name
+        actions = await page.evaluate("window.fixtureActions")
+        assert actions == {"clicks": 0, "submits": 0}
+        await page.screenshot(path=str(evidence_dir / "retained-preparation.png"))
+        (evidence_dir / "retained-preparation.html").write_text(await page.content(), encoding="utf-8")
+    return actions
 
 
 @pytest.mark.asyncio
@@ -99,46 +149,11 @@ async def test_operator_prepare_upload_retains_exact_form_after_disconnect(monke
                 {"full_name": "Synthetic Candidate", "email": "candidate@example.test", "answer_policies": []},
                 "", str(resume), dry_run=True,
             )
-        assert result["success"] is True, result
-        assert result["ready_to_submit"] is True
-        assert result["requires_manual_review"] is True
-        assert result["ats_adapter"] == "lever"
-        assert result["submitted_at"] is None
-        assert result["upload_evidence"][0]["verification"] == "passed"
-        assert any(item["reason_code"] == "operator_final_submit_required" for item in result["review_items"])
-        assert not any(item.get("action") == "ats_submit_clicked" for item in result["log"])
+        snapshot = _assert_prepared_boundary(result, target)
         assert release_calls == [True]
-        snapshot = result["handoff_snapshot"]
-        assert snapshot["current_url"] == FIXTURE_URL
-        assert snapshot["metadata"]["supervised_target"] == target
-        assert snapshot["metadata"]["operator_target_identity_hash"] == target["identity_hash"]
-        assert snapshot["metadata"]["operator_assisted_final_submit"] is True
-        assert snapshot["metadata"]["automated_submission_authorized"] is False
-        target_id = snapshot["metadata"]["controlled_page_target_id"]
-        assert target_id
         assert runtime.process.poll() is None
-
-        # The production wrapper's Playwright manager has stopped. Reconnect with
-        # an independent manager and locate the retained page by its CDP identity.
-        async with async_playwright() as reconnect:
-            browser = await reconnect.chromium.connect_over_cdp(snapshot["browser_endpoint"])
-            pages = [page for context in browser.contexts for page in context.pages]
-            retained = [page for page in pages if page.url == FIXTURE_URL]
-            assert len(retained) == 1
-            page = retained[0]
-            session = await page.context.new_cdp_session(page)
-            try:
-                info = await session.send("Target.getTargetInfo")
-                assert info["targetInfo"]["targetId"] == target_id
-            finally:
-                await session.detach()
-            assert await page.locator("#name").input_value() == "Synthetic Candidate"
-            assert await page.locator("#email").input_value() == "candidate@example.test"
-            assert await page.locator("#resume").evaluate("el => el.files[0].name") == resume.name
-            actions = await page.evaluate("window.fixtureActions")
-            assert actions == {"clicks": 0, "submits": 0}
-            await page.screenshot(path=str(evidence_dir / "retained-preparation.png"))
-            (evidence_dir / "retained-preparation.html").write_text(await page.content(), encoding="utf-8")
+        actions = await _reconnect_and_observe(snapshot, resume, evidence_dir)
+        target_id = snapshot["metadata"]["controlled_page_target_id"]
         assert requests == [{"method": "GET", "url": FIXTURE_URL}]
         receipt = {
             "synthetic_only": True, "real_employer_submission": False,
@@ -148,7 +163,10 @@ async def test_operator_prepare_upload_retains_exact_form_after_disconnect(monke
             "final_action_authorized": False, "requests": requests,
             "resume_sha256": hashlib.sha256(resume.read_bytes()).hexdigest(),
             "trace_sha256": hashlib.sha256((evidence_dir / "prepare-trace.zip").read_bytes()).hexdigest(),
-            "scope_exclusions": ["official_metadata_refresh", "API/Celery_dispatch", "durable_handoff_database_row", "owner_approval", "employer_confirmation"],
+            "scope_exclusions": [
+                "official_metadata_refresh", "API/Celery_dispatch",
+                "durable_handoff_database_row", "owner_approval", "employer_confirmation",
+            ],
         }
         (evidence_dir / "prepare-proof.json").write_text(json.dumps(receipt, indent=2), encoding="utf-8")
     finally:
