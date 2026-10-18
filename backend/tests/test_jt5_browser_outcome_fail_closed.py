@@ -2,7 +2,10 @@
 import asyncio
 
 import pytest
+from app.config import get_settings
+from app.services.form_filler import fill_and_submit_application as fill_compatibility_wrapper
 from app.services.form_filler_v3 import fill_and_submit_application as fill_real_form
+from app.services.operations_settings import get_operations_settings
 
 from app.tasks.jt5_execution import (
     _classify_browser_result,
@@ -67,6 +70,27 @@ def test_normalize_pre_browser_invalid_url_is_retryable():
 def test_real_form_filler_pre_browser_rejections_classify_as_failed_pre_submit(job_url):
     result = asyncio.run(fill_real_form(job_url, {}, "", "", dry_run=False))
 
+    assert result["ats_adapter"] == "generic"
+    assert _classify_browser_result(result) == "failed_pre_submit"
+
+
+def test_retained_handoff_wrapper_placeholder_rejection_classifies_as_failed_pre_submit(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENABLE_RESUMABLE_HANDOFFS", "true")
+    monkeypatch.setenv("AUTOMATION_GLOBAL_KILL_SWITCH", "false")
+    monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "")
+    get_settings.cache_clear()
+    get_operations_settings.cache_clear()
+    try:
+        result = asyncio.run(fill_compatibility_wrapper(
+            "https://example.com/jobs/placeholder-1", {}, "", "", dry_run=False
+        ))
+    finally:
+        get_settings.cache_clear()
+        get_operations_settings.cache_clear()
+
+    assert result["error"] == "Placeholder URL; automatic application unavailable"
     assert result["ats_adapter"] == "generic"
     assert _classify_browser_result(result) == "failed_pre_submit"
 
