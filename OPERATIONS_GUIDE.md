@@ -1,5 +1,7 @@
 # JobTomatik Operations Guide
 
+> **Historical operator guide.** Its Android/Termux, local Redis/Beat and CDP topology is retired for production. Use [OneHost deployment](docs/operations/ONEHOST_PRODUCTION_DEPLOYMENT.md) and [current project status](docs/PROJECT_STATUS.md). Preserve the remaining text as history; current operations use one Linux OneHost worker and an Android/web thin client.
+
 This guide explains how JobTomatik works from an operator's point of view, where the main controls live, what each major switch does, and how to move between safe development, supervised testing, and later autonomous operation without guessing.
 
 The goal is not to repeat every implementation detail. It is to give the repository owner a clear control panel for the whole system.

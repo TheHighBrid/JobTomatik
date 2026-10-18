@@ -1,5 +1,7 @@
 # JobTomatik v1.00: Complete Setup and Operating Tutorial
 
+> **Historical Android-host guide.** Termux/PRoot/ADB server execution is retired for production. Keep this text for recovery history; do not follow these host-start commands for current main. Use [OneHost deployment](operations/ONEHOST_PRODUCTION_DEPLOYMENT.md) and [current project status](PROJECT_STATUS.md). Android is a thin client.
+
 This guide starts from a clean Android device and ends with a working JobTomatik installation capable of searching jobs, preparing applications, running previews, opening retained-browser handoffs, and recording employer confirmation evidence.
 
 The reference v1 setup uses:

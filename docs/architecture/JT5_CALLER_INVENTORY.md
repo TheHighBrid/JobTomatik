@@ -1,5 +1,12 @@
 # JT5 caller inventory (GitHub search + file inspection, 2026-10-11)
 
+**2026-10-16 correction:** the table below is a dated migration inventory, not
+a current authorization to delete release controls. Ordinary JT5 Apply is
+integrated through #704. Preserve `ALLOW_REAL_APPLICATION_SUBMIT` as an operational
+release control; #706 corrected its missing API/worker enforcement and is deployed. Re-run current
+caller searches before deletion. Operator/recovery callers remain separately
+scoped. See [current execution contract](JT5_SIMPLIFIED_APPLICATION_EXECUTION.md).
+
 Search-derived inventory plus direct file inspection of production call sites.
 Re-run repository-wide `rg` in CI before deleting code.
 
@@ -7,7 +14,7 @@ Re-run repository-wide `rg` in CI before deleting code.
 
 | Class | Meaning |
 |-------|---------|
-| **DELETE after cutover** | Owner-facing approval ceremony, pilot flags, redundant live-submit gates on the JT5 path |
+| **DELETE after caller verification** | Redundant owner-facing approval ceremony and legacy pilot-lease dependencies on ordinary JT5 Apply; preserve global release controls |
 | **KEEP** | Auth, ownership, duplicate/uncertain protection, evidence, browser isolation |
 | **MIGRATE** | Callers that must switch to JT5 before the old path is removed |
 | **DO NOT TOUCH YET** | Operator-assisted handoff (human final click) and recovery scripts that still use pilot flags as safety |
@@ -69,7 +76,7 @@ Flags: `greenhouse_supervised_pilot_enabled` / `GREENHOUSE_SUPERVISED_PILOT_ENAB
 
 Flag: `allow_real_application_submit` / `ALLOW_REAL_APPLICATION_SUBMIT`.
 
-### Production (DELETE from JT5 path; KEEP as optional global kill only if owner re-requests)
+### Production (KEEP global release control; verify API and worker enforcement)
 
 | File | Behavior |
 |------|----------|
@@ -77,9 +84,13 @@ Flag: `allow_real_application_submit` / `ALLOW_REAL_APPLICATION_SUBMIT`.
 | `backend/app/tasks/applications.py` | `LIVE_SUBMIT_BLOCKED_REASON` when false |
 | `backend/app/services/supervised_submission.py` | Preflight `global_live_submit_disabled` |
 | `backend/app/api/applications.py` | `_require_live_submit_enabled` on legacy submit |
-| Plus operations_policy, operator-assisted, scraping/handoffs/unattended tasks |
+| Additional policy, operator and scheduled-task callers | Reinspect current operations_policy, operator-assisted and scraping/handoff/unattended call sites before editing |
 
-## JT5 path (this branch) — must not call the above
+## JT5 path (integrated) and global release enforcement
+
+Do not call redundant legacy approval ceremonies from ordinary JT5 Apply.
+The global live-submit setting still applies at API reservation and worker entry;
+that correction is merged and deployed through #706. This is distinct from reactivating a pilot lease.
 
 | Component | File |
 |-----------|------|
