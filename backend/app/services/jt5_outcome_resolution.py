@@ -1,5 +1,4 @@
-"""
-Audited owner resolution of uncertain JT5 attempts without automatic replay.
+"""Audited owner resolution of uncertain JT5 attempts without automatic replay.
 
 Confirmation requires readable, retained, attempt-bound evidence and closed
 handoffs. Non-submission requests remain blocked until a durable employer-evidence

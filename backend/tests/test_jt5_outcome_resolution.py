@@ -129,7 +129,6 @@ def test_recovery_status_preserves_reconciled_dispatch(auth_client, recovery):
 
 
 def test_owner_receipt_never_exposes_untrusted_worker_exception(auth_client, db_session, recovery):
-    import json
     application, attempt, _, data = recovery
     original = {"outcome": "submission_uncertain", "error": "private_worker_error_details",
                 "final_submit_attempted": True}

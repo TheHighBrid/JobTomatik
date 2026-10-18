@@ -213,9 +213,7 @@ export default function SubmissionEvidenceReviewPanel({ application }) {
   if (!evidenceQuery.isLoading && evidence.length === 0) return null
 
   const reviews = reviewsQuery.data || []
-  const acceptedValidReview = reviews.find(
-    (review) => review.decision === 'accepted' && review.valid_for_current_evidence && Boolean(review.approval_reference),
-  )
+  const acceptedValidReview = reviews.find(isSupervisedPilotReviewEligible)
   const summary = readinessQuery.data?.summary || {}
   const gates = summary.gates || {}
   const alreadyIngested = Boolean(
