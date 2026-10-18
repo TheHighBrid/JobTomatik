@@ -39,6 +39,10 @@ def _metadata(session: ManualHandoffSession) -> Dict[str, Any]:
 
 def _is_target_navigation_session(session: ManualHandoffSession) -> bool:
     metadata = _metadata(session)
+    # An ATS dry-run failure is a same-page diagnostic, even though the
+    # compatibility layer uses the navigation challenge enum for its handoff.
+    if metadata.get("handoff_stage") == "dry_run_failure_diagnostic":
+        return False
     challenge_type = str(getattr(session, "challenge_type", "") or "")
     if (
         metadata.get("target_resolution_only") is False
