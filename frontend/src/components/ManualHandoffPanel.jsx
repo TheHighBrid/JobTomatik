@@ -50,6 +50,7 @@ export default function ManualHandoffPanel({ applicationId }) {
   const [frameUrl, setFrameUrl] = useState('')
   const [secretInput, setSecretInput] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [frameStaleAfterFailure, setFrameStaleAfterFailure] = useState(false)
 
   const { data: sessions = [] } = useQuery({
     queryKey: ['handoffs', applicationId],
@@ -93,6 +94,7 @@ export default function ManualHandoffPanel({ applicationId }) {
         if (previous) URL.revokeObjectURL(previous)
         return nextUrl
       })
+      setFrameStaleAfterFailure(false)
     } catch (error) {
       const message = getApiErrorMessage(error, 'Could not load the retained browser')
       if ([403, 409, 410].includes(error?.response?.status)) {
@@ -246,6 +248,24 @@ export default function ManualHandoffPanel({ applicationId }) {
       onSuccess: () => {
         setSecretInput('')
         toast.success('Newest code replaced the old value and was submitted')
+      },
+    })
+  }
+
+  const typeDiagnosticText = () => {
+    if (!secretInput || !claimed || actionMutation.isPending || isRefreshing || frameStaleAfterFailure) return
+    const submitted = secretInput
+    actionMutation.mutate({ action: 'type', text: submitted }, {
+      onSuccess: () => {
+        setSecretInput((current) => (current === submitted ? '' : current))
+        toast.success('Text entered in the focused browser field')
+      },
+      onError: () => {
+        setFrameStaleAfterFailure(true)
+        refreshFrame()
+        toast.error(
+          'Browser action failed. A fresh screenshot is loading — review it before retrying, the text may already be in the field.'
+        )
       },
     })
   }
@@ -430,6 +450,29 @@ export default function ManualHandoffPanel({ applicationId }) {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
+              {diagnosticNavigation && (
+                <div className="flex gap-2 items-start">
+                  <textarea
+                    value={secretInput}
+                    onChange={(event) => setSecretInput(event.target.value)}
+                    className="input flex-1 min-h-[2.75rem] resize-y"
+                    rows={2}
+                    placeholder="Type into the focused browser field (newlines preserved)"
+                    aria-label="Text for the focused browser field"
+                    autoCapitalize="none"
+                    spellCheck="false"
+                    disabled={actionMutation.isPending}
+                  />
+                  <button
+                    className="btn-primary flex items-center gap-2"
+                    onClick={typeDiagnosticText}
+                    disabled={!secretInput || actionMutation.isPending || isRefreshing || frameStaleAfterFailure}
+                  >
+                    <Keyboard className="w-4 h-4" />
+                    Type text
+                  </button>
+                </div>
+              )}
               {!diagnosticNavigation && (
                 <div className="flex gap-2">
                   <input
