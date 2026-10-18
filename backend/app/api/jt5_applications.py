@@ -49,7 +49,7 @@ def _safe_jt5_attempt_diagnostics(attempt: SubmissionAttempt) -> dict:
     if not isinstance(metadata, dict):
         metadata = {}
     dispatch_status = metadata.get("dispatch_status")
-    if dispatch_status not in ("published", "worker_completed", "reconciliation_required"):
+    if dispatch_status not in ("published", "worker_completed", "reconciliation_required", "reconciled"):
         dispatch_status = "unknown"
     if dispatch_status != "reconciliation_required":
         return {
@@ -107,6 +107,20 @@ def reconcile_jt5_application(
     except JT5ResolutionError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        # A competing independent review won the same unique evidence snapshot.
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        details = str(exc.orig)
+        if constraint != "uq_evidence_review_snapshot" and not (
+            "uq_evidence_review_snapshot" in details
+            or "submission_evidence_reviews.evidence_id" in details
+        ):
+            raise
+        raise HTTPException(
+            status_code=409,
+            detail="The evidence review changed; reload before recording confirmation",
+        ) from exc
     except OperationalError as exc:
         db.rollback()
         if getattr(exc.orig, "pgcode", None) != "55P03":

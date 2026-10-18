@@ -251,11 +251,19 @@ def _require_resolvable_attempt(db, application, attempt):
 
 
 def _resolution_receipt(attempt, data, request_hash, user_id, snapshot):
+    # Keep raw worker errors in the protected original attempt record, not in
+    # the owner-visible recovery receipt or subsequent reconciliation GET.
+    result = (attempt.attempt_metadata or {}).get("result")
+    result_hash = (
+        hashlib.sha256(json.dumps(result, sort_keys=True, default=str,
+                                  separators=(",", ":")).encode()).hexdigest()
+        if result is not None else None
+    )
     return {
         **data.model_dump(), "request_hash": request_hash,
         "reviewer_user_id": user_id, "reviewed_at": datetime.now(timezone.utc).isoformat(),
         "original_attempt_status": attempt.status,
-        "original_result": (attempt.attempt_metadata or {}).get("result"),
+        "original_result_sha256": result_hash,
         "evidence_snapshot_hash": snapshot["evidence_snapshot_hash"] if snapshot else None,
         "finding_source": "authenticated_owner_review",
         "automatic_retry_allowed": False,
@@ -279,11 +287,20 @@ def resolve_jt5_outcome(db, *, application_id, user_id, data):
         snapshot["evidence_snapshot_hash"], request_hash,
     )
     receipt = _resolution_receipt(attempt, data, request_hash, user_id, snapshot)
+    # The normal completion helper replaces metadata["result"] with the new
+    # outcome. Preserve the original worker result privately, never in the
+    # owner-facing resolution receipt.
+    original_worker_result = (attempt.attempt_metadata or {}).get("result")
     payload = {"attempt_reference": attempt.reference, "reviewer_user_id": user_id,
                "outcome": data.outcome, "request_hash": request_hash}
     _resolve_state(db, application, attempt, payload)
     complete_jt5_attempt(db, attempt, outcome="confirmed",
                          details={"reason": "owner_reviewed_outcome", "resolution_request_hash": request_hash})
-    attempt.attempt_metadata = {**(attempt.attempt_metadata or {}), "dispatch_status": "reconciled", "owner_resolution": receipt}
+    attempt.attempt_metadata = {
+        **(attempt.attempt_metadata or {}),
+        "dispatch_status": "reconciled",
+        "jt5_original_result": original_worker_result,
+        "owner_resolution": receipt,
+    }
     db.flush()
     return {**receipt, "idempotent": False}

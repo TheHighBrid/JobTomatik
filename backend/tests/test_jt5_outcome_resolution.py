@@ -51,7 +51,15 @@ def test_confirmation_is_audited_idempotent_and_never_dispatches(auth_client, db
     result = _resolve(auth_client, application, data)
     assert result.status_code == 200, result.text
     receipt = result.json()
-    assert receipt["original_result"] == original
+    import hashlib
+    import json
+    expected_hash = hashlib.sha256(
+        json.dumps(original, sort_keys=True, default=str, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert receipt["original_result_sha256"] == expected_hash
+    assert "original_result" not in receipt
+    db_session.refresh(attempt)
+    assert attempt.attempt_metadata["jt5_original_result"] == original
     assert receipt["automatic_retry_allowed"] is False
     api.execute_reserved_application.apply_async.assert_not_called()
     db_session.expire_all()
@@ -111,6 +119,67 @@ def test_confirmed_owner_resolution_cannot_be_rejected_by_independent_review(
         evidence_snapshot_hash=data["evidence_snapshot_hash"],
         decision="rejected",
     ).count() == 0
+
+def test_recovery_status_preserves_reconciled_dispatch(auth_client, recovery):
+    application, _, _, data = recovery
+    assert _resolve(auth_client, application, data).status_code == 200
+    status = auth_client.get(f"/api/applications/{application.id}/jt5/status")
+    assert status.status_code == 200
+    assert status.json()["latest_attempt"]["dispatch_status"] == "reconciled"
+
+
+def test_owner_receipt_never_exposes_untrusted_worker_exception(auth_client, db_session, recovery):
+    import json
+    application, attempt, _, data = recovery
+    original = {"outcome": "submission_uncertain", "error": "private_worker_error_details",
+                "final_submit_attempted": True}
+    attempt.attempt_metadata = {**attempt.attempt_metadata, "result": original}
+    db_session.commit()
+    response = _resolve(auth_client, application, data)
+    assert response.status_code == 200
+    assert "private_worker_error_details" not in response.text
+    assert "original_result" not in response.json()
+    assert response.json()["original_result_sha256"]
+    context = auth_client.get(f"/api/applications/{application.id}/jt5/reconciliation")
+    assert context.status_code == 200
+    assert "private_worker_error_details" not in context.text
+    db_session.refresh(attempt)
+    assert attempt.attempt_metadata["jt5_original_result"] == original
+
+
+def test_recovery_review_is_not_supervised_pilot_approval(db_session, auth_client, recovery):
+    from app.models.job import Job
+    from app.services.submission_evidence_review import (
+        SubmissionEvidenceReviewError,
+        build_supervised_pilot_record,
+    )
+    application, _, _, data = recovery
+    assert _resolve(auth_client, application, data).status_code == 200
+    db_session.expire_all()
+    with pytest.raises(SubmissionEvidenceReviewError, match="No accepted review remains"):
+        build_supervised_pilot_record(
+            db_session, db_session.get(Application, application.id),
+            db_session.get(User, application.user_id),
+            db_session.get(Job, application.job_id),
+        )
+
+
+def test_concurrent_review_unique_conflict_is_not_an_api_500(auth_client, recovery, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+    import app.api.jt5_applications as api
+    application, _, _, data = recovery
+
+    def conflict(*args, **kwargs):
+        raise IntegrityError(
+            "INSERT INTO submission_evidence_reviews", {},
+            Exception('duplicate key value violates unique constraint "uq_evidence_review_snapshot"'),
+        )
+
+    monkeypatch.setattr(api, "resolve_jt5_outcome", conflict)
+    response = _resolve(auth_client, application, data)
+    assert response.status_code == 409
+    assert "review" in response.json()["detail"].lower()
+
 
 @pytest.mark.parametrize("status", ["interviewing", "offer", "rejected"])
 def test_confirmation_preserves_later_owner_history(auth_client, db_session, recovery, status):
@@ -244,7 +313,8 @@ def test_unrelated_review_and_original_outcome_are_preserved(auth_client, db_ses
     db_session.refresh(review)
     assert review.status == "open"
     db_session.refresh(attempt)
-    assert attempt.attempt_metadata["owner_resolution"]["original_result"]["outcome"] == "submission_uncertain"
+    assert attempt.attempt_metadata["jt5_original_result"]["outcome"] == "submission_uncertain"
+    assert "original_result" not in attempt.attempt_metadata["owner_resolution"]
 
 
 @pytest.mark.parametrize("locked_record", ["attempt", "application"])

@@ -384,6 +384,10 @@ def build_supervised_pilot_record(
     selected_review: Optional[SubmissionEvidenceReview] = None
     selected_evidence: Optional[SubmissionEvidence] = None
     for candidate in reviews:
+        # JT5 recovery consumes evidence to protect outcome integrity; it is
+        # not a supervised submission approval or pilot certification receipt.
+        if not candidate.approval_reference:
+            continue
         evidence = db.query(SubmissionEvidence).filter(SubmissionEvidence.id == candidate.evidence_id).first()
         if not evidence:
             continue

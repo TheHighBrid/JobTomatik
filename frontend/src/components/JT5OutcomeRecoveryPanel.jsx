@@ -29,7 +29,9 @@ function useRecoveryMutation(id, context, selected, form) {
       form.setVerified(false)
       toast.success('Submission outcome recorded from the retained evidence.')
       const keys = [['application', String(id)], ['application', id], ['applications'],
-        ['jt5-application-status', String(id)], ['jt5-reconciliation', id]]
+        ['jt5-application-status', String(id)], ['jt5-reconciliation', id],
+        ['submission-evidence-reviews', Number(id)],
+        ['submission-evidence-review-preflight', Number(id)]]
       await Promise.all(keys.map((queryKey) => qc.invalidateQueries({ queryKey })))
     },
     onError: (error) => {
