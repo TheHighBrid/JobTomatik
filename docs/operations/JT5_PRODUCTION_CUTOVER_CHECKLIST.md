@@ -43,7 +43,7 @@ Use [OneHost production deployment](ONEHOST_PRODUCTION_DEPLOYMENT.md). Do not re
 
 ## Next promotion boundary
 
-- [ ] Confirm exact target release commit `5279bd56`, API/worker image identity, frontend build hash, correct Compose config and rollback artifacts.
+- [ ] Confirm exact reviewed target release commit (repository `main` was `6ec19a45` at this snapshot, including JT5 merge `5279bd56`), API/worker image identity, frontend build hash, Compose config and rollback artifacts.
 - [ ] Keep `ALLOW_REAL_APPLICATION_SUBMIT=false` on both API and worker; do not enable autopilot, paid services or external sends.
 - [ ] Confirm no active handoff, inspect queue/stale sessions, retain new DB snapshot, then use a controlled image+frontend cutover only within the owner's authorized release window.
 - [ ] Preserve before/after redacted uncertain-outcome counts; no application retry, fabricated receipt, or checkpoint reset.
