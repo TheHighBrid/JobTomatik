@@ -1,10 +1,8 @@
-"""
-Synthetic Lever prepare proof using the production filler, adapter and retention.
+"""Prove synthetic Lever preparation with the production filler and retention."""
 
-Only browser launch is supplied by the fixture to install a deny-all network route
-before navigation. This does not certify employer metadata, API/Celery dispatch,
-owner authorization, a real submission, or an employer confirmation.
-"""
+# Only browser launch is supplied by the fixture to install a deny-all network
+# route before navigation. This does not certify employer metadata, API/Celery
+# dispatch, owner authorization, a real submission, or an employer confirmation.
 from __future__ import annotations
 
 import hashlib
