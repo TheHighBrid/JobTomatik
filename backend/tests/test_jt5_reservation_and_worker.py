@@ -14,6 +14,7 @@ from app.models.user import User
 from app.services.application_attempt_jt5 import reserve_jt5_attempt
 from app.services.application_attempt_lifecycle_jt5 import claim_jt5_attempt
 from app.services.application_execution_gate import ApplyDecision
+from app.services.operational_safety import OperationalSafetyViolation
 from app.services.operations_settings import get_operations_settings
 from app.services.submission_integrity import (
     build_submission_identity_aliases,
@@ -398,7 +399,7 @@ def test_worker_failed_pre_submit_is_retryable_state(monkeypatch, db_session):
             "requires_manual_review": True,
             "final_submit_attempted": False,
             "pre_submit_failure_verified": True,
-            "log": [{"action": "missing_field"}],
+            "log": [],
         }
 
     monkeypatch.setattr(
@@ -822,6 +823,37 @@ def test_worker_operational_safety_gate_fails_pre_submit_not_uncertain(
     assert attempt.status == SubmissionAttemptStatus.failed.value
     assert attempt.attempt_metadata["result"]["error"] == expected_error
     assert application.automation_state == ApplicationAutomationState.ready_to_apply.value
+
+
+def test_worker_operational_safety_exception_during_browser_run_stays_uncertain(
+    monkeypatch, db_session
+):
+    application, _, attempt = _reserved_lever_attempt(
+        db_session, email="jt5-safety-violation-during-browser@example.com"
+    )
+    monkeypatch.setenv("JOBTOMATIK_OPERATIONS_ENV_FILE", "/nonexistent/jobtomatik-operations.env")
+    monkeypatch.setenv("AUTOMATION_GLOBAL_KILL_SWITCH", "false")
+    monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "")
+    get_operations_settings.cache_clear()
+
+    async def violation_from_browser_runner(*args, **kwargs):
+        raise OperationalSafetyViolation(
+            "global_kill_switch_active", "switch changed during browser execution"
+        )
+
+    monkeypatch.setattr(
+        "app.tasks.jt5_execution.fill_and_submit_application",
+        violation_from_browser_runner,
+    )
+    result = execute_reserved_application.run(application.id, attempt.reference)
+    get_operations_settings.cache_clear()
+
+    assert result["outcome"] == "submission_uncertain"
+    assert result["automatic_retry_allowed"] is False
+    db_session.refresh(attempt)
+    db_session.refresh(application)
+    assert attempt.status == SubmissionAttemptStatus.uncertain.value
+    assert application.automation_state == ApplicationAutomationState.submission_uncertain.value
 
 
 @pytest.mark.parametrize("attempt_status", ["succeeded", "uncertain"])
