@@ -79,6 +79,16 @@ jobs:
       - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
 
+      - name: Prove broker-dispatched preparation retains the durable owner boundary
+        env:
+          DATABASE_URL: sqlite:///./durable-prepare.db
+          JT5_TEST_DATABASE_URL: sqlite:///./durable-prepare.db
+          JT5_DURABLE_PREPARE_BROKER_URL: redis://localhost:6379/1
+          JT5_DURABLE_PREPARE_EVIDENCE_DIR: durable-prepare-evidence
+        run: |
+          python -m pytest -q --tb=short -ra \
+            tests/test_operator_assisted_durable_prepare.py
+
       - name: Certify LinkedIn Apply to ATS to filled dry-run form and task state
         run: |
           python -m pytest -q --tb=short -ra \
@@ -292,5 +302,6 @@ jobs:
             backend/current-head-final-acceptance.json
             backend/current-head-revision.txt
             backend/current-head-celery.log
+            backend/durable-prepare-evidence/
           if-no-files-found: warn
           retention-days: 30
