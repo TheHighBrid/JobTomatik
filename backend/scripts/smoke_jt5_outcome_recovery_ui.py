@@ -22,16 +22,18 @@ React.createElement(Routes,null,React.createElement(Route,{path:'/applications/:
 
 
 class SyntheticRecoveryAPI:
-    def __init__(self, origin, *, confirmation=False, rejected=False, unavailable=False, applied=False,
-                 receipt_only=False, incompatible=False, previously_rejected=False):
+    def __init__(self, origin, *, confirmation=False, rejection_mode=None, unavailable=False, applied=False,
+                 receipt_only=False, incompatible=False):
         """Initialize isolated synthetic API state without contacting an employer."""
-        self.origin, self.rejected, self.unavailable = origin, rejected, unavailable
+        if rejection_mode not in (None, "post_rejection", "previously_rejected"):
+            raise ValueError("Unsupported synthetic rejection mode")
+        self.origin, self.rejected, self.unavailable = origin, rejection_mode == "post_rejection", unavailable
         self.posts, self.forbidden, self.errors = [], [], []
         self.state, self.attempt_status, self.snapshot = "submission_uncertain", "uncertain", "a" * 64
         self.status = "applied" if applied else "pending"
         self.confirmation = confirmation
         self.receipt_only, self.incompatible = receipt_only, incompatible
-        self.previously_rejected = previously_rejected
+        self.previously_rejected = rejection_mode == "previously_rejected"
         if incompatible:
             self.state = "needs_review"
 
@@ -134,7 +136,7 @@ async def exercise_unknown_and_read_failure(browser, origin, evidence):
 
 
 async def exercise_confirmation(browser, origin, evidence):
-    api, context, page = await open_fixture(browser, origin, confirmation=True, rejected=True)
+    api, context, page = await open_fixture(browser, origin, confirmation=True, rejection_mode="post_rejection")
     await page.get_by_label("Retained confirmation").select_option("7")
     await expect(page.get_by_text("Synthetic application received for posting 101", exact=True)).to_be_visible()
     await page.get_by_label("What did the evidence establish?").fill("Retained employer confirmation matches this exact application.")
@@ -169,7 +171,7 @@ async def exercise_review_findings(browser, origin):
     await expect(page.get_by_text("synthetic-receipt-101", exact=True)).to_be_visible()
     assert not api.posts and not api.errors
     await context.close()
-    for options in ({"incompatible": True}, {"previously_rejected": True}):
+    for options in ({"incompatible": True}, {"rejection_mode": "previously_rejected"}):
         api, context, page = await open_fixture(browser, origin, confirmation=True, **options)
         await expect(page.get_by_text("Recovery is unavailable.", exact=False)).to_be_visible()
         await expect(page.get_by_role("button", name="Record verified outcome")).to_have_count(0)

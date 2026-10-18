@@ -1,4 +1,5 @@
-"""Audited owner resolution of uncertain JT5 attempts without automatic replay.
+"""
+Audited owner resolution of uncertain JT5 attempts without automatic replay.
 
 Confirmation requires readable, retained, attempt-bound evidence and closed
 handoffs. Non-submission requests remain blocked until a durable employer-evidence
@@ -137,7 +138,8 @@ def _verify_confirmation(db, application, attempt, data):
 
 
 def _consume_confirmation_review(db, application, attempt, user_id, evidence_id, snapshot_hash, request_hash):
-    """Atomically consume the verified snapshot so later rejection conflicts.
+    """
+    Atomically consume the verified snapshot so later rejection conflicts.
 
     The unique (evidence_id, evidence_snapshot_hash) constraint serializes
     simultaneous owner recovery and independent evidence-review decisions.
