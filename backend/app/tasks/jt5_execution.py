@@ -57,6 +57,7 @@ _SUBMIT_LOG_ACTIONS = frozenset({
 _PRE_BROWSER_ERRORS = frozenset({
     "invalid or unsupported job url",
     "placeholder url; manual application required",
+    "placeholder url; automatic application unavailable",
     "playwright not installed",
 })
 
