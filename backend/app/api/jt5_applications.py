@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -19,8 +19,113 @@ from app.models.user import User
 from app.services.application_attempt_jt5 import reserve_jt5_attempt
 from app.services.application_execution_gate import ApplyDecision
 from app.tasks.jt5_execution import execute_reserved_application
+from app.schemas.jt5_reconciliation import JT5OutcomeResolution
+from app.services.jt5_outcome_resolution import JT5ResolutionError, resolution_context, resolve_jt5_outcome
 
 router = APIRouter(prefix="/applications", tags=["applications-jt5"])
+
+# Public owner status exposes enumerated operational codes, not raw metadata.
+# Never echo arbitrary browser errors, internal exception messages, or secrets.
+_RECONCILIATION_REASONS = frozenset({
+    "stale_queued",
+    "stale_in_progress",
+    "worker_restarted_in_progress",
+})
+
+# The broker publish boundary stores type(exc).__name__, never its text.
+# Only known operational exception categories are safe to surface to owners.
+_DISPATCH_ERROR_TYPES = frozenset({
+    "OperationalError",
+    "ConnectionError",
+    "TimeoutError",
+    "OSError",
+    "RuntimeError",
+})
+
+
+def _safe_jt5_attempt_diagnostics(attempt: SubmissionAttempt) -> dict:
+    """Return owner-readable diagnostic identifiers without raw attempt metadata."""
+    metadata = attempt.attempt_metadata
+    if not isinstance(metadata, dict):
+        metadata = {}
+    dispatch_status = metadata.get("dispatch_status")
+    if dispatch_status not in ("published", "worker_completed", "reconciliation_required", "reconciled"):
+        dispatch_status = "unknown"
+    if dispatch_status != "reconciliation_required":
+        return {
+            "dispatch_status": dispatch_status,
+            "reconciliation_reason": None,
+            "dispatch_error_type": None,
+            "automatic_retry_allowed": False,
+        }
+
+    reason = metadata.get("reconciliation_reason")
+    exception_type = metadata.get("dispatch_error_type")
+    return {
+        "dispatch_status": dispatch_status,
+        "reconciliation_reason": reason if (
+            isinstance(reason, str) and reason in _RECONCILIATION_REASONS
+        ) else None,
+        "dispatch_error_type": exception_type if (
+            isinstance(exception_type, str) and exception_type in _DISPATCH_ERROR_TYPES
+        ) else None,
+        "automatic_retry_allowed": False,
+    }
+
+
+
+@router.get("/{application_id}/jt5/reconciliation")
+def get_jt5_reconciliation(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Read saved outcome evidence without starting any external action."""
+    application = db.query(Application).filter(
+        Application.id == application_id, Application.user_id == current_user.id,
+    ).first()
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return resolution_context(db, application)
+
+
+@router.post("/{application_id}/jt5/reconcile")
+def reconcile_jt5_application(
+    application_id: int,
+    data: JT5OutcomeResolution,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record a reviewed outcome; never submit or queue another attempt."""
+    try:
+        result = resolve_jt5_outcome(db, application_id=application_id, user_id=current_user.id, data=data)
+        db.commit()
+        return result
+    except LookupError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except JT5ResolutionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        # A competing independent review won the same unique evidence snapshot.
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        details = str(exc.orig)
+        if constraint != "uq_evidence_review_snapshot" and not (
+            "uq_evidence_review_snapshot" in details
+            or "submission_evidence_reviews.evidence_id" in details
+        ):
+            raise
+        raise HTTPException(
+            status_code=409,
+            detail="The evidence review changed; reload before recording confirmation",
+        ) from exc
+    except OperationalError as exc:
+        db.rollback()
+        if getattr(exc.orig, "pgcode", None) != "55P03":
+            raise
+        raise HTTPException(status_code=423, detail="This attempt is busy; no resolution was recorded") from exc
 
 
 @router.get("/{application_id}/jt5/status")
@@ -50,9 +155,13 @@ def jt5_status(
             "reference": attempt.reference,
             "status": attempt.status,
             "task_id": attempt.task_id,
-            "dispatch_status": (attempt.attempt_metadata or {}).get("dispatch_status", "unknown"),
+            **_safe_jt5_attempt_diagnostics(attempt),
             "attempt_number": attempt.attempt_number,
-            "execution_contract": (attempt.attempt_metadata or {}).get("execution_contract"),
+            "execution_contract": (
+                "jt5" if isinstance(attempt.attempt_metadata, dict)
+                and attempt.attempt_metadata.get("execution_contract") == "jt5"
+                else None
+            ),
             "queued_at": attempt.queued_at.isoformat() if attempt.queued_at else None,
             "started_at": attempt.started_at.isoformat() if attempt.started_at else None,
             "completed_at": attempt.completed_at.isoformat() if attempt.completed_at else None,
