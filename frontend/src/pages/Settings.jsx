@@ -47,7 +47,7 @@ export default function Settings() {
   const qc = useQueryClient()
   const [local, setLocal] = useState(null)
 
-  const { data: serverSettings, isLoading, refetch } = useQuery({
+  const { data: serverSettings, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['settings'],
     queryFn: () => getSettings(),
     select: (r) => r.data,
@@ -101,9 +101,10 @@ export default function Settings() {
             <button
               type="button"
               onClick={() => refetch()}
+              disabled={isFetching}
               className="btn-secondary px-4 py-2 text-sm"
             >
-              Retry loading settings
+              {isFetching ? 'Retrying…' : 'Retry loading settings'}
             </button>
           </div>
         )}
