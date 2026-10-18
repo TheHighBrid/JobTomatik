@@ -52,16 +52,108 @@ async def _observe_retained_form(endpoint, target_id, evidence):
         return actions
 
 
-def test_api_worker_prepare_persists_exact_retained_owner_boundary(
-    auth_client, monkeypatch, tmp_path,
-):
-    """Use an explicitly supplied disposable Redis, never production or eager mode."""
-    broker = os.getenv("JT5_DURABLE_PREPARE_BROKER_URL")
-    if not broker:
-        pytest.skip("Requires an explicitly provisioned disposable Redis broker")
-    evidence = Path(os.getenv("JT5_DURABLE_PREPARE_EVIDENCE_DIR", str(tmp_path / "evidence")))
-    evidence.mkdir(parents=True, exist_ok=True)
-    application_id = _prepare_application(auth_client, tmp_path)
+def _install_browser_fixture(monkeypatch, tmp_path, evidence):
+    state = {"runtime": None, "requests": [], "releases": []}
+    original_release = form_filler_handoff.release_application_browser
+
+    async def launch_fixture(playwright):
+        runtime = await launch_retainable_browser(
+            playwright, profile_dir=tmp_path / "profile", headless=True,
+        )
+
+        state["runtime"] = runtime
+
+        async def route_fixture(route):
+            request = route.request
+            state["requests"].append({"method": request.method, "url": request.url})
+            if request.method == "GET" and request.url == LEVER_URL:
+                await route.fulfill(body=FIXTURE_HTML, content_type="text/html")
+            else:
+                await route.abort("blockedbyclient")
+
+        async def deny_websocket(route):
+            await route.close(code=1008, reason="Synthetic fixture only")
+
+        await runtime.context.route("**/*", route_fixture)
+        await runtime.context.route_web_socket("**/*", deny_websocket)
+        await runtime.context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        return runtime
+
+    async def observe_release(current_runtime, *, retain_controlled_page=False):
+        state["releases"].append(retain_controlled_page)
+        await current_runtime.context.tracing.stop(path=str(evidence / "prepare-trace.zip"))
+        await original_release(current_runtime, retain_controlled_page=retain_controlled_page)
+
+    monkeypatch.setattr(form_filler_handoff, "launch_application_browser", launch_fixture)
+    monkeypatch.setattr(form_filler_handoff, "release_application_browser", observe_release)
+    return state
+
+
+def _assert_durable_boundary(application_id, result, metadata):
+    # A new session must observe the committed worker writes, not an ORM
+    # object or a fabricated handoff returned by a mocked task.
+    with TestingSessionLocal() as db:
+        session = db.query(ManualHandoffSession).one()
+        application = db.query(Application).filter_by(id=application_id).one()
+        review = db.query(ManualReviewTask).one()
+        assert session.public_id == result["handoff_public_id"]
+        assert session.application_id == application_id
+        assert session.user_id == application.user_id
+        assert session.manual_review_id == review.id
+        assert session.challenge_type == "final_submit"
+        assert session.status == "awaiting_user"
+        assert session.current_url == LEVER_URL
+        assert review.reason_code == "operator_final_submit_required"
+        assert application.automation_state == "needs_review"
+        assert application.applied_at is None
+        assert session.handoff_metadata["supervised_target"]["identity_hash"] == metadata["identity_hash"]
+        assert session.handoff_metadata["controlled_page_target_id"]
+        assert db.query(SubmissionApproval).count() == 0
+        assert db.query(SubmissionAttempt).count() == 0
+        public_id = session.public_id
+        target_id = session.handoff_metadata["controlled_page_target_id"]
+        endpoint = decrypt_handoff_secret(session.encrypted_browser_endpoint)
+
+    return {"public_id": public_id, "target_id": target_id, "endpoint": endpoint}
+
+
+def _assert_owner_boundary(auth_client, application_id, public_id):
+    visible = auth_client.get(f"/api/handoffs/{public_id}")
+    assert visible.status_code == 200, visible.text
+    assert visible.json()["current_url"] == LEVER_URL
+    bootstrap = auth_client.post(f"/api/handoffs/{public_id}/bootstrap")
+    assert bootstrap.status_code == 409
+    assert "approval" in bootstrap.json()["detail"].lower()
+    # A second authenticated prepare reuses the durable boundary, so
+    # it cannot enqueue another fill attempt or replace the owner tab.
+    repeated = auth_client.post(
+        f"/api/supervised-submissions/applications/{application_id}/operator-assisted/prepare"
+    )
+    assert repeated.status_code == 202, repeated.text
+    assert repeated.json()["handoff_public_id"] == public_id
+    assert repeated.json()["task_id"] is None
+
+
+def _write_receipt(evidence, dispatch, boundary, requests, actions):
+    (evidence / "durable-prepare-proof.json").write_text(json.dumps({
+        "synthetic_only": True,
+        "broker_dispatch": "disposable Redis, serialized non-eager Celery",
+        "worker_scope": "in-process solo worker, production task and startup integrations",
+        "task_id": dispatch["task_id"],
+        "handoff_public_id": boundary["public_id"],
+        "controlled_page_target_id": boundary["target_id"],
+        "durable_owner_bound_handoff": True,
+        "repeat_prepare_reused_boundary": True,
+        "owner_api_visible": True,
+        "token_disclosure_requires_exact_approval": True,
+        "requests": requests,
+        "fixture_actions": actions,
+        "real_employer_submission": False,
+        "scope_exclusions": ["official_metadata_refresh", "independent_worker_process", "owner_approval", "employer_confirmation"],
+    }, indent=2), encoding="utf-8")
+
+
+def _configure_dispatch(monkeypatch, tmp_path, broker):
     _keep_automation_off(monkeypatch)
     monkeypatch.setattr(operator_tasks, "SessionLocal", TestingSessionLocal)
     metadata = _valid_metadata()
@@ -77,40 +169,21 @@ def test_api_worker_prepare_persists_exact_retained_owner_boundary(
     assert celery_app.conf.result_backend == broker
     monkeypatch.setitem(celery_app.conf, "task_always_eager", False)
     monkeypatch.setattr(get_settings(), "handoff_storage_dir", str(tmp_path / "handoffs"))
-    runtime = None
-    requests = []
-    releases = []
-    original_release = form_filler_handoff.release_application_browser
+    return metadata
 
-    async def launch_fixture(playwright):
-        nonlocal runtime
-        runtime = await launch_retainable_browser(
-            playwright, profile_dir=tmp_path / "profile", headless=True,
-        )
 
-        async def route_fixture(route):
-            request = route.request
-            requests.append({"method": request.method, "url": request.url})
-            if request.method == "GET" and request.url == LEVER_URL:
-                await route.fulfill(body=FIXTURE_HTML, content_type="text/html")
-            else:
-                await route.abort("blockedbyclient")
-
-        async def deny_websocket(route):
-            await route.close(code=1008, reason="Synthetic fixture only")
-
-        await runtime.context.route("**/*", route_fixture)
-        await runtime.context.route_web_socket("**/*", deny_websocket)
-        await runtime.context.tracing.start(screenshots=True, snapshots=True, sources=True)
-        return runtime
-
-    async def observe_release(current_runtime, *, retain_controlled_page=False):
-        releases.append(retain_controlled_page)
-        await current_runtime.context.tracing.stop(path=str(evidence / "prepare-trace.zip"))
-        await original_release(current_runtime, retain_controlled_page=retain_controlled_page)
-
-    monkeypatch.setattr(form_filler_handoff, "launch_application_browser", launch_fixture)
-    monkeypatch.setattr(form_filler_handoff, "release_application_browser", observe_release)
+def test_api_worker_prepare_persists_exact_retained_owner_boundary(
+    auth_client, monkeypatch, tmp_path,
+):
+    """Use an explicitly supplied disposable Redis, never production or eager mode."""
+    broker = os.getenv("JT5_DURABLE_PREPARE_BROKER_URL")
+    if not broker:
+        pytest.skip("Requires an explicitly provisioned disposable Redis broker")
+    evidence = Path(os.getenv("JT5_DURABLE_PREPARE_EVIDENCE_DIR", str(tmp_path / "evidence")))
+    evidence.mkdir(parents=True, exist_ok=True)
+    application_id = _prepare_application(auth_client, tmp_path)
+    metadata = _configure_dispatch(monkeypatch, tmp_path, broker)
+    state = _install_browser_fixture(monkeypatch, tmp_path, evidence)
     try:
         with start_worker(
             celery_app, pool="solo", concurrency=1, queues=["applications"],
@@ -130,64 +203,15 @@ def test_api_worker_prepare_persists_exact_retained_owner_boundary(
             assert result["final_submit_clicked_by_jobtomatik"] is False
             assert result["handoff_public_id"]
 
-            # A new session must observe the committed worker writes, not an ORM
-            # object or a fabricated handoff returned by a mocked task.
-            with TestingSessionLocal() as db:
-                session = db.query(ManualHandoffSession).one()
-                application = db.query(Application).filter_by(id=application_id).one()
-                review = db.query(ManualReviewTask).one()
-                assert session.public_id == result["handoff_public_id"]
-                assert session.application_id == application_id
-                assert session.user_id == application.user_id
-                assert session.manual_review_id == review.id
-                assert session.challenge_type == "final_submit"
-                assert session.status == "awaiting_user"
-                assert session.current_url == LEVER_URL
-                assert review.reason_code == "operator_final_submit_required"
-                assert application.automation_state == "needs_review"
-                assert application.applied_at is None
-                assert session.handoff_metadata["supervised_target"]["identity_hash"] == metadata["identity_hash"]
-                assert session.handoff_metadata["controlled_page_target_id"]
-                assert db.query(SubmissionApproval).count() == 0
-                assert db.query(SubmissionAttempt).count() == 0
-                public_id = session.public_id
-                target_id = session.handoff_metadata["controlled_page_target_id"]
-                endpoint = decrypt_handoff_secret(session.encrypted_browser_endpoint)
-
-            assert releases == [True]
-            assert runtime.process.poll() is None
-            actions = asyncio.run(_observe_retained_form(endpoint, target_id, evidence))
-            visible = auth_client.get(f"/api/handoffs/{public_id}")
-            assert visible.status_code == 200, visible.text
-            assert visible.json()["current_url"] == LEVER_URL
-            bootstrap = auth_client.post(f"/api/handoffs/{public_id}/bootstrap")
-            assert bootstrap.status_code == 409
-            assert "approval" in bootstrap.json()["detail"].lower()
-            # A second authenticated prepare reuses the durable boundary, so
-            # it cannot enqueue another fill attempt or replace the owner tab.
-            repeated = auth_client.post(
-                f"/api/supervised-submissions/applications/{application_id}/operator-assisted/prepare"
-            )
-            assert repeated.status_code == 202, repeated.text
-            assert repeated.json()["handoff_public_id"] == public_id
-            assert repeated.json()["task_id"] is None
-            assert requests == [{"method": "GET", "url": LEVER_URL}]
-            (evidence / "durable-prepare-proof.json").write_text(json.dumps({
-                "synthetic_only": True,
-                "broker_dispatch": "disposable Redis, serialized non-eager Celery",
-                "worker_scope": "in-process solo worker, production task and startup integrations",
-                "task_id": dispatch["task_id"],
-                "handoff_public_id": public_id,
-                "controlled_page_target_id": target_id,
-                "durable_owner_bound_handoff": True,
-                "repeat_prepare_reused_boundary": True,
-                "owner_api_visible": True,
-                "token_disclosure_requires_exact_approval": True,
-                "requests": requests,
-                "fixture_actions": actions,
-                "real_employer_submission": False,
-                "scope_exclusions": ["official_metadata_refresh", "independent_worker_process", "owner_approval", "employer_confirmation"],
-            }, indent=2), encoding="utf-8")
+            boundary = _assert_durable_boundary(application_id, result, metadata)
+            assert state["releases"] == [True]
+            assert state["runtime"].process.poll() is None
+            actions = asyncio.run(_observe_retained_form(
+                boundary["endpoint"], boundary["target_id"], evidence,
+            ))
+            _assert_owner_boundary(auth_client, application_id, boundary["public_id"])
+            assert state["requests"] == [{"method": "GET", "url": LEVER_URL}]
+            _write_receipt(evidence, dispatch, boundary, state["requests"], actions)
     finally:
-        if runtime is not None:
-            runtime.terminate(remove_profile=True)
+        if state["runtime"] is not None:
+            state["runtime"].terminate(remove_profile=True)
