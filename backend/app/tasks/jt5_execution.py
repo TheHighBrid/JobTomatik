@@ -126,7 +126,12 @@ def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
 
     # Conflicting final-action evidence invalidates pre-submit proof.
     if normalized.get("pre_submit_failure_verified") is True:
-        if submit_clicked or submit_from_log or normalized.get("final_submit_attempted") is not False:
+        if (
+            submit_clicked
+            or submit_from_log
+            or normalized.get("final_submit_attempted") is not False
+            or browser_activity
+        ):
             normalized["pre_submit_failure_verified"] = False
         return normalized
 
