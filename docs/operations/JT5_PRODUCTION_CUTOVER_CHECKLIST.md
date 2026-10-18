@@ -1,6 +1,6 @@
 # JT5 production cutover checklist
 
-**Updated:** 2026-10-16. Integration, deployment records and release acceptance are separate. Checked entries below apply to the exact recorded implementation, not to an untested successor.
+**Updated:** 2026-10-17 (America/Toronto). Integration, deployment records and release acceptance are separate. Checked entries below apply to the exact recorded implementation, not to an untested successor.
 
 ## Recorded integration
 
@@ -20,8 +20,9 @@ Sources: [evidence ledger](../EVIDENCE.md), [#704](https://github.com/TheHighBri
 - [x] Deploy matching API/worker `28b70d5` images with source/build identity and rollback receipt.
 - [x] Verify disabled Apply rejects before reservation/dispatch without employer traffic.
 - [x] Verify worker disablement/withdrawal rejection without browser entry or false confirmation.
-- [ ] Complete #711 final-head gates and integration before promoting its late-result repair.
-- [ ] Preserve retained uncertain attempts, consumed final-action checkpoints and existing user history.
+- [x] Integrate #711 late-result repair, #674 Chromium lifecycle and #714 owner recovery/diagnostics into `main` as `5279bd56` (14/14 #714 CI; Codacy zero new issues; independent review no major issues).
+- [x] Validate #714 synthetic same-attempt recovery, evidence binding, duplicate prevention and original-worker-result privacy (72 PostgreSQL tests and 160 frontend tests).
+- [ ] Recheck the **two production uncertain application states and one uncertain submission attempt** before and after controlled promotion; preserve owner history and checkpoints without automatic replay.
 - [ ] Complete same-attempt evidence reconciliation and pre-browser failure-classification follow-ups.
 
 Compose's false default alone is not enforcement proof. Preserve the API/worker correction and regressions delivered in #706.
@@ -30,14 +31,23 @@ Compose's false default alone is not enforcement proof. Preserve the API/worker 
 
 Use [OneHost production deployment](ONEHOST_PRODUCTION_DEPLOYMENT.md). Do not restart a live retained owner session casually to collect a checklist result.
 
-- [ ] Reinspect the authorized host: exact source/image, effective environment, services, queues and retained sessions.
+- [x] Reinspect authorized OVH host: deployed API/worker `jobtomatik:28b70d5`, 5 running services healthy/active, HTTP 200 readiness, real-submit=false on API and worker, zero active handoffs, and four checked queue lengths zero. **This is the old image, not #714.**
 - [x] Record current OS, CPU/vCPU, total RAM and root-disk observations; see the costs/infrastructure document.
 - [ ] Measure persistent-volume and evidence growth separately.
-- [ ] Retain restore/rollback evidence and document the actual observation window.
-- [ ] Verify authenticated owner reads, transient viewer recovery and contended-lock behavior on the corrected build.
+- [ ] Retain a **fresh** pre-promotion DB backup, test non-destructive restore/rollback on an isolated target, and document the observation window. Previous 2026-10-16 backup and rollback images exist, but their presence alone is not a new restore proof.
+- [ ] On the **promoted** image verify authenticated owner reads, #714 recovery UI and diagnostics, transient viewer recovery and contended-lock behavior, with the same no-retry invariant.
 - [ ] Recheck startup recovery: unknown/interrupted possible submissions become uncertain without replay.
-- [ ] Confirm single-worker concurrency, same-browser identity and private display boundaries.
+- [x] Observe one healthy production solo Celery worker with concurrency 1 and shared OneHost namespace contract.
+- [ ] Reconfirm same-browser identity and private display boundaries after promotion, with redacted runtime evidence.
 - [ ] Capture redacted invoices and optional-service usage for an actual cost total.
+
+## Next promotion boundary
+
+- [ ] Confirm exact target release commit `5279bd56`, API/worker image identity, frontend build hash, correct Compose config and rollback artifacts.
+- [ ] Keep `ALLOW_REAL_APPLICATION_SUBMIT=false` on both API and worker; do not enable autopilot, paid services or external sends.
+- [ ] Confirm no active handoff, inspect queue/stale sessions, retain new DB snapshot, then use a controlled image+frontend cutover only within the owner's authorized release window.
+- [ ] Preserve before/after redacted uncertain-outcome counts; no application retry, fabricated receipt, or checkpoint reset.
+- [ ] Confirm HTTP 200 readiness, authenticated owner recovery and diagnostics, single worker health, browser profile and rollback readiness on the actually deployed image.
 
 ## Owner-controlled live acceptance
 
