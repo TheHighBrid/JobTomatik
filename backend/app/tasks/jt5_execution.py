@@ -30,6 +30,10 @@ from app.services.application_state import transition_application_state
 from app.services.form_filler import fill_and_submit_application
 from app.services.supervised_target_identity import platform_key_for_url, LEVER_PLATFORM_KEY
 from app.services.submission_integrity import application_identity_digest
+from app.services.operational_safety import (
+    OperationalSafetyViolation,
+    require_browser_entry_allowed,
+)
 from app.services.supervised_target_identity import (
     persisted_supervised_target_metadata,
     target_identity_hash,
@@ -67,6 +71,27 @@ def _log_actions(result: Dict[str, Any]) -> set[str]:
     return actions
 
 
+def _has_browser_activity(result: Dict[str, Any], actions: set[str]) -> bool:
+    """Return true only for evidence that the browser actually entered a flow.
+
+    The form filler initializes ``ats_adapter`` to ``generic`` before URL
+    validation and Playwright import, so that placeholder is not browser
+    activity evidence.
+    """
+    adapter = str(result.get("ats_adapter") or "").strip().lower()
+    return bool(
+        "navigate" in actions
+        or bool(actions & _SUBMIT_LOG_ACTIONS)
+        or (adapter and adapter != "generic")
+        or result.get("submit_clicked") is True
+        or result.get("browser_started") is True
+        or result.get("fields_filled_count")
+        or result.get("fields_filled")
+        or result.get("screenshot")
+        or result.get("handoff_required")
+    )
+
+
 def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
     """Map form_filler / ATS flow outputs onto the JT5 evidence contract.
 
@@ -83,6 +108,7 @@ def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
 
     normalized = dict(result)
     actions = _log_actions(normalized)
+    browser_activity = _has_browser_activity(normalized, actions)
     submit_clicked = bool(normalized.get("submit_clicked"))
     submit_from_log = bool(actions & _SUBMIT_LOG_ACTIONS)
 
@@ -93,7 +119,7 @@ def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
             normalized["final_submit_attempted"] = False
         else:
             # No explicit signal: treat as unknown until other evidence appears.
-            if not actions and not normalized.get("ats_adapter"):
+            if not actions and not browser_activity:
                 normalized["final_submit_attempted"] = False
             else:
                 normalized["final_submit_attempted"] = None
@@ -106,13 +132,12 @@ def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
 
     error_text = str(normalized.get("error") or "").strip().lower()
     pre_browser = error_text in _PRE_BROWSER_ERRORS
-    browser_started = "navigate" in actions or bool(normalized.get("ats_adapter"))
     if (
         normalized.get("success") is False
         and normalized.get("final_submit_attempted") is False
         and not submit_from_log
         and pre_browser
-        and not browser_started
+        and not browser_activity
     ):
         normalized["pre_submit_failure_verified"] = True
     else:
@@ -322,16 +347,32 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
         db.commit()
 
         profile = _profile_dict(user, db, job)
-        result = _run_async(
-            fill_and_submit_application(
-                target_url,
-                profile,
-                application.cover_letter or "",
-                user.resume_path or "",
-                dry_run=False,
-                supervised_target={**supervised, "execution_contract": "jt5"} if supervised else None,
+        try:
+            require_browser_entry_allowed(target_url)
+        except OperationalSafetyViolation as exc:
+            # This preflight runs before entering the async form filler. Restrict
+            # recovery to these explicit policy denials; failures from the
+            # browser runner remain on the conservative exception path below.
+            if exc.code not in {"global_kill_switch_active", "platform_disabled"}:
+                raise
+            result = {
+                "success": False,
+                "error": exc.code,
+                "final_submit_attempted": False,
+                "pre_submit_failure_verified": True,
+                "log": [],
+            }
+        else:
+            result = _run_async(
+                fill_and_submit_application(
+                    target_url,
+                    profile,
+                    application.cover_letter or "",
+                    user.resume_path or "",
+                    dry_run=False,
+                    supervised_target={**supervised, "execution_contract": "jt5"} if supervised else None,
+                )
             )
-        )
         if not isinstance(result, dict):
             result = {"success": False, "error": "non_dict_browser_result"}
 
