@@ -1,5 +1,8 @@
 """JT5 browser-result classification must never infer a safe retry from silence."""
+import asyncio
+
 import pytest
+from app.services.form_filler_v3 import fill_and_submit_application as fill_real_form
 
 from app.tasks.jt5_execution import (
     _classify_browser_result,
@@ -55,6 +58,40 @@ def test_normalize_pre_browser_invalid_url_is_retryable():
     assert normalized["final_submit_attempted"] is False
     assert normalized["pre_submit_failure_verified"] is True
     assert _classify_browser_result(normalized) == "failed_pre_submit"
+
+
+@pytest.mark.parametrize("job_url", [
+    "http://127.0.0.1:8000/private-job",
+    "https://example.com/jobs/placeholder-1",
+])
+def test_real_form_filler_pre_browser_rejections_classify_as_failed_pre_submit(job_url):
+    result = asyncio.run(fill_real_form(job_url, {}, "", "", dry_run=False))
+
+    assert result["ats_adapter"] == "generic"
+    assert _classify_browser_result(result) == "failed_pre_submit"
+
+
+@pytest.mark.parametrize("post_launch_signal", [
+    {"log": [{"action": "navigate"}]},
+    {"ats_adapter": "greenhouse"},
+    {"fields_filled_count": 1},
+    {"screenshot": "capture.png"},
+    {"handoff_required": True},
+    {"submit_clicked": True},
+    {"browser_started": True},
+])
+def test_pre_browser_error_string_after_browser_activity_stays_uncertain(post_launch_signal):
+    result = {
+        "success": False,
+        "error": "Placeholder URL; manual application required",
+        "ats_adapter": "generic",
+        "final_submit_attempted": False,
+        **post_launch_signal,
+    }
+
+    normalized = normalize_jt5_browser_result(result)
+    assert normalized["pre_submit_failure_verified"] is False
+    assert _classify_browser_result(normalized) == "submission_uncertain"
 
 
 def test_normalize_captcha_after_navigate_stays_uncertain():
