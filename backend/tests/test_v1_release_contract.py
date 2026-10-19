@@ -7,6 +7,13 @@ from app.config import Settings
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _has_password_bearing_github_secret_reference(workflow: str) -> bool:
+    return any(
+        "password" in reference.split("}}", 1)[0]
+        for reference in workflow.lower().split("${{ secrets.")[1:]
+    )
+
+
 def test_android_gradle_wrapper_is_portable():
     wrapper = (
         REPO_ROOT / "frontend" / "android" / "gradle" / "wrapper" / "gradle-wrapper.properties"
@@ -122,7 +129,7 @@ def test_android_production_release_workflow_is_fail_closed_and_deterministic():
     assert "secrets.JOBTOMATIK_KEY_PASSWORD" not in workflow
     assert "keystore_password:" not in workflow
     assert "key_password:" not in workflow
-    assert "password" not in workflow.lower()
+    assert not _has_password_bearing_github_secret_reference(workflow)
     assert "apksigner" in workflow
     assert "SIGNING_CERT_SHA256" in workflow
     assert 'test "$SIGNING_CERT_SHA256" = "$EXPECTED_CERT_SHA256"' in workflow
@@ -136,6 +143,15 @@ def test_android_production_release_workflow_is_fail_closed_and_deterministic():
     assert "create-release" not in workflow
 
 
+
+
+def test_release_secret_guard_only_rejects_password_bearing_secret_references():
+    assert not _has_password_bearing_github_secret_reference(
+        "parsed.password is only URL userinfo validation"
+    )
+    assert _has_password_bearing_github_secret_reference(
+        "password: ${{ secrets.SIGNING_PASSWORD }}"
+    )
 
 
 def test_android_signing_material_action_is_ephemeral_and_has_no_custom_exec_helper():
