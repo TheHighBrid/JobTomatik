@@ -47,7 +47,7 @@ export default function Settings() {
   const qc = useQueryClient()
   const [local, setLocal] = useState(null)
 
-  const { data: serverSettings, isLoading } = useQuery({
+  const { data: serverSettings, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['settings'],
     queryFn: () => getSettings(),
     select: (r) => r.data,
@@ -72,10 +72,42 @@ export default function Settings() {
   const toggle = (k) => (v) => setLocal((s) => ({ ...s, [k]: v }))
   const setNum = (k) => (e) => setLocal((s) => ({ ...s, [k]: Number(e.target.value) }))
 
+  // API Connection must remain available if the saved backend URL is wrong
+  // or the backend is offline. Otherwise settings fail into a permanent spinner
+  // and the owner cannot repair the connection from the Android client.
   if (isLoading || !local) {
     return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="w-8 h-8 animate-spin text-tomato-500" />
+      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-100">Settings</h1>
+          <p className="mt-1 text-sm text-gray-400">
+            Configure the backend connection before loading server settings.
+          </p>
+        </div>
+        <Section title="API Connection" icon={Wifi} accent="text-gray-100">
+          <ApiBaseUrlField />
+        </Section>
+        {isLoading ? (
+          <p className="flex items-center gap-2 text-sm text-gray-400" role="status">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            Loading server settings…
+          </p>
+        ) : (
+          <div className="space-y-3" role="alert">
+            <p className="text-sm text-amber-200">
+              Server settings are unavailable. Check the backend URL above,
+              test the connection, then retry.
+            </p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="btn-secondary px-4 py-2 text-sm"
+            >
+              {isFetching ? 'Retrying…' : 'Retry loading settings'}
+            </button>
+          </div>
+        )}
       </div>
     )
   }
