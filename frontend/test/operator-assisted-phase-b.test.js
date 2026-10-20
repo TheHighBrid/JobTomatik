@@ -122,6 +122,11 @@ test('final action uses a dedicated once-only API instead of generic handoff act
 
 
 test('retained final-submit page passively detects employer confirmation after a human click', () => {
+  // Before a receipt appears the CAPTCHA interaction must not be interrupted
+  // by blind four-second /complete calls holding the handoff row lock.
+  assert.equal(finalPanel.includes('|| !capabilities?.confirmation_visible'), true)
+  assert.equal(finalPanel.includes('|| (!finalActionStarted && !capabilities?.confirmation_visible)'), false)
+  assert.equal(finalPanel.includes('finalActionStarted,\\n    capabilities?.confirmation_visible,'), false)
   assert.equal(finalPanel.includes('passiveConfirmationCheck'), true)
   assert.equal(finalPanel.includes('verifyRetainedConfirmation'), true)
   assert.equal(finalPanel.includes('window.setInterval(verifyRetainedConfirmation, 4000)'), true)
