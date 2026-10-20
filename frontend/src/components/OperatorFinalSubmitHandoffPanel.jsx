@@ -335,7 +335,10 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
       || !handoffUnlocked
       || !interactive
       || capabilitiesQuery.isError
-      || (!finalActionStarted && !capabilities?.confirmation_visible)
+      // A CAPTCHA or rejection after the once-only Submit must stay interactive.
+      // Do not call the DB-locking /complete endpoint until the retained browser
+      // independently reports an explicit employer confirmation.
+      || !capabilities?.confirmation_visible
     ) return undefined
 
     let cancelled = false
@@ -380,7 +383,6 @@ export default function OperatorFinalSubmitHandoffPanel({ applicationId }) {
     session?.status,
     interactive,
     capabilitiesQuery.isError,
-    finalActionStarted,
     capabilities?.confirmation_visible,
   ])
 
