@@ -3,17 +3,20 @@
 The Maple physical pilot exposed two production-only hazards:
 
 1. Lever can load passive hCaptcha infrastructure on the retained page. Physical
-   Android reproduction showed the same Lever verification rejection across distinct
-   employers even after the challenge produced a client-side response token. A token
-   field proves only that the widget populated the page; it does not prove that Lever
-   will accept a CDP-driven final click. Any loaded hCaptcha therefore remains a human
-   final-action boundary and JobTomatik must fail closed before the employer-side click.
+   Android reproduction showed Lever verification rejection when JobTomatik clicked
+   Submit while the challenge was still incomplete. A populated response token means
+   the human completed the widget in the retained browser; it is not a CAPTCHA solve
+   by JobTomatik. When no completed response is present, the boundary stays human-only
+   and JobTomatik fails closed before the employer-side click. When a completed human
+   response is present, the single owner-authorized final Submit may proceed under the
+   existing once-only claim, live-snapshot, and confirmation gates.
 2. Compatibility wrappers around retained-browser confirmation can be installed in
    different orders. A recursive wrapper chain must fail closed instead of exhausting
    the Python stack after a consequential click.
 
-This module does not solve or bypass CAPTCHA. It only detects the passive verification
-boundary and adds a fail-closed reentrancy fuse around the established strict final
+This module does not solve or bypass CAPTCHA. It detects the passive verification
+boundary, allows one JobTomatik-owned Submit only after a completed human response,
+and adds a fail-closed reentrancy fuse around the established strict final
 confirmation verifier.
 """
 
@@ -131,19 +134,28 @@ async def passive_verification_state(page: Any) -> Dict[str, Any]:
         "hcaptcha_loaded": hcaptcha_loaded,
         "grecaptcha_loaded": grecaptcha_loaded,
         "turnstile_loaded": turnstile_loaded,
-        "manual_browser_required": bool(hcaptcha_loaded),
+        # Incomplete hCaptcha stays human-only; completed human response unlocks
+        # the single authorized JobTomatik Submit under existing safety gates.
+        "manual_browser_required": bool(hcaptcha_loaded and not completed),
     }
 
 
 def passive_verification_requires_manual_browser(state: Dict[str, Any]) -> bool:
-    """Keep every loaded hCaptcha at the human final-action boundary.
+    """Require a human boundary only while hCaptcha is incomplete.
 
-    The response textarea is browser-side state, not proof that the provider or
-    Lever accepted the verification. JobTomatik therefore never turns a populated
-    hCaptcha token into permission for a CDP-driven employer Submit click.
+    CAPTCHA remains human-only: JobTomatik never solves or interacts with the
+    challenge. A completed response means the human already finished the widget in
+    the retained browser. In that case the owner-authorized once-only final Submit
+    may be executed by JobTomatik under the existing claim, live-snapshot, and
+    confirmation gates. An incomplete challenge still blocks the employer click.
     """
 
-    return bool(state.get("hcaptcha_loaded"))
+    if not bool(state.get("hcaptcha_loaded")):
+        return False
+    # Human completed the widget; allow the authorized single Submit path.
+    if bool(state.get("has_completed_response")):
+        return False
+    return True
 
 
 def _reentrant_verification_result(browser_handoff, session):
