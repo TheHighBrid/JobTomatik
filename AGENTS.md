@@ -29,31 +29,21 @@ JobTomatik is owned and directed by **TheHighBrid**. The repository owner is the
 
 Effective 2026-10-21, the standing AI hierarchy is:
 
-1. **TheHighBrid** - repository owner and final authority.
-2. **Antigravity & Grok** - integration lead under TheHighBrid's standing repository engineering authorization. Owns independent verification, integration sequencing, governance coordination, and merge recommendations within the owner's current direction.
-3. **Antigravity & Grok & Argon & Ollama models** - critical-path implementation/review engineer when assigned. Owns only the implementation or review lane explicitly assigned and does not supersede TheHighBrid's final authority or GPT-5.6 Sol's integration role.
-4. **bounded contributors** -**Qwen3.8:27b, Gemma4:31b:cloud, Gemma4:12b, Qwen3.5:4b** the one the regular tasks and most of the work and coding, follows plan and instructions.
-5. Manus, Claude, and any additional models may contribute only within scopes assigned by TheHighBrid or the active integration lead and remain subject to repository coordination and owner-gated boundaries.
+1. **TheHighBrid** — repository owner and final authority.
+2. **Antigravity & Grok** — integration lead under TheHighBrid's standing repository engineering authorization. Owns independent verification, integration sequencing, governance coordination, and merge recommendations within the owner's current direction.
+3. **Antigravity, Grok, Argon, and Ollama models** — critical-path implementation/review engineers when assigned. Own only the implementation or review lane explicitly assigned. Do not supersede TheHighBrid's final authority or the active integration lead.
+4. **Bounded contributors** — Qwen3.8:27b, Gemma4:31b:cloud, Gemma4:12b, Qwen3.5:4b. Handle regular tasks and most coding under plan and instructions from the integration lead.
+5. **Manus, Claude, and any additional models** — may contribute only within scopes assigned by TheHighBrid or the active integration lead and remain subject to repository coordination and owner-gated boundaries.
 
-**Grok and Argon from the active hierarchy
+**Sol and all ChatGPT models are permanently banned** from any work on this project. They have no active lane, delegation authority, integration authority, or standing operator role. Historical records that describe older Sol or ChatGPT assignments remain historical only and do not grant current authority.
 
-**Sol & ChatGPT models** have been strictly prohibited and banned from any work on this project permanently and effectively, they lost all prior authority to access to this repo and has no active lane, delegation authority, integration authority, or standing operator role.** Historical records that describe older Sol or ChatGPT assignments remain historical only and do not grant current authority.
+### Standing owner authorization for Antigravity / Grok / Argon / Gemma / Qwen
 
-### Standing owner authorization for Google ai models & xAi models and Ollama models (Antigravity/Grok/Argon/Gemma/Qwen)
+On **2026-10-21, America/Toronto**, TheHighBrid explicitly granted full approval and authorization on the full repo. This newer owner instruction supersedes earlier read-only and per-action approval restrictions.
 
-On **2026-10-21, America/Toronto**, TheHighBrid explicitly granted "full aproval
-and authorization on full repo". This newer owner instruction supersedes the
-earlier any other read-only and per-action approval restrictions.
+Antigravity, Grok, Argon, Gemma, and Qwen may inspect, edit, implement, test, verify, create and update dedicated branches, commits, issues and pull requests, repair CI, and complete repository engineering within the owner's current direction. Do not repeatedly request permission for those authorized actions. Continue to respect active task ownership, coordination, required verification and release controls.
 
-Antigravity/Grok/Argon/Gemma/Qwen may inspect, edit, implement, test, verify, create and update
-dedicated branches, commits, issues and pull requests, repair CI, and complete
-repository engineering within the owner's current direction. Do not repeatedly
-request permission for those authorized actions. Continue to respect active
-task ownership, coordination, required verification and release controls.
-
-Full repository engineering authorization does not authorize real job
-submissions, external communications, paid commitments or identity actions.
-Those genuine human gates retain their specific owner-authorization boundaries.
+Full repository engineering authorization does **not** authorize real job submissions, external communications, paid commitments, or identity actions. Those genuine human gates retain their specific owner-authorization boundaries.
 
 Repository prose never overrides a newer explicit instruction from TheHighBrid.
 
@@ -120,13 +110,13 @@ Plans are versioned understanding. Certification means evidence has satisfied th
 - **Antigravity/Grok** integration lead under the standing owner authorization. Owns independent verification, integration sequencing, governance coordination, conflict adjudication within assigned engineering scope, and merge recommendations.
 - **(Antigravity/Grok/Argon/Gemma/Qwen):** critical-path implementation/review engineer when assigned by TheHighBrid or coordinated through the active integration lane. Respect its claimed branch and file scope.
 - **Manus / Claude / other contributors:** optional bounded advisory or implementation contributors when assigned by TheHighBrid or the active integration lead.
-- **Sol:** inactive. No active lane, standing coordination role, delegation authority, or integration authority.
+- **Sol / ChatGPT models:** permanently banned. No active lane, standing coordination role, delegation authority, or integration authority.
 
 This role split does not bypass task claims, repository evidence requirements, release gates, or user-gated real-world actions.
 
 ## Non-negotiable product direction
 
-The final JobTomatik goal is a **fully autonomous Job-Applying system** that applies autonomously for jobs listing after it autonomously filled the application form and that is capable of:
+The final JobTomatik goal is a **fully autonomous job-applying system** capable of:
 
 - continuous real job discovery and ranking;
 - autonomous real application preparation;
