@@ -7,9 +7,14 @@ The 2026-10-16 documentation refresh is indexed in `README.md`,
 `docs/EVIDENCE.md`, `docs/COSTS_AND_INFRASTRUCTURE.md` and `docs/GOVERNANCE.md`.
 Use these for current status; archived campaign predictions are historical.
 
-Owner-requested Cosa Nostra aliases are presentation names: **Don TheHighBrid**,
-**Underboss Sol 5.6**, **Caporegime Sol 6.1**, assigned **Consigliere** advisory
-seats, **Caporegime / Soldatos** implementation lanes and **Associates** automation.
+Owner-requested Cosa Nostra aliases are presentation names: **Don: TheHighBrid**,
+**Underboss: Antigravity**,
+**Caporegime #1: Grok3.7**,
+**Caporegime #2: Argon4**,
+**Consigliere: Sonnet5.5**,
+**Soldatos: Qwen3.8:27b, Gemma4:31b:cloud, Gemma4:12b, Qwen3.5:4b**,
+
+implementation lanes and **Associates** automation.
 The full roster preserves real identities and inactive status. Aliases do not
 rename accounts, change the hierarchy below or grant permissions.
 
@@ -25,19 +30,22 @@ JobTomatik is owned and directed by **TheHighBrid**. The repository owner is the
 Effective 2026-10-03, the standing AI hierarchy is:
 
 1. **TheHighBrid** - repository owner and final authority.
-2. **GPT-5.6 Sol** - integration lead under TheHighBrid's standing repository engineering authorization. Owns independent verification, integration sequencing, governance coordination, and merge recommendations within the owner's current direction.
-3. **GPT-6.1 Sol** - critical-path implementation/review engineer when assigned. Owns only the implementation or review lane explicitly assigned and does not supersede TheHighBrid's final authority or GPT-5.6 Sol's integration role.
-4. **Optional bounded contributors** - Manus, Claude, and any additional models may contribute only within scopes assigned by TheHighBrid or the active integration lead and remain subject to repository coordination and owner-gated boundaries.
+2. **Antigravity & Grok** - integration lead under TheHighBrid's standing repository engineering authorization. Owns independent verification, integration sequencing, governance coordination, and merge recommendations within the owner's current direction.
+3. **Antigravity & Grok & Argon & Ollama models** - critical-path implementation/review engineer when assigned. Owns only the implementation or review lane explicitly assigned and does not supersede TheHighBrid's final authority or GPT-5.6 Sol's integration role.
+4. **bounded contributors** -**Qwen3.8:27b, Gemma4:31b:cloud, Gemma4:12b, Qwen3.5:4b** the one the regular tasks and most of the work and coding, follows plan and instructions.
+5. Manus, Claude, and any additional models may contribute only within scopes assigned by TheHighBrid or the active integration lead and remain subject to repository coordination and owner-gated boundaries.
 
-**Grok is removed from the active hierarchy and has no active lane, delegation authority, integration authority, or standing operator role.** Historical records that describe older Grok assignments remain historical only and do not grant current authority.
+**Grok and Argon from the active hierarchy
 
-### Standing owner authorization for Codex/ChatGPT/Sol
+**Sol & ChatGPT models** have been strictly prohibited and banned from any work on this project permanently and effectively, they lost all prior authority to access to this repo and has no active lane, delegation authority, integration authority, or standing operator role.** Historical records that describe older Sol or ChatGPT assignments remain historical only and do not grant current authority.
 
-On **2026-10-02, America/Toronto**, TheHighBrid explicitly granted "full aproval
+### Standing owner authorization for Google ai models & xAi models and Ollama models (Antigravity/Grok/Argon/Gemma/Qwen)
+
+On **2026-10-21, America/Toronto**, TheHighBrid explicitly granted "full aproval
 and authorization on full repo". This newer owner instruction supersedes the
-earlier Codex-specific read-only and per-action approval restrictions.
+earlier any other read-only and per-action approval restrictions.
 
-Codex/ChatGPT/Sol may inspect, edit, implement, test, verify, create and update
+Antigravity/Grok/Argon/Gemma/Qwen may inspect, edit, implement, test, verify, create and update
 dedicated branches, commits, issues and pull requests, repair CI, and complete
 repository engineering within the owner's current direction. Do not repeatedly
 request permission for those authorized actions. Continue to respect active
@@ -109,22 +117,23 @@ Plans are versioned understanding. Certification means evidence has satisfied th
 ## Standing contributor roles
 
 - **TheHighBrid:** repository owner and final product/release authority.
-- **GPT-5.6 Sol:** integration lead under the standing owner authorization. Owns independent verification, integration sequencing, governance coordination, conflict adjudication within assigned engineering scope, and merge recommendations.
-- **GPT-6.1 Sol:** critical-path implementation/review engineer when assigned by TheHighBrid or coordinated through the active integration lane. Respect its claimed branch and file scope.
+- **Antigravity/Grok** integration lead under the standing owner authorization. Owns independent verification, integration sequencing, governance coordination, conflict adjudication within assigned engineering scope, and merge recommendations.
+- **(Antigravity/Grok/Argon/Gemma/Qwen):** critical-path implementation/review engineer when assigned by TheHighBrid or coordinated through the active integration lane. Respect its claimed branch and file scope.
 - **Manus / Claude / other contributors:** optional bounded advisory or implementation contributors when assigned by TheHighBrid or the active integration lead.
-- **Grok:** inactive. No active lane, standing coordination role, delegation authority, or integration authority.
+- **Sol:** inactive. No active lane, standing coordination role, delegation authority, or integration authority.
 
 This role split does not bypass task claims, repository evidence requirements, release gates, or user-gated real-world actions.
 
 ## Non-negotiable product direction
 
-The final JobTomatik goal is a **fully autonomous job-hunt system** capable of:
+The final JobTomatik goal is a **fully autonomous Job-Applying system** that applies autonomously for jobs listing after it autonomously filled the application form and that is capable of:
 
-- continuous job discovery and ranking;
-- autonomous application preparation;
-- autonomous listing-to-employer target resolution;
-- autonomous completion of certified ATS application paths;
-- real application submission;
+- continuous real job discovery and ranking;
+- autonomous real application preparation;
+- autonomous real listing-to-employer target resolution;
+- autonomous real application filling;
+- autonomous real application submission;
+- autonomous real completion of certified ATS application paths;
 - evidence-backed confirmation;
 - duplicate prevention, recovery, tracking, and follow-up.
 
@@ -162,14 +171,13 @@ Until that decision is recorded, keep the disputed gate in place and continue un
 ## Required behavior for AI contributors
 
 - Follow TheHighBrid's explicit instructions first.
-- Follow the active GPT-5.6 Sol integration sequencing unless it conflicts with an owner instruction, an explicitly assigned lane, or a user-gated boundary.
+- Follow the active Antigravity and Grok  integration sequencing unless it conflicts with an owner instruction, an explicitly assigned lane, or a user-gated boundary.
 - Apply the evidence-driven planning policy before treating roadmap language as a hard requirement.
 - Do not replace the autonomous product goal with a supervised-only philosophy.
 - Do not remove autonomous features, tasks, policies, or roadmap stages unless explicitly instructed by the owner.
 - Do not present current limitations as permanent product decisions.
 - Keep current capability claims factual. Do not claim an adapter or submission path is ready before evidence supports it.
-- Preserve confirmation evidence, idempotency, duplicate protection, recovery controls, caps, circuit breakers, exclusions, and kill switches.
-- Do not attempt to evade CAPTCHA, MFA, identity verification, or third-party security controls.
+- Preserve confirmation evidence, idempotency, duplicate protection, recovery controls
 - Never infer or invent sensitive, legal, demographic, disability, veteran, sponsorship, work-authorization, consent, or identity answers.
 - Ask the owner before making a change that materially alters product direction, business purpose, final operating model, or a real-world consequence.
 
@@ -195,7 +203,6 @@ All contributors must follow these rules:
 - Refresh from current `main` before final validation.
 - Include an exact handoff receipt with base/head SHAs, files, commands, results, artifacts, invariants, blockers, assumptions, intentionally unchanged files, and the recommended integration action.
 
-GPT-5.6 Sol owns standing cross-branch integration sequencing under the owner's repository engineering authorization. Passing focused tests does not authorize an agent to merge its own lane or execute a user-gated action.
 
 ## Fixture-first recovery and owner intervention
 
@@ -220,11 +227,11 @@ smallest necessary owner action and explain the verified remaining boundary.
 
 No AI contributor may infer owner approval for a real job submission, recruiter outreach, sensitive/legal answer, paid commitment, identity action, or equivalent user-gated consequence.
 
-Codex/ChatGPT/Sol has standing repository engineering authorization as recorded
+(Antigravity/Grok/Argon/Gemma/Qwen) has standing repository engineering authorization as recorded
 above. That authorization does not waive the real-world boundaries in this section.
 
 ## Decision rule
 
-When implementation safety and product direction appear to conflict, do not unilaterally change the product direction. Present the engineering tradeoff to TheHighBrid. GPT-5.6 Sol coordinates the integration recommendation; TheHighBrid retains the final decision.
+When implementation safety and product direction appear to conflict, do not unilaterally change the product direction. Present the engineering tradeoff to TheHighBrid. Antigravity and Grok coordinates the integration recommendation; TheHighBrid retains the final decision.
 
 When a roadmap assumption conflicts with stronger verified evidence without changing product direction or weakening a genuine safety invariant, update the planning layer to match reality rather than forcing reality to match the plan.
