@@ -30,6 +30,10 @@ from app.services.application_state import transition_application_state
 from app.services.form_filler import fill_and_submit_application
 from app.services.supervised_target_identity import platform_key_for_url, LEVER_PLATFORM_KEY
 from app.services.submission_integrity import application_identity_digest
+from app.services.operational_safety import (
+    OperationalSafetyViolation,
+    require_browser_entry_allowed,
+)
 from app.services.supervised_target_identity import (
     persisted_supervised_target_metadata,
     target_identity_hash,
@@ -53,18 +57,62 @@ _SUBMIT_LOG_ACTIONS = frozenset({
 _PRE_BROWSER_ERRORS = frozenset({
     "invalid or unsupported job url",
     "placeholder url; manual application required",
+    "placeholder url; automatic application unavailable",
     "playwright not installed",
 })
 
 
 def _log_actions(result: Dict[str, Any]) -> set[str]:
     actions: set[str] = set()
-    for item in result.get("log") or []:
-        if isinstance(item, dict):
-            action = str(item.get("action") or "").strip().lower()
-            if action:
-                actions.add(action)
+    for key in ("log", "step_log"):
+        for item in result.get(key) or []:
+            if isinstance(item, dict):
+                action = str(item.get("action") or "").strip().lower()
+                if action:
+                    actions.add(action)
     return actions
+
+
+def _has_browser_activity(result: Dict[str, Any], actions: set[str]) -> bool:
+    """Return true only for evidence that the browser actually entered a flow.
+
+    The form filler initializes ``ats_adapter`` to ``generic`` before URL
+    validation and Playwright import, so that placeholder is not browser
+    activity evidence.
+    """
+    adapter = str(result.get("ats_adapter") or "").strip().lower()
+    runtime_adapter = str(result.get("adapter_name") or "").strip().lower()
+    evidence_fields = (
+        "handoff_snapshot",
+        "step_evidence",
+        "control_evidence",
+        "upload_evidence",
+        "validation_errors",
+        "confirmation_evidence",
+        "form_evidence",
+        "application_url",
+        "application_entry_method",
+        "final_url",
+        "steps_completed",
+    )
+    return bool(
+        actions
+        or result.get("log")
+        or result.get("step_log")
+        or (adapter and adapter != "generic")
+        or (runtime_adapter and runtime_adapter != "generic")
+        or result.get("submit_clicked") is True
+        or result.get("browser_started") is True
+        or result.get("submission_confirmed") is True
+        or result.get("submitted_at")
+        or result.get("fields_filled_count")
+        or result.get("fields_filled")
+        or result.get("screenshot")
+        or result.get("handoff_required")
+        or result.get("application_form_detected") is True
+        or result.get("ready_to_submit") is True
+        or any(result.get(key) for key in evidence_fields)
+    )
 
 
 def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
@@ -83,36 +131,50 @@ def normalize_jt5_browser_result(result: Any) -> Dict[str, Any]:
 
     normalized = dict(result)
     actions = _log_actions(normalized)
+    browser_activity = _has_browser_activity(normalized, actions)
     submit_clicked = bool(normalized.get("submit_clicked"))
     submit_from_log = bool(actions & _SUBMIT_LOG_ACTIONS)
+    final_action_evidence = bool(
+        submit_clicked
+        or submit_from_log
+        or normalized.get("submitted_at")
+        or normalized.get("submission_confirmed") is True
+    )
 
     if "final_submit_attempted" not in normalized or normalized.get("final_submit_attempted") is None:
-        if submit_clicked or submit_from_log:
+        if final_action_evidence:
             normalized["final_submit_attempted"] = True
-        elif normalized.get("submit_clicked") is False and not submit_from_log:
+        elif normalized.get("submit_clicked") is False and not browser_activity:
             normalized["final_submit_attempted"] = False
         else:
             # No explicit signal: treat as unknown until other evidence appears.
-            if not actions and not normalized.get("ats_adapter"):
+            if not browser_activity:
                 normalized["final_submit_attempted"] = False
             else:
                 normalized["final_submit_attempted"] = None
+    elif normalized.get("final_submit_attempted") is False and final_action_evidence:
+        # Positive final-action evidence overrides stale negative metadata.
+        normalized["final_submit_attempted"] = True
 
     # Conflicting final-action evidence invalidates pre-submit proof.
     if normalized.get("pre_submit_failure_verified") is True:
-        if submit_clicked or submit_from_log or normalized.get("final_submit_attempted") is not False:
+        if (
+            submit_clicked
+            or submit_from_log
+            or normalized.get("final_submit_attempted") is not False
+            or browser_activity
+        ):
             normalized["pre_submit_failure_verified"] = False
         return normalized
 
     error_text = str(normalized.get("error") or "").strip().lower()
     pre_browser = error_text in _PRE_BROWSER_ERRORS
-    browser_started = "navigate" in actions or bool(normalized.get("ats_adapter"))
     if (
         normalized.get("success") is False
         and normalized.get("final_submit_attempted") is False
         and not submit_from_log
         and pre_browser
-        and not browser_started
+        and not browser_activity
     ):
         normalized["pre_submit_failure_verified"] = True
     else:
@@ -322,16 +384,32 @@ def execute_reserved_application(self, application_id: int, attempt_reference: s
         db.commit()
 
         profile = _profile_dict(user, db, job)
-        result = _run_async(
-            fill_and_submit_application(
-                target_url,
-                profile,
-                application.cover_letter or "",
-                user.resume_path or "",
-                dry_run=False,
-                supervised_target={**supervised, "execution_contract": "jt5"} if supervised else None,
+        try:
+            require_browser_entry_allowed(target_url)
+        except OperationalSafetyViolation as exc:
+            # This preflight runs before entering the async form filler. Restrict
+            # recovery to these explicit policy denials; failures from the
+            # browser runner remain on the conservative exception path below.
+            if exc.code not in {"global_kill_switch_active", "platform_disabled"}:
+                raise
+            result = {
+                "success": False,
+                "error": exc.code,
+                "final_submit_attempted": False,
+                "pre_submit_failure_verified": True,
+                "log": [],
+            }
+        else:
+            result = _run_async(
+                fill_and_submit_application(
+                    target_url,
+                    profile,
+                    application.cover_letter or "",
+                    user.resume_path or "",
+                    dry_run=False,
+                    supervised_target={**supervised, "execution_contract": "jt5"} if supervised else None,
+                )
             )
-        )
         if not isinstance(result, dict):
             result = {"success": False, "error": "non_dict_browser_result"}
 
