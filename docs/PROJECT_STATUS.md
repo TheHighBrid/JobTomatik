@@ -1,29 +1,29 @@
 # Project status
 
-**Snapshot:** 2026-10-16, America/Toronto. **Product owner:** Don `TheHighBrid`.
+**Snapshot:** 2026-10-17, America/Toronto (OVH inspected 2026-10-18 03:46 UTC). **Product owner:** Don `TheHighBrid`.
 
 This is the current project briefing. Historical campaign days, closed child PRs and old Android runtime instructions do not describe today's deployment. Status is evidence-based; no project-wide completion percentage or delivery date has been certified.
 
 ## Executive assessment
 
-JT5 execution and owner handoff are integrated through [#704](https://github.com/TheHighBrid/JobTomatik/pull/704). Release-control correction [#706](https://github.com/TheHighBrid/JobTomatik/pull/706) is merged as `f7c2f6f7`; current main is `0c169a673ca0feb8cbbb806dcd6b5d532fb71c06`, including timezone correction #675.
+The production OneHost runtime is healthy but **not at the latest repository revision**. OVH read-only inspection at 2026-10-18 03:46 UTC found healthy API, Celery worker, PostgreSQL and Redis, an HTTP 200 readiness endpoint, and the current API and worker running image `jobtomatik:28b70d5`. The current production image retains the deployed release-control correction [#706](https://github.com/TheHighBrid/JobTomatik/pull/706); `ALLOW_REAL_APPLICATION_SUBMIT=false` was observed on **both** API and worker. No release flags were changed.
 
-OVH administration is online. Fresh inspection on 2026-10-16 found API and worker healthy on `jobtomatik:28b70d5`, with PostgreSQL and Redis healthy. Release-control enforcement has exact-source image tests and a retained cutover receipt. The effective real-submit, follow-up and Greenhouse/Lever pilot flags were freshly read as false. This is a healthy deployment, not general autonomous certification.
+**Current `main` at this snapshot: `6ec19a455f2fb396b603e3d0f0804d1fa35f7384`.** JT5 recovery integration itself merged as `5279bd56a4cf66cc6bff4281f9ea3bbecebd9352`; the subsequent main commit updates the frontend `source-map-js` dependency. [#711](https://github.com/TheHighBrid/JobTomatik/pull/711) late-result receipt and deadlock fixes, [#674](https://github.com/TheHighBrid/JobTomatik/pull/674) Chromium lifecycle fixes, and [#707](https://github.com/TheHighBrid/JobTomatik/pull/707) documentation were already integrated. On 2026-10-17, [#714](https://github.com/TheHighBrid/JobTomatik/pull/714) merged the independently reviewed [#712](https://github.com/TheHighBrid/JobTomatik/pull/712) outcome-recovery UI/service and [#713](https://github.com/TheHighBrid/JobTomatik/pull/713) owner status diagnostics, plus security and consistency fixes. #712 and #713 are now closed as superseded, **not separately merged**.
 
-The immediate code candidate is [#711](https://github.com/TheHighBrid/JobTomatik/pull/711), head `4c9914a21aafb46efca051236ec7a403762f5733`. It preserves complete late confirmation receipts without rewriting a closed checkpoint and fixes a reproducible PostgreSQL lock-order deadlock. Local source tests, the built-image PostgreSQL proof and the new PostgreSQL CI job pass. Independent final-head code review found no major issues. Full backend CI and integration remain pending at this snapshot. The image is built but not deployed.
+The #714 exact-head GitHub CI completed **14/14 successfully**, Codacy found zero new issues, and a fresh independent Codex review of `f4b10b2259` found no major issues. Separate disposable PostgreSQL15 tests passed 72/72, frontend tests 160/160, isolated Chromium lifecycle tests 33/33; a clean checkout of the published source passed 58 additional focused backend tests with two PostgreSQL-only skips. These are **integration and synthetic acceptance** claims, not production promotion or confirmation of an employer submission.
 
-#708 was merged into a feature parent rather than current main. #710 remains a separate recovery candidate with unresolved review findings. Neither is described here as a deployed recovery API.
+The production database was accessed **read-only**. It currently has **two applications in `submission_uncertain`**, one uncertain submission attempt, **zero active handoffs**, and zero queued jobs in the four Celery/Redis queues checked. No live application was reset, retried or promoted. An older backup `database-before.dump` and rollback-tagged images were found; their presence **does not certify a successful restore drill**. Next P0 is a separate controlled deployment/cutover with current DB snapshots, exact release identity, queue/handoff preservation, protected flags, and rollback evidence.
 
 ## Operational matrix
 
 | Component | Latest supported finding | Limit / next verification |
 |---|---|---|
-| API / authentication | Fresh container health passes on deployed image `28b70d5`; prior cutover verified authenticated reads | Repeat supported-flow acceptance after a new deployment |
-| PostgreSQL | Freshly healthy; #711 concurrent row-lock regression and 21-case recovery suite pass on isolated PostgreSQL15 | Backup restore and sustained operation still need retained evidence |
-| Redis | Freshly healthy; queues inspected in prior cutover receipt | Current queue depth not reverified by this documentation refresh |
-| Celery | One worker, solo pool, concurrency 1; restart reconciliation tested | Do not add workers against the shared browser profile |
-| Browser | Playwright-owned Chromium; shared persistent state and private native display | Profile lifecycle candidate #674 remains open; reconcile remaining delta |
-| Owner UI | JT5 Apply, status polling, retained handoff, post-action uncertainty display integrated | Do not treat a manual Applied selection as employer confirmation |
+| API / authentication | HTTP 200 readiness on deployed `jobtomatik:28b70d5` | #714 code and owner recovery API not deployed; verify authenticated reads after controlled cutover |
+| PostgreSQL | Production healthy; read-only counts: two uncertain applications and one uncertain attempt; #714 disposable PostgreSQL15 suite 72/72 | Preserve data; previous backup found but no latest restore/rollback drill recorded |
+| Redis | Healthy, queue lengths for celery, scraping, applications and followup each zero at inspection | Recheck immediately before/after a cutover |
+| Celery | Single production worker, solo concurrency 1, healthy; `ALLOW_REAL_APPLICATION_SUBMIT=false` verified | Preserve browser identity and no-replay recovery across release |
+| Browser | Playwright-owned Chromium; #674 lifecycle code is merged but current production image predates it | Recheck retained profile ownership and handoff behavior after controlled update |
+| Owner UI | #714 adds audited same-attempt recovery and owner diagnostics to main | Production frontend is mounted from `/home/ubuntu/JobTomatik/frontend/dist`; build/promote frontend separately |
 | Host administration | OVH Desktop Commander online and inspected | No owner copy/paste was required for this refresh |
 | Live release control | #706 merged/deployed; API and worker rejection tested; effective real-submit false | Do not enable real-world actions from documentation or general continuation instructions |
 | Unattended operation | Final product objective | Not certified for general autonomous use |
@@ -45,16 +45,21 @@ These are implementation or recorded validation milestones, not blanket producti
 - [x] Merge and deploy #706 release-control/withdrawal correction; retain its exact-image 40-test proof and cutover receipt.
 - [x] Reproduce #711 lock-order failure on PostgreSQL, then pass the corrected 21-case recovery proof and add a permanent PostgreSQL CI job.
 - [x] Reverify online OVH administration, healthy containers and current hardware without owner troubleshooting.
+- [x] Merge #711 late-result and deadlock fix and #674 Chromium profile lifecycle changes into main.
+- [x] Merge #714 recovery/UI/diagnostics with exact-head 14/14 CI, zero new Codacy issues, fresh Codex review and retained synthetic evidence.
+- [x] Close superseded #712 and #713 without double-integrating their stacked branches.
+- [x] Reinspect OVH live image/flags, ready endpoint, aggregate uncertain outcomes, queue depths and active handoffs read-only after integration.
+
 
 ## Remaining work in priority order
 
 | Priority | Work | Evidence needed to close | Owner role |
 |---|---|---|---|
-| P0 | Complete #711 final-head checks and integration | All required final-head checks; independent review; retained image/source and regression evidence | Underboss integration; assigned Caporegime implementation |
-| P0 | Promote a verified late-result repair after integration | Matching API/worker source, unchanged release flags and application outcomes, retained rollback | Assigned operations lane; independent review |
-| P1 | Evidence-backed reconciliation of uncertain attempts | Audited same-attempt operation; preserve consumed final-action checkpoint; no replay or false confirmation | Assigned Caporegime |
+| P0 | Controlled production promotion of integrated #711/#674/#714 code | Exact source/image and frontend attestation, fresh DB snapshot, unchanged disabled real-submit controls, monitored health, evidence and rollback | Underboss operations; Don release boundary |
+| P0 | Preserve uncertain outcomes through deployment | Same-attempt state and checkpoint checks, before/after redacted counts, no replay, no fictional confirmation | Assigned operations lane |
+| P1 | Validate newly integrated owner reconciliation UI on supported OneHost | Authenticated owner read and audited recovery, no duplicate request, positive or unresolved outcome evidence accurately rendered | Assigned Caporegime |
 | P1 | Classify proven pre-browser safety failures accurately | Regression distinguishes `failed_pre_submit` from genuinely uncertain browser outcomes | Assigned Soldato |
-| P1 | Reconcile #674 and diagnostic remnants | #675 is now merged; compare remaining deltas against current main without reopening completed work | Underboss |
+| P1 | Production-verify #674 browser profile lock lifecycle | Retained page + startup recovery on promoted image; do not interrupt a live handoff casually | Underboss operations |
 | P1 | Reconcile stale tracker items | #688/#689 still open despite implementation; review #676-#680 individually; do not close from title alone | Consigliere review lane |
 | P1 | Finish OneHost acceptance / recovery record | Current host identity, restore evidence, resource observations, retained-page and unknown-outcome recovery | Underboss plus assigned operations lane |
 | P2 | Reconcile Android release/signing status | Exact APK source, signer, upgrade compatibility and published artifact provenance; #485 remains open | Assigned release lane |
@@ -63,7 +68,7 @@ These are implementation or recorded validation milestones, not blanket producti
 
 ## Outcome transparency
 
-The latest owner-assisted application has one recorded final action and no employer confirmation evidence. Its user-selected status is Applied while automation remains uncertain. This is an unresolved outcome, not a successful autonomous submission. No retry, reset or new approval is implied by this documentation.
+At current OVH inspection there are **two uncertain application states** and **one uncertain attempt**. A prior owner-assisted application has a recorded final action but no employer confirmation; its owner-selected Applied label does not change automation uncertainty. The new #714 recovery UI is *not yet live*, so it has not reconciled these records. No retry, reset or new approval is implied by this documentation.
 
 Historical confirmed submissions on Android establish historical behavior only. They do not certify today's OVH Chromium runtime or a new employer target.
 
