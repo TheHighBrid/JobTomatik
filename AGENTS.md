@@ -2,7 +2,7 @@
 
 ## Current project briefing and participant aliases
 
-The 2026-10-16 documentation refresh is indexed in `README.md`,
+The 2026-10-21 documentation refresh is indexed in `README.md`,
 `docs/PROJECT_STATUS.md`, `docs/PRODUCT.md`, `docs/ROADMAP.md`,
 `docs/EVIDENCE.md`, `docs/COSTS_AND_INFRASTRUCTURE.md` and `docs/GOVERNANCE.md`.
 Use these for current status; archived campaign predictions are historical.
@@ -27,7 +27,7 @@ its API/worker rejection tests; a flag value alone is not enforcement evidence.
 
 JobTomatik is owned and directed by **TheHighBrid**. The repository owner is the final product, release, real-world-action, and governance authority.
 
-Effective 2026-10-03, the standing AI hierarchy is:
+Effective 2026-10-21, the standing AI hierarchy is:
 
 1. **TheHighBrid** - repository owner and final authority.
 2. **Antigravity & Grok** - integration lead under TheHighBrid's standing repository engineering authorization. Owns independent verification, integration sequencing, governance coordination, and merge recommendations within the owner's current direction.
