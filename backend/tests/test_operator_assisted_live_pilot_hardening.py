@@ -65,13 +65,15 @@ async def test_passive_hcaptcha_without_response_requires_manual_browser():
 
 
 @pytest.mark.asyncio
-async def test_completed_hcaptcha_response_still_requires_human_final_action():
+async def test_completed_hcaptcha_response_allows_authorized_final_submit():
+    """Human-completed hCaptcha unlocks the single authorized JobTomatik Submit."""
     state = await passive_verification_state(_PassivePage(completed=True))
 
     assert state["hcaptcha_loaded"] is True
     assert state["has_completed_response"] is True
-    assert state["manual_browser_required"] is True
-    assert passive_verification_requires_manual_browser(state) is True
+    assert state["hcaptcha_response_completed"] is True
+    assert state["manual_browser_required"] is False
+    assert passive_verification_requires_manual_browser(state) is False
 
 
 @pytest.mark.asyncio
@@ -134,3 +136,57 @@ async def test_final_submit_confirmation_recursion_fails_closed(monkeypatch):
     assert result.evidence["reentrant_verification_blocked"] is True
     assert result.evidence["automatic_retry_allowed"] is False
     assert result.evidence["verification_method"] == "operator_final_submit_reentrancy_blocked"
+
+
+@pytest.mark.asyncio
+async def test_incomplete_hcaptcha_still_blocks_cdp_submit():
+    """No completed human response keeps the boundary fail-closed."""
+    state = await passive_verification_state(_PassivePage(completed=False))
+
+    assert state["hcaptcha_loaded"] is True
+    assert state["has_completed_response"] is False
+    assert state["manual_browser_required"] is True
+    assert passive_verification_requires_manual_browser(state) is True
+
+
+@pytest.mark.asyncio
+async def test_no_hcaptcha_does_not_require_manual_browser():
+    state = await passive_verification_state(
+        _PassivePage(
+            completed=False,
+            globals_state={"hcaptcha": False, "grecaptcha": False, "turnstile": False},
+            iframe_sources=[],
+        )
+    )
+
+    assert state["hcaptcha_loaded"] is False
+    assert state["manual_browser_required"] is False
+    assert passive_verification_requires_manual_browser(state) is False
+
+
+@pytest.mark.asyncio
+async def test_unrelated_provider_response_does_not_unlock_hcaptcha():
+    """A populated non-hCaptcha response must not clear a loaded hCaptcha boundary."""
+
+    class _MixedPage(_PassivePage):
+        async def query_selector_all(self, selector: str):
+            if selector == 'textarea[name="g-recaptcha-response"]':
+                return [_Element(value="y" * 40)]
+            if selector == "iframe[src]":
+                return [
+                    _Element(
+                        src=(
+                            "https://newassets.hcaptcha.com/captcha/v1/test/"
+                            "static/hcaptcha-enclave.html"
+                        )
+                    )
+                ]
+            return []
+
+    state = await passive_verification_state(_MixedPage(completed=False))
+
+    assert state["hcaptcha_loaded"] is True
+    assert state["has_completed_response"] is True  # generic field present
+    assert state["hcaptcha_response_completed"] is False
+    assert state["manual_browser_required"] is True
+    assert passive_verification_requires_manual_browser(state) is True
