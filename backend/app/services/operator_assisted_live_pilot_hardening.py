@@ -128,15 +128,24 @@ async def passive_verification_state(page: Any) -> Dict[str, Any]:
     )
 
     completed = bool(response_state.get("has_completed_response"))
+    # Only an hCaptcha response field counts for unlocking the hCaptcha boundary.
+    # Provider-agnostic completion (e.g. a stale reCAPTCHA textarea) must not
+    # clear a loaded hCaptcha challenge.
+    hcaptcha_response_completed = any(
+        int(item.get("length") or 0) >= 20
+        and "h-captcha-response" in str(item.get("selector") or "").lower()
+        for item in (response_state.get("responses") or [])
+    )
     return {
         "responses": list(response_state.get("responses") or []),
         "has_completed_response": completed,
+        "hcaptcha_response_completed": hcaptcha_response_completed,
         "hcaptcha_loaded": hcaptcha_loaded,
         "grecaptcha_loaded": grecaptcha_loaded,
         "turnstile_loaded": turnstile_loaded,
-        # Incomplete hCaptcha stays human-only; completed human response unlocks
-        # the single authorized JobTomatik Submit under existing safety gates.
-        "manual_browser_required": bool(hcaptcha_loaded and not completed),
+        # Incomplete hCaptcha stays human-only; completed human hCaptcha response
+        # unlocks the single authorized JobTomatik Submit under existing safety gates.
+        "manual_browser_required": bool(hcaptcha_loaded and not hcaptcha_response_completed),
     }
 
 
@@ -144,16 +153,16 @@ def passive_verification_requires_manual_browser(state: Dict[str, Any]) -> bool:
     """Require a human boundary only while hCaptcha is incomplete.
 
     CAPTCHA remains human-only: JobTomatik never solves or interacts with the
-    challenge. A completed response means the human already finished the widget in
-    the retained browser. In that case the owner-authorized once-only final Submit
-    may be executed by JobTomatik under the existing claim, live-snapshot, and
-    confirmation gates. An incomplete challenge still blocks the employer click.
+    challenge. Only a completed *hCaptcha* response (not an unrelated provider
+    field) unlocks the owner-authorized once-only final Submit under the existing
+    claim, live-snapshot, and confirmation gates. An incomplete challenge still
+    blocks the employer click.
     """
 
     if not bool(state.get("hcaptcha_loaded")):
         return False
-    # Human completed the widget; allow the authorized single Submit path.
-    if bool(state.get("has_completed_response")):
+    # Human completed the hCaptcha widget; allow the authorized single Submit path.
+    if bool(state.get("hcaptcha_response_completed")):
         return False
     return True
 
