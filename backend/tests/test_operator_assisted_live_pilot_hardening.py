@@ -71,6 +71,7 @@ async def test_completed_hcaptcha_response_allows_authorized_final_submit():
 
     assert state["hcaptcha_loaded"] is True
     assert state["has_completed_response"] is True
+    assert state["hcaptcha_response_completed"] is True
     assert state["manual_browser_required"] is False
     assert passive_verification_requires_manual_browser(state) is False
 
@@ -161,3 +162,31 @@ async def test_no_hcaptcha_does_not_require_manual_browser():
     assert state["hcaptcha_loaded"] is False
     assert state["manual_browser_required"] is False
     assert passive_verification_requires_manual_browser(state) is False
+
+
+@pytest.mark.asyncio
+async def test_unrelated_provider_response_does_not_unlock_hcaptcha():
+    """A populated non-hCaptcha response must not clear a loaded hCaptcha boundary."""
+
+    class _MixedPage(_PassivePage):
+        async def query_selector_all(self, selector: str):
+            if selector == 'textarea[name="g-recaptcha-response"]':
+                return [_Element(value="y" * 40)]
+            if selector == "iframe[src]":
+                return [
+                    _Element(
+                        src=(
+                            "https://newassets.hcaptcha.com/captcha/v1/test/"
+                            "static/hcaptcha-enclave.html"
+                        )
+                    )
+                ]
+            return []
+
+    state = await passive_verification_state(_MixedPage(completed=False))
+
+    assert state["hcaptcha_loaded"] is True
+    assert state["has_completed_response"] is True  # generic field present
+    assert state["hcaptcha_response_completed"] is False
+    assert state["manual_browser_required"] is True
+    assert passive_verification_requires_manual_browser(state) is True
