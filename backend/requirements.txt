@@ -5,7 +5,7 @@ alembic==1.20.0
 psycopg2-binary==2.9.12
 redis==6.4.0
 celery[redis]==5.6.3
-playwright==1.61.0
+playwright==1.64.1
 anthropic==0.120.0
 sendgrid==6.12.5
 PyJWT==2.15.0
