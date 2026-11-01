@@ -2,7 +2,7 @@
 # another constrained local server. This intentionally excludes browser/image
 # automation packages such as Playwright and Pillow while retaining dependencies
 # required by local API workflows such as source-backed résumé material generation.
-fastapi==0.141.1
+fastapi==0.162.0
 uvicorn==0.54.0
 sqlalchemy==2.1.1
 alembic==1.20.0
