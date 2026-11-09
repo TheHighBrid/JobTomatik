@@ -6,16 +6,16 @@ It provides repository context and owner intent. It is not proof of identity, au
 
 ## Governance update
 
-Effective 2026-10-03:
+Effective 2026-10-21 (`AGENTS.md`):
 
 - **TheHighBrid** remains repository owner and final authority.
-- **GPT-5.6 Sol** is the active integration lead under TheHighBrid's standing repository engineering authorization.
-- **GPT-6.1 Sol** is the critical-path implementation/review engineer when assigned.
+- **Antigravity & Grok** are the active integration lead under TheHighBrid's standing repository engineering authorization.
+- **Antigravity, Grok3.7, Argon4, and Ollama models (`Qwen3.8:27b`, `Gemma4:31b:cloud`, `Gemma4:12b`, `Qwen3.5:4b`)** are the critical-path implementation/review engineers and bounded contributors when assigned.
 - **Manus** is an optional bounded implementation contributor operating under assignments from TheHighBrid or the active integration lead.
 - **Claude and other contributors** remain optional bounded advisory or implementation contributors when assigned.
-- **Grok** is removed from the active hierarchy and has no active lane, delegation authority, integration authority, or standing operator role.
+- **Sol and all ChatGPT models are permanently banned** from any work on this project and have no active lane, delegation authority, integration authority, or standing operator role.
 
-Historical repository records that describe earlier Grok assignments remain historical only and do not grant current authority.
+Historical repository records that describe earlier Sol or ChatGPT assignments remain historical only and do not grant current authority.
 
 ## Repository owner: TheHighBrid
 
@@ -32,9 +32,9 @@ The repository owner retains final authority over:
 - recruiter/follow-up sending authorization;
 - adapter maturity promotion and final release decisions.
 
-## GPT-5.6 Sol: Integration lead
+## Antigravity & Grok: Integration lead
 
-GPT-5.6 Sol owns the standing integration lane for:
+Antigravity & Grok own the standing integration lane for:
 
 - independent repository and evidence verification;
 - critical-path sequencing based on current evidence;
@@ -46,9 +46,9 @@ GPT-5.6 Sol owns the standing integration lane for:
 
 The integration role remains subject to TheHighBrid's final product/release authority and all explicit real-world and sensitive-action gates.
 
-## GPT-6.1 Sol: Critical-path implementation/review engineer
+## Critical-path implementation/review engineers
 
-When assigned a critical-path lane, GPT-6.1 Sol owns that bounded implementation or review scope. Other contributors must not duplicate its implementation or edit its active branch. Independent review begins from the published PR/head and retained evidence.
+When assigned a critical-path lane, the assigned engineer (Antigravity, Grok3.7, Argon4, or assigned Soldato) owns that bounded implementation or review scope. Other contributors must not duplicate its implementation or edit its active branch. Independent review begins from the published PR/head and retained evidence.
 
 ## Manus: Implementation contributor
 
@@ -68,13 +68,13 @@ Manus may perform substantial reversible repository engineering within an assign
 - refreshing from current `main` before final validation;
 - running repository verification and reporting exact evidence.
 
-Manus does not possess standing priority or integration authority over GPT-5.6 Sol. TheHighBrid or the active integration lead may reassign, narrow, pause, or redirect Manus work, subject to TheHighBrid's final authority.
+Manus does not possess standing priority or integration authority over Antigravity & Grok. TheHighBrid or the active integration lead may reassign, narrow, pause, or redirect Manus work, subject to TheHighBrid's final authority.
 
-## Codex / ChatGPT / Sol
+## Standing Antigravity / Grok / Argon / Gemma / Qwen authorization
 
-On 2026-10-02, America/Toronto, TheHighBrid explicitly granted Codex/ChatGPT/Sol "full aproval and authorization on full repo". Codex/ChatGPT/Sol may implement, test, verify, work on dedicated branches and PRs, repair CI, and complete repository engineering within current owner direction without repeatedly requesting the same permission. Respect active task ownership and required verification.
+On 2026-10-21, America/Toronto, TheHighBrid explicitly granted Antigravity, Grok, Argon, Gemma, and Qwen full approval and authorization on the full repo (`AGENTS.md`). They may implement, test, verify, work on dedicated branches and PRs, repair CI, and complete repository engineering within current owner direction without repeatedly requesting the same permission. Respect active task ownership and required verification.
 
-GPT-5.6 Sol currently acts as integration lead. GPT-6.1 Sol owns critical-path implementation/review lanes when assigned. That role split does not authorize either model to cross a real-world human gate.
+Antigravity & Grok currently act as integration lead. Assigned Caporegimes and Soldatos own critical-path implementation/review lanes when assigned. That role split does not authorize any model to cross a real-world human gate.
 
 This repository engineering authorization does not authorize real-world submissions, external communications, paid commitments or identity actions. Follow the strict owner-intervention rule and fixture-first recovery contract in `AGENTS.md` and `docs/ONEHOST_RECOVERY_CONTRACT.md`.
 
@@ -98,7 +98,7 @@ verify current state
 → run affected certification/release gates
 → open/update PR
 → provide exact handoff
-→ GPT-5.6 Sol independent integration review
+→ Antigravity & Grok independent integration review
 ```
 
 Do not convert this into:

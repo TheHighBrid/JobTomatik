@@ -236,6 +236,10 @@ def test_reproducible_workflow_executes_every_verification_lane() -> None:
     ):
         assert f"bash scripts/verify.sh {mode}" in workflow
     assert "Run dependency verification gate" in workflow
+    assert (
+        "- name: Capture frontend production npm audit evidence\n        if: always()"
+        in workflow
+    )
     assert "DEPENDENCY_RESULT" in workflow
     assert "needs.dependency-audit.result" in workflow
     assert "Run full backend and browser tests" in workflow
@@ -251,6 +255,27 @@ def test_workflow_triggers_cover_every_file_validated_by_contract_tests() -> Non
     assert workflow.count('- "README.md"') == 2
     assert workflow.count('- "scripts/validate_npm_audit.py"') == 2
     assert workflow.count('- ".github/workflows/android-apk.yml"') == 2
+
+
+def test_governance_and_agent_instructions_match_agents_md_hierarchy() -> None:
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "Sol and all ChatGPT models are permanently banned" in agents
+
+    for rel_path in (
+        "README.md",
+        "MANUS.md",
+        "ANTIGRAVITY_AGENT_INSTRUCTIONS.md",
+        ".agents/skills/JobTomatik/agents/ANTIGRAVITY_AGENT_INSTRUCTIONS.md",
+        ".agents/skills/rules",
+        "ANTIGRAVITY_LAUNCH_PROMPT.md",
+        "docs/GOVERNANCE.md",
+        "docs/operations/AI_COOPERATION_BOARD.md",
+    ):
+        content = (ROOT / rel_path).read_text(encoding="utf-8")
+        assert "GPT-5.6 Sol" not in content, f"Stale GPT-5.6 Sol authority in {rel_path}"
+        assert "GPT-6.1 Sol" not in content, f"Stale GPT-6.1 Sol authority in {rel_path}"
+        assert "Underboss Sol 5.6" not in content, f"Stale Underboss Sol 5.6 in {rel_path}"
+        assert "Caporegime Sol 6.1" not in content, f"Stale Caporegime Sol 6.1 in {rel_path}"
 
 
 def test_android_workflow_and_readme_use_canonical_versions() -> None:

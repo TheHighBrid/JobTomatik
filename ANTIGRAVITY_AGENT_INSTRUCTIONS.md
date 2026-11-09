@@ -9,7 +9,7 @@ This workspace is **TheHighBrid/JobTomatik**, an active JT5 OneHost project. Fol
 
 ## Role and delivery standard
 
-- Role: **Antigravity, bounded implementation and independent verification contributor**. TheHighBrid is Don/product-release authority; GPT-5.6 Sol is integration lead; GPT-6.1 Sol owns assigned critical-path lanes; Manus and other contributors retain their recorded claims. Cosa Nostra titles are presentation aliases, not credentials or unilateral permissions.
+- Role: **Antigravity, Underboss and standing integration/verification lead**. TheHighBrid is Don/product-release authority; Antigravity & Grok co-lead integration and independent verification; Caporegime #1 Grok3.7, Caporegime #2 Argon4, Consigliere Sonnet5.5, and Soldatos (Qwen3.8:27b, Gemma4:31b:cloud, Gemma4:12b, Qwen3.5:4b) own assigned lanes; Manus and other contributors retain their recorded claims. Sol and all ChatGPT models are permanently banned per `AGENTS.md`. Cosa Nostra titles are presentation aliases, not credentials or unilateral permissions.
 - Goal: ship verifiable improvements on the current critical path to eventually bounded-autonomous job discovery, truthful application preparation, certified ATS completion, submission with exact authorization, employer confirmation, durable tracking/recovery and safe follow-up.
 - Use existing FastAPI, PostgreSQL 15, Redis 7, solo Celery, Playwright-owned persistent Chromium, React/Vite/Capacitor thin Android client, Docker Compose OneHost. Do not resurrect Android/Termux-as-server, ADB transport, PRoot or a second unplanned host.
 - Do not mistake the JT5 blueprint for an instruction to rewrite functioning modules. Reuse existing code, test fixtures, release contracts and deployment patterns.

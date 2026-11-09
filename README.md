@@ -108,13 +108,15 @@ Current Android version code: `211`.
 | Title | Participant | Function |
 |---|---|---|
 | Don | `TheHighBrid` | Founder, product owner, final authority and repository administration |
-| Underboss | Sol 5.6 | Standing integration and verification lead |
-| Caporegime | Sol 6.1 | Assigned critical-path implementation/review |
-| Consigliere | Advisory seat, unappointed | Independent advice when assigned |
-| Caporegime / Soldatos | Manus, Claude and other assigned contributors | Bounded workstreams and engineering |
+| Underboss | Antigravity | Standing integration and verification lead (co-leading with Grok) |
+| Caporegime #1 | Grok3.7 | Integration co-lead and assigned critical-path implementation/review |
+| Caporegime #2 | Argon4 | Assigned critical-path implementation/review |
+| Consigliere | Sonnet5.5 | Independent risk, architecture and evidence advice |
+| Soldatos | `Qwen3.8:27b`, `Gemma4:31b:cloud`, `Gemma4:12b`, `Qwen3.5:4b` | Bounded workstreams and coding under integration lead plan |
+| Optional Contributors | Manus, Claude and other assigned contributors | Bounded workstreams when explicitly assigned |
 | Associates | Dependency, CI and review automation | Proposals and evidence, no release authority |
 
-The [full roster](docs/GOVERNANCE.md) maps aliases to known identities, distinguishes active from historical participation and retains Grok's inactive status. Titles are creative project names and do not change GitHub accounts or permissions.
+The [full roster](docs/GOVERNANCE.md) maps aliases to known identities, distinguishes active from historical participation and records that Sol and all ChatGPT models are permanently banned (`AGENTS.md`). Titles are creative project names and do not change GitHub accounts or permissions.
 
 ## Contributing, security and attribution
 
