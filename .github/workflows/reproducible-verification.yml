@@ -110,6 +110,7 @@ jobs:
         run: bash scripts/verify.sh dependencies
 
       - name: Capture frontend production npm audit evidence
+        if: always()
         working-directory: frontend
         run: |
           npm audit --omit=dev --json > npm-audit-production.json || true

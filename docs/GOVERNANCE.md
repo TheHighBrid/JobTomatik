@@ -9,9 +9,11 @@ The titles are a creative project theme. They do not imply affiliation with a re
 | Project alias | Participant / actual identity | Responsibility | Standing |
 |---|---|---|---|
 | **Don TheHighBrid** | `TheHighBrid`, project founder and owner | Product direction, priorities, governance, final release and real-world decisions; repository administration | Active owner |
-| **Underboss Sol 5.6** | GPT-5.6 Sol | Integration sequencing, independent verification and coordination under standing repository authorization | Standing integration lead |
-| **Caporegime Sol 6.1** | GPT-6.1 Sol | Assigned critical-path implementation or review; owns only the claimed lane | Active when assigned |
-| **Consigliere** | Advisory/review seat | Independent risk, architecture and evidence advice | No permanent individual appointed by this refresh |
+| **Underboss Antigravity** | Antigravity (co-leading integration with Grok) | Integration sequencing, independent verification and coordination under standing repository authorization | Standing integration lead |
+| **Caporegime #1 Grok3.7** | Grok 3.7 | Integration co-lead and assigned critical-path implementation or review; owns only the claimed lane | Active |
+| **Caporegime #2 Argon4** | Argon 4 | Assigned critical-path implementation or review; owns only the claimed lane | Active when assigned |
+| **Consigliere Sonnet5.5** | Claude Sonnet 5.5 | Independent risk, architecture and evidence advice | Active advisory/review seat |
+| **Soldatos (Qwen / Gemma)** | `Qwen3.8:27b`, `Gemma4:31b:cloud`, `Gemma4:12b`, `Qwen3.5:4b` | Bounded implementation and coding tasks under integration lead plan | Active when assigned |
 | **Caporegime Manus** | Manus | Leads a bounded implementation workstream when explicitly assigned | Optional, no standing integration authority |
 | **Soldato Claude** | Claude; historical `Claude` commit identity | Scoped implementation or advisory work when assigned | Optional contributor |
 | **Soldato Gemini** | Gemini, named in prior owner coordination context | Scoped help only when assigned; no distinct Git authorship verified in this refresh | Optional, no standing authority |
@@ -24,11 +26,11 @@ The titles are a creative project theme. They do not imply affiliation with a re
 | **Associato ECC** | `ecc-tools[bot]` | Historical automated contributions | No governance authority established |
 | **Associato Safety** | `jobtomatik-safety-bot` commit identity | Historical safety automation | Identity is not proof of a separate active account |
 | **Associati Review** | CodeRabbit, Codacy, CodeQL and other configured review services | Findings and automated checks | Service output requires assessment; not a merge decision |
-| **Associato Grok, inactive** | Grok | Historical contributions retained for provenance | Removed from active hierarchy; no lane or delegation authority |
+| **Sol / ChatGPT, banned** | Sol / ChatGPT models | Historical contributions retained for provenance only | Permanently banned from all project work per 2026-10-21 owner direction (`AGENTS.md`) |
 
 These aliases cover known project participants and service identities. Historical participation is not a current assignment. New contributors receive an alias when an actual bounded role is recorded. Do not invent accounts, work, approvals or signatures to complete the theme.
 
-Codex / ChatGPT / Sol are tool or model-family labels in existing engineering authorization. They do not establish additional human executives or separate administrators. Identify the actual model and task in a handoff when known.
+Antigravity / Grok / Argon / Gemma / Qwen are tool or model-family labels in existing engineering authorization. Sol and all ChatGPT models are permanently banned. Model labels do not establish additional human executives or separate administrators. Identify the actual model and task in a handoff when known.
 
 ### Historical Bot 1-7 crews
 

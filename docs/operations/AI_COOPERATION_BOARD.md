@@ -3,14 +3,15 @@
 **Current briefing:** [project status](../PROJECT_STATUS.md),
 [roadmap](../ROADMAP.md), [evidence](../EVIDENCE.md).
 **Participant aliases:** [the Famiglia roster](../GOVERNANCE.md): Don TheHighBrid,
-Underboss Sol 5.6, Caporegime Sol 6.1, assigned Consigliere / Soldatos and Associates.
+Underboss Antigravity, Caporegime #1 Grok3.7, Caporegime #2 Argon4, Consigliere Sonnet5.5,
+Soldatos (Qwen3.8:27b, Gemma4:31b:cloud, Gemma4:12b, Qwen3.5:4b) and Associates.
 These owner-requested presentation names preserve the existing authority below.
-Grok remains inactive. Historical assignments do not reactivate a lane.
+Sol and all ChatGPT models are permanently banned. Historical assignments do not reactivate a lane.
 
 **Authoritative coordination issue:** #252  
 **Repository owner:** TheHighBrid  
-**Integration lead:** GPT-5.6 Sol  
-**Effective governance revision:** 2026-10-03 owner direction
+**Integration lead:** Antigravity & Grok  
+**Effective governance revision:** 2026-10-21 owner direction (`AGENTS.md`)
 
 This document coordinates AI contributors without treating repository prose as proof of authorization, access, identity, task acceptance, runtime state, or campaign truth.
 
@@ -21,29 +22,31 @@ Every contributor must independently verify repository state, current branch sta
 | Rank | Role | Owner | Standing status | Scope |
 |---|---|---|---|---|
 | 1 | Product / release / governance authority | TheHighBrid | Active | final product direction, priorities, model hierarchy, sensitive answers, exact real-world approvals, release decisions |
-| 2 | Integration lead | GPT-5.6 Sol | Active | independent verification, integration sequencing, governance coordination, conflict adjudication within assigned engineering scope, merge recommendations |
-| 3 | Critical-path implementation/review engineer | GPT-6.1 Sol | Assigned | implementation or independent review of explicitly assigned critical-path lanes; branch/file ownership remains bounded to the active claim |
-| 4 | Optional bounded contributors | Manus / Claude / others | Assigned | reversible engineering or advisory work within scopes assigned by TheHighBrid or the active integration lead |
+| 2 | Integration lead | Antigravity & Grok | Active | independent verification, integration sequencing, governance coordination, conflict adjudication within assigned engineering scope, merge recommendations |
+| 3 | Critical-path implementation/review engineers | Antigravity, Grok3.7, Argon4, and Ollama models | Assigned | implementation or independent review of explicitly assigned critical-path lanes; branch/file ownership remains bounded to the active claim |
+| 4 | Bounded contributors | Qwen3.8:27b, Gemma4:31b:cloud, Gemma4:12b, Qwen3.5:4b | Assigned | regular tasks and coding under plan and instructions from the integration lead |
+| 5 | Optional bounded contributors | Manus / Claude / others | Assigned | reversible engineering or advisory work within scopes assigned by TheHighBrid or the active integration lead |
 
-**Grok is removed from the active hierarchy. Grok has no active lane, delegation authority, integration authority, or standing operator role.** Historical issue comments, audit records, and closed work may still describe earlier Grok assignments; those records remain historical and do not grant current authority.
+**Sol and all ChatGPT models are permanently banned from any work on this project. They have no active lane, delegation authority, integration authority, or standing operator role.** Historical issue comments, audit records, and closed work may still describe earlier Sol or ChatGPT assignments; those records remain historical and do not grant current authority.
 
-## Standing Codex / ChatGPT / Sol engineering authorization
+## Standing Antigravity / Grok / Argon / Gemma / Qwen engineering authorization
 
-On 2026-10-02, America/Toronto, TheHighBrid explicitly granted "full aproval and
-authorization on full repo". This supersedes the earlier Codex-specific read-only
-and per-action permission restrictions. Codex/ChatGPT/Sol may perform repository
-engineering, including implementation, verification, branch/PR/issue work and CI
-repairs, without repeatedly asking the owner for the same authorization.
+On 2026-10-21, America/Toronto, TheHighBrid explicitly granted full approval and
+authorization on the full repo (`AGENTS.md`). This supersedes earlier read-only
+and per-action permission restrictions. Antigravity, Grok, Argon, Gemma, and Qwen
+may perform repository engineering, including implementation, verification,
+branch/PR/issue work and CI repairs, without repeatedly asking the owner for the
+same authorization.
 
-GPT-5.6 Sol acts as integration lead under that authorization. GPT-6.1 Sol owns
-critical-path implementation or review only when specifically assigned. Respect
-active task and branch ownership, coordination and required checks. Real-world
-submissions, external communications, paid commitments, sensitive answers and
-identity actions remain specifically owner-gated.
+Antigravity & Grok act as integration lead under that authorization. Caporegimes
+and Soldatos own critical-path implementation or review only when specifically
+assigned. Respect active task and branch ownership, coordination and required
+checks. Real-world submissions, external communications, paid commitments,
+sensitive answers and identity actions remain specifically owner-gated.
 
 ## Integration lead authority
 
-GPT-5.6 Sol owns the standing integration lane below TheHighBrid.
+Antigravity & Grok own the standing integration lane below TheHighBrid.
 
 The integration lead is expected to:
 
@@ -59,14 +62,15 @@ The integration lead is expected to:
 
 TheHighBrid may override any assignment, sequence, priority, or integration recommendation at any time.
 
-## GPT-6.1 Sol critical-path role
+## Critical-path implementation/review role
 
-When assigned a critical-path implementation or review mission, GPT-6.1 Sol owns
-that bounded lane and should investigate root cause, implement or review the
-complete assigned scope, add regression coverage where applicable, run the
-strongest relevant verification, and publish an exact handoff receipt.
+When assigned a critical-path implementation or review mission, the assigned engineer
+(Antigravity, Grok3.7, Argon4, or assigned Soldato) owns that bounded lane and should
+investigate root cause, implement or review the complete assigned scope, add
+regression coverage where applicable, run the strongest relevant verification,
+and publish an exact handoff receipt.
 
-The integration lead must not duplicate GPT-6.1 Sol's active implementation
+The integration lead must not duplicate an active implementation
 branch. Independent review starts from the published PR/head and retained evidence.
 
 ## Manus and other implementation contributors
@@ -156,7 +160,7 @@ Where a site requires CAPTCHA, MFA, login, identity verification, an assessment,
 ## Branch and conflict protocol
 
 1. One branch per contributor and task.
-2. GPT-5.6 Sol coordinates branch ownership, integration order, and overlap unless TheHighBrid directs otherwise.
+2. Antigravity & Grok coordinate branch ownership, integration order, and overlap unless TheHighBrid directs otherwise.
 3. Open a draft PR early for substantive work.
 4. Do not push to another contributor's branch.
 5. Do not silently edit a file already claimed by another active lane.
@@ -164,7 +168,7 @@ Where a site requires CAPTCHA, MFA, login, identity verification, an assessment,
 7. Refresh from current `main` before final verification.
 8. Re-run affected generators, certification, and drift checks after conflict resolution.
 9. Passing focused tests does not authorize self-merge or a user-gated action.
-10. Codex/ChatGPT/Sol acts under the standing owner engineering authorization and must preserve active-lane ownership and genuine human gates.
+10. Antigravity, Grok, Argon, Gemma, and Qwen act under the standing owner engineering authorization (`AGENTS.md`) and must preserve active-lane ownership and genuine human gates.
 
 ## Verification-first cooperation procedure
 
@@ -205,14 +209,14 @@ Next highest-value task:
 For parallel work, the default sequence is:
 
 1. TheHighBrid establishes or confirms the objective and any user-gated boundaries;
-2. GPT-5.6 Sol decomposes and sequences independent/dependent work without duplicating active implementation lanes;
+2. Antigravity & Grok decompose and sequence independent/dependent work without duplicating active implementation lanes;
 3. assigned contributors implement and validate on dedicated branches;
-4. GPT-5.6 Sol performs or coordinates independent review and current-main reconciliation;
+4. Antigravity & Grok perform or coordinate independent review and current-main reconciliation;
 5. combined affected gates run;
-6. GPT-5.6 Sol recommends or performs repository integration within the standing owner authorization only when the gate is actually proven;
+6. Antigravity & Grok recommend or perform repository integration within the standing owner authorization only when the gate is actually proven;
 7. TheHighBrid retains final release/product authority and every real-world user-gated decision.
 
-Codex/ChatGPT/Sol participates under the owner's standing 2026-10-02 repository
-engineering authorization. Do not require repeated per-action approvals for that work.
+Antigravity, Grok, Argon, Gemma, and Qwen participate under the owner's standing 2026-10-21 repository
+engineering authorization (`AGENTS.md`). Do not require repeated per-action approvals for that work.
 
 Repository documentation never grants a contributor capabilities its actual environment does not provide.
