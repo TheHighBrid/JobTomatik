@@ -1,5 +1,11 @@
 """JT5 browser-result classification must never infer a safe retry from silence."""
+import asyncio
+
 import pytest
+from app.config import get_settings
+from app.services.form_filler import fill_and_submit_application as fill_compatibility_wrapper
+from app.services.form_filler_v3 import fill_and_submit_application as fill_real_form
+from app.services.operations_settings import get_operations_settings
 
 from app.tasks.jt5_execution import (
     _classify_browser_result,
@@ -57,6 +63,84 @@ def test_normalize_pre_browser_invalid_url_is_retryable():
     assert _classify_browser_result(normalized) == "failed_pre_submit"
 
 
+@pytest.mark.parametrize("job_url", [
+    "http://127.0.0.1:8000/private-job",
+    "https://example.com/jobs/placeholder-1",
+])
+def test_real_form_filler_pre_browser_rejections_classify_as_failed_pre_submit(job_url):
+    result = asyncio.run(fill_real_form(job_url, {}, "", "", dry_run=False))
+
+    assert result["ats_adapter"] == "generic"
+    assert _classify_browser_result(result) == "failed_pre_submit"
+
+
+def test_retained_handoff_wrapper_placeholder_rejection_classifies_as_failed_pre_submit(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENABLE_RESUMABLE_HANDOFFS", "true")
+    monkeypatch.setenv("AUTOMATION_GLOBAL_KILL_SWITCH", "false")
+    monkeypatch.setenv("AUTOPILOT_DISABLED_PLATFORMS", "")
+    get_settings.cache_clear()
+    get_operations_settings.cache_clear()
+    try:
+        result = asyncio.run(fill_compatibility_wrapper(
+            "https://example.com/jobs/placeholder-1", {}, "", "", dry_run=False
+        ))
+    finally:
+        get_settings.cache_clear()
+        get_operations_settings.cache_clear()
+
+    assert result["error"] == "Placeholder URL; automatic application unavailable"
+    assert result["ats_adapter"] == "generic"
+    assert _classify_browser_result(result) == "failed_pre_submit"
+
+
+@pytest.mark.parametrize("post_launch_signal", [
+    {"log": [{"action": "navigate"}]},
+    {"log": [{"action": "ats_adapter_detected", "adapter": "generic"}]},
+    {"step_log": [{"action": "application_form_not_reached"}]},
+    {"ats_adapter": "greenhouse"},
+    {"adapter_name": "greenhouse"},
+    {"fields_filled_count": 1},
+    {"fields_filled": 1},
+    {"screenshot": "capture.png"},
+    {"handoff_required": True},
+    {"handoff_snapshot": {"browser_session_id": "session-1"}},
+    {"step_evidence": [{"action": "step_evaluated", "step": 1}]},
+    {"steps_completed": 1},
+    {"control_evidence": [{"control_id": "control-1"}]},
+    {"upload_evidence": [{"field": "resume"}]},
+    {"validation_errors": [{"field": "email"}]},
+    {"confirmation_evidence": [{"is_sufficient": False, "evidence_type": "url_change"}]},
+    {"form_evidence": {"present": True}},
+    {"application_url": "https://jobs.example/apply"},
+    {"application_entry_method": "apply_button"},
+    {"application_form_detected": True},
+    {"final_url": "https://jobs.example/apply"},
+    {"ready_to_submit": True},
+    {"submitted_at": "2026-10-18T12:00:00Z"},
+    {"submission_confirmed": True},
+    {"submit_clicked": True},
+    {"browser_started": True},
+])
+@pytest.mark.parametrize("preverified", [False, True])
+def test_pre_browser_error_string_after_browser_activity_stays_uncertain(
+    post_launch_signal, preverified
+):
+    result = {
+        "success": False,
+        "error": "Placeholder URL; manual application required",
+        "ats_adapter": "generic",
+        "final_submit_attempted": False,
+        "pre_submit_failure_verified": preverified,
+        **post_launch_signal,
+    }
+
+    normalized = normalize_jt5_browser_result(result)
+    assert normalized["pre_submit_failure_verified"] is False
+    assert _classify_browser_result(normalized) == "submission_uncertain"
+
+
 def test_normalize_captcha_after_navigate_stays_uncertain():
     normalized = normalize_jt5_browser_result({
         "success": False,
@@ -66,7 +150,7 @@ def test_normalize_captcha_after_navigate_stays_uncertain():
         "log": [{"action": "navigate"}, {"action": "captcha_detected"}],
         "ats_adapter": "greenhouse",
     })
-    assert normalized["final_submit_attempted"] is False
+    assert normalized["final_submit_attempted"] is None
     assert normalized["pre_submit_failure_verified"] is False
     assert _classify_browser_result(normalized) == "submission_uncertain"
 
